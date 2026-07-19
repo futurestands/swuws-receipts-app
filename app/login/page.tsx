@@ -2,6 +2,8 @@ import { adminExistsPublic } from "@/app/actions/bootstrap"
 import { LoginForm } from "@/app/login/login-form"
 import { SetupForm } from "@/app/login/setup-form"
 
+export const dynamic = "force-dynamic"
+
 export default async function LoginPage() {
   let hasAdmin = false
   let dbError = null

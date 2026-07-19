@@ -3,6 +3,8 @@ import { getCurrentUser } from "@/lib/session"
 import { AppHeader } from "@/components/app-header"
 import { canAccessAdminConsole } from "@/lib/permissions"
 
+export const dynamic = "force-dynamic"
+
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   // Re-syncing route tree
   const current = await getCurrentUser()

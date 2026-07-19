@@ -7,10 +7,10 @@ import "server-only"
  * instead of collapsing every catch into one misleading message.
  */
 export function isUniqueViolation(error: unknown): boolean {
-  return Boolean(
-    error &&
-      typeof error === "object" &&
-      "code" in error &&
-      (error as { code?: string }).code === "23505",
+  return (
+    !!error &&
+    typeof error === "object" &&
+    "code" in error &&
+    (error as { code?: string }).code === "23505"
   )
 }
