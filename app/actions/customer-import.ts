@@ -4,8 +4,6 @@ import { db } from "@/lib/db"
 import {
   customer,
   waterScheme,
-  managedTemplate,
-  templateVersion,
 } from "@/lib/db/schema"
 import { requireUser } from "@/lib/session"
 import { writeAudit } from "@/lib/audit"
@@ -15,56 +13,27 @@ import * as XLSX from "xlsx"
 import { z } from "zod"
 import { randomUUID } from "crypto"
 import { revalidatePath } from "next/cache"
+import { processExcelImport, getImportMapping, type ImportSummary } from "@/lib/import-engine"
 
 const customerImportSchema = z.object({
   name: z.string().trim().min(1, "Name is required"),
   customerAccount: z.string().trim().min(1, "Account number is required"),
-  phone: z.string().trim().optional(),
+  phone: z.coerce.string().trim().optional(),
   address: z.string().trim().optional(),
   schemeName: z.string().trim().min(1, "Water Scheme is required"),
-  meterRef: z.string().trim().optional(),
-  serialNo: z.string().trim().optional(),
+  meterRef: z.coerce.string().trim().optional(),
+  serialNo: z.coerce.string().trim().optional(),
   openingArrears: z.coerce.number().default(0),
   notes: z.string().trim().optional(),
 })
 
 export type CustomerImportRow = z.infer<typeof customerImportSchema>
 
-export type CustomerValidationResult = {
-  valid: boolean
-  errors: string[]
-  warnings: string[]
-  data: CustomerImportRow
-}
-
-export type CustomerImportSummary = {
-  totalRows: number
-  validRows: number
-  warningRows: number
-  errorRows: number
-  rows: CustomerValidationResult[]
-}
+export type CustomerImportSummary = ImportSummary<CustomerImportRow>
 
 async function getSchemeMap() {
   const schemes = await db.select().from(waterScheme)
   return new Map(schemes.map((s) => [s.name.toLowerCase(), s.id]))
-}
-
-/**
- * Internal: Resolves column mapping from the Template Management system.
- */
-async function getImportMapping(code: string) {
-  const [template] = await db.select().from(managedTemplate).where(eq(managedTemplate.code, code)).limit(1)
-  if (!template?.activeVersionId) return null
-
-  const [version] = await db.select().from(templateVersion).where(eq(templateVersion.id, template.activeVersionId)).limit(1)
-  if (!version) return null
-
-  try {
-    return JSON.parse(version.content)
-  } catch {
-    return null
-  }
 }
 
 export async function validateCustomerImport(formData: FormData): Promise<{ ok: true; summary: CustomerImportSummary } | { ok: false; error: string }> {
@@ -72,23 +41,15 @@ export async function validateCustomerImport(formData: FormData): Promise<{ ok: 
   if (!canUploadCustomers(current)) throw new Error("Forbidden")
 
   const file = formData.get("file") as File
-  const allowUpdates = formData.get("allowUpdates") === "true" // New param
+  const allowUpdates = formData.get("allowUpdates") === "true"
   if (!file) return { ok: false, error: "No file provided" }
-
-  const buffer = await file.arrayBuffer()
-  const workbook = XLSX.read(buffer)
-  const firstSheet = workbook.Sheets[workbook.SheetNames[0]]
-  const rawData = XLSX.utils.sheet_to_json(firstSheet)
-
-  if (rawData.length === 0) return { ok: false, error: "The file is empty" }
 
   const schemeMap = await getSchemeMap()
   const existingCustomers = await db.select({ account: customer.customerAccount }).from(customer)
   const existingAccounts = new Set(existingCustomers.map((c) => c.account?.toLowerCase()))
   const seenInUpload = new Set<string>()
 
-  // Resolve dynamic mapping
-  const mapping = await getImportMapping('import.customers.bulk') || {
+  const mapping = (await getImportMapping('import.customers.bulk')) as any || {
     name: "Name",
     customerAccount: "CustomerRef",
     phone: "Phone",
@@ -100,78 +61,40 @@ export async function validateCustomerImport(formData: FormData): Promise<{ ok: 
     notes: "Notes"
   }
 
-  const results: CustomerValidationResult[] = []
-  let validCount = 0
-  let errorCount = 0
-  let warningCount = 0
+  const summary = await processExcelImport({
+    file,
+    schema: customerImportSchema,
+    mapping,
+    onValidateRow: (data) => {
+      const errors: string[] = []
+      const warnings: string[] = []
 
-  for (const rawRow of rawData as any[]) {
-    const errors: string[] = []
-    const warnings: string[] = []
-
-      const mappedRow: CustomerImportRow = {
-        name: String(rawRow[mapping.name] || "").trim(),
-        customerAccount: String(rawRow[mapping.customerAccount] || "").trim(),
-        phone: String(rawRow[mapping.phone] || "").trim(),
-        address: String(rawRow[mapping.address] || "").trim(),
-        schemeName: String(rawRow[mapping.schemeName] || "").trim(),
-        meterRef: String(rawRow[mapping.meterRef] || "").trim(),
-        serialNo: String(rawRow[mapping.serialNo] || "").trim(),
-        openingArrears: Number(rawRow[mapping.openingArrears] || 0),
-        notes: String(rawRow[mapping.notes] || "").trim(),
+      if (data.customerAccount) {
+        const accLower = data.customerAccount.toLowerCase()
+        if (existingAccounts.has(accLower)) {
+          if (allowUpdates) {
+            warnings.push("Existing customer: Details will be updated")
+          } else {
+            errors.push("Account number already exists in the system")
+          }
+        }
+        if (seenInUpload.has(accLower)) {
+          errors.push("Duplicate account number in the upload file")
+        }
+        seenInUpload.add(accLower)
       }
 
-    const parsed = customerImportSchema.safeParse(mappedRow)
-    if (!parsed.success) {
-      parsed.error.issues.forEach((issue) => errors.push(issue.message))
-    }
-
-    if (mappedRow.customerAccount) {
-      const accLower = mappedRow.customerAccount.toLowerCase()
-      if (existingAccounts.has(accLower)) {
-        if (allowUpdates) {
-          warnings.push("Existing customer: Details will be updated")
-        } else {
-          errors.push("Account number already exists in the system")
+      if (data.schemeName) {
+        if (!schemeMap.has(data.schemeName.toLowerCase())) {
+          errors.push(`Water Scheme not found: ${data.schemeName}`)
         }
       }
-      if (seenInUpload.has(accLower)) {
-        errors.push("Duplicate account number in the upload file")
-      }
-      seenInUpload.add(accLower)
+
+      return { errors, warnings }
     }
+  })
 
-    if (mappedRow.schemeName) {
-      if (!schemeMap.has(mappedRow.schemeName.toLowerCase())) {
-        errors.push(`Water Scheme not found: ${mappedRow.schemeName}`)
-      }
-    }
-
-    const isValid = errors.length === 0
-    if (isValid) {
-      validCount++
-    } else {
-      errorCount++
-    }
-
-    results.push({
-      valid: isValid,
-      errors,
-      warnings,
-      data: mappedRow,
-    })
-  }
-
-  return {
-    ok: true,
-    summary: {
-      totalRows: rawData.length,
-      validRows: validCount,
-      warningRows: warningCount,
-      errorRows: errorCount,
-      rows: results,
-    },
-  }
+  return { ok: true, summary: summary as CustomerImportSummary }
 }
 
 export async function importCustomers(summary: CustomerImportSummary): Promise<{ ok: true; imported: number; updated: number; failed: number; report: string } | { ok: false; error: string }> {

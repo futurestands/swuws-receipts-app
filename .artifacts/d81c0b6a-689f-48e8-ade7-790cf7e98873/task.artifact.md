@@ -1,4 +1,6 @@
-- `[x]` Notify agent on meter reading cancellation (`billing-engine.ts`)
-- `[x]` Notify agents on billing period activation (`billing.ts`)
-- `[x]` Enhance reconciliation review alerts (`approval.ts`)
-- `[x]` Verify notifications in the UI
+- `[x]` Implement `lib/import-engine.ts` (Generic Excel Parser & Mapper)
+- `[x]` Refactor `app/actions/customer-import.ts` to use the new engine
+- `[x]` Refactor `app/actions/billing.ts` and `app/actions/hierarchy-import.ts`
+- `[x]` Standardize `getImportMapping` utility
+- `[x]` Verify bulk customer import functionality
+- `[x]` Finalize walkthrough

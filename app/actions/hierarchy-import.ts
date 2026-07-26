@@ -5,8 +5,6 @@ import {
   cluster,
   branch,
   waterScheme,
-  managedTemplate,
-  templateVersion,
 } from "@/lib/db/schema"
 import { requireUser } from "@/lib/session"
 import { writeAudit } from "@/lib/audit"
@@ -16,11 +14,12 @@ import * as XLSX from "xlsx"
 import { z } from "zod"
 import { randomUUID } from "crypto"
 import { revalidatePath } from "next/cache"
+import { processExcelImport, getImportMapping, type ImportSummary, type ValidationResult } from "@/lib/import-engine"
 
 const hierarchyImportSchema = z.object({
   type: z.enum(["Cluster", "Branch", "Scheme"]),
   name: z.string().trim().min(1, "Name is required"),
-  code: z.string().trim().min(1, "Code is required"),
+  code: z.coerce.string().trim().min(1, "Code is required"),
   parentName: z.string().trim().optional(), // Cluster -> none, Branch -> Cluster Name, Scheme -> Branch Name
   serviceArea: z.string().trim().optional(), // Only for Schemes
   status: z.string().trim().default("Active"),
@@ -28,20 +27,7 @@ const hierarchyImportSchema = z.object({
 
 export type HierarchyImportRow = z.infer<typeof hierarchyImportSchema>
 
-export type ValidationResult = {
-  valid: boolean
-  errors: string[]
-  warnings: string[]
-  data: HierarchyImportRow
-}
-
-export type HierarchyImportSummary = {
-  totalRows: number
-  validRows: number
-  warningRows: number
-  errorRows: number
-  rows: ValidationResult[]
-}
+export type HierarchyImportSummary = ImportSummary<HierarchyImportRow>
 
 async function getExistenceMaps() {
   const [clusters, areas, schemes] = await Promise.all([
@@ -60,20 +46,6 @@ async function getExistenceMaps() {
   }
 }
 
-async function getImportMapping(code: string) {
-  const [template] = await db.select().from(managedTemplate).where(eq(managedTemplate.code, code)).limit(1)
-  if (!template?.activeVersionId) return null
-
-  const [version] = await db.select().from(templateVersion).where(eq(templateVersion.id, template.activeVersionId)).limit(1)
-  if (!version) return null
-
-  try {
-    return JSON.parse(version.content)
-  } catch {
-    return null
-  }
-}
-
 export async function validateHierarchy(formData: FormData): Promise<{ ok: true; summary: HierarchyImportSummary } | { ok: false; error: string }> {
   const current = await requireUser()
   if (!canManageAreas(current) && !canManageSchemes(current)) throw new Error("Forbidden")
@@ -81,18 +53,10 @@ export async function validateHierarchy(formData: FormData): Promise<{ ok: true;
   const file = formData.get("file") as File
   if (!file) return { ok: false, error: "No file provided" }
 
-  const buffer = await file.arrayBuffer()
-  const workbook = XLSX.read(buffer)
-  const firstSheet = workbook.Sheets[workbook.SheetNames[0]]
-  const rawData = XLSX.utils.sheet_to_json(firstSheet)
-
-  if (rawData.length === 0) return { ok: false, error: "The file is empty" }
-
   const existence = await getExistenceMaps()
   const seenCodes = new Set<string>()
 
-  // Resolve Dynamic Mapping
-  const mapping = await getImportMapping('import.hierarchy.master') || {
+  const mapping = (await getImportMapping('import.hierarchy.master')) as any || {
     clusterName: "Region",
     branchName: "AreaOffice",
     schemeName: "SchemeName",
@@ -100,87 +64,60 @@ export async function validateHierarchy(formData: FormData): Promise<{ ok: true;
     serviceArea: "ServiceArea"
   }
 
-  const results: ValidationResult[] = []
-  let validCount = 0
-  let errorCount = 0
-  let warningCount = 0
+  const summary = await processExcelImport({
+    file,
+    schema: hierarchyImportSchema,
+    mapping: {
+      type: "Type",
+      name: mapping.schemeName,
+      code: mapping.schemeCode,
+      parentName: mapping.branchName,
+      serviceArea: mapping.serviceArea,
+      status: "Status"
+    } as any,
+    onValidateRow: (data) => {
+      const errors: string[] = []
+      const warnings: string[] = []
 
-  for (const rawRow of rawData as any[]) {
-    const errors: string[] = []
-    const warnings: string[] = []
+      // Fix missing fields and format code if missing
+      if (!data.type) data.type = "Scheme"
+      if (!data.status) data.status = "Active"
+      if (!data.code && data.name) {
+        data.code = data.name.trim().toLowerCase().replace(/\s+/g, "_")
+      }
 
-    // Map according to template
-    const mappedRow: HierarchyImportRow = {
-      type: "Scheme", // Forced to scheme for the unified flow
-      name: String(rawRow[mapping.schemeName] || "").trim(),
-      code: String(rawRow[mapping.schemeCode] || rawRow[mapping.schemeName] || "").trim().toLowerCase().replace(/\s+/g, "_"),
-      parentName: String(rawRow[mapping.branchName] || "").trim(),
-      serviceArea: String(rawRow[mapping.serviceArea] || "").trim(),
-      status: "Active",
-    }
+      if (data.type === "Cluster") {
+        if (!canManageClusters(current)) errors.push("You are not authorized to create Clusters")
+        if (existence.clusterCodes.has(data.code)) errors.push(`Cluster code ${data.code} already exists`)
+      } else if (data.type === "Branch") {
+        if (!canManageAreas(current)) errors.push("You are not authorized to create Branches (Areas)")
+        if (existence.areaCodes.has(data.code)) errors.push(`Branch code ${data.code} already exists`)
+        if (data.parentName) {
+          if (!existence.clusters.has(data.parentName.toLowerCase())) {
+            errors.push(`Parent Cluster not found: ${data.parentName}`)
+          }
+        }
+      } else if (data.type === "Scheme") {
+        if (!canManageSchemes(current)) errors.push("You are not authorized to create Schemes")
+        if (existence.schemeCodes.has(data.code)) errors.push(`Scheme code ${data.code} already exists`)
 
-    const parsed = hierarchyImportSchema.safeParse(mappedRow)
-    if (!parsed.success) {
-      parsed.error.issues.forEach((issue) => errors.push(issue.message))
-    }
-
-    // Uniqueness & Permission check
-    if (mappedRow.type === "Cluster") {
-      if (!canManageClusters(current)) errors.push("You are not authorized to create Clusters")
-      if (existence.clusterCodes.has(mappedRow.code)) errors.push(`Cluster code ${mappedRow.code} already exists`)
-    } else if (mappedRow.type === "Branch") {
-      if (!canManageAreas(current)) errors.push("You are not authorized to create Branches (Areas)")
-      if (existence.areaCodes.has(mappedRow.code)) errors.push(`Branch code ${mappedRow.code} already exists`)
-      if (mappedRow.parentName) {
-        if (!existence.clusters.has(mappedRow.parentName.toLowerCase())) {
-          errors.push(`Parent Cluster not found: ${mappedRow.parentName}`)
+        if (!data.parentName) {
+          errors.push("Parent Area Office is required for Schemes")
+        } else if (!existence.areas.has(data.parentName.toLowerCase())) {
+          warnings.push(`New Area Office will be created: ${data.parentName}`)
         }
       }
-    } else if (mappedRow.type === "Scheme") {
-      if (!canManageSchemes(current)) errors.push("You are not authorized to create Schemes")
-      if (existence.schemeCodes.has(mappedRow.code)) errors.push(`Scheme code ${mappedRow.code} already exists`)
 
-      if (!mappedRow.parentName) {
-        errors.push("Parent Area Office is required for Schemes")
-      } else if (!existence.areas.has(mappedRow.parentName.toLowerCase())) {
-        // Finding 10 Fix: In Unified Mode, missing parents are WARNINGS/INFO, not ERRORS
-        warnings.push(`New Area Office will be created: ${mappedRow.parentName}`)
+      if (seenCodes.has(data.code)) {
+        errors.push(`Duplicate code in file: ${data.code}`)
       }
-    } else {
-      errors.push("Invalid Type. Must be Cluster, Branch, or Scheme")
+      seenCodes.add(data.code)
+
+      return { errors, warnings }
     }
+  })
 
-    if (seenCodes.has(mappedRow.code)) {
-      errors.push(`Duplicate code in file: ${mappedRow.code}`)
-    }
-    seenCodes.add(mappedRow.code)
-
-    const isValid = errors.length === 0
-    if (isValid) {
-      validCount++
-      if (warnings.length > 0) warningCount++
-    } else {
-      errorCount++
-    }
-
-    results.push({
-      valid: isValid,
-      errors,
-      warnings,
-      data: mappedRow,
-    })
-  }
-
-  return {
-    ok: true,
-    summary: {
-      totalRows: rawData.length,
-      validRows: validCount,
-      warningRows: warningCount,
-      errorRows: errorCount,
-      rows: results,
-    },
-  }
+  return { ok: true, summary: summary as HierarchyImportSummary }
 }
 
 export async function importHierarchy(summary: HierarchyImportSummary): Promise<{ ok: true; imported: number; failed: number; report: string } | { ok: false; error: string }> {

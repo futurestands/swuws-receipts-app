@@ -29,53 +29,27 @@ import { z } from "zod"
 import { randomUUID } from "crypto"
 import { revalidatePath } from "next/cache"
 import { createNotification } from "./notifications"
-
-/**
- * Internal: Resolves column mapping from the Template Management system.
- */
-async function getImportMapping(code: string) {
-  const [template] = await db.select().from(managedTemplate).where(eq(managedTemplate.code, code)).limit(1)
-  if (!template?.activeVersionId) return null
-
-  const [version] = await db.select().from(templateVersion).where(eq(templateVersion.id, template.activeVersionId)).limit(1)
-  if (!version) return null
-
-  try {
-    return JSON.parse(version.content)
-  } catch {
-    return null
-  }
-}
+import { processExcelImport, getImportMapping, type ImportSummary } from "@/lib/import-engine"
 
 /**
  * Validation Schema for a single billing row.
  */
 const billingImportSchema = z.object({
-  accountNumber: z.string().trim().min(1, "Account number is required"),
-  billAmount: z.number().min(0, "Bill amount cannot be negative"),
-  arrears: z.number().default(0),
-  currentCharges: z.number().min(0, "Current charges cannot be negative"),
-  totalDue: z.number().min(0, "Total due cannot be negative"),
-  dueDate: z.string().refine((val) => !isNaN(Date.parse(val)), {
+  accountNumber: z.coerce.string().trim().min(1, "Account number is required"),
+  billAmount: z.coerce.number().min(0, "Bill amount cannot be negative"),
+  arrears: z.coerce.number().default(0),
+  currentCharges: z.coerce.number().min(0, "Current charges cannot be negative"),
+  totalDue: z.coerce.number().min(0, "Total due cannot be negative"),
+  dueDate: z.coerce.string().refine((val) => !isNaN(Date.parse(val)), {
     message: "Invalid due date format",
   }),
 })
 
 export type BillingImportRow = z.infer<typeof billingImportSchema>
 
-export type BillingValidationResult = {
-  valid: boolean
-  errors: string[]
-  data: BillingImportRow
-}
-
-export type BillingImportSummary = {
+export type BillingImportSummary = ImportSummary<BillingImportRow> & {
   schemeId: string
   billingPeriodId: string
-  totalRows: number
-  validRows: number
-  errorRows: number
-  rows: BillingValidationResult[]
 }
 
 /**
@@ -319,13 +293,6 @@ export async function validateBillingImport(
     return { ok: false, error: "Monthly billing has already been imported for this scheme and period" }
   }
 
-  const buffer = await file.arrayBuffer()
-  const workbook = XLSX.read(buffer)
-  const firstSheet = workbook.Sheets[workbook.SheetNames[0]]
-  const rawData = XLSX.utils.sheet_to_json(firstSheet)
-
-  if (rawData.length === 0) return { ok: false, error: "The file is empty" }
-
   const schemeCustomers = await db
     .select({ id: customer.id, account: customer.customerAccount })
     .from(customer)
@@ -335,7 +302,7 @@ export async function validateBillingImport(
   const seenInUpload = new Set<string>()
 
   // Resolve dynamic mapping
-  const mapping = await getImportMapping('import.billing.monthly') || {
+  const mapping = (await getImportMapping('import.billing.monthly')) as any || {
     accountNumber: "AccountNumber",
     billAmount: "BillAmount",
     arrears: "Arrears",
@@ -344,56 +311,37 @@ export async function validateBillingImport(
     dueDate: "DueDate"
   }
 
-  const results: BillingValidationResult[] = []
-  let validCount = 0
-  let errorCount = 0
+  const engineSummary = await processExcelImport({
+    file,
+    schema: billingImportSchema,
+    mapping,
+    onValidateRow: (data) => {
+      const errors: string[] = []
+      const warnings: string[] = []
 
-  for (const rawRow of rawData as any[]) {
-    const errors: string[] = []
+      const accLower = data.accountNumber?.toLowerCase()
+      const targetCustomer = customerMap.get(accLower)
 
-    const mappedRow: BillingImportRow = {
-      accountNumber: String(rawRow[mapping.accountNumber] || "").trim(),
-      billAmount: Number(rawRow[mapping.billAmount] || 0),
-      arrears: Number(rawRow[mapping.arrears] || 0),
-      currentCharges: Number(rawRow[mapping.currentCharges] || 0),
-      totalDue: Number(rawRow[mapping.totalDue] || 0),
-      dueDate: String(rawRow[mapping.dueDate] || ""),
+      if (!targetCustomer) {
+        errors.push(`Customer account ${data.accountNumber} not found in this scheme`)
+      }
+
+      if (seenInUpload.has(accLower)) {
+        errors.push("Duplicate account number in the upload file")
+      }
+      seenInUpload.add(accLower)
+
+      return { errors, warnings }
     }
-
-    const parsed = billingImportSchema.safeParse(mappedRow)
-    if (!parsed.success) {
-      parsed.error.issues.forEach((issue) => errors.push(issue.message))
-    }
-
-    const accLower = mappedRow.accountNumber.toLowerCase()
-    const targetCustomer = customerMap.get(accLower)
-
-    if (!targetCustomer) {
-      errors.push(`Customer account ${mappedRow.accountNumber} not found in this scheme`)
-    }
-
-    if (seenInUpload.has(accLower)) {
-      errors.push("Duplicate account number in the upload file")
-    }
-    seenInUpload.add(accLower)
-
-    const isValid = errors.length === 0
-    if (isValid) validCount++
-    else errorCount++
-
-    results.push({ valid: isValid, errors, data: mappedRow })
-  }
+  })
 
   return {
     ok: true,
     summary: {
+      ...engineSummary,
       schemeId,
       billingPeriodId,
-      totalRows: rawData.length,
-      validRows: validCount,
-      errorRows: errorCount,
-      rows: results,
-    },
+    } as any,
   }
 }
 

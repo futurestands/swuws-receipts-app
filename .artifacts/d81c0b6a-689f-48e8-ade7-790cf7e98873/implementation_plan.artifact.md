@@ -1,45 +1,46 @@
-# Implementation Plan - Notification Center Expansion
+# Implementation Plan - Unified Import Engine (Phase 1: Customer Refactor)
 
-This plan outlines the expansion of the operational notification system to improve team coordination and data awareness across Billing, Meter Reading, and Reconciliation modules.
+This plan addresses technical debt identified in the forensic audit by centralizing duplicated Excel parsing and data mapping logic into a reusable "Import Engine".
 
 ## User Review Required
 
 > [!NOTE]
-> These notifications are internal to the web portal and will appear in the top-right notification bell. They do not send external SMS or emails, which helps keep the system's operating costs low.
+> This is a foundational refactor. While it won't change how your customers are uploaded, it makes the system more robust, easier to maintain, and faster to add new import types in the future.
 
 ## Proposed Changes
 
-### Meter Reading Domain
+### Core Infrastructure
 
-#### [MODIFY] [billing-engine.ts](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/app/actions/billing-engine.ts)
-Update `cancelMeterReading` to notify the original field agent when their reading is reversed by an administrator.
-- **Message**: "Your reading for [Customer Name] was cancelled by [Admin Name]."
-- **Trigger**: Only when an Admin cancels a reading they did not create.
+#### [NEW] [import-engine.ts](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/lib/import-engine.ts)
+Create a generic utility to handle:
+- **Excel Processing**: Standardized `SheetJS` logic to convert files to JSON.
+- **Dynamic Mapping**: Reusable logic to apply template-based column aliases.
+- **Unified Validation**: A standard wrapper for Zod-based row validation.
+- **Reporting**: A consistent structure for import summaries (valid rows, errors, warnings).
 
-### Billing Lifecycle Domain
+### Customer Management
+
+#### [MODIFY] [customer-import.ts](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/app/actions/customer-import.ts)
+Refactor `validateCustomerImport` and `importCustomers` to use the new `import-engine.ts`.
+- **Simplification**: Remove manual `XLSX` and mapping code.
+- **Reliability**: Ensure identical error handling and data cleaning across all imports.
+
+### Finance & Billing (Future Proofing)
 
 #### [MODIFY] [billing.ts](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/app/actions/billing.ts)
-Update `updateCollectionPeriodStatus` to notify all field agents when a new Billing Period is activated.
-- **Target**: All active users with `receipts.create` permission.
-- **Message**: "New Billing Period Active: [Period Name] is now open for collection and readings."
-
-### Reconciliation Domain
-
-#### [MODIFY] [approval.ts](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/app/actions/approval.ts)
-Enhance `submitForReview` to explicitly target users with the `finance_officer` role for reconciliation sign-offs.
-- **Message**: "Reconciliation Sign-off Required: Batch [Batch ID] is ready for final approval."
+Update `getImportMapping` to be exported or moved to the shared engine to avoid duplication.
 
 ---
 
 ## Verification Plan
 
+### Automated Checks
+- **Type Check**: Run `tsc --noEmit` to ensure the generic engine correctly handles the `CustomerImportRow` type.
+
 ### Manual Verification
-1. **Cancellation Alert**:
-   - As an Admin, cancel a reading captured by a Plumber.
-   - Log in as the Plumber and verify the notification appears.
-2. **Activation Alert**:
-   - As an Admin, activate a new Billing Period.
-   - Verify that all active agents receive a notification about the new period.
-3. **Reconciliation Alert**:
-   - Submit a reconciliation batch for review.
-   - Verify that the designated finance/admin users receive the sign-off alert.
+1. **Bulk Import Workflow**:
+   - Go to **Customers > Bulk Import**.
+   - Upload a test Excel file with valid and invalid data.
+   - Verify that the validation summary correctly identifies errors (e.g., missing names) and warnings.
+   - Proceed with the import and verify that customers are created/updated in the database correctly.
+2. **Audit Check**: Verify that `customer.bulk_import_upsert` is still correctly logged in the Admin audit log.

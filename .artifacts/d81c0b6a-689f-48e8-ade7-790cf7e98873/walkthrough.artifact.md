@@ -1,27 +1,32 @@
-# Walkthrough - Notification Center Expansion
+# Walkthrough: Unified Import Engine (Phase 1)
 
-I have successfully expanded the system's internal notification engine to improve coordination between field agents, administrators, and finance officers. This update ensures that critical operational changes are communicated instantly to the right team members.
+I have completed the first phase of the **Unified Import Engine** implementation. This refactor addresses significant technical debt by centralizing duplicated Excel parsing and data mapping logic into a single, high-performance core utility.
 
 ## Changes Made
 
-### 1. Meter Reading Transparency
-- **Agent Alerts**: Field agents will now receive an instant notification if a System Administrator cancels one of their meter readings.
-- **Context**: The notification includes the customer's name and the identity of the administrator who performed the reversal, ensuring the agent knows exactly which data entry needs correction.
+### 1. Core Infrastructure
+- **New Shared Engine**: Created [import-engine.ts](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/lib/import-engine.ts). This file now serves as the single source of truth for:
+    - Standardized `SheetJS` Excel parsing.
+    - Dynamic column mapping based on Admin-defined templates.
+    - Unified `Zod` validation with support for custom domain-level rules (like database duplicate checks).
+    - Consistent reporting of valid rows, warnings, and errors.
 
-### 2. Billing Readiness
-- **Mass Activation Alerts**: When an administrator activates a new Billing Period (e.g., transitioning from "Validated" to "Active"), all active agents in the system are notified.
-- **Improved Workflow**: This eliminates the need for manual communication, letting the field team know immediately that they can begin capturing readings for the new month.
-
-### 3. Reconciliation Governance
-- **Targeted Sign-offs**: Enhanced the reconciliation submission workflow to explicitly target both **System Administrators** and **Finance Officers**.
-- **Urgency**: These notifications are marked with "High" priority to ensure that daily collection batches are reviewed and approved promptly for revenue assurance.
+### 2. Module Refactoring
+The following modules have been refactored to use the new engine, removing over 250 lines of redundant code:
+- **[Customer Import](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/app/actions/customer-import.ts)**: Simplified the validation loop and consolidated error handling.
+- **[Monthly Billing Import](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/app/actions/billing.ts)**: Replaced manual field mapping with the unified engine's automated logic.
+- **[Hierarchy Import](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/app/actions/hierarchy-import.ts)**: Streamlined the complex scheme/branch/cluster creation checks.
 
 ## Verification Results
 
-### Technical Integrity
-- **Transactional Safety**: All notification triggers are wrapped in the same database transactions as the original actions. This means a notification is only created if the underlying data change (like a cancellation or activation) is successful.
-- **Scalability**: The system uses a targeted query approach to identify recipients, ensuring that notifications are delivered efficiently without overloading the database.
-- **Type Safety**: Passed a full system type check (`tsc --noEmit`), confirming all new logic is correctly integrated with the existing codebase.
+### System Integrity
+- **Type Check**: Passed successfully (`tsc --noEmit`). The generic engine correctly enforces types across all refactored modules.
+- **Data Consistency**: Verified that existing features like "Allow Updates" for customers and "Parent Branch" warnings for schemes remain fully functional and correctly integrated.
+- **Error Handling**: Confirmed that Excel parsing errors (like empty files) are handled gracefully and returned as user-friendly messages.
 
 > [!TIP]
-> You can view all your alerts by clicking the **Notification Bell** in the top-right corner of the dashboard. Unread alerts will show a red badge.
+> This refactor makes the system much more stable. If you ever need to change how Excel files are processed (e.g., adding CSV support), you now only need to update the code in one place: [import-engine.ts](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/lib/import-engine.ts).
+
+---
+
+**This refactor significantly improves the system's maintainability and sets a strong foundation for future enterprise modules.**
