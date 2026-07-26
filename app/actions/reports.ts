@@ -12,10 +12,12 @@ import {
   cluster,
   user as userTable,
   auditLog,
+  dailyCollectionRecord,
+  reconciliationMatch,
 } from "@/lib/db/schema"
 import { requireUser } from "@/lib/session"
 import { applyReceiptScope, applyBillingScope, applyCustomerScope } from "@/lib/scopes"
-import { and, eq, sql, desc, sum, count, gte, lte, inArray } from "drizzle-orm"
+import { and, eq, sql, desc, sum, count, gte, lte, inArray, ne } from "drizzle-orm"
 import { canViewReports, canUploadBilling } from "@/lib/permissions"
 import { unstable_cache } from "next/cache"
 
@@ -251,26 +253,26 @@ export async function getDashboardStats(params: {
         .leftJoin(branch, eq(waterScheme.branchId, branch.id))
         .where(and(...arrearsConditions))
 
-      // B. Arrears Collected in Period (Receipts not linked to a current bill)
-      // Note: We don't reuse receiptConditions here because they link to billingRecord
-      const arrearsCollectedConditions = []
-      if (receiptScope) arrearsCollectedConditions.push(receiptScope)
+      // B. Arrears Collected in Period (EBS records matched to past debts)
+      const arrearsCollectedConditions = [
+        eq(dailyCollectionRecord.importStatus, 'matched')
+      ]
       if (params.schemeId) arrearsCollectedConditions.push(eq(customer.waterSchemeId, params.schemeId))
-      arrearsCollectedConditions.push(sql`${receipt.billingRecordId} IS NULL`)
 
-      if (period) {
-        // Arrears collection in this context means money received during the period dates
-        // but not matched to a bill of that period.
-        arrearsCollectedConditions.push(gte(receipt.paymentDate, period.startDate))
-        arrearsCollectedConditions.push(lte(receipt.paymentDate, period.endDate))
+      // Define "Past Debt" as any billing record NOT in the current period
+      if (params.periodId) {
+        arrearsCollectedConditions.push(ne(billingRecord.billingPeriodId, params.periodId))
       }
 
       const [arrearsCollectedStats] = await db
         .select({
-          amount: sum(receipt.amount),
+          amount: sum(dailyCollectionRecord.amount),
         })
-        .from(receipt)
+        .from(dailyCollectionRecord)
+        .innerJoin(reconciliationMatch, eq(dailyCollectionRecord.id, reconciliationMatch.dailyCollectionRecordId))
+        .innerJoin(receipt, eq(reconciliationMatch.receiptId, receipt.id))
         .innerJoin(customer, eq(receipt.customerId, customer.id))
+        .leftJoin(billingRecord, eq(receipt.billingRecordId, billingRecord.id))
         .where(and(...arrearsCollectedConditions))
 
       const totalArrears = Number(arrearsStats?.totalDebt || 0)

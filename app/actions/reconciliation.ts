@@ -9,6 +9,8 @@ import {
   reconciliationException,
   reconciliationApproval,
   user as userTable,
+  billingRecord,
+  billingPeriod,
 } from "@/lib/db/schema"
 import { requireUser } from "@/lib/session"
 import { hasPermission } from "@/lib/iam"
@@ -194,7 +196,33 @@ export async function runReconciliation(batchId: string) {
           }
         }, tx)
 
-        // 5. AUTO-GENERATE EXCEPTIONS (Phase 3B)
+        // 5. ARREARS RESOLUTION TRACKING
+        // Find matches that involve old billing records (arrears)
+        const arrearsMatches = await tx
+          .select({ amount: receipt.amount })
+          .from(reconciliationMatch)
+          .innerJoin(receipt, eq(reconciliationMatch.receiptId, receipt.id))
+          .innerJoin(billingRecord, eq(receipt.billingRecordId, billingRecord.id))
+          .innerJoin(billingPeriod, eq(billingRecord.billingPeriodId, billingPeriod.id))
+          .where(and(
+            inArray(reconciliationMatch.id, matches.map(m => m.id)),
+            ne(billingPeriod.status, 'active') // Simplified: non-active periods are arrears
+          ))
+
+        if (arrearsMatches.length > 0) {
+          const totalArrearsResolved = arrearsMatches.reduce((s, m) => s + m.amount, 0)
+          await writeAudit({
+            user: current,
+            action: "financial.arrears_resolved",
+            details: {
+              batchId,
+              matchCount: arrearsMatches.length,
+              totalAmount: totalArrearsResolved
+            }
+          }, tx)
+        }
+
+        // 6. AUTO-GENERATE EXCEPTIONS (Phase 3B)
         const unmatchedRecords = records.filter(r => !matchedRecordIds.has(r.id))
         const unmatchedReceipts = receipts.filter(r => !matchedReceiptIds.has(r.id))
 

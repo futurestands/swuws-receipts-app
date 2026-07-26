@@ -1,51 +1,60 @@
-# Implementation Plan: Pivoting to EBS-Confirmed Financial Reporting
+# Phase 6: Final Hardening & Audit Closure
 
-This plan aligns the system's metrics with the organizational reality: **Receipts are evidence of cash-in-hand, but the External Billing System (EBS) import is the only source of "Official Collected" data.**
+This is the final push to resolve the new "Remediation Defects" and the remaining enterprise gaps identified in the second forensic pass.
 
 ## User Review Required
 
-> [!IMPORTANT]
-> **Dashboard Metric Shift**: "Official Collected" and "Collection %" will now only increase AFTER you import the daily bank/EBS report. Receipts printed today will show up in a separate "Cash to be Deposited" KPI.
+> [!CAUTION]
+> **Financial Idempotency**: We are fixing a "Double-Credit" bug. Once applied, the system will physically block any attempt to void a receipt that has already been reversed.
 >
-> **Arrears Logic**: "Arrears Collected" will now be calculated based on EBS records that are reconciled against older billing periods or unmatched receipts, rather than just "unlinked" receipts.
+> **Secret Rotation**: I cannot rotate your actual production secrets (BETTER_AUTH_SECRET, etc.), but I will add a script to help you "Clean" your exports so you don't accidentally share secrets in the future.
 
 ## Proposed Changes
 
 ---
 
-### 1. Dashboard: Operational vs. Official Metrics
+### 1. High Priority: Financial Idempotency
+
+#### [MODIFY] [app/actions/receipts.ts](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/app/actions/receipts.ts)
+- **`requestReceiptVoid`**:
+    - Inside the transaction, add a check for an existing `receipt.void` action in the `audit_log` table for the given `receiptId`.
+    - If found, throw a specific "Already Voided" error.
+    - This ensures that even if the UI button "flickers," the database only ever processes one reversal.
+
+---
+
+### 2. Enterprise Governance & Auditing
+
+#### [MODIFY] [app/actions/template-actions.ts](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/app/actions/template-actions.ts)
+- Add `writeAudit` to `publishTemplateVersion`.
+- Why: Templates control customer-facing SMS/HTML. Changes to them MUST be in the immutable audit log for compliance.
 
 #### [MODIFY] [app/actions/billing.ts](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/app/actions/billing.ts)
-- **`getCollectionSummary`**:
-    - Change `totalCollected` source from `receipt` table to `daily_collection_record` (sum of amounts in the current billing period's date range).
-    - Add a new metric: `cashInHand` (sum of `receipts` issued but not yet matched/deposited).
-
-#### [MODIFY] [app/dashboard/page.tsx](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/app/dashboard/page.tsx)
-- Add a third Stat Card: **"Unverified Cash (In-Hand)"**.
-- Label the existing Collected card as **"Official Bank Collections"**.
-
----
-
-### 2. Reporting: Re-engineering "Arrears Collected"
-
-#### [MODIFY] [app/actions/reports.ts](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/app/actions/reports.ts)
-- **`getDashboardStats`**:
-    - Update the `collections` object to pull from `reconciliation_match` and `daily_collection_record`.
-    - **Confirmed Arrears**: Count an EBS record as "Arrears Collection" only if it matches a debt from a *previous* billing period.
-
----
-
-### 3. Reconciliation Governance
-
 #### [MODIFY] [app/actions/reconciliation.ts](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/app/actions/reconciliation.ts)
-- Add a check to ensure that when an EBS record is "Matched" to an older debt, it triggers an audit log specifically categorized as "Arrears Resolution."
+- Expand the use of `logFinancial` and `logSecurity` from `lib/logger.ts` across these modules to provide a consistent observability trail.
+
+---
+
+### 3. Test Suite Repair (Rigor)
+
+#### [MODIFY] [lib/scopes/index.test.ts](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/lib/scopes/index.test.ts)
+- Fix the test-authoring bug.
+- Instead of `JSON.stringify` on the Drizzle SQL object (which is circular), I will use `Drizzle's` built-in `getSQL()` or simple property existence checks to verify the filter is generated correctly.
+
+---
+
+### 4. Deployment Safety
+
+#### [NEW] [scripts/clean-export.sh](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/scripts/clean-export.sh)
+- Create a simple utility script that prepares a "Safe" zip of the project by explicitly removing `.env`, `node_modules`, and `server_log.txt`.
 
 ## Verification Plan
 
 ### Automated Verification
-- Update `math.test.ts` to include scenarios where Receipts > EBS Deposits (showing unverified cash) and EBS Deposits > Receipts (showing direct bank payments).
+- **Test Fix**: Run `npm test` and ensure **8/8 tests pass** (fixing the 2 failures).
+- **Type Safety**: Re-verify `tsc --noEmit` passes once the test types are correctly exported.
 
 ### Manual Verification
-1. Issue a USh 10,000 receipt. **Verify**: Dashboard "Official Collections" remains unchanged, but "Cash In-Hand" increases.
-2. Import an EBS report containing that USh 10,000 deposit. **Verify**: Dashboard "Official Collections" now increases, and "Collection Progress %" updates.
-3. Verify the "Arrears Collected" metric only updates after the EBS record is processed.
+1. Attempt to call `requestReceiptVoid` via the console twice for the same ID.
+2. **Verify**: The second call must fail with "Receipt is already voided."
+3. Publish a template and verify the event appears in the **Audit Log** tab.

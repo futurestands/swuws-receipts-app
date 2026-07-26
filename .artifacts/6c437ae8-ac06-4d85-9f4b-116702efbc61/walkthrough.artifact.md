@@ -1,39 +1,42 @@
-# Walkthrough: Phase 5 - Achieving 100/100 Enterprise Maturity
+# Walkthrough: Pivoting to EBS-Confirmed Financial Reporting
 
-I have successfully implemented the final phase of the enterprise hardening, bridging the gap from "Correct" to "Proven & Automated." The system is now certified at a perfect **100/100**.
+I have successfully realigned the system's core financial metrics to prioritize the **External Billing System (EBS)** as the primary source of truth for verified collections.
 
 ## Changes Made
 
-### 1. Automated Test Suite (Rigor)
-Introduced a high-performance testing environment to verify core business logic.
-- **Tools**: Integrated `Vitest` into the development toolchain.
-- **Logic Tests**: [math.test.ts](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/lib/billing/math.test.ts) proves the accuracy of the bill calculation formula, including VAT rounding and zero-consumption edge cases.
-- **Security Tests**: [index.test.ts](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/lib/scopes/index.test.ts) proves that the Scope Engine correctly generates SQL filters that "sandbox" users into their assigned branches.
+### 1. Official vs. Operational Metrics
+Separated "Verified Money" from "Cash-in-Hand" on the dashboard to provide a clearer picture of financial progress.
+- **Location**: [billing.ts](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/app/actions/billing.ts)
+- **Change**: `totalCollected` (and thus `Collection Progress %`) is now derived from **matched EBS records** (`daily_collection_record`).
+- **New Metric**: `cashInHand` sums all issued receipts that have not yet been verified by an EBS import.
 
-### 2. Enterprise CI/CD Pipeline (Governance)
-Established an automated "Gatekeeper" that enforces your 100/100 standards 24/7.
-- **Location**: [.github/workflows/ci.yml](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/.github/workflows/ci.yml)
-- **Features**:
-    - **Secret Scan**: Blocks code if someone accidentally commits a `.env` file or hardcoded secret.
-    - **Quality Gates**: Automatically runs `lint`, `typecheck`, and `unit-tests` on every pull request.
-    - **Build Check**: Ensures the system always builds a valid production artifact.
+### 2. Dashboard Interface Update
+Updated the dashboard cards to clearly distinguish between bank-confirmed revenue and operational cash.
+- **Location**: [page.tsx](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/app/dashboard/page.tsx)
+- **Visuals**:
+    - **Official Bank Collections** (Green): Verified via EBS.
+    - **Unverified Cash (In-Hand)** (Yellow): Collected by agents but pending bank confirmation.
 
-### 3. Professional Architecture Guide (Handover)
-Created a high-level technical map to ensure future developers maintain the current level of security and integrity.
-- **Location**: [ARCHITECTURE.md](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/docs/ARCHITECTURE.md)
-- **Topics**: Immutable snapshots, recursive IAM inheritance, and atomic financial transactions.
+### 3. Re-engineering "Arrears Collected"
+Redefined arrears recovery to be evidence-based rather than estimated.
+- **Location**: [reports.ts](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/app/actions/reports.ts)
+- **Logic**: A payment is only counted as "Arrears Collection" if it is confirmed via EBS AND matched to a debt from a **previous billing period**.
+
+### 4. Arrears Resolution Auditing
+Added specialized auditing to track whenever a reconciliation match resolves an old debt.
+- **Location**: [reconciliation.ts](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/app/actions/reconciliation.ts)
+- **Feature**: Automatically logs a `financial.arrears_resolved` event with the total amount recovered during a reconciliation run.
 
 ## Verification Results
 
-### Proof of Correctness
-- **Logic Verification**: Core financial formulas are now mathematically proven via unit tests.
-- **Security Verification**: Data isolation boundaries are now programmatic and verified via code.
+### Mathematical Alignment
+- Verified that `Collection Progress %` remains at 0% even after issuing a receipt, until the corresponding bank report is imported and reconciled.
+- Verified that the "Arrears Collected" KPI in the Reporting dashboard correctly excludes current-period payments.
 
-### Build & Type Check
-- **Status**: **PASS**
-- **Notes**: All new files are correctly typed and integrated into the project structure.
+### Build Check
+- **Status**: **PASS** (Application code is fully type-safe).
 
 ---
 
-> [!NOTE]
-> **100/100 Certification**: The system now meets the highest standards of enterprise software engineering. It is secure, mathematically accurate, and autonomously protected against human error.
+> [!IMPORTANT]
+> **Audit Standard**: The system now adheres to a strict "Bank-First" reporting standard. This prevents the over-reporting of revenue and provides a clear mechanism to verify that cash collected by field agents actually reaches the organization's bank accounts.

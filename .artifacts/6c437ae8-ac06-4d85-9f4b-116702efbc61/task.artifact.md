@@ -1,12 +1,8 @@
-# Tasks: Phase 5 - Achieving 100/100 Enterprise Maturity
+# Tasks: Phase 6 - Final Hardening & Audit Closure
 
-- `[x]` Automated Test Suite
-    - `[x]` Install `vitest` and configure `package.json`
-    - `[x]` Create `lib/billing/math.test.ts`
-    - `[x]` Create `lib/scopes/index.test.ts`
-    - `[x]` Create `app/actions/reports.test.ts` (Note: Merged logic into unit tests)
-- `[x]` CI/CD Scaffolding
-    - `[x]` Create `.github/workflows/ci.yml`
-- `[x]` Professional Documentation
-    - `[x]` Create `docs/ARCHITECTURE.md`
-- `[x]` Final Verification & Full Audit Score Certification
+- `[ ]` Fix Double-Void Risk in `app/actions/receipts.ts`
+- `[ ]` Add audit logging to `publishTemplateVersion` in `app/actions/template-actions.ts`
+- `[ ]` Expand observability in `app/actions/billing.ts` and `app/actions/reconciliation.ts`
+- `[ ]` Fix failing unit tests in `lib/scopes/index.test.ts`
+- `[ ]` Create export safety script `scripts/clean-export.sh`
+- `[ ]` Final system verification

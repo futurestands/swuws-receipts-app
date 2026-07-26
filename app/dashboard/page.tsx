@@ -36,15 +36,30 @@ export default async function DashboardPage() {
 
       <CollectionSummaryCard summary={collectionSummary} />
 
-      <StatCardGrid className="sm:grid-cols-2 xl:grid-cols-2">
+      <StatCardGrid className="sm:grid-cols-2 xl:grid-cols-3">
         {/* Definition: Number of receipts printed today within this application only */}
-        <StatCard icon={Receipt} label="Today's receipts" value={totals.count} brandColor="blue" />
+        <StatCard icon={Receipt} label="Receipts Today" value={totals.count} brandColor="blue" />
         {/**
          * Definition: Total value of cash receipts printed today by Commercial Officers.
          * This represents operational value within this application only.
          * It is NOT the official collected amount confirmed by the External Billing System.
          */}
-        <StatCard icon={Wallet} label="Today's Cash Receipts" value={formatUGX(totals.total)} brandColor="green" />
+        <StatCard
+          icon={Wallet}
+          label="Unverified Cash (In-Hand)"
+          value={formatUGX(collectionSummary?.cashInHand || 0)}
+          brandColor="yellow"
+        />
+        {/**
+         * Definition: Total value of payments confirmed by the External Billing System (Bank Report).
+         * This is the source of truth for financial progress.
+         */}
+        <StatCard
+          icon={Wallet}
+          label="Official Bank Collections"
+          value={formatUGX(collectionSummary?.totalCollected || 0)}
+          brandColor="green"
+        />
       </StatCardGrid>
 
       <div className="grid gap-6 lg:grid-cols-5">

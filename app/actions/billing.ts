@@ -12,6 +12,7 @@ import {
   receipt,
   managedTemplate,
   templateVersion,
+  dailyCollectionRecord,
 } from "@/lib/db/schema"
 import { requireUser } from "@/lib/session"
 import { writeAudit } from "@/lib/audit"
@@ -625,9 +626,23 @@ export async function getCollectionSummary() {
     .from(billingRecord)
     .where(eq(billingRecord.billingPeriodId, displayPeriod.id))
 
-  const [collectedStats] = await db
+  // OFFICIAL COLLECTIONS: Confirmed via External Billing System (EBS)
+  // We sum matched daily collection records that are linked to bills of this period
+  const [ebsStats] = await db
     .select({
-      totalCollected: sum(receipt.amount),
+      totalConfirmed: sum(dailyCollectionRecord.amount),
+    })
+    .from(dailyCollectionRecord)
+    .innerJoin(billingRecord, eq(dailyCollectionRecord.accountNumber, billingRecord.accountNumber))
+    .where(and(
+      eq(billingRecord.billingPeriodId, displayPeriod.id),
+      eq(dailyCollectionRecord.importStatus, 'matched')
+    ))
+
+  // OPERATIONAL CASH: Receipts printed but not yet necessarily confirmed by bank
+  const [cashStats] = await db
+    .select({
+      totalCashInHand: sum(receipt.amount),
       receiptsToday: sql<number>`count(case when date(${receipt.createdAt}) = current_date then 1 end)::int`,
       customersPaidToday: sql<number>`count(distinct case when date(${receipt.createdAt}) = current_date then ${receipt.customerId} end)::int`,
     })
@@ -650,7 +665,8 @@ export async function getCollectionSummary() {
     .orderBy(desc(billingRun.uploadedAt)).limit(5)
 
   const totalBilled = Number(stats?.totalAmountBilled || 0)
-  const totalCollected = Number(collectedStats?.totalCollected || 0)
+  const totalCollected = Number(ebsStats?.totalConfirmed || 0)
+  const cashInHand = Number(cashStats?.totalCashInHand || 0)
   const outstanding = Math.max(0, totalBilled - totalCollected)
   const progress = totalBilled > 0 ? (totalCollected / totalBilled) * 100 : 0
 
@@ -666,11 +682,12 @@ export async function getCollectionSummary() {
     totalBills: Number(stats?.totalBills || 0),
     customersImported: Number(stats?.customersImported || 0),
     totalBilled,
-    totalCollected,
+    totalCollected, // This is now CONFIRMED EBS money
+    cashInHand,    // This is OPERATIONAL cash from receipts
     outstanding,
     progress,
-    receiptsToday: Number(collectedStats?.receiptsToday || 0),
-    customersPaidToday: Number(collectedStats?.customersPaidToday || 0),
+    receiptsToday: Number(cashStats?.receiptsToday || 0),
+    customersPaidToday: Number(cashStats?.customersPaidToday || 0),
     daysRemaining: Math.max(0, daysRemaining),
     recentUploads
   }
