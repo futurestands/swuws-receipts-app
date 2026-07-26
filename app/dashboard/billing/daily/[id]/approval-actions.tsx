@@ -9,7 +9,6 @@ import {
   Send,
   RotateCcw,
   Loader2,
-  MessageSquare,
   CheckCircle2
 } from "lucide-react"
 import { toast } from "sonner"
@@ -17,13 +16,13 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
+import { cn } from "@/lib/utils"
+import { FormField, FormActions } from "@/components/ui/form-layout"
 
 interface Props {
   batchId: string
@@ -61,8 +60,8 @@ export function ApprovalActions({ batchId, currentStage, approvalData }: Props) 
           setComments("")
           router.refresh()
         }
-      } catch (err: any) {
-        toast.error(err.message || "Action failed")
+      } catch (err: unknown) {
+        toast.error(err instanceof Error ? err.message : "Action failed")
       }
     })
   }
@@ -91,7 +90,7 @@ export function ApprovalActions({ batchId, currentStage, approvalData }: Props) 
            <Button
              variant="ghost"
              size="sm"
-             className="w-full text-xs h-8 text-green-700 hover:bg-green-100"
+             className="w-full text-xs h-11 text-green-700 hover:bg-green-100"
              onClick={() => { setActionType("reopen"); setIsDialogOpen(true); }}
            >
              <RotateCcw className="h-3 w-3 mr-2" /> Reopen for Correction
@@ -102,11 +101,11 @@ export function ApprovalActions({ batchId, currentStage, approvalData }: Props) 
       {currentStage !== 'approved' && (
         <div className="flex gap-2">
           {currentStage === 'draft' || currentStage === 'reopened' ? (
-            <Button className="flex-1 text-xs h-9" onClick={() => { setActionType("submit"); setIsDialogOpen(true); }}>
+            <Button className="flex-1 text-xs h-11" onClick={() => { setActionType("submit"); setIsDialogOpen(true); }}>
               <Send className="h-3 w-3 mr-2" /> Submit for Review
             </Button>
           ) : (
-            <Button className="flex-1 text-xs h-9 bg-green-600 hover:bg-green-700" onClick={() => { setActionType("approve"); setIsDialogOpen(true); }}>
+            <Button className="flex-1 text-xs h-11 bg-green-600 hover:bg-green-700" onClick={() => { setActionType("approve"); setIsDialogOpen(true); }}>
               <ShieldCheck className="h-3 w-3 mr-2" /> Approve Batch
             </Button>
           )}
@@ -123,28 +122,25 @@ export function ApprovalActions({ batchId, currentStage, approvalData }: Props) 
                 : "Add any comments or observations for the audit trail."}
             </DialogDescription>
           </DialogHeader>
-          <div className="py-4">
-            <Label className="text-xs">Audit Comments</Label>
-            <Textarea
-              className="mt-1.5"
-              placeholder="Enter notes..."
-              value={comments}
-              onChange={(e) => setComments(e.target.value)}
-            />
+          <div className="py-2">
+            <FormField label="Audit Comments" htmlFor="auditComments">
+              <Textarea
+                id="auditComments"
+                placeholder="Enter notes..."
+                value={comments}
+                onChange={(e) => setComments(e.target.value)}
+              />
+            </FormField>
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsDialogOpen(false)}>Cancel</Button>
-            <Button onClick={handleAction} disabled={pending}>
+          <FormActions>
+            <Button variant="outline" className="h-11" onClick={() => setIsDialogOpen(false)}>Cancel</Button>
+            <Button className="h-11" onClick={handleAction} disabled={pending}>
               {pending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
               Confirm {actionType}
             </Button>
-          </DialogFooter>
+          </FormActions>
         </DialogContent>
       </Dialog>
     </div>
   )
-}
-
-function cn(...classes: any[]) {
-  return classes.filter(Boolean).join(" ")
 }

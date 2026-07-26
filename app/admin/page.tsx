@@ -3,7 +3,9 @@ import { listClusters, listBranches, listPaymentMethods, listWaterSchemes, getSe
 import { getCollectionPeriods } from "@/app/actions/billing"
 import { AdminTabs } from "@/app/admin/admin-tabs"
 import { getCurrentUser } from "@/lib/session"
-import { listRoles, listAllPermissions } from "@/app/actions/iam"
+import { listRoles, listAllPermissions, seedV12Permissions } from "@/app/actions/iam"
+import { listAllTariffs } from "@/app/actions/billing-engine"
+import { listTemplates, seedSystemTemplates } from "@/app/actions/template-actions"
 import {
   canManageUsers,
   canManageSchemes,
@@ -18,6 +20,12 @@ export default async function AdminPage() {
   // Re-triggering route detection
   const current = await getCurrentUser()
 
+  // Seed system templates on load for this version (v1.2)
+  if (current && canConfigureSystem(current)) {
+    await seedV12Permissions()
+    await seedSystemTemplates()
+  }
+
   const canManageUsersVal = current ? canManageUsers(current) : false
   const canAuditVal = current ? canAudit(current) : false
   const canViewReportsVal = current ? canViewReports(current) : false
@@ -25,7 +33,7 @@ export default async function AdminPage() {
   const canConfigureSystemVal = current ? canConfigureSystem(current) : false
   const canManageIAMVal = current ? (current.permissions?.includes("roles.view") || current.permissions?.includes("permissions.view")) : false
 
-  const [agents, auditLogs, stats, collections, printingStats, clusters, branches, methods, schemes, settings, periods, iamRoles, allPermissions] = await Promise.all([
+  const [agents, auditLogs, stats, collections, printingStats, clusters, branches, methods, schemes, settings, periods, iamRoles, allPermissions, tariffs, templates] = await Promise.all([
     canManageUsersVal ? listAgents() : Promise.resolve([]),
     canAuditVal ? getAuditLogs(200) : Promise.resolve([]),
     canViewReportsVal ? getSystemStats() : Promise.resolve({ agentCount: 0, receiptCount: 0, receiptTotal: 0 }),
@@ -39,6 +47,8 @@ export default async function AdminPage() {
     getCollectionPeriods(),
     canManageIAMVal ? listRoles() : Promise.resolve([]),
     canManageIAMVal ? listAllPermissions() : Promise.resolve([]),
+    canConfigureSystemVal ? listAllTariffs() : Promise.resolve([]),
+    canConfigureSystemVal ? listTemplates() : Promise.resolve([]),
   ])
 
   const permissions = {
@@ -73,6 +83,8 @@ export default async function AdminPage() {
         periods={periods}
         iamRoles={iamRoles}
         allPermissions={allPermissions}
+        tariffs={tariffs}
+        templates={templates}
       />
     </div>
   )

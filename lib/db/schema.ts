@@ -170,7 +170,12 @@ export const customer = pgTable(
     phone: text("phone"),
     address: text("address"),
     waterSchemeId: text("waterSchemeId").references(() => waterScheme.id, { onDelete: "set null" }),
+    meterRef: text("meterRef").unique(),
+    serialNo: text("serialNo"),
+    lastReading: bigint("lastReading", { mode: "number" }).notNull().default(0),
+    lastReadingDate: timestamp("lastReadingDate"),
     notes: text("notes"),
+    openingArrears: integer("openingArrears").notNull().default(0),
     accountBalance: bigint("accountBalance", { mode: "number" }).notNull().default(0),
     createdById: text("createdById").references(() => user.id, { onDelete: "set null" }),
     createdAt: timestamp("createdAt").notNull().defaultNow(),
@@ -774,3 +779,129 @@ export type ReconciliationMatch = typeof reconciliationMatch.$inferSelect
 export type ReconciliationException = typeof reconciliationException.$inferSelect
 export type ReconciliationApproval = typeof reconciliationApproval.$inferSelect
 export type Notification = typeof notification.$inferSelect
+
+// ---------------------------------------------------------------------------
+// Meter Reading & Dynamic Billing Module
+// ---------------------------------------------------------------------------
+
+/**
+ * Configuration for area-specific billing rates.
+ * Target can be a Branch or a specific Water Scheme.
+ */
+export const tariffConfiguration = pgTable(
+  "tariff_configuration",
+  {
+    id: text("id").primaryKey(),
+    targetType: text("targetType").notNull(), // 'branch' or 'scheme'
+    targetId: text("targetId").notNull(), // branchId or schemeId
+    unitPrice: bigint("unitPrice", { mode: "number" }).notNull().default(0), // UGX per m3
+    serviceFee: bigint("serviceFee", { mode: "number" }).notNull().default(0), // Fixed monthly
+    vatPercentage: integer("vatPercentage").notNull().default(18), // Default 18%
+    active: boolean("active").notNull().default(true),
+    createdAt: timestamp("createdAt").notNull().defaultNow(),
+    updatedAt: timestamp("updatedAt").notNull().defaultNow(),
+  },
+  (table) => ({
+    targetIdx: uniqueIndex("tariff_target_idx").on(table.targetType, table.targetId),
+  }),
+)
+
+/**
+ * Monthly meter reading entries captured by field agents.
+ */
+export const meterReading = pgTable(
+  "meter_reading",
+  {
+    id: text("id").primaryKey(),
+    customerId: text("customerId")
+      .notNull()
+      .references(() => customer.id, { onDelete: "restrict" }),
+    billingPeriodId: text("billingPeriodId")
+      .notNull()
+      .references(() => billingPeriod.id, { onDelete: "restrict" }),
+    previousReading: bigint("previousReading", { mode: "number" }).notNull().default(0),
+    currentReading: bigint("currentReading", { mode: "number" }).notNull().default(0),
+    consumption: bigint("consumption", { mode: "number" }).notNull().default(0), // current - previous
+    billedAmount: bigint("billedAmount", { mode: "number" }).notNull().default(0), // Calculated total
+    previousBalanceSnapshot: bigint("previousBalanceSnapshot", { mode: "number" }).notNull().default(0),
+    totalDueSnapshot: bigint("totalDueSnapshot", { mode: "number" }).notNull().default(0),
+    customerNameSnapshot: text("customerNameSnapshot"),
+    customerAccountSnapshot: text("customerAccountSnapshot"),
+    phoneSnapshot: text("phoneSnapshot"),
+    meterRefSnapshot: text("meterRefSnapshot"),
+    recordedById: text("recordedById")
+      .notNull()
+      .references(() => user.id, { onDelete: "restrict" }),
+    isNotified: boolean("isNotified").notNull().default(false), // SMS status
+    notifiedAt: timestamp("notifiedAt"),
+    notes: text("notes"),
+    createdAt: timestamp("createdAt").notNull().defaultNow(),
+    updatedAt: timestamp("updatedAt").notNull().defaultNow(),
+  },
+  (table) => ({
+    customerPeriodUnq: uniqueIndex("meter_reading_customer_period_unq").on(
+      table.customerId,
+      table.billingPeriodId,
+    ),
+    customerIdx: index("meter_reading_customer_idx").on(table.customerId),
+    periodIdx: index("meter_reading_period_idx").on(table.billingPeriodId),
+  }),
+)
+
+export type TariffConfiguration = typeof tariffConfiguration.$inferSelect
+export type MeterReading = typeof meterReading.$inferSelect
+
+// ---------------------------------------------------------------------------
+// Enterprise Template Management Module (v1.2)
+// ---------------------------------------------------------------------------
+
+/**
+ * Registry of all editable templates in the system.
+ */
+export const managedTemplate = pgTable(
+  "managed_template",
+  {
+    id: text("id").primaryKey(),
+    name: text("name").notNull(),
+    code: text("code").notNull().unique(), // e.g. 'comm.receipt.official'
+    category: text("category").notNull(), // 'Commercial', 'Finance', 'HR', etc.
+    type: text("type").notNull(), // 'HTML', 'SMS', 'MD', 'TEXT'
+    description: text("description"),
+    activeVersionId: text("activeVersionId"), // Link to published template_version
+    createdAt: timestamp("createdAt").notNull().defaultNow(),
+    updatedAt: timestamp("updatedAt").notNull().defaultNow(),
+  },
+  (table) => ({
+    codeIdx: uniqueIndex("template_code_idx").on(table.code),
+    categoryIdx: index("template_category_idx").on(table.category),
+  }),
+)
+
+/**
+ * Version-controlled content for managed templates.
+ */
+export const templateVersion = pgTable(
+  "template_version",
+  {
+    id: text("id").primaryKey(),
+    templateId: text("templateId")
+      .notNull()
+      .references(() => managedTemplate.id, { onDelete: "cascade" }),
+    versionNumber: integer("versionNumber").notNull(),
+    content: text("content").notNull(), // The raw template string
+    status: text("status").notNull().default("draft"), // 'draft', 'published', 'archived'
+    changelog: text("changelog"),
+    createdById: text("createdById")
+      .notNull()
+      .references(() => user.id, { onDelete: "restrict" }),
+    publishedAt: timestamp("publishedAt"),
+    createdAt: timestamp("createdAt").notNull().defaultNow(),
+  },
+  (table) => ({
+    templateIdx: index("version_template_idx").on(table.templateId),
+    statusIdx: index("version_status_idx").on(table.status),
+  }),
+)
+
+export type ManagedTemplate = typeof managedTemplate.$inferSelect
+export type TemplateVersion = typeof templateVersion.$inferSelect

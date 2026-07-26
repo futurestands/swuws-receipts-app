@@ -15,7 +15,7 @@ export async function AppHeader() {
       <div className="mx-auto max-w-6xl px-4 h-14 flex items-center justify-between">
         <div className="flex items-center gap-6">
           <Link href="/dashboard" className="font-semibold text-primary">
-            SWUWS Receipts
+            SWUWS Collection Portal
           </Link>
           <nav className="flex items-center gap-4 text-sm">
             <Link href="/dashboard" className="text-muted-foreground hover:text-foreground">

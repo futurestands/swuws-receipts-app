@@ -1,7 +1,6 @@
 import { getFinancialOpsDashboard } from "@/app/actions/financial-stats"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { formatUGX, formatPercent } from "@/lib/format"
 import {
   Activity,
   ShieldAlert,
@@ -15,6 +14,7 @@ import {
 } from "lucide-react"
 import { Progress } from "@/components/ui/progress"
 import Link from "next/link"
+import { PageHeader } from "@/components/ui/page-header"
 
 export default async function FinancialOpsPage() {
   const data = await getFinancialOpsDashboard()
@@ -22,24 +22,20 @@ export default async function FinancialOpsPage() {
 
   const pendingApprovals = approvals.find(a => a.stage === 'pending_review')
   const oldestPendingDate = pendingApprovals?.oldestPending
-  const approvedBatches = approvals.find(a => a.stage === 'approved')?.count || 0
 
   return (
     <div className="space-y-6 pb-12">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Financial Operations</h1>
-          <p className="text-muted-foreground">
-            Reconciliation command center and operational oversight.
-          </p>
-        </div>
-        {activePeriod && (
-          <Badge variant="outline" className="text-sm px-3 py-1 bg-green-50 text-green-700 border-green-200">
-            Active Period: {activePeriod.periodName}
-          </Badge>
-        )}
-      </div>
-
+      <PageHeader
+        title="Financial Operations"
+        description="Reconciliation command center and operational oversight."
+        actions={
+          activePeriod && (
+            <Badge variant="outline" className="text-sm px-3 py-1 bg-green-50 text-green-700 border-green-200">
+              Active Period: {activePeriod.periodName}
+            </Badge>
+          )
+        }
+      />
       {/* Executive Summary Cards */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <Card>

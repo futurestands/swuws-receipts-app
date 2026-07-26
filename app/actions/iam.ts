@@ -40,6 +40,29 @@ export async function listAllPermissions() {
 }
 
 /**
+ * Walks up the chain of parentId references starting at candidateParentId,
+ * returning true if roleId is ever reached (i.e. assigning candidateParentId
+ * as roleId's parent would create a cycle). Iterative with a hard depth cap
+ * so a pre-existing data anomaly can't cause an unbounded loop here either.
+ */
+async function wouldCreateCycle(roleId: string, candidateParentId: string): Promise<boolean> {
+  let current: string | null = candidateParentId
+  let depth = 0
+  const MAX_DEPTH = 100
+
+  while (current && depth < MAX_DEPTH) {
+    if (current === roleId) return true
+    const [row] = await db.select({ parentId: iamRole.parentId }).from(iamRole).where(eq(iamRole.id, current)).limit(1)
+    current = row?.parentId ?? null
+    depth++
+  }
+
+  // Hit the depth cap without resolving to a root - treat as unsafe rather
+  // than silently allowing a chain we couldn't fully verify.
+  return depth >= MAX_DEPTH
+}
+
+/**
  * Create a new role.
  */
 export async function createRole(data: z.infer<typeof roleSchema>) {
@@ -48,6 +71,10 @@ export async function createRole(data: z.infer<typeof roleSchema>) {
 
   const parsed = roleSchema.parse(data)
   const id = randomUUID()
+
+  if (parsed.parentId && (await wouldCreateCycle(id, parsed.parentId))) {
+    return { ok: false as const, error: "Invalid parent role: would create a circular role hierarchy" }
+  }
 
   try {
     const [row] = await db.insert(iamRole).values({
@@ -73,6 +100,34 @@ export async function createRole(data: z.infer<typeof roleSchema>) {
 }
 
 /**
+ * Bootstraps new permissions for v1.2.
+ * Finding 6 Fix: Switched from hardcoded role to permission check.
+ */
+export async function seedV12Permissions() {
+  const current = await requireUser()
+  // This is a system-level setup action, so we gate it behind a core permission
+  // that a system admin would already have from previous versions.
+  if (!await hasPermission(current, "branding.manage")) {
+    throw new Error("Forbidden: Insufficient permissions to seed system data")
+  }
+
+  const news = [
+    { code: "templates.manage", name: "Manage Templates", module: "Administration", description: "Create and edit system templates" },
+    { code: "templates.publish", name: "Publish Templates", module: "Administration", description: "Publish new versions to live" },
+  ]
+
+  for (const p of news) {
+    const [exists] = await db.select().from(iamPermission).where(eq(iamPermission.code, p.code)).limit(1)
+    if (!exists) {
+      await db.insert(iamPermission).values({
+        id: randomUUID(),
+        ...p,
+      })
+    }
+  }
+}
+
+/**
  * Update an existing role.
  */
 export async function updateRole(id: string, data: z.infer<typeof roleSchema>) {
@@ -84,6 +139,10 @@ export async function updateRole(id: string, data: z.infer<typeof roleSchema>) {
   if (existing.isSystem && data.code !== existing.code) throw new Error("System roles cannot have their code changed")
 
   const parsed = roleSchema.parse(data)
+
+  if (parsed.parentId && (await wouldCreateCycle(id, parsed.parentId))) {
+    return { ok: false as const, error: "Invalid parent role: would create a circular role hierarchy" }
+  }
 
   await db.update(iamRole)
     .set({ ...parsed, updatedAt: new Date() })

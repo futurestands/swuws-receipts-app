@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useRef, useState, useTransition } from "react"
+import { useCallback, useEffect, useRef, useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import { createReceipt, type CreateReceiptInput } from "@/app/actions/receipts"
 import { quickSearchCustomers } from "@/app/actions/customers"
@@ -8,7 +8,6 @@ import { getOpenBillsForCustomer } from "@/app/actions/billing"
 import type { EditableFields, Branch, PaymentMethod, Customer } from "@/lib/db/schema"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import {
@@ -21,6 +20,7 @@ import {
 import { toast } from "sonner"
 import { formatUGX } from "@/lib/format"
 import { AlertCircle } from "lucide-react"
+import { ResponsiveFormLayout, FormField, FormActions } from "@/components/ui/form-layout"
 
 const emptyFormBase = {
   billingRecordId: "",
@@ -87,36 +87,41 @@ export function ReceiptForm({
   // ticket's response is applied.
   const searchRequestId = useRef(0)
 
+  const set = useCallback(<K extends keyof typeof form>(key: K, value: (typeof form)[K]) => {
+    setForm((f) => ({ ...f, [key]: value }))
+  }, [])
+
   useEffect(() => {
+    let active = true
     if (selectedCustomer) {
-      getOpenBillsForCustomer(selectedCustomer.id).then(setBills)
+      getOpenBillsForCustomer(selectedCustomer.id).then((data) => {
+        if (active) setBills(data)
+      })
     } else {
       setBills([])
       set("billingRecordId", "")
     }
-  }, [selectedCustomer])
+    return () => {
+      active = false
+    }
+  }, [selectedCustomer, set])
 
   useEffect(() => {
-    if (searchTimer.current) clearTimeout(searchTimer.current)
     if (!customerQuery.trim() || selectedCustomer) {
       setCustomerResults([])
       return
     }
-    searchTimer.current = setTimeout(async () => {
+
+    const timer = setTimeout(async () => {
       const requestId = ++searchRequestId.current
       const results = await quickSearchCustomers(customerQuery)
       if (requestId === searchRequestId.current) {
         setCustomerResults(results)
       }
     }, 250)
-    return () => {
-      if (searchTimer.current) clearTimeout(searchTimer.current)
-    }
-  }, [customerQuery, selectedCustomer])
 
-  function set<K extends keyof typeof form>(key: K, value: (typeof form)[K]) {
-    setForm((f) => ({ ...f, [key]: value }))
-  }
+    return () => clearTimeout(timer)
+  }, [customerQuery, selectedCustomer])
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -125,6 +130,10 @@ export function ReceiptForm({
     const amount = Number(form.amount)
     if (!amount || amount <= 0) {
       setError("Enter a valid amount greater than zero")
+      return
+    }
+    if (Math.round(amount) <= 0) {
+      setError("Amount is too small to record as a receipt")
       return
     }
     if (!form.billingRecordId && !form.billingPeriodId) {
@@ -174,6 +183,15 @@ export function ReceiptForm({
     })
   }
 
+  function handleCancel() {
+    setForm(getEmptyForm())
+    setSelectedCustomer(null)
+    setCustomerQuery("")
+    setCustomerResults([])
+    setBills([])
+    setError(null)
+  }
+
   if (!activePeriodId) {
     return (
       <Card className="border-destructive/20 bg-destructive/5">
@@ -197,12 +215,11 @@ export function ReceiptForm({
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="customerSearch">Customer</Label>
+          <FormField label="Customer" htmlFor="customerSearch">
             {selectedCustomer ? (
-              <div className="flex items-center justify-between rounded-md border px-3 py-2 text-sm">
-                <div>
-                  <p className="font-medium">{selectedCustomer.name}</p>
+              <div className="flex items-center justify-between gap-2 rounded-lg border px-3 py-2.5 text-sm">
+                <div className="min-w-0">
+                  <p className="truncate font-medium">{selectedCustomer.name}</p>
                   {selectedCustomer.customerAccount && (
                     <p className="text-muted-foreground text-xs">
                       Acct: {selectedCustomer.customerAccount}
@@ -213,6 +230,7 @@ export function ReceiptForm({
                   type="button"
                   variant="ghost"
                   size="sm"
+                  className="h-9 shrink-0"
                   onClick={() => {
                     setSelectedCustomer(null)
                     setCustomerQuery("")
@@ -228,14 +246,15 @@ export function ReceiptForm({
                   placeholder="Search existing customers, or type a new name below"
                   value={customerQuery}
                   onChange={(e) => setCustomerQuery(e.target.value)}
+                  className="h-11"
                 />
                 {customerResults.length > 0 && (
-                  <div className="absolute z-10 mt-1 w-full rounded-md border bg-popover shadow-md">
+                  <div className="absolute z-10 mt-1 max-h-64 w-full overflow-y-auto rounded-lg border bg-popover shadow-md">
                     {customerResults.map((c) => (
                       <button
                         type="button"
                         key={c.id}
-                        className="w-full text-left px-3 py-2 text-sm hover:bg-accent"
+                        className="w-full min-h-11 text-left px-3 py-2 text-sm hover:bg-accent"
                         onClick={() => {
                           setSelectedCustomer(c)
                           setCustomerResults([])
@@ -251,11 +270,10 @@ export function ReceiptForm({
                 )}
               </div>
             )}
-          </div>
+          </FormField>
 
           {selectedCustomer && (
-            <div className="space-y-2">
-              <Label>Active bill</Label>
+            <FormField label="Active bill" htmlFor="activeBillTrigger">
               <Select
                 value={form.billingRecordId}
                 onValueChange={(v) => {
@@ -268,7 +286,7 @@ export function ReceiptForm({
                   }
                 }}
               >
-                <SelectTrigger className="w-full">
+                <SelectTrigger id="activeBillTrigger" className="w-full h-11">
                   <SelectValue
                     placeholder={bills.length > 0 ? "Select a bill" : "No open bills found"}
                   />
@@ -288,18 +306,17 @@ export function ReceiptForm({
                   selecting a billing period below.
                 </p>
               )}
-            </div>
+            </FormField>
           )}
 
           {!form.billingRecordId && (
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-2">
-                <Label>Billing Period *</Label>
+            <ResponsiveFormLayout columns={2}>
+              <FormField label="Billing Period" htmlFor="billingPeriodTrigger" required>
                 <Select
                   value={form.billingPeriodId}
                   onValueChange={(v) => set("billingPeriodId", v ?? "")}
                 >
-                  <SelectTrigger className="w-full">
+                  <SelectTrigger id="billingPeriodTrigger" className="w-full h-11">
                     <SelectValue placeholder="Select period" />
                   </SelectTrigger>
                   <SelectContent>
@@ -310,14 +327,13 @@ export function ReceiptForm({
                     ))}
                   </SelectContent>
                 </Select>
-              </div>
-              <div className="space-y-2">
-                <Label>Scheme</Label>
+              </FormField>
+              <FormField label="Scheme" htmlFor="schemeTrigger">
                 <Select
                   value={form.schemeId}
                   onValueChange={(v) => set("schemeId", v ?? "")}
                 >
-                  <SelectTrigger className="w-full">
+                  <SelectTrigger id="schemeTrigger" className="w-full h-11">
                     <SelectValue placeholder="Select scheme" />
                   </SelectTrigger>
                   <SelectContent>
@@ -328,60 +344,61 @@ export function ReceiptForm({
                     ))}
                   </SelectContent>
                 </Select>
-              </div>
-            </div>
+              </FormField>
+            </ResponsiveFormLayout>
           )}
 
           {!selectedCustomer && editableFields.customerName && (
-            <div className="space-y-2">
-              <Label htmlFor="customerName">Customer name *</Label>
+            <FormField label="Customer name" htmlFor="customerName" required>
               <Input
                 id="customerName"
                 required
                 value={form.customerName}
                 onChange={(e) => set("customerName", e.target.value)}
+                className="h-11"
               />
-            </div>
+            </FormField>
           )}
 
           {!selectedCustomer && editableFields.customerAccount && (
-            <div className="space-y-2">
-              <Label htmlFor="customerAccount">Account number</Label>
+            <FormField label="Account number" htmlFor="customerAccount">
               <Input
                 id="customerAccount"
                 value={form.customerAccount}
                 onChange={(e) => set("customerAccount", e.target.value)}
+                className="h-11"
               />
-            </div>
+            </FormField>
           )}
 
-          <div className="grid grid-cols-2 gap-3">
-            {!selectedCustomer && editableFields.customerPhone && (
-              <div className="space-y-2">
-                <Label htmlFor="customerPhone">Phone</Label>
-                <Input
-                  id="customerPhone"
-                  value={form.customerPhone}
-                  onChange={(e) => set("customerPhone", e.target.value)}
-                />
-              </div>
-            )}
-            {!selectedCustomer && editableFields.customerAddress && (
-              <div className="space-y-2">
-                <Label htmlFor="customerAddress">Address</Label>
-                <Input
-                  id="customerAddress"
-                  value={form.customerAddress}
-                  onChange={(e) => set("customerAddress", e.target.value)}
-                />
-              </div>
-            )}
-          </div>
+          {(editableFields.customerPhone || editableFields.customerAddress) && !selectedCustomer && (
+            <ResponsiveFormLayout columns={2}>
+              {editableFields.customerPhone && (
+                <FormField label="Phone" htmlFor="customerPhone">
+                  <Input
+                    id="customerPhone"
+                    value={form.customerPhone}
+                    onChange={(e) => set("customerPhone", e.target.value)}
+                    className="h-11"
+                  />
+                </FormField>
+              )}
+              {editableFields.customerAddress && (
+                <FormField label="Address" htmlFor="customerAddress">
+                  <Input
+                    id="customerAddress"
+                    value={form.customerAddress}
+                    onChange={(e) => set("customerAddress", e.target.value)}
+                    className="h-11"
+                  />
+                </FormField>
+              )}
+            </ResponsiveFormLayout>
+          )}
 
-          <div className="grid grid-cols-2 gap-3">
+          <ResponsiveFormLayout columns={2}>
             {editableFields.amount && (
-              <div className="space-y-2">
-                <Label htmlFor="amount">Amount paid (UGX) *</Label>
+              <FormField label="Amount paid (UGX)" htmlFor="amount" required>
                 <Input
                   id="amount"
                   type="number"
@@ -390,11 +407,11 @@ export function ReceiptForm({
                   required
                   value={form.amount}
                   onChange={(e) => set("amount", e.target.value)}
+                  className="h-11"
                 />
-              </div>
+              </FormField>
             )}
-            <div className="space-y-2">
-              <Label htmlFor="outstandingBalance">Outstanding balance</Label>
+            <FormField label="Outstanding balance" htmlFor="outstandingBalance">
               <Input
                 id="outstandingBalance"
                 type="number"
@@ -402,15 +419,15 @@ export function ReceiptForm({
                 step="1"
                 value={form.outstandingBalance}
                 onChange={(e) => set("outstandingBalance", e.target.value)}
+                className="h-11"
               />
-            </div>
-          </div>
+            </FormField>
+          </ResponsiveFormLayout>
 
           {editableFields.paymentMethod && (
-            <div className="space-y-2">
-              <Label>Payment method *</Label>
+            <FormField label="Payment method" htmlFor="paymentMethodTrigger" required>
               <Select value={form.paymentMethod} onValueChange={(v) => set("paymentMethod", v ?? "")}>
-                <SelectTrigger className="w-full">
+                <SelectTrigger id="paymentMethodTrigger" className="w-full h-11">
                   <SelectValue placeholder="Select a method" />
                 </SelectTrigger>
                 <SelectContent>
@@ -421,14 +438,13 @@ export function ReceiptForm({
                   ))}
                 </SelectContent>
               </Select>
-            </div>
+            </FormField>
           )}
 
           {branches.length > 0 && (
-            <div className="space-y-2">
-              <Label>Branch</Label>
+            <FormField label="Branch" htmlFor="branchTrigger">
               <Select value={form.branchId} onValueChange={(v) => set("branchId", v ?? "")}>
-                <SelectTrigger className="w-full">
+                <SelectTrigger id="branchTrigger" className="w-full h-11">
                   <SelectValue placeholder="Select a branch" />
                 </SelectTrigger>
                 <SelectContent>
@@ -439,50 +455,65 @@ export function ReceiptForm({
                   ))}
                 </SelectContent>
               </Select>
-            </div>
+            </FormField>
           )}
 
           {editableFields.paymentReference && (
-            <div className="space-y-2">
-              <Label htmlFor="paymentReference">Payment reference</Label>
+            <FormField label="Payment reference" htmlFor="paymentReference">
               <Input
                 id="paymentReference"
                 placeholder="Auto-generated if left blank"
                 value={form.paymentReference}
                 onChange={(e) => set("paymentReference", e.target.value)}
+                className="h-11"
               />
-            </div>
+            </FormField>
           )}
 
           {editableFields.paymentDate && (
-            <div className="space-y-2">
-              <Label htmlFor="paymentDate">Collection date</Label>
+            <FormField label="Collection date" htmlFor="paymentDate">
               <Input
                 id="paymentDate"
                 type="date"
                 value={form.paymentDate}
                 onChange={(e) => set("paymentDate", e.target.value)}
+                className="h-11"
               />
-            </div>
+            </FormField>
           )}
 
           {editableFields.notes && (
-            <div className="space-y-2">
-              <Label htmlFor="notes">Notes</Label>
+            <FormField label="Notes" htmlFor="notes">
               <Textarea
                 id="notes"
                 rows={2}
                 value={form.notes}
                 onChange={(e) => set("notes", e.target.value)}
               />
-            </div>
+            </FormField>
           )}
 
-          {error && <p className="text-sm text-destructive">{error}</p>}
+          {error && (
+            <p className="flex items-start gap-1.5 text-sm text-destructive">
+              <AlertCircle className="mt-0.5 size-4 shrink-0" />
+              {error}
+            </p>
+          )}
 
-          <Button type="submit" className="w-full" disabled={pending}>
-            {pending ? "Saving…" : "Issue receipt"}
-          </Button>
+          <FormActions className="border-t-0 pt-0">
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full sm:w-auto h-11"
+              onClick={handleCancel}
+              disabled={pending}
+            >
+              Cancel
+            </Button>
+            <Button type="submit" className="w-full sm:w-auto h-11" disabled={pending}>
+              {pending ? "Saving…" : "Issue receipt"}
+            </Button>
+          </FormActions>
         </form>
       </CardContent>
     </Card>

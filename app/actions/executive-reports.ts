@@ -10,6 +10,7 @@ import {
   reconciliationApproval,
   billingPeriod,
   auditLog,
+  meterReading,
 } from "@/lib/db/schema"
 import { requireUser } from "@/lib/session"
 import { hasPermission } from "@/lib/iam"
@@ -51,6 +52,8 @@ export async function getReportData(id: string, filters: any) {
       return getImportHistory(current, filters)
     case "audit-activity":
       return getAuditActivity(current, filters)
+    case "meter-reading":
+      return getMeterReadingReport(current, filters)
     default:
       throw new Error("Report not implemented")
   }
@@ -62,8 +65,16 @@ async function getReceiptActivity(user: any, filters: any) {
 
 async function getDailyCollectionSummary(user: any, filters: any) {
   const conditions = []
-  if (filters.startDate) conditions.push(gte(dailyCollectionImport.businessDate, new Date(filters.startDate)))
-  if (filters.endDate) conditions.push(lte(dailyCollectionImport.businessDate, new Date(filters.endDate)))
+  if (filters.startDate) {
+    const start = new Date(filters.startDate)
+    start.setHours(0, 0, 0, 0)
+    conditions.push(gte(dailyCollectionImport.businessDate, start))
+  }
+  if (filters.endDate) {
+    const end = new Date(filters.endDate)
+    end.setHours(23, 59, 59, 999)
+    conditions.push(lte(dailyCollectionImport.businessDate, end))
+  }
 
   return db
     .select({
@@ -139,8 +150,16 @@ async function getApprovalRegister(user: any, filters: any) {
 
 async function getImportHistory(user: any, filters: any) {
   const conditions = []
-  if (filters.startDate) conditions.push(gte(dailyCollectionImport.businessDate, new Date(filters.startDate)))
-  if (filters.endDate) conditions.push(lte(dailyCollectionImport.businessDate, new Date(filters.endDate)))
+  if (filters.startDate) {
+    const start = new Date(filters.startDate)
+    start.setHours(0, 0, 0, 0)
+    conditions.push(gte(dailyCollectionImport.businessDate, start))
+  }
+  if (filters.endDate) {
+    const end = new Date(filters.endDate)
+    end.setHours(23, 59, 59, 999)
+    conditions.push(lte(dailyCollectionImport.businessDate, end))
+  }
 
   return db
     .select()
@@ -160,4 +179,39 @@ async function getAuditActivity(user: any, filters: any) {
     .where(and(...conditions))
     .orderBy(desc(auditLog.createdAt))
     .limit(500)
+}
+
+async function getMeterReadingReport(user: any, filters: any) {
+  const conditions = []
+
+  if (filters.startDate) {
+    const start = new Date(filters.startDate)
+    start.setHours(0, 0, 0, 0)
+    conditions.push(gte(meterReading.createdAt, start))
+  }
+
+  if (filters.endDate) {
+    const end = new Date(filters.endDate)
+    end.setHours(23, 59, 59, 999)
+    conditions.push(lte(meterReading.createdAt, end))
+  }
+
+  // Apply scope
+  const scope = applyReceiptScope(user)
+  if (scope) conditions.push(scope)
+
+  return db
+    .select({
+      customerRefNo: meterReading.customerAccountSnapshot,
+      customerPhoneNumber: meterReading.phoneSnapshot,
+      customerName: meterReading.customerNameSnapshot,
+      billingPeriod: billingPeriod.periodName,
+      outstandingBalance: meterReading.totalDueSnapshot,
+      recordedBy: sql<string>`(SELECT name FROM "user" WHERE id = ${meterReading.recordedById})`,
+      capturedAt: meterReading.createdAt,
+    })
+    .from(meterReading)
+    .innerJoin(billingPeriod, eq(meterReading.billingPeriodId, billingPeriod.id))
+    .where(and(...conditions))
+    .orderBy(desc(meterReading.createdAt))
 }

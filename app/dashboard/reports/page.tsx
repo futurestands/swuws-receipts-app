@@ -40,7 +40,7 @@ export default async function ReportsPage({
     getTopDebtors(5),
   ])
 
-  const { billing, collections } = stats
+  const { billing, collections, arrears } = stats
 
   return (
     <div className="space-y-6">
@@ -58,35 +58,70 @@ export default async function ReportsPage({
         initialFilters={params}
       />
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Card>
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        <Card className="card-accent-red">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Total Billed</CardTitle>
-            <Landmark className="h-4 w-4 text-muted-foreground" />
+            <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Total System Arrears</CardTitle>
+            <AlertCircle className="h-4 w-4 text-destructive" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{formatUGX(billing.totalBilled)}</div>
-            <p className="text-xs text-muted-foreground">{billing.billedCount} bills issued</p>
+            <div className="text-3xl font-black text-destructive">{formatUGX(arrears.totalArrears)}</div>
+            <p className="text-xs text-muted-foreground mt-1">Cumulative debt from day one</p>
           </CardContent>
         </Card>
-        <Card>
+
+        <Card className="card-accent-green">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Total Collected</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Arrears Collected</CardTitle>
             <TrendingUp className="h-4 w-4 text-green-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-green-600">{formatUGX(collections.totalCollected)}</div>
-            <p className="text-xs text-muted-foreground">{collections.receiptCount} receipts issued</p>
+            <div className="text-3xl font-black text-green-600">{formatUGX(collections.collectedFromArrears)}</div>
+            <p className="text-xs text-muted-foreground mt-1">Payments towards old debt (Selected Period)</p>
+          </CardContent>
+        </Card>
+
+        <Card className="card-accent-blue">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Upfront / Advance</CardTitle>
+            <Landmark className="h-4 w-4 text-brand-blue" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-3xl font-black text-brand-blue">{formatUGX(arrears.totalUpfront)}</div>
+            <p className="text-xs text-muted-foreground mt-1">Surplus money paid in advance</p>
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Monthly Billed</CardTitle>
+            <FileText className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{formatUGX(billing.totalBilled)}</div>
+            <p className="text-xs text-muted-foreground">{billing.billedCount} bills issued (Selected Period)</p>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Outstanding</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">Monthly Collected</CardTitle>
+            <TrendingUp className="h-4 w-4 text-green-500" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-green-600">{formatUGX(collections.collectedFromBills)}</div>
+            <p className="text-xs text-muted-foreground">Directly against this month's bills</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Period Outstanding</CardTitle>
             <AlertCircle className="h-4 w-4 text-destructive" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-destructive">{formatUGX(collections.outstanding)}</div>
-            <p className="text-xs text-muted-foreground">Pending collection</p>
+            <p className="text-xs text-muted-foreground">Balance remaining for this period</p>
           </CardContent>
         </Card>
         <Card>

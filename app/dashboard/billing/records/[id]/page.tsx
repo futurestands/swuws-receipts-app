@@ -5,6 +5,10 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge"
 import { formatUGX, formatDate, formatDateTime } from "@/lib/format"
 import Link from "next/link"
+import { ArrowLeft, Receipt } from "lucide-react"
+import { PageHeader } from "@/components/ui/page-header"
+import { ScrollableTableContainer } from "@/components/ui/responsive-table"
+import { EmptyState } from "@/components/ui/empty-state"
 
 export default async function BillingRecordDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
@@ -16,12 +20,17 @@ export default async function BillingRecordDetailPage({ params }: { params: Prom
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold tracking-tight">Bill Payment History</h1>
-        <Link href={`/dashboard/billing/history/${bill.billingRunId}`} className="text-sm text-muted-foreground hover:underline">
-          ← Back to billing run
-        </Link>
-      </div>
+      <PageHeader
+        title="Bill Payment History"
+        actions={
+          <Link
+            href={`/dashboard/billing/history/${bill.billingRunId}`}
+            className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground hover:underline"
+          >
+            <ArrowLeft className="size-4" /> Back to billing run
+          </Link>
+        }
+      />
 
       <div className="grid gap-6 md:grid-cols-2">
         <Card>
@@ -75,40 +84,42 @@ export default async function BillingRecordDetailPage({ params }: { params: Prom
           <CardDescription>All payments applied to this specific bill.</CardDescription>
         </CardHeader>
         <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Receipt #</TableHead>
-                <TableHead>Date</TableHead>
-                <TableHead>Method</TableHead>
-                <TableHead>Collector</TableHead>
-                <TableHead className="text-right">Amount</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {payments.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={5} className="text-center py-6 text-muted-foreground">
-                    No payments found for this bill.
-                  </TableCell>
-                </TableRow>
-              ) : (
-                payments.map((p) => (
-                  <TableRow key={p.id}>
-                    <TableCell>
-                      <Link href={`/dashboard/receipts/${p.id}`} className="font-medium text-primary hover:underline">
-                        {p.receiptNumber}
-                      </Link>
-                    </TableCell>
-                    <TableCell className="text-sm">{formatDateTime(p.paymentDate)}</TableCell>
-                    <TableCell className="text-sm capitalize">{p.paymentMethod}</TableCell>
-                    <TableCell className="text-sm">{p.agentName}</TableCell>
-                    <TableCell className="text-right font-semibold">{formatUGX(p.amount)}</TableCell>
+          {payments.length === 0 ? (
+            <EmptyState
+              icon={Receipt}
+              title="No payments found"
+              description="Receipts applied to this bill will appear here."
+            />
+          ) : (
+            <ScrollableTableContainer className="border-0">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Receipt #</TableHead>
+                    <TableHead>Date</TableHead>
+                    <TableHead>Method</TableHead>
+                    <TableHead>Collector</TableHead>
+                    <TableHead className="text-right">Amount</TableHead>
                   </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
+                </TableHeader>
+                <TableBody>
+                  {payments.map((p) => (
+                    <TableRow key={p.id}>
+                      <TableCell>
+                        <Link href={`/dashboard/receipts/${p.id}`} className="font-medium text-primary hover:underline">
+                          {p.receiptNumber}
+                        </Link>
+                      </TableCell>
+                      <TableCell className="text-sm">{formatDateTime(p.paymentDate)}</TableCell>
+                      <TableCell className="text-sm capitalize">{p.paymentMethod}</TableCell>
+                      <TableCell className="text-sm">{p.agentName}</TableCell>
+                      <TableCell className="text-right font-semibold">{formatUGX(p.amount)}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </ScrollableTableContainer>
+          )}
         </CardContent>
       </Card>
     </div>

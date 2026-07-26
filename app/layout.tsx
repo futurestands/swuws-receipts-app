@@ -4,8 +4,8 @@ import { Toaster } from '@/components/ui/sonner'
 import './globals.css'
 
 export const metadata: Metadata = {
-  title: 'SWUWS Receipts',
-  description: 'Receipt and Payment Tracking System — South Western Umbrella of Water and Sanitation',
+  title: 'SWUWS Collection Portal',
+  description: 'Revenue Assurance and Payment Tracking System — Southwestern Umbrella of Water and Sanitation',
 }
 
 export const viewport: Viewport = {

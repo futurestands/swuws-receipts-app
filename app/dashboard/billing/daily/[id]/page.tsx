@@ -3,7 +3,7 @@ import Link from "next/link"
 import { getDailyImportDetails, getDailyImportRecords } from "@/app/actions/daily-collections"
 import { getReconciliationSummary } from "@/app/actions/reconciliation"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
-import { formatUGX, formatDate, formatDateTime } from "@/lib/format"
+import { formatUGX, formatDate } from "@/lib/format"
 import { ArrowLeft, FileText, Database, Calendar, User, CheckCircle2, AlertCircle } from "lucide-react"
 import { DailyRecordTable } from "./daily-record-table"
 import { ReconcileTrigger } from "./reconcile-trigger"
@@ -11,6 +11,8 @@ import { getBatchApprovalStatus } from "@/app/actions/approval"
 import { ApprovalActions } from "./approval-actions"
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
+import { PageHeader } from "@/components/ui/page-header"
+import { StatCard, StatCardGrid } from "@/components/ui/stat-card"
 
 /**
  * DAILY COLLECTION BATCH DETAILS (Phase 2C Repository)
@@ -34,59 +36,25 @@ export default async function DailyImportDetailsPage({ params }: { params: Promi
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-4">
-        <Link href="/dashboard/billing/daily" className="hover:bg-muted p-2 rounded-full transition-colors">
-          <ArrowLeft className="h-5 w-5" />
-        </Link>
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Import Batch Details</h1>
-          <p className="text-muted-foreground text-sm">Review individual payment records from EBS report.</p>
-        </div>
-      </div>
+      <PageHeader
+        title="Import Batch Details"
+        description="Review individual payment records from EBS report."
+        actions={
+          <Link
+            href="/dashboard/billing/daily"
+            className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground hover:underline"
+          >
+            <ArrowLeft className="size-4" /> Back to imports
+          </Link>
+        }
+      />
 
-      <div className="grid gap-4 md:grid-cols-4">
-         {/* ... cards ... */}
-         <Card>
-            <CardHeader className="pb-2 px-4">
-               <CardTitle className="text-[10px] uppercase font-bold text-muted-foreground flex items-center gap-1.5">
-                  <Calendar className="h-3 w-3" /> Business Date
-               </CardTitle>
-            </CardHeader>
-            <CardContent className="px-4">
-               <p className="text-lg font-bold">{formatDate(batch.businessDate)}</p>
-            </CardContent>
-         </Card>
-         <Card>
-            <CardHeader className="pb-2 px-4">
-               <CardTitle className="text-[10px] uppercase font-bold text-muted-foreground flex items-center gap-1.5">
-                  <Database className="h-3 w-3" /> Total Amount
-               </CardTitle>
-            </CardHeader>
-            <CardContent className="px-4">
-               <p className="text-lg font-bold text-primary">{formatUGX(batch.totalAmount)}</p>
-            </CardContent>
-         </Card>
-         <Card>
-            <CardHeader className="pb-2 px-4">
-               <CardTitle className="text-[10px] uppercase font-bold text-muted-foreground flex items-center gap-1.5">
-                  <FileText className="h-3 w-3" /> Total Records
-               </CardTitle>
-            </CardHeader>
-            <CardContent className="px-4">
-               <p className="text-lg font-bold">{batch.totalRecords.toLocaleString()}</p>
-            </CardContent>
-         </Card>
-         <Card>
-            <CardHeader className="pb-2 px-4">
-               <CardTitle className="text-[10px] uppercase font-bold text-muted-foreground flex items-center gap-1.5">
-                  <User className="h-3 w-3" /> Imported By
-               </CardTitle>
-            </CardHeader>
-            <CardContent className="px-4">
-               <p className="text-lg font-bold truncate" title={batch.uploadedByName}>{batch.uploadedByName}</p>
-            </CardContent>
-         </Card>
-      </div>
+      <StatCardGrid className="sm:grid-cols-2 lg:grid-cols-4">
+        <StatCard icon={Calendar} label="Business Date" value={formatDate(batch.businessDate)} />
+        <StatCard icon={Database} label="Total Amount" value={formatUGX(batch.totalAmount)} />
+        <StatCard icon={FileText} label="Total Records" value={batch.totalRecords.toLocaleString()} />
+        <StatCard icon={User} label="Imported By" value={batch.uploadedByName} />
+      </StatCardGrid>
 
       <div className="grid gap-6 lg:grid-cols-3">
          <Card className="lg:col-span-1 border-primary/20 bg-primary/5">

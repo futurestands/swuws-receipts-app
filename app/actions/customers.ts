@@ -1,10 +1,10 @@
 "use server"
 
 import { db } from "@/lib/db"
-import { customer, receipt, waterScheme } from "@/lib/db/schema"
+import { customer, receipt, waterScheme, branch } from "@/lib/db/schema"
 import { requireUser } from "@/lib/session"
 import { writeAudit } from "@/lib/audit"
-import { and, desc, eq, ilike, or, sql } from "drizzle-orm"
+import { and, desc, eq, ilike, or, sql, getTableColumns } from "drizzle-orm"
 import { randomUUID } from "crypto"
 import { revalidatePath } from "next/cache"
 import { z } from "zod"
@@ -40,7 +40,7 @@ export async function createCustomer(input: CustomerInput) {
   if (!canCreateCustomer(current)) throw new Error("Forbidden")
 
   // Organizational Scope Validation
-  if (!validateWriteScope(current, { schemeId: input.waterSchemeId })) {
+  if (!(await validateWriteScope(current, { schemeId: input.waterSchemeId }))) {
     return { ok: false as const, error: "You are not authorized to create customers for this scheme" }
   }
 
@@ -94,7 +94,7 @@ export async function updateCustomer(id: string, input: CustomerInput) {
 
   // Organizational Scope Validation: Ensure the user can edit this specific customer
   const target = await getCustomerById(id)
-  if (!target || !validateWriteScope(current, { schemeId: target.waterSchemeId })) {
+  if (!target || !(await validateWriteScope(current, { schemeId: target.waterSchemeId }))) {
     return { ok: false as const, error: "You are not authorized to edit this customer" }
   }
 
@@ -174,6 +174,7 @@ export async function getCustomerReceiptHistory(customerId: string) {
 export async function searchCustomers(params: {
   query?: string
   waterSchemeId?: string
+  branchId?: string
   page?: number
   pageSize?: number
 }) {
@@ -195,6 +196,9 @@ export async function searchCustomers(params: {
   if (params.waterSchemeId) {
     conditions.push(eq(customer.waterSchemeId, params.waterSchemeId))
   }
+  if (params.branchId) {
+    conditions.push(eq(waterScheme.branchId, params.branchId))
+  }
   if (scope) {
     conditions.push(scope)
   }
@@ -202,8 +206,14 @@ export async function searchCustomers(params: {
 
   const [rows, [{ count }]] = await Promise.all([
     db
-      .select()
+      .select({
+        ...getTableColumns(customer),
+        schemeName: waterScheme.name,
+        branchName: branch.name,
+      })
       .from(customer)
+      .leftJoin(waterScheme, eq(customer.waterSchemeId, waterScheme.id))
+      .leftJoin(branch, eq(waterScheme.branchId, branch.id))
       .where(where)
       .orderBy(desc(customer.createdAt))
       .limit(pageSize)

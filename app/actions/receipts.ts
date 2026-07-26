@@ -34,7 +34,11 @@ const createReceiptSchema = z.object({
   customerAccount: z.string().trim().max(100).optional(),
   customerPhone: z.string().trim().max(30).optional(),
   customerAddress: z.string().trim().max(300).optional(),
-  amount: z.number().finite().positive("Amount must be greater than zero"),
+  amount: z
+    .number()
+    .finite()
+    .positive("Amount must be greater than zero")
+    .refine((v) => Math.round(v) > 0, "Amount is too small to record as a receipt"),
   outstandingBalance: z.number().finite().min(0).optional(),
   paymentMethod: z.string().trim().min(1, "Payment method is required"),
   paymentReference: z.string().trim().max(100).optional(),
@@ -66,7 +70,7 @@ export async function createReceipt(input: CreateReceiptInput) {
 
   // Organizational Scope Validation:
   // Ensure the user is issuing a receipt for their assigned Area (Branch).
-  if (!validateWriteScope(current, { branchId: input.branchId })) {
+  if (!(await validateWriteScope(current, { branchId: input.branchId }))) {
     return { ok: false as const, error: "You are not authorized to issue receipts for this branch" }
   }
 

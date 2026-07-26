@@ -70,8 +70,8 @@ export function CollectionSummaryCard({ summary }: CollectionSummaryProps) {
   if (progress > 80) health = { label: "Excellent", color: "text-blue-600" }
 
   return (
-    <Card className="overflow-hidden">
-      <CardHeader className="bg-muted/30 pb-4">
+    <Card className="overflow-hidden card-accent-blue">
+      <CardHeader className="bg-primary/[0.03] pb-4">
         <div className="flex items-center justify-between">
           <div className="space-y-1">
             <CardTitle className="text-lg flex items-center gap-2">

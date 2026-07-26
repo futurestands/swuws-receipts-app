@@ -3,6 +3,7 @@
 import { db } from "@/lib/db"
 import { notification, user as userTable } from "@/lib/db/schema"
 import { requireUser } from "@/lib/session"
+import { hasPermission } from "@/lib/iam"
 import { eq, and, desc, sql, count } from "drizzle-orm"
 import { randomUUID } from "crypto"
 import { revalidatePath } from "next/cache"
@@ -73,6 +74,12 @@ export async function createNotification(data: {
   relatedEntityType?: string
   relatedEntityId?: string
 }, tx: any = db) {
+  const current = await requireUser()
+  const authorized =
+    (await hasPermission(current, "reconciliation.run")) ||
+    (await hasPermission(current, "reconciliation.approve"))
+  if (!authorized) throw new Error("Forbidden")
+
   const id = randomUUID()
   await tx.insert(notification).values({
     id,

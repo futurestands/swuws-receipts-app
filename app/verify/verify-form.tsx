@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { verifyReceipt, type VerifyResult } from "@/app/actions/verify"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -15,7 +15,7 @@ export function VerifyForm({ initialReceiptNumber }: { initialReceiptNumber?: st
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<VerifyResult | null>(null)
 
-  async function runVerify(value: string) {
+  const runVerify = useCallback(async (value: string) => {
     setLoading(true)
     setError(null)
     setResult(null)
@@ -26,7 +26,7 @@ export function VerifyForm({ initialReceiptNumber }: { initialReceiptNumber?: st
       return
     }
     setResult(outcome.result)
-  }
+  }, [])
 
   useEffect(() => {
     // A QR code encodes /verify?number=..., so a scan should show the
@@ -34,8 +34,7 @@ export function VerifyForm({ initialReceiptNumber }: { initialReceiptNumber?: st
     if (initialReceiptNumber) {
       runVerify(initialReceiptNumber)
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [initialReceiptNumber, runVerify])
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()

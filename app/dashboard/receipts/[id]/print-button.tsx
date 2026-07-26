@@ -17,8 +17,8 @@ export function PrintButton({ receiptId }: { receiptId: string }) {
       } else {
         toast.error("Failed to record print event.")
       }
-    } catch (e: any) {
-      toast.error(e.message || "Failed to record print event.")
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "Failed to record print event.")
     } finally {
       setLoading(false)
     }
@@ -27,7 +27,7 @@ export function PrintButton({ receiptId }: { receiptId: string }) {
   return (
     <Button
       onClick={handlePrint}
-      className="no-print"
+      className="no-print h-11"
       disabled={loading}
     >
       {loading ? "Preparing..." : "Print / Save as PDF"}

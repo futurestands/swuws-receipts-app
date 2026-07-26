@@ -1,11 +1,12 @@
 import { notFound } from "next/navigation"
 import Link from "next/link"
 import { getExceptionDetails } from "@/app/actions/reconciliation"
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { formatUGX, formatDate, formatDateTime } from "@/lib/format"
-import { ArrowLeft, FileText, Search, User, CreditCard, Calendar, CheckCircle2 } from "lucide-react"
+import { ArrowLeft, FileText, Search, User, CreditCard, CheckCircle2 } from "lucide-react"
 import { ExceptionInvestigationClient } from "./exception-investigation-client"
+import { PageHeader } from "@/components/ui/page-header"
 
 export default async function ExceptionDetailsPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
@@ -17,18 +18,23 @@ export default async function ExceptionDetailsPage({ params }: { params: Promise
 
   return (
     <div className="space-y-6 pb-20">
-      <div className="flex items-center gap-4">
-        <Link href="/dashboard/reconciliation/exceptions" className="hover:bg-muted p-2 rounded-full transition-colors">
-          <ArrowLeft className="h-5 w-5" />
-        </Link>
-        <div>
-          <div className="flex items-center gap-2">
-            <h1 className="text-2xl font-bold tracking-tight">Investigation Workspace</h1>
-            <Badge variant="outline" className="capitalize px-2 py-0">{exception.priority} priority</Badge>
-          </div>
-          <p className="text-muted-foreground text-sm">Investigating ID: {exception.id.split('-')[0]}</p>
-        </div>
-      </div>
+      <PageHeader
+        title={
+          <span className="flex items-center gap-2">
+            Investigation Workspace
+            <Badge variant="outline" className="capitalize px-2 py-0 text-sm font-normal">{exception.priority} priority</Badge>
+          </span>
+        }
+        description={`Investigating ID: ${exception.id.split('-')[0]}`}
+        actions={
+          <Link
+            href="/dashboard/reconciliation/exceptions"
+            className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground hover:underline"
+          >
+            <ArrowLeft className="size-4" /> Back to queue
+          </Link>
+        }
+      />
 
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="lg:col-span-2 space-y-6">

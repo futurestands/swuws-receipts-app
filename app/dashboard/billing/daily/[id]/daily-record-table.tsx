@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Search, ChevronLeft, ChevronRight, Loader2, SlidersHorizontal } from "lucide-react"
+import { Search, ChevronLeft, ChevronRight, SlidersHorizontal } from "lucide-react"
 import { formatUGX, formatDate } from "@/lib/format"
 import {
   Select,
@@ -16,6 +16,8 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { cn } from "@/lib/utils"
+import { ResponsiveFilterBar } from "@/components/ui/filter-bar"
+import { ResponsiveDataTable } from "@/components/ui/responsive-table"
 
 interface DailyRecordTableProps {
   batchId: string
@@ -53,24 +55,30 @@ export function DailyRecordTable({ batchId, initialData }: DailyRecordTableProps
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-col sm:flex-row gap-3">
-        <form onSubmit={handleSearch} className="relative flex-1">
-          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+      <ResponsiveFilterBar
+        trailing={
+          <Button onClick={() => loadPage(1)} variant="outline" className="h-11">
+            Apply Filters
+          </Button>
+        }
+      >
+        <form onSubmit={handleSearch} className="relative min-w-0 flex-1">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
             placeholder="Search Account, Name, or Reference..."
-            className="pl-9"
+            className="pl-9 h-11"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
         </form>
         <div className="flex items-center gap-2">
-           <SlidersHorizontal className="h-4 w-4 text-muted-foreground" />
+           <SlidersHorizontal className="h-4 w-4 text-muted-foreground shrink-0" />
            <Select value={channel} onValueChange={(v) => {
              if (!v) return;
              setChannel(v);
              loadPage(1, search, v);
            }}>
-              <SelectTrigger className="w-[150px]">
+              <SelectTrigger id="channelFilter" className="w-[150px] h-11">
                  <SelectValue placeholder="Channel" />
               </SelectTrigger>
               <SelectContent>
@@ -82,12 +90,14 @@ export function DailyRecordTable({ batchId, initialData }: DailyRecordTableProps
               </SelectContent>
            </Select>
         </div>
-        <Button onClick={() => loadPage(1)} variant="outline">
-          Apply Filters
-        </Button>
-      </div>
+      </ResponsiveFilterBar>
 
-      <div className="rounded-md border">
+      <ResponsiveDataTable
+        loading={isPending}
+        isEmpty={data.records.length === 0}
+        emptyTitle="No records found"
+        emptyDescription="No records match your search and filter criteria."
+      >
         <Table>
           <TableHeader>
             <TableRow>
@@ -101,49 +111,32 @@ export function DailyRecordTable({ batchId, initialData }: DailyRecordTableProps
             </TableRow>
           </TableHeader>
           <TableBody>
-            {isPending ? (
-              <TableRow>
-                <TableCell colSpan={7} className="h-48 text-center">
-                  <div className="flex items-center justify-center">
-                    <Loader2 className="h-6 w-6 animate-spin mr-2 text-primary" />
-                    <span>Searching repository...</span>
-                  </div>
+            {data.records.map((record) => (
+              <TableRow key={record.id}>
+                <TableCell className="font-mono text-xs font-medium">{record.accountNumber}</TableCell>
+                <TableCell className="text-xs truncate max-w-[200px]">{record.customerName}</TableCell>
+                <TableCell className="text-right text-xs font-bold">{formatUGX(record.amount)}</TableCell>
+                <TableCell className="text-xs">{formatDate(record.paymentDate)}</TableCell>
+                <TableCell>
+                   <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-muted border font-medium">
+                      {record.paymentChannel}
+                   </span>
+                </TableCell>
+                <TableCell className="text-[10px] font-mono">{record.externalReference}</TableCell>
+                <TableCell>
+                  <Badge variant="outline" className={cn(
+                    "capitalize text-[10px] px-1.5 py-0",
+                    record.importStatus === 'matched' ? "text-green-600 bg-green-50 border-green-100" :
+                    record.importStatus === 'imported' ? "text-blue-600 bg-blue-50 border-blue-100" : ""
+                  )}>
+                    {record.importStatus}
+                  </Badge>
                 </TableCell>
               </TableRow>
-            ) : data.records.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={7} className="h-24 text-center text-muted-foreground">
-                  No records found matching your criteria.
-                </TableCell>
-              </TableRow>
-            ) : (
-              data.records.map((record) => (
-                <TableRow key={record.id}>
-                  <TableCell className="font-mono text-xs font-medium">{record.accountNumber}</TableCell>
-                  <TableCell className="text-xs truncate max-w-[200px]">{record.customerName}</TableCell>
-                  <TableCell className="text-right text-xs font-bold">{formatUGX(record.amount)}</TableCell>
-                  <TableCell className="text-xs">{formatDate(record.paymentDate)}</TableCell>
-                  <TableCell>
-                     <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-muted border font-medium">
-                        {record.paymentChannel}
-                     </span>
-                  </TableCell>
-                  <TableCell className="text-[10px] font-mono">{record.externalReference}</TableCell>
-                  <TableCell>
-                    <Badge variant="outline" className={cn(
-                      "capitalize text-[10px] px-1.5 py-0",
-                      record.importStatus === 'matched' ? "text-green-600 bg-green-50 border-green-100" :
-                      record.importStatus === 'imported' ? "text-blue-600 bg-blue-50 border-blue-100" : ""
-                    )}>
-                      {record.importStatus}
-                    </Badge>
-                  </TableCell>
-                </TableRow>
-              ))
-            )}
+            ))}
           </TableBody>
         </Table>
-      </div>
+      </ResponsiveDataTable>
 
       <div className="flex items-center justify-between">
         <p className="text-xs text-muted-foreground">
@@ -153,6 +146,7 @@ export function DailyRecordTable({ batchId, initialData }: DailyRecordTableProps
           <Button
             variant="outline"
             size="icon-sm"
+            className="h-11 w-11"
             onClick={() => loadPage(data.page - 1)}
             disabled={data.page === 1 || isPending}
           >
@@ -162,6 +156,7 @@ export function DailyRecordTable({ batchId, initialData }: DailyRecordTableProps
           <Button
             variant="outline"
             size="icon-sm"
+            className="h-11 w-11"
             onClick={() => loadPage(data.page + 1)}
             disabled={data.page === data.totalPages || isPending}
           >

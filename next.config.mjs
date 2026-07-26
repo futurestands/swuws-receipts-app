@@ -1,5 +1,15 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // Increase payload limit for large Excel/CSV imports
+  experimental: {
+    turbopack: {
+      root: ".",
+    },
+    serverActions: {
+      bodySizeLimit: "10mb",
+    },
+  },
+
   // Trigger reload
   images: {
     unoptimized: true,

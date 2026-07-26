@@ -5,7 +5,6 @@ import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -14,13 +13,8 @@ import {
   Download,
   Upload,
   CheckCircle2,
-  AlertCircle,
-  FileSpreadsheet,
   Loader2,
   ChevronRight,
-  ChevronLeft,
-  XCircle,
-  RefreshCw,
 } from "lucide-react"
 import {
   validateBillingImport,
@@ -30,6 +24,9 @@ import {
 } from "@/app/actions/billing"
 import { cn } from "@/lib/utils"
 import { formatUGX } from "@/lib/format"
+import { FormField } from "@/components/ui/form-layout"
+import { StatCard, StatCardGrid } from "@/components/ui/stat-card"
+import { ScrollableTableContainer } from "@/components/ui/responsive-table"
 
 type Step = "setup" | "preview" | "confirm" | "complete"
 
@@ -178,7 +175,7 @@ export function BillingImportClient({ schemes, periods }: Props) {
               <CardDescription>Use the standardized template for external billing data.</CardDescription>
             </CardHeader>
             <CardContent>
-              <Button variant="outline" className="w-full" onClick={handleDownloadTemplate}>
+              <Button variant="outline" className="w-full h-11" onClick={handleDownloadTemplate}>
                 Download Excel (.xlsx)
               </Button>
             </CardContent>
@@ -192,10 +189,9 @@ export function BillingImportClient({ schemes, periods }: Props) {
               <CardDescription>Select scheme and a <strong>Draft</strong> collection period.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="space-y-1.5">
-                <Label>Water Scheme</Label>
+              <FormField label="Water Scheme" htmlFor="schemeSelectTrigger">
                 <Select value={schemeId} onValueChange={(v) => setSchemeId(v ?? "")}>
-                  <SelectTrigger>
+                  <SelectTrigger id="schemeSelectTrigger" className="h-11">
                     <SelectValue placeholder="Select scheme" />
                   </SelectTrigger>
                   <SelectContent>
@@ -204,11 +200,10 @@ export function BillingImportClient({ schemes, periods }: Props) {
                     ))}
                   </SelectContent>
                 </Select>
-              </div>
-              <div className="space-y-1.5">
-                <Label>Billing Period</Label>
+              </FormField>
+              <FormField label="Billing Period" htmlFor="periodSelectTrigger">
                 <Select value={periodId} onValueChange={(v) => setPeriodId(v ?? "")}>
-                  <SelectTrigger>
+                  <SelectTrigger id="periodSelectTrigger" className="h-11">
                     <SelectValue placeholder="Select period" />
                   </SelectTrigger>
                   <SelectContent>
@@ -219,14 +214,13 @@ export function BillingImportClient({ schemes, periods }: Props) {
                     ))}
                   </SelectContent>
                 </Select>
-              </div>
-              <div className="space-y-1.5">
-                <Label>Monthly Billing File</Label>
-                <Input type="file" accept=".csv, .xlsx" onChange={handleFileChange} />
-              </div>
+              </FormField>
+              <FormField label="Monthly Billing File" htmlFor="billingFileInput">
+                <Input id="billingFileInput" type="file" accept=".csv, .xlsx" onChange={handleFileChange} className="h-11" />
+              </FormField>
             </CardContent>
             <CardFooter>
-              <Button className="w-full" onClick={handleValidate} disabled={!file || !schemeId || !periodId || isValidating}>
+              <Button className="w-full h-11" onClick={handleValidate} disabled={!file || !schemeId || !periodId || isValidating}>
                 {isValidating ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : "Validate & Preview Import"}
               </Button>
             </CardFooter>
@@ -242,29 +236,20 @@ export function BillingImportClient({ schemes, periods }: Props) {
               <CardDescription>Check for any errors in the data.</CardDescription>
             </div>
             <div className="flex gap-2">
-              <Button variant="ghost" size="sm" onClick={() => setStep("setup")}>Back</Button>
-              <Button size="sm" onClick={() => setStep("confirm")} disabled={summary.validRows === 0}>
+              <Button variant="ghost" size="sm" className="h-11" onClick={() => setStep("setup")}>Back</Button>
+              <Button size="sm" className="h-11" onClick={() => setStep("confirm")} disabled={summary.validRows === 0}>
                 Next <ChevronRight className="h-4 w-4 ml-1" />
               </Button>
             </div>
           </CardHeader>
           <CardContent className="space-y-6">
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 py-4 px-4 bg-muted/50 rounded-lg text-center">
-              <div>
-                <p className="text-xs text-muted-foreground uppercase">Total Rows</p>
-                <p className="text-lg font-bold">{summary.totalRows}</p>
-              </div>
-              <div>
-                <p className="text-xs text-green-600 uppercase">Valid</p>
-                <p className="text-lg font-bold text-green-600">{summary.validRows}</p>
-              </div>
-              <div>
-                <p className="text-xs text-destructive uppercase">Errors</p>
-                <p className="text-lg font-bold text-destructive">{summary.errorRows}</p>
-              </div>
-            </div>
+            <StatCardGrid className="sm:grid-cols-3">
+              <StatCard label="Total Rows" value={summary.totalRows} />
+              <StatCard label="Valid" value={<span className="text-green-600">{summary.validRows}</span>} />
+              <StatCard label="Errors" value={<span className="text-destructive">{summary.errorRows}</span>} />
+            </StatCardGrid>
 
-            <div className="border rounded-md max-h-[400px] overflow-auto">
+            <ScrollableTableContainer className="max-h-[400px]">
               <Table>
                 <TableHeader className="sticky top-0 bg-white">
                   <TableRow>
@@ -295,7 +280,7 @@ export function BillingImportClient({ schemes, periods }: Props) {
                   ))}
                 </TableBody>
               </Table>
-            </div>
+            </ScrollableTableContainer>
           </CardContent>
         </Card>
       )}
@@ -323,8 +308,8 @@ export function BillingImportClient({ schemes, periods }: Props) {
              </div>
           </CardContent>
           <CardFooter className="flex justify-between">
-            <Button variant="ghost" onClick={() => setStep("preview")}>Back</Button>
-            <Button onClick={handleConfirm} disabled={isImporting}>
+            <Button variant="ghost" className="h-11" onClick={() => setStep("preview")}>Back</Button>
+            <Button className="h-11" onClick={handleConfirm} disabled={isImporting}>
               {isImporting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : "Start Import"}
             </Button>
           </CardFooter>
@@ -339,22 +324,16 @@ export function BillingImportClient({ schemes, periods }: Props) {
             <CardDescription>The external billing data has been successfully processed.</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="bg-white p-4 rounded-lg border text-center">
-                <p className="text-2xl font-bold text-green-600">{result.imported}</p>
-                <p className="text-xs text-muted-foreground uppercase">Imported</p>
-              </div>
-              <div className="bg-white p-4 rounded-lg border text-center">
-                <p className="text-2xl font-bold text-destructive">{result.failed}</p>
-                <p className="text-xs text-muted-foreground uppercase">Errors</p>
-              </div>
-            </div>
+            <StatCardGrid className="sm:grid-cols-2">
+              <StatCard label="Imported" value={<span className="text-2xl text-green-600">{result.imported}</span>} />
+              <StatCard label="Errors" value={<span className="text-2xl text-destructive">{result.failed}</span>} />
+            </StatCardGrid>
           </CardContent>
           <CardFooter className="flex flex-col sm:flex-row gap-2 justify-center">
-            <Button variant="outline" onClick={handleDownloadReport} className="w-full sm:w-auto">
+            <Button variant="outline" onClick={handleDownloadReport} className="w-full sm:w-auto h-11">
               Download Report
             </Button>
-            <Button asChild className="w-full sm:w-auto">
+            <Button asChild className="w-full sm:w-auto h-11">
               <Link href="/dashboard/billing">Back to Dashboard</Link>
             </Button>
           </CardFooter>

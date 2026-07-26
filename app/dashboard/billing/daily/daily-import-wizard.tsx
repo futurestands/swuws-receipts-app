@@ -3,7 +3,6 @@
 import { useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -15,10 +14,7 @@ import {
   AlertCircle,
   Loader2,
   ChevronRight,
-  ChevronLeft,
-  XCircle,
   FileSpreadsheet,
-  Calendar,
   ShieldAlert,
 } from "lucide-react"
 import {
@@ -28,6 +24,8 @@ import {
 } from "@/app/actions/daily-collections"
 import { cn } from "@/lib/utils"
 import { formatUGX, formatDate } from "@/lib/format"
+import { StatCard, StatCardGrid } from "@/components/ui/stat-card"
+import { ScrollableTableContainer } from "@/components/ui/responsive-table"
 import {
   Dialog,
   DialogContent,
@@ -121,7 +119,7 @@ export function DailyImportWizard() {
       if (!v) { setStep("setup"); setFile(null); setSummary(null); }
     }}>
       <DialogTrigger asChild>
-        <Button>
+        <Button className="h-11">
           <Upload className="mr-2 h-4 w-4" /> Import Daily Collection
         </Button>
       </DialogTrigger>
@@ -151,7 +149,7 @@ export function DailyImportWizard() {
                 />
                 {file && <p className="text-xs font-medium">{file.name}</p>}
              </div>
-             <Button className="w-full" disabled={!file || isProcessing} onClick={handleValidate}>
+             <Button className="w-full h-11" disabled={!file || isProcessing} onClick={handleValidate}>
                 {isProcessing ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : "Analyze File"}
              </Button>
           </div>
@@ -159,24 +157,12 @@ export function DailyImportWizard() {
 
         {step === "preview" && summary && (
           <div className="space-y-4 py-2">
-             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <div className="p-3 border rounded-lg">
-                   <p className="text-[10px] uppercase font-bold text-muted-foreground">Business Date</p>
-                   <p className="text-sm font-semibold">{formatDate(summary.businessDate)}</p>
-                </div>
-                <div className="p-3 border rounded-lg">
-                   <p className="text-[10px] uppercase font-bold text-muted-foreground">Valid Records</p>
-                   <p className="text-sm font-semibold text-green-600">{summary.validRecords}</p>
-                </div>
-                <div className="p-3 border rounded-lg">
-                   <p className="text-[10px] uppercase font-bold text-muted-foreground">Errors</p>
-                   <p className="text-sm font-semibold text-destructive">{summary.failedRecords}</p>
-                </div>
-                <div className="p-3 border rounded-lg">
-                   <p className="text-[10px] uppercase font-bold text-muted-foreground">Total Amount</p>
-                   <p className="text-sm font-semibold text-primary">{formatUGX(summary.totalAmount)}</p>
-                </div>
-             </div>
+             <StatCardGrid className="sm:grid-cols-2 lg:grid-cols-4">
+                <StatCard label="Business Date" value={formatDate(summary.businessDate)} />
+                <StatCard label="Valid Records" value={<span className="text-green-600">{summary.validRecords}</span>} />
+                <StatCard label="Errors" value={<span className="text-destructive">{summary.failedRecords}</span>} />
+                <StatCard label="Total Amount" value={<span className="text-primary">{formatUGX(summary.totalAmount)}</span>} />
+             </StatCardGrid>
 
              {(summary.isDuplicateFile || summary.isDuplicateDate) && (
                <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg flex gap-3 text-amber-800 text-xs">
@@ -188,7 +174,7 @@ export function DailyImportWizard() {
                </div>
              )}
 
-             <div className="border rounded-md max-h-[300px] overflow-auto">
+             <ScrollableTableContainer className="max-h-[300px]">
                 <Table>
                    <TableHeader className="sticky top-0 bg-white">
                       <TableRow>
@@ -220,11 +206,11 @@ export function DailyImportWizard() {
                       )}
                    </TableBody>
                 </Table>
-             </div>
+             </ScrollableTableContainer>
 
              <div className="flex justify-between gap-3 pt-4">
-                <Button variant="outline" onClick={() => setStep("setup")}>Back</Button>
-                <Button disabled={summary.validRecords === 0 || isProcessing} onClick={() => setStep("confirm")}>
+                <Button variant="outline" className="h-11" onClick={() => setStep("setup")}>Back</Button>
+                <Button className="h-11" disabled={summary.validRecords === 0 || isProcessing} onClick={() => setStep("confirm")}>
                    Confirm Totals <ChevronRight className="ml-2 h-4 w-4" />
                 </Button>
              </div>
@@ -247,7 +233,7 @@ export function DailyImportWizard() {
                 <Button className="w-full h-12 text-lg" disabled={isProcessing} onClick={handleConfirm}>
                    {isProcessing ? <Loader2 className="h-5 w-5 animate-spin mr-2" /> : "Process Import Now"}
                 </Button>
-                <Button variant="ghost" disabled={isProcessing} onClick={() => setStep("preview")}>
+                <Button variant="ghost" className="h-11" disabled={isProcessing} onClick={() => setStep("preview")}>
                    Review Records Again
                 </Button>
              </div>
@@ -279,7 +265,7 @@ export function DailyImportWizard() {
                 </div>
              </div>
 
-             <Button className="w-full" onClick={() => setOpen(false)}>Close Wizard</Button>
+             <Button className="w-full h-11" onClick={() => setOpen(false)}>Close Wizard</Button>
              <p className="text-[10px] text-muted-foreground">This import is now available for future reconciliation.</p>
           </div>
         )}

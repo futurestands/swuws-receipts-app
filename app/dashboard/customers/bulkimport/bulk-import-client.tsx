@@ -34,10 +34,11 @@ type Step = "setup" | "preview" | "confirm" | "complete"
 export function CustomerBulkImportClient() {
   const [step, setStep] = useState<Step>("setup")
   const [file, setFile] = useState<File | null>(null)
+  const [allowUpdates, setAllowUpdates] = useState(false)
   const [summary, setSummary] = useState<CustomerImportSummary | null>(null)
   const [isValidating, startValidating] = useTransition()
   const [isImporting, startImporting] = useTransition()
-  const [result, setResult] = useState<{ imported: number; failed: number; report: string } | null>(null)
+  const [result, setResult] = useState<{ imported: number; updated: number; failed: number; report: string } | null>(null)
 
   async function handleDownloadTemplate() {
     const base64 = await downloadCustomerTemplate()
@@ -74,6 +75,7 @@ export function CustomerBulkImportClient() {
 
     const formData = new FormData()
     formData.append("file", file)
+    formData.append("allowUpdates", allowUpdates.toString())
 
     startValidating(async () => {
       const response = await validateCustomerImport(formData)
@@ -93,9 +95,14 @@ export function CustomerBulkImportClient() {
     startImporting(async () => {
       const response = await importCustomers(summary)
       if (response.ok) {
-        setResult({ imported: response.imported, failed: response.failed, report: response.report })
+        setResult({
+          imported: response.imported,
+          updated: response.updated,
+          failed: response.failed,
+          report: response.report
+        })
         setStep("complete")
-        toast.success(`Import complete: ${response.imported} customers created.`)
+        toast.success(`Import complete: ${response.imported} new, ${response.updated} updated.`)
       } else {
         toast.error(response.error)
       }
@@ -184,6 +191,19 @@ export function CustomerBulkImportClient() {
                 <Label htmlFor="file">Spreadsheet</Label>
                 <Input id="file" type="file" accept=".csv, .xlsx" onChange={handleFileChange} />
               </div>
+
+              <div className="flex items-center space-x-2 p-3 bg-primary/5 border rounded-lg">
+                <input
+                  type="checkbox"
+                  id="upsert"
+                  checked={allowUpdates}
+                  onChange={(e) => setAllowUpdates(e.target.checked)}
+                  className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+                />
+                <Label htmlFor="upsert" className="text-sm font-medium leading-none cursor-pointer">
+                  Smart Sync: Update existing customers if found
+                </Label>
+              </div>
             </CardContent>
             <CardFooter>
               <Button className="w-full" onClick={handleValidate} disabled={!file || isValidating}>
@@ -243,7 +263,7 @@ export function CustomerBulkImportClient() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {summary.rows.map((row, i) => (
+                  {summary.rows.slice(0, 100).map((row, i) => (
                     <TableRow key={i} className={cn(!row.valid ? "bg-destructive/5" : "hover:bg-muted/50")}>
                       <TableCell className="text-xs text-muted-foreground">{i + 1}</TableCell>
                       <TableCell>
@@ -272,6 +292,11 @@ export function CustomerBulkImportClient() {
                 </TableBody>
               </Table>
             </div>
+            {summary.rows.length > 100 && (
+              <p className="text-center text-xs text-muted-foreground italic py-2 border-t">
+                Showing first 100 of {summary.rows.length} rows. Full validation is being processed in the background.
+              </p>
+            )}
           </CardContent>
         </Card>
       )}
@@ -324,9 +349,13 @@ export function CustomerBulkImportClient() {
             <div className="grid grid-cols-2 gap-4">
               <div className="bg-white p-4 rounded-lg border text-center">
                 <p className="text-3xl font-bold text-green-600">{result.imported}</p>
-                <p className="text-xs text-muted-foreground uppercase">Imported Successfully</p>
+                <p className="text-xs text-muted-foreground uppercase">New Records Created</p>
               </div>
               <div className="bg-white p-4 rounded-lg border text-center">
+                <p className="text-3xl font-bold text-primary">{result.updated}</p>
+                <p className="text-xs text-muted-foreground uppercase">Existing Records Updated</p>
+              </div>
+              <div className="bg-white p-4 rounded-lg border text-center col-span-2">
                 <p className="text-3xl font-bold text-destructive">{result.failed}</p>
                 <p className="text-xs text-muted-foreground uppercase">Failed / Skipped</p>
               </div>

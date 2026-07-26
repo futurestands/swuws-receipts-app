@@ -7,6 +7,10 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { formatUGX, formatDateTime } from "@/lib/format"
 import { getSiteUrl } from "@/lib/site-url"
 import Link from "next/link"
+import { ArrowLeft, History } from "lucide-react"
+import { SectionHeader } from "@/components/ui/page-header"
+import { ScrollableTableContainer } from "@/components/ui/responsive-table"
+import { EmptyState } from "@/components/ui/empty-state"
 
 export default async function ReceiptDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
@@ -43,7 +47,6 @@ export default async function ReceiptDetailPage({ params }: { params: Promise<{ 
 
   // Financial Breakdown Logic
   const amountCollected = receipt.amount
-  const amountDueSnapshot = receipt.amountDueSnapshot ?? 0
 
   // Let's use the actual stored snapshots.
   const prevBalance = receipt.previousAccountBalanceSnapshot
@@ -58,8 +61,11 @@ export default async function ReceiptDetailPage({ params }: { params: Promise<{ 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between no-print">
-        <Link href="/dashboard" className="text-sm text-muted-foreground hover:underline">
-          ← Back to dashboard
+        <Link
+          href="/dashboard"
+          className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground hover:underline"
+        >
+          <ArrowLeft className="size-4" /> Back to dashboard
         </Link>
         <PrintButton receiptId={receipt.id} />
       </div>
@@ -165,39 +171,45 @@ export default async function ReceiptDetailPage({ params }: { params: Promise<{ 
       {/* Print History Section */}
       <Card className="no-print">
         <CardContent className="p-6">
-          <h2 className="text-sm font-medium mb-3">Print History</h2>
+          <SectionHeader title="Print History" />
           {printHistory.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No print history recorded.</p>
+            <EmptyState
+              icon={History}
+              title="No print history recorded"
+              description="A record is created each time this receipt is printed or reprinted."
+            />
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Event</TableHead>
-                  <TableHead>Date</TableHead>
-                  <TableHead>User</TableHead>
-                  <TableHead>IP Address</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {printHistory.map((entry) => (
-                  <TableRow key={entry.id}>
-                    <TableCell className="text-sm">
-                      {entry.isReprint ? `Reprint #${entry.printNumber}` : "Original Print"}
-                    </TableCell>
-                    <TableCell className="text-sm">{formatDateTime(entry.printedAt)}</TableCell>
-                    <TableCell className="text-sm">{entry.printedByName}</TableCell>
-                    <TableCell className="text-sm font-mono text-xs">{entry.ipAddress}</TableCell>
+            <ScrollableTableContainer className="border-0">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Event</TableHead>
+                    <TableHead>Date</TableHead>
+                    <TableHead>User</TableHead>
+                    <TableHead>IP Address</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {printHistory.map((entry) => (
+                    <TableRow key={entry.id}>
+                      <TableCell className="text-sm">
+                        {entry.isReprint ? `Reprint #${entry.printNumber}` : "Original Print"}
+                      </TableCell>
+                      <TableCell className="text-sm">{formatDateTime(entry.printedAt)}</TableCell>
+                      <TableCell className="text-sm">{entry.printedByName}</TableCell>
+                      <TableCell className="text-sm font-mono text-xs">{entry.ipAddress}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </ScrollableTableContainer>
           )}
         </CardContent>
       </Card>
 
       <Card className="no-print">
         <CardContent className="p-6">
-          <h2 className="text-sm font-medium mb-3">Attachments</h2>
+          <SectionHeader title="Attachments" />
           <AttachmentUpload key={receipt.id} receiptId={receipt.id} initialAttachments={attachments} />
         </CardContent>
       </Card>

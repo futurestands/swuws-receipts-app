@@ -10,6 +10,8 @@ import {
   waterScheme,
   user as userTable,
   receipt,
+  managedTemplate,
+  templateVersion,
 } from "@/lib/db/schema"
 import { requireUser } from "@/lib/session"
 import { writeAudit } from "@/lib/audit"
@@ -17,14 +19,32 @@ import {
   canUploadBilling,
   canManageCollectionPeriods,
   canActivateCollectionPeriod,
-  canArchiveCollectionPeriod
+  canArchiveCollectionPeriod,
+  canIssueReceipt
 } from "@/lib/permissions"
-import { validateWriteScope } from "@/lib/scopes"
+import { validateWriteScope, applyCustomerScope } from "@/lib/scopes"
 import { and, eq, sql, desc, or, inArray, count, sum } from "drizzle-orm"
 import * as XLSX from "xlsx"
 import { z } from "zod"
 import { randomUUID } from "crypto"
 import { revalidatePath } from "next/cache"
+
+/**
+ * Internal: Resolves column mapping from the Template Management system.
+ */
+async function getImportMapping(code: string) {
+  const [template] = await db.select().from(managedTemplate).where(eq(managedTemplate.code, code)).limit(1)
+  if (!template?.activeVersionId) return null
+
+  const [version] = await db.select().from(templateVersion).where(eq(templateVersion.id, template.activeVersionId)).limit(1)
+  if (!version) return null
+
+  try {
+    return JSON.parse(version.content)
+  } catch {
+    return null
+  }
+}
 
 /**
  * Validation Schema for a single billing row.
@@ -72,7 +92,10 @@ export async function getAuthorizedSchemes() {
     .where(eq(waterScheme.active, true))
     .orderBy(waterScheme.name)
 
-  return schemes.filter((s) => validateWriteScope(current, { branchId: s.branchId, schemeId: s.id }))
+  const authorized = await Promise.all(
+    schemes.map((s) => validateWriteScope(current, { branchId: s.branchId, schemeId: s.id }))
+  )
+  return schemes.filter((_, i) => authorized[i])
 }
 
 /**
@@ -259,7 +282,7 @@ export async function validateBillingImport(
     .where(eq(waterScheme.id, schemeId))
     .limit(1)
 
-  if (!scheme || !validateWriteScope(current, { branchId: scheme.branchId, schemeId })) {
+  if (!scheme || !(await validateWriteScope(current, { branchId: scheme.branchId, schemeId }))) {
     return { ok: false, error: "You are not authorized to upload for this scheme" }
   }
 
@@ -289,6 +312,16 @@ export async function validateBillingImport(
   const customerMap = new Map(schemeCustomers.map((c) => [c.account?.toLowerCase(), c]))
   const seenInUpload = new Set<string>()
 
+  // Resolve dynamic mapping
+  const mapping = await getImportMapping('import.billing.monthly') || {
+    accountNumber: "AccountNumber",
+    billAmount: "BillAmount",
+    arrears: "Arrears",
+    currentCharges: "CurrentCharges",
+    totalDue: "TotalDue",
+    dueDate: "DueDate"
+  }
+
   const results: BillingValidationResult[] = []
   let validCount = 0
   let errorCount = 0
@@ -297,12 +330,12 @@ export async function validateBillingImport(
     const errors: string[] = []
 
     const mappedRow: BillingImportRow = {
-      accountNumber: String(rawRow.AccountNumber || rawRow["Account Number"] || "").trim(),
-      billAmount: Number(rawRow.BillAmount || rawRow["Bill Amount"] || 0),
-      arrears: Number(rawRow.Arrears || 0),
-      currentCharges: Number(rawRow.CurrentCharges || rawRow["Current Charges"] || 0),
-      totalDue: Number(rawRow.TotalDue || rawRow["Total Due"] || 0),
-      dueDate: String(rawRow.DueDate || rawRow["Due Date"] || ""),
+      accountNumber: String(rawRow[mapping.accountNumber] || "").trim(),
+      billAmount: Number(rawRow[mapping.billAmount] || 0),
+      arrears: Number(rawRow[mapping.arrears] || 0),
+      currentCharges: Number(rawRow[mapping.currentCharges] || 0),
+      totalDue: Number(rawRow[mapping.totalDue] || 0),
+      dueDate: String(rawRow[mapping.dueDate] || ""),
     }
 
     const parsed = billingImportSchema.safeParse(mappedRow)
@@ -638,7 +671,20 @@ export async function getBillingHistory(limit = 100) {
  * Fetch open (unpaid or partially paid) bills for a specific customer.
  */
 export async function getOpenBillsForCustomer(customerId: string) {
-  await requireUser()
+  const current = await requireUser()
+  if (!canIssueReceipt(current)) throw new Error("Forbidden")
+
+  // Confirm the customer is within the caller's scope before returning their
+  // billing data. Legitimate callers only ever pass a customerId that came
+  // from a scope-filtered picker (quickSearchCustomers), so this is a no-op
+  // for real usage and only blocks a customerId from outside the caller's scope.
+  const [inScope] = await db
+    .select({ id: customer.id })
+    .from(customer)
+    .where(and(eq(customer.id, customerId), applyCustomerScope(current)))
+    .limit(1)
+  if (!inScope) return []
+
   return db
     .select({
       id: billingRecord.id,

@@ -21,15 +21,18 @@ import { cn } from "@/lib/utils"
 export function NotificationCenter() {
   const [notifications, setNotifications] = useState<any[]>([])
   const [unreadCount, setUnreadCount] = useState(0)
-  const [isPending, startTransition] = useTransition()
 
   async function refresh() {
-    const [list, count] = await Promise.all([
-      getNotifications(),
-      getUnreadCount()
-    ])
-    setNotifications(list)
-    setUnreadCount(count)
+    try {
+      const [list, count] = await Promise.all([
+        getNotifications(),
+        getUnreadCount()
+      ])
+      setNotifications(list)
+      setUnreadCount(count)
+    } catch (err) {
+      console.error("Failed to refresh notifications", err)
+    }
   }
 
   useEffect(() => {
@@ -37,6 +40,7 @@ export function NotificationCenter() {
     // Poll every 60 seconds for production simplicity
     const timer = setInterval(refresh, 60000)
     return () => clearInterval(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   async function handleMarkRead(id: string) {

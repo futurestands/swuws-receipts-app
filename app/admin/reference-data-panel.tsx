@@ -13,7 +13,7 @@ import type { Branch, PaymentMethod, WaterScheme } from "@/lib/db/schema"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Switch } from "@/components/ui/switch"
 import {
@@ -24,22 +24,25 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { toast } from "sonner"
-import { FileUp, Download } from "lucide-react"
+import { FileUp, Download, Globe, Home } from "lucide-react"
 import Link from "next/link"
-import { downloadHierarchyTemplate } from "@/app/actions/hierarchy-import"
+import { downloadUnifiedHierarchyTemplate } from "@/app/actions/hierarchy-engine"
 
 export function ReferenceDataPanel({
   branches: initialBranches,
   methods: initialMethods,
   schemes: initialSchemes,
+  clusters: initialClusters,
 }: {
   branches: Branch[]
   methods: PaymentMethod[]
   schemes: WaterScheme[]
+  clusters: any[]
 }) {
   const [branches, setBranches] = useState(initialBranches)
   const [methods, setMethods] = useState(initialMethods)
   const [schemes, setSchemes] = useState(initialSchemes)
+  const [clusters, setClusters] = useState(initialClusters)
   const [pending, startTransition] = useTransition()
 
   const [branchName, setBranchName] = useState("")
@@ -114,7 +117,7 @@ export function ReferenceDataPanel({
             variant="outline"
             size="sm"
             onClick={async () => {
-              const base64 = await downloadHierarchyTemplate()
+              const base64 = await downloadUnifiedHierarchyTemplate()
               const byteCharacters = atob(base64)
               const byteNumbers = new Array(byteCharacters.length)
               for (let i = 0; i < byteCharacters.length; i++) {
@@ -125,176 +128,51 @@ export function ReferenceDataPanel({
               const url = window.URL.createObjectURL(blob)
               const a = document.createElement("a")
               a.href = url
-              a.download = `hierarchy-import-template.xlsx`
+              a.download = `unified-hierarchy-template.xlsx`
               a.click()
               window.URL.revokeObjectURL(url)
             }}
           >
-            <Download className="h-4 w-4 mr-2" /> Template
+            <Download className="h-4 w-4 mr-2" /> One-Row Template
           </Button>
         </div>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-2">
-      <Card>
+      <div className="grid gap-6 lg:grid-cols-1">
+      <Card className="card-accent-blue">
         <CardHeader>
-          <CardTitle>Branches</CardTitle>
+          <CardTitle className="flex items-center gap-2">
+            <Globe className="h-5 w-5 text-brand-blue" />
+            Water Schemes & Area Offices
+          </CardTitle>
+          <CardDescription>Manage your organization's regions, area offices, and water schemes in one place.</CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <form onSubmit={handleAddBranch} className="flex items-end gap-2">
-            <div className="space-y-2 flex-1">
-              <Label htmlFor="branch-name">Name</Label>
-              <Input
-                id="branch-name"
-                required
-                value={branchName}
-                onChange={(e) => setBranchName(e.target.value)}
-              />
-            </div>
-            <div className="space-y-2 flex-1">
-              <Label htmlFor="branch-code">Code</Label>
-              <Input
-                id="branch-code"
-                required
-                value={branchCode}
-                onChange={(e) => setBranchCode(e.target.value)}
-              />
-            </div>
-            <Button type="submit" disabled={pending}>
-              Add
-            </Button>
-          </form>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>Code</TableHead>
-                <TableHead>Active</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {branches.map((b) => (
-                <TableRow key={b.id}>
-                  <TableCell>{b.name}</TableCell>
-                  <TableCell className="text-muted-foreground">{b.code}</TableCell>
-                  <TableCell>
-                    <Switch
-                      checked={b.active}
-                      onCheckedChange={() =>
-                        startTransition(async () => {
-                          const result = await setBranchActive(b.id, !b.active)
-                          if (!result.ok) {
-                            toast.error(result.error)
-                            return
-                          }
-                          setBranches((prev) =>
-                            prev.map((x) => (x.id === b.id ? { ...x, active: !x.active } : x)),
-                          )
-                        })
-                      }
-                    />
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Payment methods</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <form onSubmit={handleAddMethod} className="flex items-end gap-2">
-            <div className="space-y-2 flex-1">
-              <Label htmlFor="method-name">Name</Label>
-              <Input
-                id="method-name"
-                required
-                value={methodName}
-                onChange={(e) => setMethodName(e.target.value)}
-              />
-            </div>
-            <div className="space-y-2 flex-1">
-              <Label htmlFor="method-code">Code</Label>
-              <Input
-                id="method-code"
-                required
-                value={methodCode}
-                onChange={(e) => setMethodCode(e.target.value)}
-              />
-            </div>
-            <Button type="submit" disabled={pending}>
-              Add
-            </Button>
-          </form>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>Code</TableHead>
-                <TableHead>Active</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {methods.map((m) => (
-                <TableRow key={m.id}>
-                  <TableCell>{m.name}</TableCell>
-                  <TableCell className="text-muted-foreground">{m.code}</TableCell>
-                  <TableCell>
-                    <Switch
-                      checked={m.active}
-                      onCheckedChange={() =>
-                        startTransition(async () => {
-                          const result = await setPaymentMethodActive(m.id, !m.active)
-                          if (!result.ok) {
-                            toast.error(result.error)
-                            return
-                          }
-                          setMethods((prev) =>
-                            prev.map((x) => (x.id === m.id ? { ...x, active: !x.active } : x)),
-                          )
-                        })
-                      }
-                    />
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
-
-      <Card className="lg:col-span-2">
-        <CardHeader>
-          <CardTitle>Water schemes</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <form onSubmit={handleAddScheme} className="grid gap-2 sm:grid-cols-5 items-end">
+        <CardContent className="space-y-6">
+          <form onSubmit={handleAddScheme} className="grid gap-4 sm:grid-cols-5 items-end p-4 bg-muted/20 rounded-lg border border-dashed">
             <div className="space-y-2 sm:col-span-1">
-              <Label htmlFor="scheme-name">Name</Label>
+              <Label htmlFor="scheme-name">Scheme Name</Label>
               <Input
                 id="scheme-name"
                 required
+                placeholder="e.g. Kabere"
                 value={schemeName}
                 onChange={(e) => setSchemeName(e.target.value)}
               />
             </div>
             <div className="space-y-2 sm:col-span-1">
-              <Label htmlFor="scheme-code">Code</Label>
+              <Label htmlFor="scheme-code">Scheme Code (Optional)</Label>
               <Input
                 id="scheme-code"
-                required
+                placeholder="Auto-generated if blank"
                 value={schemeCode}
                 onChange={(e) => setSchemeCode(e.target.value)}
               />
             </div>
             <div className="space-y-2 sm:col-span-1">
-              <Label>Branch</Label>
+              <Label>Area Office</Label>
               <Select value={schemeBranchId} onValueChange={(v) => setSchemeBranchId(v ?? "")}>
                 <SelectTrigger className="w-full">
-                  <SelectValue placeholder="None" />
+                  <SelectValue placeholder="Select Area Office..." />
                 </SelectTrigger>
                 <SelectContent>
                   {branches.map((b) => (
@@ -306,15 +184,103 @@ export function ReferenceDataPanel({
               </Select>
             </div>
             <div className="space-y-2 sm:col-span-1">
-              <Label htmlFor="scheme-area">Service area</Label>
+              <Label htmlFor="scheme-area">Service Area Description</Label>
               <Input
                 id="scheme-area"
+                placeholder="e.g. South Sector"
                 value={schemeArea}
                 onChange={(e) => setSchemeArea(e.target.value)}
               />
             </div>
             <Button type="submit" disabled={pending} className="sm:col-span-1">
-              Add
+              Add New Scheme
+            </Button>
+          </form>
+
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Scheme Name</TableHead>
+                <TableHead>Code</TableHead>
+                <TableHead>Area Office</TableHead>
+                <TableHead>Region (Cluster)</TableHead>
+                <TableHead>Service Area</TableHead>
+                <TableHead className="text-center">Status</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {schemes.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={6} className="text-center py-12 text-muted-foreground italic">
+                    No schemes found. Use the "One-Row Template" above for bulk onboarding.
+                  </TableCell>
+                </TableRow>
+              ) : (
+                schemes.map((s) => {
+                  const area = branches.find((b) => b.id === s.branchId)
+                  const region = area ? clusters.find((c) => c.id === area.clusterId) : null
+
+                  return (
+                    <TableRow key={s.id}>
+                      <TableCell className="font-bold">{s.name}</TableCell>
+                      <TableCell className="text-xs font-mono">{s.code}</TableCell>
+                      <TableCell>{area?.name || "—"}</TableCell>
+                      <TableCell className="text-muted-foreground text-xs uppercase font-medium">
+                        {region?.name || "—"}
+                      </TableCell>
+                      <TableCell className="text-muted-foreground">{s.serviceArea || "—"}</TableCell>
+                      <TableCell className="text-center">
+                        <Switch
+                          checked={s.active}
+                          onCheckedChange={() =>
+                            startTransition(async () => {
+                              const result = await setWaterSchemeActive(s.id, !s.active)
+                              if (!result.ok) {
+                                toast.error(result.error)
+                                return
+                              }
+                              setSchemes((prev) =>
+                                prev.map((x) => (x.id === s.id ? { ...x, active: !x.active } : x)),
+                              )
+                            })
+                          }
+                        />
+                      </TableCell>
+                    </TableRow>
+                  )
+                })
+              )}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Payment Methods</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <form onSubmit={handleAddMethod} className="flex items-end gap-2">
+            <div className="space-y-2 flex-1">
+              <Label htmlFor="method-name">Method Name</Label>
+              <Input
+                id="method-name"
+                required
+                value={methodName}
+                onChange={(e) => setMethodName(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2 flex-1">
+              <Label htmlFor="method-code">System Code</Label>
+              <Input
+                id="method-code"
+                required
+                value={methodCode}
+                onChange={(e) => setMethodCode(e.target.value)}
+              />
+            </div>
+            <Button type="submit" disabled={pending}>
+              Add Method
             </Button>
           </form>
           <Table>
@@ -322,32 +288,26 @@ export function ReferenceDataPanel({
               <TableRow>
                 <TableHead>Name</TableHead>
                 <TableHead>Code</TableHead>
-                <TableHead>Branch</TableHead>
-                <TableHead>Service area</TableHead>
-                <TableHead>Active</TableHead>
+                <TableHead className="text-center">Active</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {schemes.map((s) => (
-                <TableRow key={s.id}>
-                  <TableCell>{s.name}</TableCell>
-                  <TableCell className="text-muted-foreground">{s.code}</TableCell>
-                  <TableCell className="text-muted-foreground">
-                    {branches.find((b) => b.id === s.branchId)?.name || "—"}
-                  </TableCell>
-                  <TableCell className="text-muted-foreground">{s.serviceArea || "—"}</TableCell>
-                  <TableCell>
+              {methods.map((m) => (
+                <TableRow key={m.id}>
+                  <TableCell className="font-medium">{m.name}</TableCell>
+                  <TableCell className="text-muted-foreground text-xs font-mono">{m.code}</TableCell>
+                  <TableCell className="text-center">
                     <Switch
-                      checked={s.active}
+                      checked={m.active}
                       onCheckedChange={() =>
                         startTransition(async () => {
-                          const result = await setWaterSchemeActive(s.id, !s.active)
+                          const result = await setPaymentMethodActive(m.id, !m.active)
                           if (!result.ok) {
                             toast.error(result.error)
                             return
                           }
-                          setSchemes((prev) =>
-                            prev.map((x) => (x.id === s.id ? { ...x, active: !x.active } : x)),
+                          setMethods((prev) =>
+                            prev.map((x) => (x.id === m.id ? { ...x, active: !x.active } : x)),
                           )
                         })
                       }

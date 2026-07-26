@@ -3,10 +3,14 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { formatUGX, formatDate, formatDateTime } from "@/lib/format"
+import { formatUGX, formatDate } from "@/lib/format"
 import Link from "next/link"
-import { AlertCircle, ArrowRight, ShieldAlert, Clock, CheckCircle2 } from "lucide-react"
+import { ArrowRight, ShieldAlert, Clock, CheckCircle2, type LucideIcon } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { PageHeader } from "@/components/ui/page-header"
+import { ScrollableTableContainer } from "@/components/ui/responsive-table"
+import { EmptyState } from "@/components/ui/empty-state"
+import { ResponsiveFilterBar } from "@/components/ui/filter-bar"
 
 /**
  * RECONCILIATION EXCEPTION QUEUE (Phase 3B)
@@ -37,56 +41,91 @@ export default async function ExceptionQueuePage({
     low: "bg-slate-100 text-slate-700 border-slate-200",
   }
 
-  const STATUS_ICONS: Record<string, any> = {
+  const STATUS_ICONS: Record<string, LucideIcon> = {
     open: ShieldAlert,
     under_review: Clock,
     resolved: CheckCircle2,
   }
 
+  function filterHref(next: { status?: string; priority?: string; page?: number }) {
+    const p = new URLSearchParams()
+    const nextStatus = next.status ?? status
+    const nextPriority = next.priority ?? priority
+    const nextPage = next.page ?? (next.status !== undefined || next.priority !== undefined ? 1 : page)
+    if (nextStatus !== "all") p.set("status", nextStatus)
+    if (nextPriority !== "all") p.set("priority", nextPriority)
+    if (nextPage > 1) p.set("page", String(nextPage))
+    return `?${p.toString()}`
+  }
+
+  const STATUS_OPTIONS = ["all", "open", "under_review", "resolved"]
+  const PRIORITY_OPTIONS = ["all", "critical", "high", "medium", "low"]
+
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Reconciliation Exceptions</h1>
-          <p className="text-muted-foreground">
-            Manage and resolve transactions that failed automated matching.
-          </p>
-        </div>
-      </div>
+      <PageHeader
+        title="Reconciliation Exceptions"
+        description="Manage and resolve transactions that failed automated matching."
+      />
 
       <Card>
         <CardHeader>
-          <div className="flex items-center justify-between">
-             <div>
-                <CardTitle>Exception Queue</CardTitle>
-                <CardDescription>Found {total} transactions requiring manual investigation.</CardDescription>
-             </div>
-          </div>
+          <CardTitle>Exception Queue</CardTitle>
+          <CardDescription>Found {total} transactions requiring manual investigation.</CardDescription>
         </CardHeader>
-        <CardContent>
-          <div className="rounded-md border overflow-hidden">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Type</TableHead>
-                  <TableHead>Priority</TableHead>
-                  <TableHead>Reference/Number</TableHead>
-                  <TableHead>Customer</TableHead>
-                  <TableHead className="text-right">Amount</TableHead>
-                  <TableHead>Date</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Action</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {exceptions.length === 0 ? (
+        <CardContent className="flex flex-col gap-4">
+          <ResponsiveFilterBar>
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="text-xs font-medium text-muted-foreground mr-1">Status:</span>
+              {STATUS_OPTIONS.map((s) => (
+                <Link key={s} href={filterHref({ status: s })}>
+                  <Badge
+                    variant={status === s ? "default" : "outline"}
+                    className="cursor-pointer capitalize"
+                  >
+                    {s.replace(/_/g, " ")}
+                  </Badge>
+                </Link>
+              ))}
+            </div>
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="text-xs font-medium text-muted-foreground mr-1">Priority:</span>
+              {PRIORITY_OPTIONS.map((p) => (
+                <Link key={p} href={filterHref({ priority: p })}>
+                  <Badge
+                    variant={priority === p ? "default" : "outline"}
+                    className="cursor-pointer capitalize"
+                  >
+                    {p}
+                  </Badge>
+                </Link>
+              ))}
+            </div>
+          </ResponsiveFilterBar>
+
+          {exceptions.length === 0 ? (
+            <EmptyState
+              icon={CheckCircle2}
+              title="All caught up!"
+              description="No exceptions pending review for the selected filters."
+            />
+          ) : (
+            <ScrollableTableContainer>
+              <Table>
+                <TableHeader>
                   <TableRow>
-                    <TableCell colSpan={8} className="h-32 text-center text-muted-foreground italic">
-                      All caught up! No exceptions pending review.
-                    </TableCell>
+                    <TableHead>Type</TableHead>
+                    <TableHead>Priority</TableHead>
+                    <TableHead>Reference/Number</TableHead>
+                    <TableHead>Customer</TableHead>
+                    <TableHead className="text-right">Amount</TableHead>
+                    <TableHead>Date</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead className="text-right">Action</TableHead>
                   </TableRow>
-                ) : (
-                  exceptions.map((ex) => {
+                </TableHeader>
+                <TableBody>
+                  {exceptions.map((ex) => {
                     const StatusIcon = STATUS_ICONS[ex.status]
                     return (
                       <TableRow key={ex.id}>
@@ -127,20 +166,20 @@ export default async function ExceptionQueuePage({
                         </TableCell>
                       </TableRow>
                     )
-                  })
-                )}
-              </TableBody>
-            </Table>
-          </div>
+                  })}
+                </TableBody>
+              </Table>
+            </ScrollableTableContainer>
+          )}
 
           {totalPages > 1 && (
-             <div className="flex items-center justify-end space-x-2 pt-4">
+             <div className="flex items-center justify-end space-x-2 pt-2">
                 <Button variant="outline" size="sm" disabled={page === 1} asChild>
-                   <Link href={`?page=${page - 1}`}>Previous</Link>
+                   <Link href={filterHref({ page: page - 1 })} scroll={false}>Previous</Link>
                 </Button>
                 <span className="text-xs text-muted-foreground px-2">Page {page} of {totalPages}</span>
                 <Button variant="outline" size="sm" disabled={page === totalPages} asChild>
-                   <Link href={`?page=${page + 1}`}>Next</Link>
+                   <Link href={filterHref({ page: page + 1 })} scroll={false}>Next</Link>
                 </Button>
              </div>
           )}

@@ -146,6 +146,9 @@ export async function reopenBatch(batchId: string, comments?: string) {
 }
 
 export async function getBatchApprovalStatus(batchId: string) {
+  const current = await requireUser()
+  if (!await hasPermission(current, "reconciliation.view")) throw new Error("Forbidden")
+
   const [approval] = await db
     .select({
       id: reconciliationApproval.id,

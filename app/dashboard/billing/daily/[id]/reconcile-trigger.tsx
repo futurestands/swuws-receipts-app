@@ -21,15 +21,15 @@ export function ReconcileTrigger({ batchId, isDone }: { batchId: string, isDone:
         } else {
           toast.error(result.error)
         }
-      } catch (err: any) {
-        toast.error(err.message || "Failed to run reconciliation")
+      } catch (err: unknown) {
+        toast.error(err instanceof Error ? err.message : "Failed to run reconciliation")
       }
     })
   }
 
   return (
     <Button
-      className="w-full"
+      className="w-full h-11"
       onClick={handleReconcile}
       disabled={isPending || isDone}
       variant={isDone ? "outline" : "default"}

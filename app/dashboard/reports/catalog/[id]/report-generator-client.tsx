@@ -72,19 +72,25 @@ export function ReportGeneratorClient({ reportId, title }: { reportId: string, t
               <Label className="text-xs">End Date</Label>
               <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
            </div>
-           <div className="space-y-2">
-              <Label className="text-xs">Reconciliation Status</Label>
-              <Select value={status} onValueChange={(v) => v && setStatus(v)}>
-                 <SelectTrigger>
-                    <SelectValue />
-                 </SelectTrigger>
-                 <SelectContent>
-                    <SelectItem value="all">All</SelectItem>
-                    <SelectItem value="matched">Matched</SelectItem>
-                    <SelectItem value="pending">Pending</SelectItem>
-                 </SelectContent>
-              </Select>
-           </div>
+
+           {reportId !== 'meter-reading' && reportId !== 'audit-activity' ? (
+             <div className="space-y-2">
+                <Label className="text-xs">Reconciliation Status</Label>
+                <Select value={status} onValueChange={(v) => v && setStatus(v)}>
+                   <SelectTrigger>
+                      <SelectValue />
+                   </SelectTrigger>
+                   <SelectContent>
+                      <SelectItem value="all">All</SelectItem>
+                      <SelectItem value="matched">Matched</SelectItem>
+                      <SelectItem value="pending">Pending</SelectItem>
+                   </SelectContent>
+                </Select>
+             </div>
+           ) : (
+             <div className="hidden md:block" /> // Layout spacer
+           )}
+
            <Button className="w-full" onClick={handleGenerate} disabled={pending}>
               {pending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <TableIcon className="h-4 w-4 mr-2" />}
               Fetch Data

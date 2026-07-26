@@ -15,7 +15,7 @@ import {
 import { requireUser } from "@/lib/session"
 import { applyReceiptScope, applyBillingScope, applyCustomerScope } from "@/lib/scopes"
 import { and, eq, sql, desc, sum, count, gte, lte, inArray } from "drizzle-orm"
-import { canViewReports } from "@/lib/permissions"
+import { canViewReports, canUploadBilling } from "@/lib/permissions"
 
 /**
  * CUSTOMER STATEMENT (Phase 2, Objective 3)
@@ -195,7 +195,44 @@ export async function getDashboardStats(params: {
 
   const totalBilled = Number(billingStats?.totalBilled || 0)
   const totalCollected = Number(collectionStats?.totalCollected || 0)
-  const outstanding = Math.max(0, totalBilled - totalCollected)
+
+  // Finding 9 Fix: Deep Arrears & Advance Tracking
+  // A. Total System Arrears (Current Snapshot for selected scope)
+  const arrearsConditions = []
+  if (params.schemeId) arrearsConditions.push(eq(customer.waterSchemeId, params.schemeId))
+  if (params.branchId) arrearsConditions.push(eq(waterScheme.branchId, params.branchId))
+  if (params.clusterId) arrearsConditions.push(eq(branch.clusterId, params.clusterId))
+
+  const customerScope = applyCustomerScope(current)
+  if (customerScope) arrearsConditions.push(customerScope)
+
+  const [arrearsStats] = await db
+    .select({
+      totalDebt: sql<number>`sum(case when ${customer.accountBalance} > 0 then ${customer.accountBalance} else 0 end)::bigint`,
+      totalCredit: sql<number>`sum(case when ${customer.accountBalance} < 0 then abs(${customer.accountBalance}) else 0 end)::bigint`,
+    })
+    .from(customer)
+    .leftJoin(waterScheme, eq(customer.waterSchemeId, waterScheme.id))
+    .leftJoin(branch, eq(waterScheme.branchId, branch.id))
+    .where(and(...arrearsConditions))
+
+  // B. Arrears Collected in Period (Receipts not linked to a current bill)
+  const arrearsCollectedConditions = [...receiptConditions]
+  arrearsCollectedConditions.push(sql`${receipt.billingRecordId} IS NULL`)
+
+  const [arrearsCollectedStats] = await db
+    .select({
+      amount: sum(receipt.amount),
+    })
+    .from(receipt)
+    .innerJoin(customer, eq(receipt.customerId, customer.id))
+    .where(and(...arrearsCollectedConditions))
+
+  const totalArrears = Number(arrearsStats?.totalDebt || 0)
+  const totalUpfront = Number(arrearsStats?.totalCredit || 0)
+  const collectedFromArrears = Number(arrearsCollectedStats?.amount || 0)
+  const collectedFromBills = totalCollected - collectedFromArrears
+
   const rate = totalBilled > 0 ? (totalCollected / totalBilled) * 100 : 0
 
   return {
@@ -208,10 +245,16 @@ export async function getDashboardStats(params: {
     },
     collections: {
       totalCollected,
+      collectedFromBills,
+      collectedFromArrears,
       receiptCount: Number(collectionStats?.receiptCount || 0),
-      outstanding,
+      outstanding: Math.max(0, totalBilled - collectedFromBills),
       collectionRate: rate,
     },
+    arrears: {
+      totalArrears,
+      totalUpfront,
+    }
   }
 }
 
@@ -244,7 +287,8 @@ export async function getCollectionTrends(days = 30) {
  * Payment History per Bill (Phase 2, Objective 2 & 10)
  */
 export async function getBillPaymentHistory(billingRecordId: string) {
-  await requireUser()
+  const current = await requireUser()
+  if (!canUploadBilling(current)) throw new Error("Forbidden")
 
   const [bill] = await db
     .select()
@@ -253,6 +297,15 @@ export async function getBillPaymentHistory(billingRecordId: string) {
     .limit(1)
 
   if (!bill) return null
+
+  // Confirm the underlying customer is within the caller's scope, same check
+  // getCustomerStatement already does above, before returning payment data.
+  const [inScope] = await db
+    .select({ id: customer.id })
+    .from(customer)
+    .where(and(eq(customer.id, bill.customerId), applyCustomerScope(current)))
+    .limit(1)
+  if (!inScope) return null
 
   const receipts = await db
     .select()
@@ -289,6 +342,7 @@ export async function getTopDebtors(limit = 10) {
     .from(customer)
     .innerJoin(billingRecord, eq(billingRecord.customerId, customer.id))
     .innerJoin(waterScheme, eq(customer.waterSchemeId, waterScheme.id))
+    .where(applyCustomerScope(current))
     .groupBy(customer.id, customer.name, customer.customerAccount, waterScheme.name)
     .orderBy(desc(sql`sum(${billingRecord.totalDue}) - (select coalesce(sum(amount), 0) from receipt where receipt."customerId" = ${customer.id})`))
     .limit(limit)

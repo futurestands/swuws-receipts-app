@@ -9,6 +9,8 @@ import { StatsPanel } from "@/app/admin/stats-panel"
 import { PrintingPanel, type PrintingStats } from "@/app/admin/printing-panel"
 import { CommercialDashboard } from "@/app/admin/commercial-dashboard"
 import { IamPanel } from "@/app/admin/iam-panel"
+import { TariffPanel } from "@/app/admin/tariff-panel"
+import { TemplateManager } from "@/app/admin/template-manager"
 import type { AuditLog, Branch, Cluster, OrgSettings, PaymentMethod, WaterScheme, BillingPeriod, IamRole, IamPermission } from "@/lib/db/schema"
 
 type Agent = {
@@ -36,6 +38,8 @@ export function AdminTabs({
   periods,
   iamRoles,
   allPermissions,
+  tariffs,
+  templates,
 }: {
   agents: Agent[]
   auditLogs: AuditLog[]
@@ -62,6 +66,8 @@ export function AdminTabs({
   periods: BillingPeriod[]
   iamRoles: IamRole[]
   allPermissions: IamPermission[]
+  tariffs: any[]
+  templates: any[]
 }) {
   const defaultTab = permissions.canViewReports ? "overview" : "agents"
 
@@ -73,6 +79,8 @@ export function AdminTabs({
         {permissions.canViewReports && <TabsTrigger value="printing">Printing</TabsTrigger>}
         {permissions.canManageUsers && <TabsTrigger value="agents">Agents</TabsTrigger>}
         {permissions.canManageIAM && <TabsTrigger value="iam">IAM</TabsTrigger>}
+        {permissions.canConfigureSystem && <TabsTrigger value="tariffs">Tariffs</TabsTrigger>}
+        {permissions.canConfigureSystem && <TabsTrigger value="templates">Templates</TabsTrigger>}
         {permissions.canManageHierarchy && <TabsTrigger value="reference">Branches &amp; schemes</TabsTrigger>}
         {permissions.canConfigureSystem && <TabsTrigger value="branding">Branding</TabsTrigger>}
         {permissions.canAudit && <TabsTrigger value="audit">Audit log</TabsTrigger>}
@@ -113,9 +121,21 @@ export function AdminTabs({
         </TabsContent>
       )}
 
+      {permissions.canConfigureSystem && (
+        <TabsContent value="tariffs" className="mt-4">
+          <TariffPanel tariffs={tariffs} branches={branches} schemes={schemes} />
+        </TabsContent>
+      )}
+
+      {permissions.canConfigureSystem && (
+        <TabsContent value="templates" className="mt-4">
+          <TemplateManager initialTemplates={templates} />
+        </TabsContent>
+      )}
+
       {permissions.canManageHierarchy && (
         <TabsContent value="reference" className="mt-4">
-          <ReferenceDataPanel branches={branches} methods={methods} schemes={schemes} />
+          <ReferenceDataPanel branches={branches} methods={methods} schemes={schemes} clusters={clusters} />
         </TabsContent>
       )}
 

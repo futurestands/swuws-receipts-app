@@ -1,0 +1,143 @@
+"use client"
+
+import { useEffect, useState } from "react"
+import Link from "next/link"
+import { Menu, PanelLeftClose, PanelLeftOpen } from "lucide-react"
+import { cn } from "@/lib/utils"
+import { Button } from "@/components/ui/button"
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
+import { SidebarNav } from "@/components/layout/sidebar-nav"
+import { NotificationCenter } from "@/components/notifications/notification-center"
+import { SignOutButton } from "@/components/sign-out-button"
+import type { NavSection } from "@/lib/nav-config"
+
+const COLLAPSE_KEY = "swuws:sidebar-collapsed"
+
+export function AppShell({
+  sections,
+  userName,
+  userRoleLabel,
+  brand = "SWUWS Collection Portal",
+  brandHref = "/dashboard",
+  children,
+}: {
+  sections: NavSection[]
+  userName: string
+  userRoleLabel: string
+  brand?: string
+  brandHref?: string
+  children: React.ReactNode
+}) {
+  const [collapsed, setCollapsed] = useState(false) // Default to expanded for solid initial paint
+  const [mobileOpen, setMobileOpen] = useState(false)
+
+  // Restore the desktop collapse preference.
+  useEffect(() => {
+    const stored = window.localStorage.getItem(COLLAPSE_KEY)
+    if (stored !== null) {
+      setCollapsed(stored === "1")
+    }
+  }, [])
+
+  function toggleCollapsed() {
+    setCollapsed((prev) => {
+      const next = !prev
+      window.localStorage.setItem(COLLAPSE_KEY, next ? "1" : "0")
+      return next
+    })
+  }
+
+  return (
+    <div className="min-h-screen bg-muted/20 md:flex">
+      {/* Desktop sidebar */}
+      <aside
+        className="sticky top-0 hidden h-screen shrink-0 flex-col border-r border-sidebar-border bg-sidebar transition-[width] duration-150 md:flex no-print"
+        style={{ width: collapsed ? "4rem" : "13.5rem" }}
+      >
+        <div className="flex h-14 shrink-0 items-center justify-between border-b border-sidebar-border px-3">
+          <div className="flex flex-col min-w-0">
+            <Link
+              href={brandHref}
+              className={collapsed ? "sr-only" : "truncate text-sm font-bold text-sidebar-foreground"}
+            >
+              {brand}
+            </Link>
+            {!collapsed && (
+              <p className="text-[7px] font-black text-brand-blue truncate leading-none mt-0.5">
+                SOUTHWESTERN UMBRELLA OF WATER AND SANITATION
+              </p>
+            )}
+          </div>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            className="ml-auto shrink-0 text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+            onClick={toggleCollapsed}
+            aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          >
+            {collapsed ? <PanelLeftOpen /> : <PanelLeftClose />}
+          </Button>
+        </div>
+        <div className="flex-1 overflow-y-auto">
+          <SidebarNav sections={sections} collapsed={collapsed} />
+        </div>
+      </aside>
+
+      {/* Mobile drawer */}
+      <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
+        <SheetContent side="left" className="w-72 max-w-[85vw] border-sidebar-border bg-sidebar p-0">
+          <SheetHeader className="h-20 flex flex-col items-start justify-center border-b border-sidebar-border px-4">
+            <SheetTitle className="text-sidebar-foreground text-left">{brand}</SheetTitle>
+            <p className="text-[8px] font-black text-brand-blue text-left">
+              SOUTHWESTERN UMBRELLA OF WATER AND SANITATION
+            </p>
+          </SheetHeader>
+          <div className="flex-1 overflow-y-auto">
+            <SidebarNav sections={sections} onNavigate={() => setMobileOpen(false)} />
+          </div>
+        </SheetContent>
+      </Sheet>
+
+      {/* Main column */}
+      <div className="flex min-w-0 flex-1 flex-col">
+        <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center gap-3 border-b bg-card/95 px-3 backdrop-blur supports-backdrop-filter:bg-card/80 sm:px-4 md:px-6 no-print">
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            className="md:hidden"
+            onClick={() => setMobileOpen(true)}
+            aria-label="Open navigation menu"
+          >
+            <Menu />
+          </Button>
+          <div className="flex flex-col min-w-0 md:hidden">
+            <Link href={brandHref} className="truncate text-sm font-bold text-primary">
+              {brand}
+            </Link>
+            <p className="text-[7px] font-black text-brand-blue truncate leading-none">
+              SOUTHWESTERN UMBRELLA OF WATER AND SANITATION
+            </p>
+          </div>
+
+          <div className="hidden md:flex items-center flex-1 px-4 min-w-0 overflow-hidden">
+            <p className="w-full text-[10px] md:text-sm lg:text-base xl:text-lg font-black text-brand-blue tracking-[0.1em] text-center italic font-serif whitespace-nowrap overflow-hidden text-ellipsis">
+              SOUTHWESTERN UMBRELLA OF WATER AND SANITATION
+            </p>
+          </div>
+
+          <div className="ml-auto flex items-center gap-2 sm:gap-3">
+            <NotificationCenter />
+            <span className="hidden truncate border-l pl-3 text-sm text-muted-foreground md:inline">
+              {userName} · {userRoleLabel}
+            </span>
+            <SignOutButton />
+          </div>
+        </header>
+
+        <main className="min-w-0 flex-1 overflow-x-hidden px-4 py-4 md:px-6 md:py-6">
+          <div className="mx-auto w-full max-w-7xl">{children}</div>
+        </main>
+      </div>
+    </div>
+  )
+}

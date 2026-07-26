@@ -1,7 +1,12 @@
 "use server"
 
 import { db } from "@/lib/db"
-import { customer, waterScheme } from "@/lib/db/schema"
+import {
+  customer,
+  waterScheme,
+  managedTemplate,
+  templateVersion,
+} from "@/lib/db/schema"
 import { requireUser } from "@/lib/session"
 import { writeAudit } from "@/lib/audit"
 import { canUploadCustomers } from "@/lib/permissions"
@@ -17,6 +22,9 @@ const customerImportSchema = z.object({
   phone: z.string().trim().optional(),
   address: z.string().trim().optional(),
   schemeName: z.string().trim().min(1, "Water Scheme is required"),
+  meterRef: z.string().trim().optional(),
+  serialNo: z.string().trim().optional(),
+  openingArrears: z.coerce.number().default(0),
   notes: z.string().trim().optional(),
 })
 
@@ -42,11 +50,29 @@ async function getSchemeMap() {
   return new Map(schemes.map((s) => [s.name.toLowerCase(), s.id]))
 }
 
+/**
+ * Internal: Resolves column mapping from the Template Management system.
+ */
+async function getImportMapping(code: string) {
+  const [template] = await db.select().from(managedTemplate).where(eq(managedTemplate.code, code)).limit(1)
+  if (!template?.activeVersionId) return null
+
+  const [version] = await db.select().from(templateVersion).where(eq(templateVersion.id, template.activeVersionId)).limit(1)
+  if (!version) return null
+
+  try {
+    return JSON.parse(version.content)
+  } catch {
+    return null
+  }
+}
+
 export async function validateCustomerImport(formData: FormData): Promise<{ ok: true; summary: CustomerImportSummary } | { ok: false; error: string }> {
   const current = await requireUser()
   if (!canUploadCustomers(current)) throw new Error("Forbidden")
 
   const file = formData.get("file") as File
+  const allowUpdates = formData.get("allowUpdates") === "true" // New param
   if (!file) return { ok: false, error: "No file provided" }
 
   const buffer = await file.arrayBuffer()
@@ -61,6 +87,19 @@ export async function validateCustomerImport(formData: FormData): Promise<{ ok: 
   const existingAccounts = new Set(existingCustomers.map((c) => c.account?.toLowerCase()))
   const seenInUpload = new Set<string>()
 
+  // Resolve dynamic mapping
+  const mapping = await getImportMapping('import.customers.bulk') || {
+    name: "Name",
+    customerAccount: "CustomerRef",
+    phone: "Phone",
+    address: "VillageName",
+    schemeName: "SchemeName",
+    meterRef: "MeterRef",
+    serialNo: "MeterSerial",
+    openingArrears: "OpeningArrears",
+    notes: "Notes"
+  }
+
   const results: CustomerValidationResult[] = []
   let validCount = 0
   let errorCount = 0
@@ -70,14 +109,17 @@ export async function validateCustomerImport(formData: FormData): Promise<{ ok: 
     const errors: string[] = []
     const warnings: string[] = []
 
-    const mappedRow: CustomerImportRow = {
-      name: String(rawRow.Name || "").trim(),
-      customerAccount: String(rawRow.AccountNumber || rawRow["Account Number"] || "").trim(),
-      phone: String(rawRow.Phone || "").trim(),
-      address: String(rawRow.Address || "").trim(),
-      schemeName: String(rawRow.WaterScheme || rawRow["Water Scheme"] || "").trim(),
-      notes: String(rawRow.Notes || "").trim(),
-    }
+      const mappedRow: CustomerImportRow = {
+        name: String(rawRow[mapping.name] || "").trim(),
+        customerAccount: String(rawRow[mapping.customerAccount] || "").trim(),
+        phone: String(rawRow[mapping.phone] || "").trim(),
+        address: String(rawRow[mapping.address] || "").trim(),
+        schemeName: String(rawRow[mapping.schemeName] || "").trim(),
+        meterRef: String(rawRow[mapping.meterRef] || "").trim(),
+        serialNo: String(rawRow[mapping.serialNo] || "").trim(),
+        openingArrears: Number(rawRow[mapping.openingArrears] || 0),
+        notes: String(rawRow[mapping.notes] || "").trim(),
+      }
 
     const parsed = customerImportSchema.safeParse(mappedRow)
     if (!parsed.success) {
@@ -87,7 +129,11 @@ export async function validateCustomerImport(formData: FormData): Promise<{ ok: 
     if (mappedRow.customerAccount) {
       const accLower = mappedRow.customerAccount.toLowerCase()
       if (existingAccounts.has(accLower)) {
-        errors.push("Account number already exists in the system")
+        if (allowUpdates) {
+          warnings.push("Existing customer: Details will be updated")
+        } else {
+          errors.push("Account number already exists in the system")
+        }
       }
       if (seenInUpload.has(accLower)) {
         errors.push("Duplicate account number in the upload file")
@@ -128,7 +174,7 @@ export async function validateCustomerImport(formData: FormData): Promise<{ ok: 
   }
 }
 
-export async function importCustomers(summary: CustomerImportSummary): Promise<{ ok: true; imported: number; failed: number; report: string } | { ok: false; error: string }> {
+export async function importCustomers(summary: CustomerImportSummary): Promise<{ ok: true; imported: number; updated: number; failed: number; report: string } | { ok: false; error: string }> {
   const current = await requireUser()
   if (!canUploadCustomers(current)) throw new Error("Forbidden")
 
@@ -137,43 +183,74 @@ export async function importCustomers(summary: CustomerImportSummary): Promise<{
 
   const schemeMap = await getSchemeMap()
   let importedCount = 0
+  let updatedCount = 0
   let failedCount = 0
   const reportRows: any[] = []
 
+  // Finding 4 Fix: Process in batches but handle individual row failures
   for (const row of validRows) {
     const { data } = row
     const schemeId = schemeMap.get(data.schemeName.toLowerCase())
 
     try {
-      await db.insert(customer).values({
-        id: randomUUID(),
-        name: data.name,
-        customerAccount: data.customerAccount,
-        phone: data.phone || null,
-        address: data.address || null,
-        waterSchemeId: schemeId || null,
-        notes: data.notes || null,
-        createdById: current.id,
-      })
-      importedCount++
-      reportRows.push({ ...data, Result: "Success", Details: "Customer created" })
+      // Step 1: Check if customer exists
+      const [existing] = await db
+        .select()
+        .from(customer)
+        .where(eq(customer.customerAccount, data.customerAccount))
+        .limit(1)
+
+      if (existing) {
+        // Step 2: UPDATE (Upsert)
+        await db.update(customer).set({
+          name: data.name,
+          phone: data.phone || existing.phone,
+          address: data.address || existing.address,
+          waterSchemeId: schemeId || existing.waterSchemeId,
+          meterRef: data.meterRef || existing.meterRef,
+          serialNo: data.serialNo || existing.serialNo,
+          openingArrears: data.openingArrears, // Arrears update is explicit
+          accountBalance: data.openingArrears, // Reset balance to new arrears snapshot
+          updatedAt: new Date(),
+        }).where(eq(customer.id, existing.id))
+
+        updatedCount++
+        reportRows.push({ ...data, Result: "Updated", Details: "Existing record merged" })
+      } else {
+        // Step 3: INSERT (New)
+        await db.insert(customer).values({
+          id: randomUUID(),
+          name: data.name,
+          customerAccount: data.customerAccount,
+          phone: data.phone || null,
+          address: data.address || null,
+          waterSchemeId: schemeId || null,
+          meterRef: data.meterRef || null,
+          serialNo: data.serialNo || null,
+          openingArrears: data.openingArrears,
+          accountBalance: data.openingArrears,
+          notes: data.notes || null,
+          createdById: current.id,
+        })
+        importedCount++
+        reportRows.push({ ...data, Result: "Created", Details: "New record added" })
+      }
     } catch (e: any) {
-      console.error(`Import failed for ${data.customerAccount}`, e)
       failedCount++
-      reportRows.push({ ...data, Result: "Failed", Details: e.message || "Unknown error" })
+      reportRows.push({ ...data, Result: "Failed", Details: e.message || "Database error" })
     }
   }
 
-  // Include invalid rows in the report
+  // Include rows that failed the initial validation in the final report
   summary.rows.filter(r => !r.valid).forEach(r => {
     reportRows.push({ ...r.data, Result: "Validation Failed", Details: r.errors.join("; ") })
   })
 
   await writeAudit({
     user: current,
-    action: "customer.bulk_import",
+    action: "customer.bulk_import_upsert",
     entityType: "customer",
-    details: { imported: importedCount, failed: failedCount },
+    details: { imported: importedCount, updated: updatedCount, failed: failedCount },
   })
 
   revalidatePath("/dashboard/customers")
@@ -184,6 +261,7 @@ export async function importCustomers(summary: CustomerImportSummary): Promise<{
   return {
     ok: true,
     imported: importedCount,
+    updated: updatedCount,
     failed: failedCount,
     report: csvReport,
   }
@@ -191,15 +269,20 @@ export async function importCustomers(summary: CustomerImportSummary): Promise<{
 
 export async function downloadCustomerTemplate() {
   await requireUser()
-  const headers = ["Name", "AccountNumber", "Phone", "Address", "WaterScheme", "Notes"]
+  const headers = ["MeterRef", "MeterSerial", "CustomerRef", "Name", "Phone", "VillageName", "SchemeName", "UmbrellaName", "CustomerType", "OpeningArrears", "CreationDate"]
   const data = [
     {
+      MeterRef: "M-001",
+      MeterSerial: "SN-12345",
+      CustomerRef: "C-98765",
       Name: "Jane Doe",
-      AccountNumber: "C-12345",
       Phone: "+256700000000",
-      Address: "123 Main St, Sector 4",
-      WaterScheme: "Mbarara Central",
-      Notes: "Regular payer",
+      VillageName: "Sector 4",
+      SchemeName: "Mbarara Central",
+      UmbrellaName: "SWUWS",
+      CustomerType: "Domestic",
+      OpeningArrears: 50000,
+      CreationDate: new Date().toISOString().split("T")[0]
     },
   ]
 

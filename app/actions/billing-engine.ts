@@ -1,0 +1,369 @@
+"use server"
+
+import { db } from "@/lib/db"
+import { customer, tariffConfiguration, meterReading, waterScheme, billingPeriod, managedTemplate, templateVersion, branch } from "@/lib/db/schema"
+import { eq, and, desc, or, ilike } from "drizzle-orm"
+import { randomUUID } from "crypto"
+import { getCurrentUser, requireUser } from "@/lib/session"
+import { calculateBill } from "@/lib/billing/math"
+import { revalidatePath } from "next/cache"
+import { canConfigureSystem, canIssueReceipt } from "@/lib/permissions"
+import { ROLES } from "@/lib/permissions/roles"
+import { writeAudit } from "@/lib/audit"
+import { applyCustomerScope, validateWriteScope } from "@/lib/scopes"
+import { renderTemplate } from "@/lib/templates/template-engine"
+import { sendSMS } from "@/lib/sms-service"
+
+/**
+ * Searches customers by name, account, or meter ref.
+ * Finding 1 Fix: Added permission check and scope filter.
+ */
+export async function searchCustomersForReading(query: string) {
+  const user = await requireUser()
+  if (!canIssueReceipt(user)) throw new Error("Forbidden")
+
+  return db
+    .select()
+    .from(customer)
+    .where(
+      and(
+        or(
+          ilike(customer.name, `%${query}%`),
+          ilike(customer.customerAccount, `%${query}%`),
+          ilike(customer.meterRef, `%${query}%`)
+        ),
+        applyCustomerScope(user)
+      )
+    )
+    .limit(10)
+}
+
+export async function getTariffForCustomer(customerId: string) {
+  const [cust] = await db
+    .select({
+      id: customer.id,
+      waterSchemeId: customer.waterSchemeId,
+      branchId: waterScheme.branchId,
+    })
+    .from(customer)
+    .leftJoin(waterScheme, eq(customer.waterSchemeId, waterScheme.id))
+    .where(eq(customer.id, customerId))
+    .limit(1)
+
+  if (!cust) return null
+
+  if (cust.waterSchemeId) {
+    const [schemeTariff] = await db
+      .select()
+      .from(tariffConfiguration)
+      .where(
+        and(
+          eq(tariffConfiguration.targetType, "scheme"),
+          eq(tariffConfiguration.targetId, cust.waterSchemeId),
+          eq(tariffConfiguration.active, true)
+        )
+      )
+      .limit(1)
+
+    if (schemeTariff) return schemeTariff
+  }
+
+  if (cust.branchId) {
+    const [branchTariff] = await db
+      .select()
+      .from(tariffConfiguration)
+      .where(
+        and(
+          eq(tariffConfiguration.targetType, "branch"),
+          eq(tariffConfiguration.targetId, cust.branchId),
+          eq(tariffConfiguration.active, true)
+        )
+      )
+      .limit(1)
+
+    if (branchTariff) return branchTariff
+  }
+
+  return null
+}
+
+export async function submitMeterReading(data: {
+  customerId: string
+  billingPeriodId: string
+  currentReading: number
+  notes?: string
+}) {
+  const user = await requireUser()
+  if (!canIssueReceipt(user)) throw new Error("Forbidden")
+
+  // Finding 2 Fix: Verify Active Billing Period in the action
+  const [period] = await db
+    .select()
+    .from(billingPeriod)
+    .where(and(
+      eq(billingPeriod.id, data.billingPeriodId),
+      eq(billingPeriod.status, "active")
+    ))
+    .limit(1)
+
+  if (!period) throw new Error("Meter readings can only be submitted for an ACTIVE billing period.")
+
+  const [cust] = await db
+    .select()
+    .from(customer)
+    .where(and(
+      eq(customer.id, data.customerId),
+      applyCustomerScope(user) // Finding 2 Fix: Apply scope check
+    ))
+    .limit(1)
+
+  if (!cust) throw new Error("Customer not found or access denied")
+
+  // Finding 3 Fix: Server-side validation of reading value
+  if (data.currentReading < cust.lastReading) {
+    throw new Error(`Invalid reading: ${data.currentReading} is lower than the previous reading of ${cust.lastReading}`)
+  }
+
+  // Check for duplicate reading in this period
+  const [existing] = await db
+    .select({ id: meterReading.id })
+    .from(meterReading)
+    .where(and(
+      eq(meterReading.customerId, data.customerId),
+      eq(meterReading.billingPeriodId, data.billingPeriodId)
+    ))
+    .limit(1)
+
+  if (existing) {
+    throw new Error(`A meter reading for ${cust.name} in this period has already been recorded. Search your history below if you need to reprint the ticket.`)
+  }
+
+  const tariff = await getTariffForCustomer(data.customerId)
+  if (!tariff) throw new Error("No active tariff configured for this area. Contact Admin.")
+
+  const calc = calculateBill(cust.lastReading, data.currentReading, tariff)
+
+  // Finding 8 Fix: Calculate Grand Total (New Bill + Existing Arrears)
+  const totalArrears = cust.accountBalance || 0
+  const grandTotalDue = calc.totalNewBill + totalArrears
+
+  const readingId = randomUUID()
+
+  await db.transaction(async (tx) => {
+    await tx.insert(meterReading).values({
+      id: readingId,
+      customerId: data.customerId,
+      billingPeriodId: data.billingPeriodId,
+      previousReading: cust.lastReading,
+      currentReading: data.currentReading,
+      consumption: calc.consumption,
+      billedAmount: calc.totalNewBill,
+      previousBalanceSnapshot: totalArrears,
+      totalDueSnapshot: grandTotalDue,
+      customerNameSnapshot: cust.name,
+      customerAccountSnapshot: cust.customerAccount,
+      phoneSnapshot: cust.phone,
+      meterRefSnapshot: cust.meterRef,
+      recordedById: user.id,
+      notes: data.notes,
+    })
+
+    await tx
+      .update(customer)
+      .set({
+        lastReading: data.currentReading,
+        lastReadingDate: new Date(),
+        accountBalance: grandTotalDue, // Update live balance with new bill
+        updatedAt: new Date(),
+      })
+      .where(eq(customer.id, data.customerId))
+  })
+
+  // SMS Notification
+  if (cust.phone) {
+    const [template] = await db.select().from(managedTemplate).where(eq(managedTemplate.code, 'notif.billing.sms')).limit(1)
+    if (template?.activeVersionId) {
+      const [version] = await db.select().from(templateVersion).where(eq(templateVersion.id, template.activeVersionId)).limit(1)
+      if (version) {
+        const message = renderTemplate(version.content, {
+          customer_name: cust.name,
+          amount: calc.totalNewBill.toLocaleString(),
+          period: period?.periodName || "Current",
+          due_date: "Next week" // Placeholder for actual logic
+        })
+        await sendSMS(cust.phone, message, user.id)
+
+        await db.update(meterReading)
+          .set({ isNotified: true, notifiedAt: new Date() })
+          .where(eq(meterReading.id, readingId))
+      }
+    }
+  }
+
+  return { ok: true, readingId }
+}
+
+export async function listAllTariffs() {
+  const user = await getCurrentUser()
+  if (!user || !canConfigureSystem(user)) throw new Error("Unauthorized")
+
+  const tariffs = await db.select().from(tariffConfiguration).orderBy(desc(tariffConfiguration.createdAt))
+  const branchList = await db.select().from(branch)
+  const schemeList = await db.select().from(waterScheme)
+
+  return tariffs.map(t => {
+    let targetName = "Unknown"
+    if (t.targetType === "branch") {
+      targetName = branchList.find(b => b.id === t.targetId)?.name || "Unknown Branch"
+    } else {
+      targetName = schemeList.find(s => s.id === t.targetId)?.name || "Unknown Scheme"
+    }
+    return { ...t, targetName }
+  })
+}
+
+export async function upsertTariff(data: {
+  id?: string
+  targetType: "branch" | "scheme"
+  targetId: string
+  unitPrice: number
+  serviceFee: number
+  vatPercentage: number
+}) {
+  const user = await getCurrentUser()
+  if (!user || !canConfigureSystem(user)) throw new Error("Unauthorized")
+
+  const id = data.id || randomUUID()
+
+  await db
+    .insert(tariffConfiguration)
+    .values({
+      id,
+      targetType: data.targetType,
+      targetId: data.targetId,
+      unitPrice: data.unitPrice,
+      serviceFee: data.serviceFee,
+      vatPercentage: data.vatPercentage,
+      active: true,
+      updatedAt: new Date(),
+    })
+    .onConflictDoUpdate({
+      target: [tariffConfiguration.targetType, tariffConfiguration.targetId],
+      set: {
+        unitPrice: data.unitPrice,
+        serviceFee: data.serviceFee,
+        vatPercentage: data.vatPercentage,
+        updatedAt: new Date(),
+      },
+    })
+
+  revalidatePath("/admin")
+  return { ok: true }
+}
+
+export async function deleteTariff(id: string) {
+  const user = await getCurrentUser()
+  if (!user || !canConfigureSystem(user)) throw new Error("Unauthorized")
+
+  await db.delete(tariffConfiguration).where(eq(tariffConfiguration.id, id))
+
+  revalidatePath("/admin")
+  return { ok: true }
+}
+
+export async function getRecentMeterReadings(limit = 20) {
+  const user = await requireUser()
+  if (!canIssueReceipt(user)) throw new Error("Forbidden")
+
+  return db
+    .select({
+      id: meterReading.id,
+      customerName: meterReading.customerNameSnapshot,
+      meterRef: meterReading.meterRefSnapshot,
+      previousReading: meterReading.previousReading,
+      currentReading: meterReading.currentReading,
+      consumption: meterReading.consumption,
+      billedAmount: meterReading.billedAmount,
+      previousBalance: meterReading.previousBalanceSnapshot,
+      totalDue: meterReading.totalDueSnapshot,
+      createdAt: meterReading.createdAt,
+      periodName: billingPeriod.periodName,
+      recordedById: meterReading.recordedById, // Needed for permission check in UI
+    })
+    .from(meterReading)
+    .innerJoin(billingPeriod, eq(meterReading.billingPeriodId, billingPeriod.id))
+    .where(eq(meterReading.recordedById, user.id))
+    .orderBy(desc(meterReading.createdAt))
+    .limit(limit)
+}
+
+export async function cancelMeterReading(readingId: string) {
+  const user = await requireUser()
+
+  const [reading] = await db
+    .select({
+      id: meterReading.id,
+      customerId: meterReading.customerId,
+      billedAmount: meterReading.billedAmount,
+      previousReading: meterReading.previousReading,
+      recordedById: meterReading.recordedById,
+      billingPeriodId: meterReading.billingPeriodId,
+      status: billingPeriod.status,
+    })
+    .from(meterReading)
+    .innerJoin(billingPeriod, eq(meterReading.billingPeriodId, billingPeriod.id))
+    .where(eq(meterReading.id, readingId))
+    .limit(1)
+
+  if (!reading) throw new Error("Reading not found")
+
+  // Authorization: Only the creator or an admin
+  const isCreator = reading.recordedById === user.id
+  const isAdmin = user.role === ROLES.SYSTEM_ADMIN
+  if (!isCreator && !isAdmin) {
+    throw new Error("You are not authorized to cancel this reading.")
+  }
+
+  // Lifecycle Check: Only ACTIVE periods
+  if (reading.status !== 'active') {
+    throw new Error("Only readings in an ACTIVE billing period can be cancelled.")
+  }
+
+  await db.transaction(async (tx) => {
+    // 1. Lock customer for update
+    const lockResult = await tx.execute<{ accountBalance: number }>(
+      sql`SELECT "accountBalance" FROM "customer" WHERE id = ${reading.customerId} FOR UPDATE`
+    )
+    const cust = lockResult.rows[0]
+    if (!cust) throw new Error("Customer profile not found")
+
+    // 2. Reverse Financials
+    const newBalance = Math.max(0, Number(cust.accountBalance) - reading.billedAmount)
+    await tx.update(customer)
+      .set({
+        accountBalance: newBalance,
+        lastReading: reading.previousReading, // Restore previous reading state
+        updatedAt: new Date(),
+      })
+      .where(eq(customer.id, reading.customerId))
+
+    // 3. Delete Record
+    await tx.delete(meterReading).where(eq(meterReading.id, readingId))
+
+    // 4. Audit Log
+    await writeAudit({
+      user,
+      action: "meter_reading.cancel",
+      entityType: "meter_reading",
+      entityId: readingId,
+      details: {
+        customerId: reading.customerId,
+        amountReversed: reading.billedAmount,
+        reason: "User requested cancellation"
+      }
+    }, tx)
+  })
+
+  revalidatePath("/dashboard/billing/readings")
+  return { ok: true }
+}

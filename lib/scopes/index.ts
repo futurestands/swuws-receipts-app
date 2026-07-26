@@ -3,6 +3,7 @@ import { ROLES } from "../permissions/roles"
 import { UserPermissionsContext, canViewAllData } from "../permissions"
 import { receipt, customer, branch, waterScheme, billingPeriod, billingRun, billingRecord } from "../db/schema"
 import { Scope } from "../iam"
+import { db } from "../db"
 
 /**
  * CENTRALIZED ORGANIZATIONAL SCOPE ENGINE
@@ -106,7 +107,7 @@ export function applyBillingScope(user: UserPermissionsContext) {
  * Validates if a user has write access to a specific scope level.
  * Used during creation/updates.
  */
-export function validateWriteScope(user: UserPermissionsContext, target: {
+export async function validateWriteScope(user: UserPermissionsContext, target: {
   branchId?: string | null
   schemeId?: string | null
 }) {
@@ -119,10 +120,30 @@ export function validateWriteScope(user: UserPermissionsContext, target: {
   if (scope === "global") return true
 
   if (scope === "cluster") {
-    // Cluster managers can write to anything in their cluster.
-    // (Actual verification would require joining target branch/scheme to check clusterId)
-    // For now, we trust the high-level check if they have a clusterId assigned.
-    return !!user.clusterId
+    if (!user.clusterId) return false
+
+    // Resolve the target's branch: either given directly, or via its scheme.
+    let targetBranchId = target.branchId ?? null
+    if (!targetBranchId && target.schemeId) {
+      const [ws] = await db
+        .select({ branchId: waterScheme.branchId })
+        .from(waterScheme)
+        .where(eq(waterScheme.id, target.schemeId))
+        .limit(1)
+      targetBranchId = ws?.branchId ?? null
+    }
+
+    // No target branch/scheme to check against - nothing to validate, matches
+    // the existing area/scheme behavior below when no target is given.
+    if (!targetBranchId) return true
+
+    const [targetBranch] = await db
+      .select({ clusterId: branch.clusterId })
+      .from(branch)
+      .where(eq(branch.id, targetBranchId))
+      .limit(1)
+
+    return !!targetBranch && targetBranch.clusterId === user.clusterId
   }
 
   if (scope === "area") {

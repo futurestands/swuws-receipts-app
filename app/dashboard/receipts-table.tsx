@@ -1,25 +1,79 @@
 "use client"
 
+import { useMemo, useState } from "react"
 import Link from "next/link"
 import type { Receipt } from "@/lib/db/schema"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
+import { Input } from "@/components/ui/input"
 import { formatUGX, formatDateTime } from "@/lib/format"
+import { ResponsiveToolbar } from "@/components/ui/toolbar"
+import { ResponsiveFilterBar } from "@/components/ui/filter-bar"
+import { ScrollableTableContainer } from "@/components/ui/responsive-table"
+import { EmptyState } from "@/components/ui/empty-state"
+import { Receipt as ReceiptIcon, Search } from "lucide-react"
 
 export function ReceiptsTable({ receipts, isAdmin }: { receipts: Receipt[]; isAdmin: boolean }) {
+  const [query, setQuery] = useState("")
+
+  // Client-side filter over the already-fetched receipts - presentation-only,
+  // does not call any server action or change what data is fetched.
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    if (!q) return receipts
+    return receipts.filter(
+      (r) =>
+        r.receiptNumber?.toLowerCase().includes(q) ||
+        r.customerName?.toLowerCase().includes(q) ||
+        (isAdmin && r.agentName?.toLowerCase().includes(q))
+    )
+  }, [receipts, query, isAdmin])
+
   return (
     <Card>
-      <CardHeader>
-        <CardTitle>Recent receipts</CardTitle>
-      </CardHeader>
-      <CardContent>
+      <CardContent className="flex flex-col gap-4">
+        <ResponsiveToolbar
+          left={
+            <div>
+              <h2 className="text-base font-medium text-foreground">Recent receipts</h2>
+              <p className="text-xs text-muted-foreground">
+                Showing the latest {receipts.length} receipt{receipts.length === 1 ? "" : "s"}
+                {isAdmin ? " org-wide" : ""}.
+              </p>
+            </div>
+          }
+        />
+
+        {receipts.length > 0 && (
+          <ResponsiveFilterBar>
+            <div className="relative min-w-0 flex-1 sm:max-w-xs">
+              <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                placeholder="Filter latest receipts by #, customer…"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                className="pl-8 h-11"
+                aria-label="Filter the latest receipts shown below"
+              />
+            </div>
+          </ResponsiveFilterBar>
+        )}
+
         {receipts.length === 0 ? (
-          <p className="text-sm text-muted-foreground py-8 text-center">
-            No receipts issued yet.
-          </p>
+          <EmptyState
+            icon={ReceiptIcon}
+            title="No receipts issued yet"
+            description="Receipts you issue will appear here."
+          />
+        ) : filtered.length === 0 ? (
+          <EmptyState
+            icon={Search}
+            title="No matching receipts in the latest 50"
+            description={`Nothing in the latest ${receipts.length} receipts matched "${query}". Older receipts aren't searched here - open Receipt Details directly if you have its receipt number, or narrow your collection period first.`}
+          />
         ) : (
-          <div className="overflow-x-auto">
+          <ScrollableTableContainer className="border-0">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -33,7 +87,7 @@ export function ReceiptsTable({ receipts, isAdmin }: { receipts: Receipt[]; isAd
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {receipts.map((r) => (
+                {filtered.map((r) => (
                   <TableRow key={r.id}>
                     <TableCell>
                       <Link
@@ -65,7 +119,7 @@ export function ReceiptsTable({ receipts, isAdmin }: { receipts: Receipt[]; isAd
                 ))}
               </TableBody>
             </Table>
-          </div>
+          </ScrollableTableContainer>
         )}
       </CardContent>
     </Card>

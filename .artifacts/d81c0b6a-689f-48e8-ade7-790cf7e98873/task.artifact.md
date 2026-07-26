@@ -1,0 +1,2 @@
+- `[x]` Update `SidebarNav` component to implement "Best Match" logic for highlights
+- `[x]` Verify sidebar highlighting in nested routes

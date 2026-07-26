@@ -1,7 +1,13 @@
 "use server"
 
 import { db } from "@/lib/db"
-import { cluster, branch, waterScheme } from "@/lib/db/schema"
+import {
+  cluster,
+  branch,
+  waterScheme,
+  managedTemplate,
+  templateVersion,
+} from "@/lib/db/schema"
 import { requireUser } from "@/lib/session"
 import { writeAudit } from "@/lib/audit"
 import { canManageAreas, canManageSchemes, canManageClusters } from "@/lib/permissions"
@@ -54,6 +60,20 @@ async function getExistenceMaps() {
   }
 }
 
+async function getImportMapping(code: string) {
+  const [template] = await db.select().from(managedTemplate).where(eq(managedTemplate.code, code)).limit(1)
+  if (!template?.activeVersionId) return null
+
+  const [version] = await db.select().from(templateVersion).where(eq(templateVersion.id, template.activeVersionId)).limit(1)
+  if (!version) return null
+
+  try {
+    return JSON.parse(version.content)
+  } catch {
+    return null
+  }
+}
+
 export async function validateHierarchy(formData: FormData): Promise<{ ok: true; summary: HierarchyImportSummary } | { ok: false; error: string }> {
   const current = await requireUser()
   if (!canManageAreas(current) && !canManageSchemes(current)) throw new Error("Forbidden")
@@ -71,6 +91,15 @@ export async function validateHierarchy(formData: FormData): Promise<{ ok: true;
   const existence = await getExistenceMaps()
   const seenCodes = new Set<string>()
 
+  // Resolve Dynamic Mapping
+  const mapping = await getImportMapping('import.hierarchy.master') || {
+    clusterName: "Region",
+    branchName: "AreaOffice",
+    schemeName: "SchemeName",
+    schemeCode: "SchemeCode",
+    serviceArea: "ServiceArea"
+  }
+
   const results: ValidationResult[] = []
   let validCount = 0
   let errorCount = 0
@@ -80,13 +109,14 @@ export async function validateHierarchy(formData: FormData): Promise<{ ok: true;
     const errors: string[] = []
     const warnings: string[] = []
 
+    // Map according to template
     const mappedRow: HierarchyImportRow = {
-      type: (rawRow.Type || "Branch") as any,
-      name: String(rawRow.Name || "").trim(),
-      code: String(rawRow.Code || "").trim().toLowerCase().replace(/\s+/g, "_"),
-      parentName: String(rawRow.Parent || "").trim(),
-      serviceArea: String(rawRow.ServiceArea || "").trim(),
-      status: String(rawRow.Status || "Active").trim(),
+      type: "Scheme", // Forced to scheme for the unified flow
+      name: String(rawRow[mapping.schemeName] || "").trim(),
+      code: String(rawRow[mapping.schemeCode] || rawRow[mapping.schemeName] || "").trim().toLowerCase().replace(/\s+/g, "_"),
+      parentName: String(rawRow[mapping.branchName] || "").trim(),
+      serviceArea: String(rawRow[mapping.serviceArea] || "").trim(),
+      status: "Active",
     }
 
     const parsed = hierarchyImportSchema.safeParse(mappedRow)
@@ -109,10 +139,12 @@ export async function validateHierarchy(formData: FormData): Promise<{ ok: true;
     } else if (mappedRow.type === "Scheme") {
       if (!canManageSchemes(current)) errors.push("You are not authorized to create Schemes")
       if (existence.schemeCodes.has(mappedRow.code)) errors.push(`Scheme code ${mappedRow.code} already exists`)
+
       if (!mappedRow.parentName) {
-        errors.push("Parent Branch is required for Schemes")
+        errors.push("Parent Area Office is required for Schemes")
       } else if (!existence.areas.has(mappedRow.parentName.toLowerCase())) {
-        errors.push(`Parent Branch not found: ${mappedRow.parentName}`)
+        // Finding 10 Fix: In Unified Mode, missing parents are WARNINGS/INFO, not ERRORS
+        warnings.push(`New Area Office will be created: ${mappedRow.parentName}`)
       }
     } else {
       errors.push("Invalid Type. Must be Cluster, Branch, or Scheme")
@@ -153,6 +185,7 @@ export async function validateHierarchy(formData: FormData): Promise<{ ok: true;
 
 export async function importHierarchy(summary: HierarchyImportSummary): Promise<{ ok: true; imported: number; failed: number; report: string } | { ok: false; error: string }> {
   const current = await requireUser()
+  if (!canManageAreas(current) && !canManageSchemes(current)) throw new Error("Forbidden")
   const validRows = summary.rows.filter((r) => r.valid)
   if (validRows.length === 0) return { ok: false, error: "No valid rows to import" }
 

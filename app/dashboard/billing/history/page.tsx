@@ -6,7 +6,10 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge"
 import { formatUGX } from "@/lib/format"
 import Link from "next/link"
-import { History } from "lucide-react"
+import { ArrowLeft, History } from "lucide-react"
+import { PageHeader } from "@/components/ui/page-header"
+import { ScrollableTableContainer } from "@/components/ui/responsive-table"
+import { EmptyState } from "@/components/ui/empty-state"
 
 /**
  * BILLING HISTORY PAGE
@@ -25,43 +28,45 @@ export default async function BillingHistoryPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <History className="h-6 w-6 text-primary" />
-          <h1 className="text-2xl font-bold tracking-tight">Billing History</h1>
-        </div>
-        <Link href="/dashboard/billing" className="text-sm text-muted-foreground hover:underline">
-          ← Back to billing
-        </Link>
-      </div>
+      <PageHeader
+        title="Billing History"
+        actions={
+          <Link
+            href="/dashboard/billing"
+            className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground hover:underline"
+          >
+            <ArrowLeft className="size-4" /> Back to billing
+          </Link>
+        }
+      />
 
       <Card>
         <CardHeader>
           <CardTitle>All Billing Runs</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Period</TableHead>
-                  <TableHead>Scheme</TableHead>
-                  <TableHead>Date</TableHead>
-                  <TableHead>Customers</TableHead>
-                  <TableHead>Total Amount</TableHead>
-                  <TableHead>Uploaded By</TableHead>
-                  <TableHead>Status</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {history.length === 0 ? (
+          {history.length === 0 ? (
+            <EmptyState
+              icon={History}
+              title="No billing history found"
+              description="Billing runs you upload will appear here."
+            />
+          ) : (
+            <ScrollableTableContainer className="border-0">
+              <Table>
+                <TableHeader>
                   <TableRow>
-                    <TableCell colSpan={7} className="text-center py-10 text-muted-foreground">
-                      No billing history found.
-                    </TableCell>
+                    <TableHead>Period</TableHead>
+                    <TableHead>Scheme</TableHead>
+                    <TableHead>Date</TableHead>
+                    <TableHead>Customers</TableHead>
+                    <TableHead>Total Amount</TableHead>
+                    <TableHead>Uploaded By</TableHead>
+                    <TableHead>Status</TableHead>
                   </TableRow>
-                ) : (
-                  history.map((run) => (
+                </TableHeader>
+                <TableBody>
+                  {history.map((run) => (
                     <TableRow key={run.id}>
                       <TableCell className="font-medium">
                         <Link href={`/dashboard/billing/history/${run.id}`} className="hover:underline text-primary">
@@ -81,11 +86,11 @@ export default async function BillingHistoryPage() {
                         </Badge>
                       </TableCell>
                     </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
-          </div>
+                  ))}
+                </TableBody>
+              </Table>
+            </ScrollableTableContainer>
+          )}
         </CardContent>
       </Card>
     </div>

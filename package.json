@@ -7,6 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
     "db:migrate": "node db/migrate.js"
   },
   "dependencies": {
@@ -37,6 +38,8 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "drizzle-kit": "^0.31.1",
+    "eslint": "^9.39.5",
+    "eslint-config-next": "16.2.10",
     "postcss": "^8.5",
     "shadcn": "^4.13.0",
     "tailwindcss": "^4.2.0",

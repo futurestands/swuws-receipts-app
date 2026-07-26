@@ -27,6 +27,7 @@ import {
   downloadHierarchyTemplate,
   HierarchyImportSummary,
 } from "@/app/actions/hierarchy-import"
+import { importUnifiedHierarchy, downloadUnifiedHierarchyTemplate } from "@/app/actions/hierarchy-engine"
 import { cn } from "@/lib/utils"
 
 type Step = "setup" | "preview" | "confirm" | "complete"
@@ -34,13 +35,14 @@ type Step = "setup" | "preview" | "confirm" | "complete"
 export function HierarchyImportClient() {
   const [step, setStep] = useState<Step>("setup")
   const [file, setFile] = useState<File | null>(null)
+  const [formData, setFormData] = useState<FormData | null>(null)
   const [summary, setSummary] = useState<HierarchyImportSummary | null>(null)
   const [isValidating, startValidating] = useTransition()
   const [isImporting, startImporting] = useTransition()
   const [result, setResult] = useState<{ imported: number; failed: number; report: string } | null>(null)
 
   async function handleDownloadTemplate() {
-    const base64 = await downloadHierarchyTemplate()
+    const base64 = await downloadUnifiedHierarchyTemplate()
     const byteCharacters = atob(base64)
     const byteNumbers = new Array(byteCharacters.length)
     for (let i = 0; i < byteCharacters.length; i++) {
@@ -51,7 +53,7 @@ export function HierarchyImportClient() {
     const url = window.URL.createObjectURL(blob)
     const a = document.createElement("a")
     a.href = url
-    a.download = `hierarchy-import-template.xlsx`
+    a.download = `unified-hierarchy-template.xlsx`
     a.click()
     window.URL.revokeObjectURL(url)
   }
@@ -69,10 +71,12 @@ export function HierarchyImportClient() {
 
   async function handleValidate() {
     if (!file) return
-    const formData = new FormData()
-    formData.append("file", file)
+    const fd = new FormData()
+    fd.append("file", file)
+    setFormData(fd)
+
     startValidating(async () => {
-      const response = await validateHierarchy(formData)
+      const response = await validateHierarchy(fd)
       if (response.ok) {
         setSummary(response.summary)
         setStep("preview")
@@ -84,11 +88,11 @@ export function HierarchyImportClient() {
   }
 
   async function handleConfirm() {
-    if (!summary) return
+    if (!summary || !formData) return
     startImporting(async () => {
-      const response = await importHierarchy(summary)
+      const response = await importUnifiedHierarchy(formData)
       if (response.ok) {
-        setResult({ imported: response.imported, failed: response.failed, report: response.report })
+        setResult({ imported: response.imported, failed: 0, report: "" })
         setStep("complete")
         toast.success(`Import complete: ${response.imported} items created.`)
       } else {
@@ -197,7 +201,16 @@ export function HierarchyImportClient() {
                       <TableCell className="text-xs">{row.data.parentName || "—"}</TableCell>
                       <TableCell>
                         <div className="space-y-1">
-                          {row.errors.map((err, j) => (<p key={j} className="text-[10px] text-destructive flex items-start gap-1"><XCircle className="h-3 w-3 mt-0.5 shrink-0" /> {err}</p>))}
+                          {row.errors.map((err, j) => (
+                            <p key={j} className="text-[10px] text-destructive flex items-start gap-1">
+                              <XCircle className="h-3 w-3 mt-0.5 shrink-0" /> {err}
+                            </p>
+                          ))}
+                          {row.warnings.map((warn, j) => (
+                            <p key={j} className="text-[10px] text-amber-600 flex items-start gap-1">
+                              <AlertTriangle className="h-3 w-3 mt-0.5 shrink-0" /> {warn}
+                            </p>
+                          ))}
                         </div>
                       </TableCell>
                     </TableRow>

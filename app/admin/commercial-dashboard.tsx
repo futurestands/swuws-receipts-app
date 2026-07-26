@@ -28,6 +28,7 @@ export function CommercialDashboard({
   })
 
   useEffect(() => {
+    let active = true
     setLoading(true)
     getDashboardStats({
       periodId: filters.periodId === "all" ? undefined : filters.periodId,
@@ -35,9 +36,14 @@ export function CommercialDashboard({
       branchId: filters.branchId === "all" ? undefined : filters.branchId,
       schemeId: filters.schemeId === "all" ? undefined : filters.schemeId,
     }).then((res) => {
-      setStats(res)
-      setLoading(false)
+      if (active) {
+        setStats(res)
+        setLoading(false)
+      }
     })
+    return () => {
+      active = false
+    }
   }, [filters])
 
   const filteredBranches = filters.clusterId === "all"

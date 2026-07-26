@@ -20,6 +20,7 @@ const REPORT_CATEGORIES = [
     icon: Activity,
     reports: [
       { id: "receipt-activity", title: "Receipt Activity Report", description: "Detailed log of all receipts issued, including collector and reconciliation status." },
+      { id: "meter-reading", title: "Meter Reading Report", description: "Capture details of all field meter readings, including customer info and outstanding balances." },
       { id: "daily-collection", title: "Daily Collection Summary", description: "Summary of receipts vs confirmed EBS collections for a specific business date." }
     ]
   },
