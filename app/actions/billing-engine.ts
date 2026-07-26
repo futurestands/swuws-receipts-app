@@ -6,7 +6,7 @@ import { eq, and, desc, or, ilike, sql } from "drizzle-orm"
 import { randomUUID } from "crypto"
 import { getCurrentUser, requireUser } from "@/lib/session"
 import { calculateBill } from "@/lib/billing/math"
-import { revalidatePath } from "next/cache"
+import { revalidatePath, revalidateTag } from "next/cache"
 import { canConfigureSystem, canIssueReceipt } from "@/lib/permissions"
 import { ROLES } from "@/lib/permissions/roles"
 import { writeAudit } from "@/lib/audit"
@@ -201,6 +201,8 @@ export async function submitMeterReading(data: {
     }
   }
 
+  // @ts-ignore
+  revalidateTag("dashboard-stats")
   return { ok: true, readingId }
 }
 
@@ -380,5 +382,7 @@ export async function cancelMeterReading(readingId: string) {
   })
 
   revalidatePath("/dashboard/billing/readings")
+  // @ts-ignore
+  revalidateTag("dashboard-stats")
   return { ok: true }
 }

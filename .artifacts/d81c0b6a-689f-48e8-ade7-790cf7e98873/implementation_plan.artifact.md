@@ -1,46 +1,42 @@
-# Implementation Plan - Unified Import Engine (Phase 1: Customer Refactor)
+# Implementation Plan - Unified Receipt Form & Search Integration
 
-This plan addresses technical debt identified in the forensic audit by centralizing duplicated Excel parsing and data mapping logic into a reusable "Import Engine".
+The previous implementation provided an extra search bar at the top of the form, which caused confusion. This plan unifies the "Customer Name" field with the search logic, ensuring that typing directly into the required name field triggers the auto-fill and balance tracking as requested.
 
 ## User Review Required
 
-> [!NOTE]
-> This is a foundational refactor. While it won't change how your customers are uploaded, it makes the system more robust, easier to maintain, and faster to add new import types in the future.
+> [!IMPORTANT]
+> I am removing the redundant "Customer" search box at the top. The **Customer Name** field itself will now become the search bar. This provides a cleaner, more intuitive experience: type the name, see suggestions, select to auto-fill everything.
 
 ## Proposed Changes
 
-### Core Infrastructure
+### Dashboard UI
 
-#### [NEW] [import-engine.ts](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/lib/import-engine.ts)
-Create a generic utility to handle:
-- **Excel Processing**: Standardized `SheetJS` logic to convert files to JSON.
-- **Dynamic Mapping**: Reusable logic to apply template-based column aliases.
-- **Unified Validation**: A standard wrapper for Zod-based row validation.
-- **Reporting**: A consistent structure for import summaries (valid rows, errors, warnings).
-
-### Customer Management
-
-#### [MODIFY] [customer-import.ts](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/app/actions/customer-import.ts)
-Refactor `validateCustomerImport` and `importCustomers` to use the new `import-engine.ts`.
-- **Simplification**: Remove manual `XLSX` and mapping code.
-- **Reliability**: Ensure identical error handling and data cleaning across all imports.
-
-### Finance & Billing (Future Proofing)
-
-#### [MODIFY] [billing.ts](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/app/actions/billing.ts)
-Update `getImportMapping` to be exported or moved to the shared engine to avoid duplication.
+#### [MODIFY] [receipt-form.tsx](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/app/dashboard/receipt-form.tsx)
+-   **Remove Redundant Field**: Delete the standalone "Customer" search block at the top of the form.
+-   **Upgrade Customer Name Field**:
+    -   Bind the `Customer name` input to trigger the `quickSearchCustomers` logic.
+    -   Display the suggestion dropdown directly below the `Customer name` field.
+    -   When a customer is selected:
+        -   Populate **Name**, **Account #**, **Phone**, **Address**, **Scheme**, and **Branch**.
+        -   Lock these fields to the profile (using `readOnly`).
+        -   Show the **Live Balance Tracker** and the **Disconnect** button.
+-   **Manual Entry Support**: If no suggestion is selected, the field remains a standard text input for new customers.
+-   **Refined Layout**: Reorder the fields to follow a logical flow: Name (Search) -> Identity Snapshot -> Financials -> Metadata.
 
 ---
 
 ## Verification Plan
 
-### Automated Checks
-- **Type Check**: Run `tsc --noEmit` to ensure the generic engine correctly handles the `CustomerImportRow` type.
-
 ### Manual Verification
-1. **Bulk Import Workflow**:
-   - Go to **Customers > Bulk Import**.
-   - Upload a test Excel file with valid and invalid data.
-   - Verify that the validation summary correctly identifies errors (e.g., missing names) and warnings.
-   - Proceed with the import and verify that customers are created/updated in the database correctly.
-2. **Audit Check**: Verify that `customer.bulk_import_upsert` is still correctly logged in the Admin audit log.
+1.  **Unified Search**:
+    -   Go to the "Customer name" field.
+    -   Type a few letters.
+    -   Verify the dropdown appears with matching customers.
+2.  **Auto-fill Trigger**:
+    -   Select a customer from the dropdown.
+    -   Verify the **Account number**, **Phone**, **Branch**, and **Scheme** are all instantly filled and the **Balance Tracker** appears.
+3.  **Balance Tracking**:
+    -   Change the "Amount paid" and verify the "Resulting Arrears" updates in real-time.
+4.  **Correction**:
+    -   Click "Disconnect" or "Change".
+    -   Verify all fields are cleared and ready for either a new search or manual entry.

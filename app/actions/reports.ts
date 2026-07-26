@@ -16,6 +16,7 @@ import { requireUser } from "@/lib/session"
 import { applyReceiptScope, applyBillingScope, applyCustomerScope } from "@/lib/scopes"
 import { and, eq, sql, desc, sum, count, gte, lte, inArray } from "drizzle-orm"
 import { canViewReports, canUploadBilling } from "@/lib/permissions"
+import { unstable_cache } from "next/cache"
 
 /**
  * CUSTOMER STATEMENT (Phase 2, Objective 3)
@@ -139,123 +140,132 @@ export async function getDashboardStats(params: {
   const current = await requireUser()
   if (!canViewReports(current)) throw new Error("Forbidden")
 
-  // Apply Scopes
-  const receiptScope = applyReceiptScope(current)
-  const billingScope = applyBillingScope(current) // applies to billingRun
+  // Cache key includes user ID (for scope) and filter params
+  const cacheKey = `dashboard-stats-${current.id}-${params.periodId || 'all'}-${params.clusterId || 'all'}-${params.branchId || 'all'}-${params.schemeId || 'all'}`
 
-  // Build filters based on selection AND scope
-  const billingConditions = []
-  if (params.periodId) billingConditions.push(eq(billingRecord.billingPeriodId, params.periodId))
-  if (params.schemeId) billingConditions.push(eq(customer.waterSchemeId, params.schemeId))
-  if (params.branchId) billingConditions.push(eq(waterScheme.branchId, params.branchId))
-  if (params.clusterId) billingConditions.push(eq(branch.clusterId, params.clusterId))
+  return unstable_cache(
+    async () => {
+      // Apply Scopes
+      const receiptScope = applyReceiptScope(current)
+      const billingScope = applyBillingScope(current) // applies to billingRun
 
-  // This subquery ensures we only see billing records the user is scoped for
-  // by joining through customer/scheme/branch hierarchy.
-  const billingScopeFilter = applyBillingScope(current)
-  if (billingScopeFilter) billingConditions.push(billingScopeFilter)
+      // Build filters based on selection AND scope
+      const billingConditions = []
+      if (params.periodId) billingConditions.push(eq(billingRecord.billingPeriodId, params.periodId))
+      if (params.schemeId) billingConditions.push(eq(customer.waterSchemeId, params.schemeId))
+      if (params.branchId) billingConditions.push(eq(waterScheme.branchId, params.branchId))
+      if (params.clusterId) billingConditions.push(eq(branch.clusterId, params.clusterId))
 
-  const baseQuery = db
-    .select({
-      totalBilled: sum(billingRecord.totalDue),
-      billedCount: count(billingRecord.id),
-      paidCount: sql<number>`count(case when ${billingRecord.status} = 'paid' then 1 end)::int`,
-      partialCount: sql<number>`count(case when ${billingRecord.status} = 'partially_paid' then 1 end)::int`,
-      unpaidCount: sql<number>`count(case when ${billingRecord.status} = 'pending' then 1 end)::int`,
-    })
-    .from(billingRecord)
-    .innerJoin(customer, eq(billingRecord.customerId, customer.id))
-    .innerJoin(waterScheme, eq(customer.waterSchemeId, waterScheme.id))
-    .innerJoin(branch, eq(waterScheme.branchId, branch.id))
-    .leftJoin(billingRun, eq(billingRecord.billingRunId, billingRun.id))
+      // This subquery ensures we only see billing records the user is scoped for
+      // by joining through customer/scheme/branch hierarchy.
+      const billingScopeFilter = applyBillingScope(current)
+      if (billingScopeFilter) billingConditions.push(billingScopeFilter)
 
-  const [billingStats] = await baseQuery.where(and(...billingConditions))
+      const baseQuery = db
+        .select({
+          totalBilled: sum(billingRecord.totalDue),
+          billedCount: count(billingRecord.id),
+          paidCount: sql<number>`count(case when ${billingRecord.status} = 'paid' then 1 end)::int`,
+          partialCount: sql<number>`count(case when ${billingRecord.status} = 'partially_paid' then 1 end)::int`,
+          unpaidCount: sql<number>`count(case when ${billingRecord.status} = 'pending' then 1 end)::int`,
+        })
+        .from(billingRecord)
+        .innerJoin(customer, eq(billingRecord.customerId, customer.id))
+        .innerJoin(waterScheme, eq(customer.waterSchemeId, waterScheme.id))
+        .innerJoin(branch, eq(waterScheme.branchId, branch.id))
+        .leftJoin(billingRun, eq(billingRecord.billingRunId, billingRun.id))
 
-  // Receipt Aggregation
-  const receiptConditions = []
-  if (params.periodId) {
-    // We join with billingRecord to filter receipts by billing period
-    receiptConditions.push(eq(billingRecord.billingPeriodId, params.periodId))
-  }
-  if (receiptScope) receiptConditions.push(receiptScope)
-  if (params.schemeId) {
-     // Join through customer to check scheme
-     receiptConditions.push(eq(customer.waterSchemeId, params.schemeId))
-  }
+      const [billingStats] = await baseQuery.where(and(...billingConditions))
 
-  const [collectionStats] = await db
-    .select({
-      totalCollected: sum(receipt.amount),
-      receiptCount: count(receipt.id),
-    })
-    .from(receipt)
-    .innerJoin(customer, eq(receipt.customerId, customer.id))
-    .leftJoin(billingRecord, eq(receipt.billingRecordId, billingRecord.id))
-    .where(and(...receiptConditions))
+      // Receipt Aggregation
+      const receiptConditions = []
+      if (params.periodId) {
+        // We join with billingRecord to filter receipts by billing period
+        receiptConditions.push(eq(billingRecord.billingPeriodId, params.periodId))
+      }
+      if (receiptScope) receiptConditions.push(receiptScope)
+      if (params.schemeId) {
+         // Join through customer to check scheme
+         receiptConditions.push(eq(customer.waterSchemeId, params.schemeId))
+      }
 
-  const totalBilled = Number(billingStats?.totalBilled || 0)
-  const totalCollected = Number(collectionStats?.totalCollected || 0)
+      const [collectionStats] = await db
+        .select({
+          totalCollected: sum(receipt.amount),
+          receiptCount: count(receipt.id),
+        })
+        .from(receipt)
+        .innerJoin(customer, eq(receipt.customerId, customer.id))
+        .leftJoin(billingRecord, eq(receipt.billingRecordId, billingRecord.id))
+        .where(and(...receiptConditions))
 
-  // Finding 9 Fix: Deep Arrears & Advance Tracking
-  // A. Total System Arrears (Current Snapshot for selected scope)
-  const arrearsConditions = []
-  if (params.schemeId) arrearsConditions.push(eq(customer.waterSchemeId, params.schemeId))
-  if (params.branchId) arrearsConditions.push(eq(waterScheme.branchId, params.branchId))
-  if (params.clusterId) arrearsConditions.push(eq(branch.clusterId, params.clusterId))
+      const totalBilled = Number(billingStats?.totalBilled || 0)
+      const totalCollected = Number(collectionStats?.totalCollected || 0)
 
-  const customerScope = applyCustomerScope(current)
-  if (customerScope) arrearsConditions.push(customerScope)
+      // Finding 9 Fix: Deep Arrears & Advance Tracking
+      // A. Total System Arrears (Current Snapshot for selected scope)
+      const arrearsConditions = []
+      if (params.schemeId) arrearsConditions.push(eq(customer.waterSchemeId, params.schemeId))
+      if (params.branchId) arrearsConditions.push(eq(waterScheme.branchId, params.branchId))
+      if (params.clusterId) arrearsConditions.push(eq(branch.clusterId, params.clusterId))
 
-  const [arrearsStats] = await db
-    .select({
-      totalDebt: sql<number>`sum(case when ${customer.accountBalance} > 0 then ${customer.accountBalance} else 0 end)::bigint`,
-      totalCredit: sql<number>`sum(case when ${customer.accountBalance} < 0 then abs(${customer.accountBalance}) else 0 end)::bigint`,
-    })
-    .from(customer)
-    .leftJoin(waterScheme, eq(customer.waterSchemeId, waterScheme.id))
-    .leftJoin(branch, eq(waterScheme.branchId, branch.id))
-    .where(and(...arrearsConditions))
+      const customerScope = applyCustomerScope(current)
+      if (customerScope) arrearsConditions.push(customerScope)
 
-  // B. Arrears Collected in Period (Receipts not linked to a current bill)
-  const arrearsCollectedConditions = [...receiptConditions]
-  arrearsCollectedConditions.push(sql`${receipt.billingRecordId} IS NULL`)
+      const [arrearsStats] = await db
+        .select({
+          totalDebt: sql<number>`sum(case when ${customer.accountBalance} > 0 then ${customer.accountBalance} else 0 end)::bigint`,
+          totalCredit: sql<number>`sum(case when ${customer.accountBalance} < 0 then abs(${customer.accountBalance}) else 0 end)::bigint`,
+        })
+        .from(customer)
+        .leftJoin(waterScheme, eq(customer.waterSchemeId, waterScheme.id))
+        .leftJoin(branch, eq(waterScheme.branchId, branch.id))
+        .where(and(...arrearsConditions))
 
-  const [arrearsCollectedStats] = await db
-    .select({
-      amount: sum(receipt.amount),
-    })
-    .from(receipt)
-    .innerJoin(customer, eq(receipt.customerId, customer.id))
-    .where(and(...arrearsCollectedConditions))
+      // B. Arrears Collected in Period (Receipts not linked to a current bill)
+      const arrearsCollectedConditions = [...receiptConditions]
+      arrearsCollectedConditions.push(sql`${receipt.billingRecordId} IS NULL`)
 
-  const totalArrears = Number(arrearsStats?.totalDebt || 0)
-  const totalUpfront = Number(arrearsStats?.totalCredit || 0)
-  const collectedFromArrears = Number(arrearsCollectedStats?.amount || 0)
-  const collectedFromBills = totalCollected - collectedFromArrears
+      const [arrearsCollectedStats] = await db
+        .select({
+          amount: sum(receipt.amount),
+        })
+        .from(receipt)
+        .innerJoin(customer, eq(receipt.customerId, customer.id))
+        .where(and(...arrearsCollectedConditions))
 
-  const rate = totalBilled > 0 ? (totalCollected / totalBilled) * 100 : 0
+      const totalArrears = Number(arrearsStats?.totalDebt || 0)
+      const totalUpfront = Number(arrearsStats?.totalCredit || 0)
+      const collectedFromArrears = Number(arrearsCollectedStats?.amount || 0)
+      const collectedFromBills = totalCollected - collectedFromArrears
 
-  return {
-    billing: {
-      totalBilled,
-      billedCount: Number(billingStats?.billedCount || 0),
-      paidCount: Number(billingStats?.paidCount || 0),
-      partialCount: Number(billingStats?.partialCount || 0),
-      unpaidCount: Number(billingStats?.unpaidCount || 0),
+      const rate = totalBilled > 0 ? (totalCollected / totalBilled) * 100 : 0
+
+      return {
+        billing: {
+          totalBilled,
+          billedCount: Number(billingStats?.billedCount || 0),
+          paidCount: Number(billingStats?.paidCount || 0),
+          partialCount: Number(billingStats?.partialCount || 0),
+          unpaidCount: Number(billingStats?.unpaidCount || 0),
+        },
+        collections: {
+          totalCollected,
+          collectedFromBills,
+          collectedFromArrears,
+          receiptCount: Number(collectionStats?.receiptCount || 0),
+          outstanding: Math.max(0, totalBilled - collectedFromBills),
+          collectionRate: rate,
+        },
+        arrears: {
+          totalArrears,
+          totalUpfront,
+        }
+      }
     },
-    collections: {
-      totalCollected,
-      collectedFromBills,
-      collectedFromArrears,
-      receiptCount: Number(collectionStats?.receiptCount || 0),
-      outstanding: Math.max(0, totalBilled - collectedFromBills),
-      collectionRate: rate,
-    },
-    arrears: {
-      totalArrears,
-      totalUpfront,
-    }
-  }
+    [cacheKey],
+    { tags: ['dashboard-stats'] }
+  )()
 }
 
 /**
@@ -265,22 +275,30 @@ export async function getCollectionTrends(days = 30) {
   const current = await requireUser()
   const scope = applyReceiptScope(current)
 
-  const startDate = new Date()
-  startDate.setDate(startDate.getDate() - days)
+  const cacheKey = `collection-trends-${current.id}-${days}`
 
-  const conditions = [gte(receipt.paymentDate, startDate)]
-  if (scope) conditions.push(scope)
+  return unstable_cache(
+    async () => {
+      const startDate = new Date()
+      startDate.setDate(startDate.getDate() - days)
 
-  return db
-    .select({
-      date: sql<string>`DATE(${receipt.paymentDate})`,
-      amount: sum(receipt.amount),
-      count: count(receipt.id),
-    })
-    .from(receipt)
-    .where(and(...conditions))
-    .groupBy(sql`DATE(${receipt.paymentDate})`)
-    .orderBy(desc(sql`DATE(${receipt.paymentDate})`))
+      const conditions = [gte(receipt.paymentDate, startDate)]
+      if (scope) conditions.push(scope)
+
+      return db
+        .select({
+          date: sql<string>`DATE(${receipt.paymentDate})`,
+          amount: sum(receipt.amount),
+          count: count(receipt.id),
+        })
+        .from(receipt)
+        .where(and(...conditions))
+        .groupBy(sql`DATE(${receipt.paymentDate})`)
+        .orderBy(desc(sql`DATE(${receipt.paymentDate})`))
+    },
+    [cacheKey],
+    { tags: ['collections'] }
+  )()
 }
 
 /**

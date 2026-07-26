@@ -1,6 +1,4 @@
-- `[x]` Implement `lib/import-engine.ts` (Generic Excel Parser & Mapper)
-- `[x]` Refactor `app/actions/customer-import.ts` to use the new engine
-- `[x]` Refactor `app/actions/billing.ts` and `app/actions/hierarchy-import.ts`
-- `[x]` Standardize `getImportMapping` utility
-- `[x]` Verify bulk customer import functionality
-- `[x]` Finalize walkthrough
+- `[x]` Update `ReceiptForm` auto-fill logic for customer selection
+- `[x]` Add "Live Balance Tracker" to `ReceiptForm`
+- `[x]` Ensure all customer fields remain visible and updated on selection
+- `[x]` Verify partial payment and balance tracking in the UI

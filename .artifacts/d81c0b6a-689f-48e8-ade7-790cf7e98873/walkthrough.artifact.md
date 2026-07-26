@@ -1,32 +1,31 @@
-# Walkthrough: Unified Import Engine (Phase 1)
+# Walkthrough: Enhanced Receipt Issuance with Auto-fill & Balance Tracking
 
-I have completed the first phase of the **Unified Import Engine** implementation. This refactor addresses significant technical debt by centralizing duplicated Excel parsing and data mapping logic into a single, high-performance core utility.
+I have upgraded the "New Receipt" form to be significantly more automated and informative. The system now deeply integrates with your customer database to reduce manual entry and provide real-time financial clarity.
 
 ## Changes Made
 
-### 1. Core Infrastructure
-- **New Shared Engine**: Created [import-engine.ts](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/lib/import-engine.ts). This file now serves as the single source of truth for:
-    - Standardized `SheetJS` Excel parsing.
-    - Dynamic column mapping based on Admin-defined templates.
-    - Unified `Zod` validation with support for custom domain-level rules (like database duplicate checks).
-    - Consistent reporting of valid rows, warnings, and errors.
+### 1. Advanced Customer Search & Auto-fill
+- **Dynamic Suggestions**: As you type a single letter in the "Customer" field, the system instantly searches your database and provides a list of matching profiles.
+- **Full Profile Integration**: Selecting a customer now automatically fills their **Name**, **Account Number**, **Phone**, **Address**, and even their **Water Scheme** and **Branch**. This ensures data consistency and saves time.
+- **Smart Field Locking**: Auto-filled fields are marked as read-only while a profile is linked, preventing accidental edits. You can click "Change" to disconnect and revert to manual entry.
 
-### 2. Module Refactoring
-The following modules have been refactored to use the new engine, removing over 250 lines of redundant code:
-- **[Customer Import](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/app/actions/customer-import.ts)**: Simplified the validation loop and consolidated error handling.
-- **[Monthly Billing Import](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/app/actions/billing.ts)**: Replaced manual field mapping with the unified engine's automated logic.
-- **[Hierarchy Import](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/app/actions/hierarchy-import.ts)**: Streamlined the complex scheme/branch/cluster creation checks.
+### 2. Live Balance Tracker
+- **Instant Calculations**: Added a summary card that appears the moment a customer is selected.
+- **Arrears Visibility**: Shows the customer's **Current Arrears** directly from their profile.
+- **Resulting Balance**: Calculates the **Resulting Arrears** in real-time as you type the "Amount Paid," allowing you to see exactly what the balance will be after the payment.
+- **Credit Support**: Automatically highlights if a payment results in a credit balance (over-payment).
+
+### 3. Partial Payment Support
+- **Flexible Entry**: The "Amount Paid" remains fully editable even after selecting a bill.
+- **Real-time Preview**: The balance tracker adjusts instantly for partial payments, showing the remaining debt.
 
 ## Verification Results
 
-### System Integrity
-- **Type Check**: Passed successfully (`tsc --noEmit`). The generic engine correctly enforces types across all refactored modules.
-- **Data Consistency**: Verified that existing features like "Allow Updates" for customers and "Parent Branch" warnings for schemes remain fully functional and correctly integrated.
-- **Error Handling**: Confirmed that Excel parsing errors (like empty files) are handled gracefully and returned as user-friendly messages.
+### Manual Verification
+- **Search Logic**: Verified that typing a letter shows relevant customer suggestions with their account numbers.
+- **Auto-fill Accuracy**: Confirmed that selecting a profile correctly populates all relevant form fields and selects the correct Scheme/Branch.
+- **Balance Math**: Verified that the "Resulting Arrears" correctly subtracts the payment amount from the current balance.
+- **Disconnect**: Verified that clicking "Change" or "Cancel" correctly wipes all auto-filled data.
 
 > [!TIP]
-> This refactor makes the system much more stable. If you ever need to change how Excel files are processed (e.g., adding CSV support), you now only need to update the code in one place: [import-engine.ts](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/lib/import-engine.ts).
-
----
-
-**This refactor significantly improves the system's maintainability and sets a strong foundation for future enterprise modules.**
+> Use the "Customer" search bar first for every receipt. It will handle 90% of the work for you by filling in the account details and branch information automatically.

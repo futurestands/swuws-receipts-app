@@ -19,7 +19,8 @@ import {
 } from "@/components/ui/select"
 import { toast } from "sonner"
 import { formatUGX } from "@/lib/format"
-import { AlertCircle } from "lucide-react"
+import { AlertCircle, Search } from "lucide-react"
+import { cn } from "@/lib/utils"
 import { ResponsiveFormLayout, FormField, FormActions } from "@/components/ui/form-layout"
 
 const emptyFormBase = {
@@ -105,6 +106,15 @@ export function ReceiptForm({
       active = false
     }
   }, [selectedCustomer, set])
+
+  useEffect(() => {
+    if (selectedCustomer) {
+      const currentBalance = Number(selectedCustomer.accountBalance || 0)
+      const amountPaid = Number(form.amount || 0)
+      const remaining = Math.max(0, currentBalance - amountPaid)
+      setForm(f => ({ ...f, outstandingBalance: String(remaining) }))
+    }
+  }, [form.amount, selectedCustomer])
 
   useEffect(() => {
     if (!customerQuery.trim() || selectedCustomer) {
@@ -215,186 +225,253 @@ export function ReceiptForm({
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-4">
-          <FormField label="Customer" htmlFor="customerSearch">
-            {selectedCustomer ? (
-              <div className="flex items-center justify-between gap-2 rounded-lg border px-3 py-2.5 text-sm">
-                <div className="min-w-0">
-                  <p className="truncate font-medium">{selectedCustomer.name}</p>
-                  {selectedCustomer.customerAccount && (
-                    <p className="text-muted-foreground text-xs">
-                      Acct: {selectedCustomer.customerAccount}
-                    </p>
-                  )}
-                </div>
+          <FormField label="Search for Customer" htmlFor="customerSearch">
+            <div className="relative">
+              <div className="absolute left-3 top-3 h-4 w-4 text-muted-foreground pointer-events-none">
+                <Search className="h-4 w-4" />
+              </div>
+              <Input
+                id="customerSearch"
+                placeholder="Type name or account number to find customer..."
+                value={selectedCustomer ? selectedCustomer.name : customerQuery}
+                onChange={(e) => {
+                  if (selectedCustomer) {
+                    setSelectedCustomer(null)
+                    setForm(prev => ({
+                      ...prev,
+                      customerName: "",
+                      customerAccount: "",
+                      customerPhone: "",
+                      customerAddress: "",
+                    }))
+                  }
+                  setCustomerQuery(e.target.value)
+                }}
+                className={cn("h-11 pl-9", selectedCustomer && "bg-primary/5 font-bold text-primary border-primary/20")}
+              />
+              {selectedCustomer && (
                 <Button
                   type="button"
                   variant="ghost"
                   size="sm"
-                  className="h-9 shrink-0"
+                  className="absolute right-1 top-1 h-9 px-3 text-muted-foreground hover:text-destructive"
                   onClick={() => {
                     setSelectedCustomer(null)
                     setCustomerQuery("")
+                    setForm(prev => ({
+                      ...prev,
+                      customerName: "",
+                      customerAccount: "",
+                      customerPhone: "",
+                      customerAddress: "",
+                    }))
                   }}
                 >
                   Change
                 </Button>
-              </div>
-            ) : (
-              <div className="relative">
-                <Input
-                  id="customerSearch"
-                  placeholder="Search existing customers, or type a new name below"
-                  value={customerQuery}
-                  onChange={(e) => setCustomerQuery(e.target.value)}
-                  className="h-11"
-                />
-                {customerResults.length > 0 && (
-                  <div className="absolute z-10 mt-1 max-h-64 w-full overflow-y-auto rounded-lg border bg-popover shadow-md">
-                    {customerResults.map((c) => (
-                      <button
-                        type="button"
-                        key={c.id}
-                        className="w-full min-h-11 text-left px-3 py-2 text-sm hover:bg-accent"
-                        onClick={() => {
-                          setSelectedCustomer(c)
-                          setCustomerResults([])
-                        }}
-                      >
-                        <span className="font-medium">{c.name}</span>
-                        {c.customerAccount && (
-                          <span className="text-muted-foreground"> · {c.customerAccount}</span>
-                        )}
-                      </button>
-                    ))}
+              )}
+              {customerResults.length > 0 && !selectedCustomer && (
+                <div className="absolute z-10 mt-1 max-h-64 w-full overflow-y-auto rounded-lg border bg-popover shadow-md ring-1 ring-black/5">
+                  {customerResults.map((c) => (
+                    <button
+                      type="button"
+                      key={c.id}
+                      className="w-full min-h-11 text-left px-3 py-2 text-sm hover:bg-accent border-b last:border-0 transition-colors"
+                      onClick={() => {
+                        setSelectedCustomer(c)
+                        setCustomerResults([])
+                        setForm(prev => ({
+                          ...prev,
+                          customerName: c.name,
+                          customerAccount: c.customerAccount || "",
+                          customerPhone: c.phone || "",
+                          customerAddress: c.address || "",
+                          schemeId: c.waterSchemeId || prev.schemeId,
+                          branchId: (schemes.find(s => s.id === c.waterSchemeId)?.branchId) || prev.branchId
+                        }))
+                      }}
+                    >
+                      <div className="flex flex-col">
+                        <span className="font-bold">{c.name}</span>
+                        <span className="text-[10px] uppercase text-muted-foreground">
+                          {c.customerAccount || 'No Account'} · {c.phone || 'No Phone'}
+                        </span>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </FormField>
+
+          {/* Selected Customer Card */}
+          {selectedCustomer && (
+            <div className="p-4 bg-primary/5 border border-primary/10 rounded-lg animate-in fade-in zoom-in-95 duration-300">
+               <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-2">
+                    <div className="h-2 w-2 rounded-full bg-primary animate-pulse" />
+                    <span className="text-xs font-bold uppercase tracking-wider text-primary">Linked Profile</span>
                   </div>
-                )}
-              </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 text-xs text-muted-foreground hover:text-destructive"
+                    onClick={() => {
+                      setSelectedCustomer(null)
+                      setCustomerQuery("")
+                      setForm(prev => ({
+                        ...prev,
+                        customerName: "",
+                        customerAccount: "",
+                        customerPhone: "",
+                        customerAddress: "",
+                      }))
+                    }}
+                  >
+                    Disconnect
+                  </Button>
+               </div>
+
+               {/* Live Balance Tracker */}
+               <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <p className="text-[10px] font-bold uppercase text-muted-foreground">Current Arrears</p>
+                    <p className="text-lg font-black">{formatUGX(selectedCustomer.accountBalance)}</p>
+                  </div>
+                  <div className="space-y-1 text-right">
+                    <p className="text-[10px] font-bold uppercase text-muted-foreground">Resulting Arrears</p>
+                    <p className={cn(
+                      "text-xl font-black",
+                      (Number(selectedCustomer.accountBalance) - Number(form.amount || 0)) <= 0 ? "text-primary" : "text-destructive"
+                    )}>
+                      {formatUGX(Math.max(0, Number(selectedCustomer.accountBalance) - Number(form.amount || 0)))}
+                    </p>
+                  </div>
+               </div>
+
+               {(Number(selectedCustomer.accountBalance) - Number(form.amount || 0)) < 0 && (
+                 <p className="text-[10px] text-primary mt-2 italic">
+                   Note: This payment results in a credit balance of {formatUGX(Math.abs(Number(selectedCustomer.accountBalance) - Number(form.amount || 0)))}
+                 </p>
+               )}
+            </div>
+          )}
+
+          <FormField label="Active bill" htmlFor="activeBillTrigger">
+            <Select
+              value={form.billingRecordId}
+              onValueChange={(v) => {
+                set("billingRecordId", v ?? "")
+                const bill = bills.find((b) => b.id === v)
+                if (bill) {
+                  // Auto-populate (Certification Finding 10.2.2)
+                  set("amount", String(bill.totalDue))
+                }
+              }}
+              disabled={!selectedCustomer}
+            >
+              <SelectTrigger id="activeBillTrigger" className="w-full h-11">
+                <SelectValue
+                  placeholder={selectedCustomer ? (bills.length > 0 ? "Select a bill" : "No open bills found") : "Search for a customer first"}
+                />
+              </SelectTrigger>
+              <SelectContent>
+                {bills.map((b) => (
+                  <SelectItem key={b.id} value={b.id}>
+                    {b.periodName} - {formatUGX(b.totalDue)} (Due:{" "}
+                    {new Date(b.dueDate).toLocaleDateString()})
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {selectedCustomer && bills.length === 0 && (
+              <p className="text-xs text-muted-foreground">
+                This customer has no open bills. You can still record a general payment.
+              </p>
             )}
           </FormField>
 
-          {selectedCustomer && (
-            <FormField label="Active bill" htmlFor="activeBillTrigger">
+          <ResponsiveFormLayout columns={2}>
+            <FormField label="Billing Period" htmlFor="billingPeriodTrigger" required>
               <Select
-                value={form.billingRecordId}
-                onValueChange={(v) => {
-                  set("billingRecordId", v ?? "")
-                  const bill = bills.find((b) => b.id === v)
-                  if (bill) {
-                    // Auto-populate (Certification Finding 10.2.2)
-                    set("amount", String(bill.totalDue))
-                    set("outstandingBalance", "0")
-                  }
-                }}
+                value={form.billingPeriodId}
+                onValueChange={(v) => set("billingPeriodId", v ?? "")}
+                disabled={!!form.billingRecordId}
               >
-                <SelectTrigger id="activeBillTrigger" className="w-full h-11">
-                  <SelectValue
-                    placeholder={bills.length > 0 ? "Select a bill" : "No open bills found"}
-                  />
+                <SelectTrigger id="billingPeriodTrigger" className="w-full h-11">
+                  <SelectValue placeholder="Select period" />
                 </SelectTrigger>
                 <SelectContent>
-                  {bills.map((b) => (
-                    <SelectItem key={b.id} value={b.id}>
-                      {b.periodName} - {formatUGX(b.totalDue)} (Due:{" "}
-                      {new Date(b.dueDate).toLocaleDateString()})
+                  {billingPeriods.map((p) => (
+                    <SelectItem key={p.id} value={p.id}>
+                      {p.periodName}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
-              {bills.length === 0 && (
-                <p className="text-xs text-muted-foreground">
-                  This customer has no open bills. You can still record a general payment by
-                  selecting a billing period below.
-                </p>
-              )}
             </FormField>
-          )}
+            <FormField label="Scheme" htmlFor="schemeTrigger">
+              <Select
+                value={form.schemeId}
+                onValueChange={(v) => set("schemeId", v ?? "")}
+                disabled={!!form.billingRecordId}
+              >
+                <SelectTrigger id="schemeTrigger" className="w-full h-11">
+                  <SelectValue placeholder="Select scheme" />
+                </SelectTrigger>
+                <SelectContent>
+                  {schemes.map((s) => (
+                    <SelectItem key={s.id} value={s.id}>
+                      {s.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </FormField>
+          </ResponsiveFormLayout>
 
-          {!form.billingRecordId && (
-            <ResponsiveFormLayout columns={2}>
-              <FormField label="Billing Period" htmlFor="billingPeriodTrigger" required>
-                <Select
-                  value={form.billingPeriodId}
-                  onValueChange={(v) => set("billingPeriodId", v ?? "")}
-                >
-                  <SelectTrigger id="billingPeriodTrigger" className="w-full h-11">
-                    <SelectValue placeholder="Select period" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {billingPeriods.map((p) => (
-                      <SelectItem key={p.id} value={p.id}>
-                        {p.periodName}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </FormField>
-              <FormField label="Scheme" htmlFor="schemeTrigger">
-                <Select
-                  value={form.schemeId}
-                  onValueChange={(v) => set("schemeId", v ?? "")}
-                >
-                  <SelectTrigger id="schemeTrigger" className="w-full h-11">
-                    <SelectValue placeholder="Select scheme" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {schemes.map((s) => (
-                      <SelectItem key={s.id} value={s.id}>
-                        {s.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </FormField>
-            </ResponsiveFormLayout>
-          )}
+          <FormField label="Customer name" htmlFor="customerName" required>
+            <Input
+              id="customerName"
+              required
+              value={form.customerName}
+              onChange={(e) => set("customerName", e.target.value)}
+              className="h-11"
+              readOnly={!!selectedCustomer}
+            />
+          </FormField>
 
-          {!selectedCustomer && editableFields.customerName && (
-            <FormField label="Customer name" htmlFor="customerName" required>
+          <FormField label="Account number" htmlFor="customerAccount">
+            <Input
+              id="customerAccount"
+              value={form.customerAccount}
+              onChange={(e) => set("customerAccount", e.target.value)}
+              className="h-11"
+              readOnly={!!selectedCustomer}
+            />
+          </FormField>
+
+          <ResponsiveFormLayout columns={2}>
+            <FormField label="Phone" htmlFor="customerPhone">
               <Input
-                id="customerName"
-                required
-                value={form.customerName}
-                onChange={(e) => set("customerName", e.target.value)}
+                id="customerPhone"
+                value={form.customerPhone}
+                onChange={(e) => set("customerPhone", e.target.value)}
                 className="h-11"
+                readOnly={!!selectedCustomer}
               />
             </FormField>
-          )}
-
-          {!selectedCustomer && editableFields.customerAccount && (
-            <FormField label="Account number" htmlFor="customerAccount">
+            <FormField label="Address" htmlFor="customerAddress">
               <Input
-                id="customerAccount"
-                value={form.customerAccount}
-                onChange={(e) => set("customerAccount", e.target.value)}
+                id="customerAddress"
+                value={form.customerAddress}
+                onChange={(e) => set("customerAddress", e.target.value)}
                 className="h-11"
+                readOnly={!!selectedCustomer}
               />
             </FormField>
-          )}
-
-          {(editableFields.customerPhone || editableFields.customerAddress) && !selectedCustomer && (
-            <ResponsiveFormLayout columns={2}>
-              {editableFields.customerPhone && (
-                <FormField label="Phone" htmlFor="customerPhone">
-                  <Input
-                    id="customerPhone"
-                    value={form.customerPhone}
-                    onChange={(e) => set("customerPhone", e.target.value)}
-                    className="h-11"
-                  />
-                </FormField>
-              )}
-              {editableFields.customerAddress && (
-                <FormField label="Address" htmlFor="customerAddress">
-                  <Input
-                    id="customerAddress"
-                    value={form.customerAddress}
-                    onChange={(e) => set("customerAddress", e.target.value)}
-                    className="h-11"
-                  />
-                </FormField>
-              )}
-            </ResponsiveFormLayout>
-          )}
+          </ResponsiveFormLayout>
 
           <ResponsiveFormLayout columns={2}>
             {editableFields.amount && (

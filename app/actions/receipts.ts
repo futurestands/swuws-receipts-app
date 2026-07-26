@@ -16,7 +16,7 @@ import { writeAudit } from "@/lib/audit"
 import { getSettings } from "@/app/actions/settings"
 import { and, desc, eq, gte, lte, sql, sum, inArray } from "drizzle-orm"
 import { randomUUID } from "crypto"
-import { revalidatePath } from "next/cache"
+import { revalidatePath, revalidateTag } from "next/cache"
 import { put } from "@vercel/blob"
 import { z } from "zod"
 import { checkRateLimit } from "@/lib/rate-limit"
@@ -310,6 +310,10 @@ export async function createReceipt(input: CreateReceiptInput) {
 
     revalidatePath("/dashboard")
     revalidatePath("/admin")
+    // @ts-ignore - Next.js 16 signature variation
+    revalidateTag("dashboard-stats")
+    // @ts-ignore
+    revalidateTag("collections")
     return { ok: true as const, receipt: row }
   } catch (e: any) {
     console.error("createReceipt failed", e)
