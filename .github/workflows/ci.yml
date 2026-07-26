@@ -1,0 +1,46 @@
+name: SWUWS Enterprise CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Security Audit (Secrets Check)
+        run: |
+          if grep -r "BETTER_AUTH_SECRET=" . --exclude-dir=node_modules; then
+            echo "CRITICAL SECURITY ERROR: Secrets found in repository!"
+            exit 1
+          fi
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Type Check
+        run: npm run typecheck
+
+      - name: Unit Tests (Math & Logic)
+        run: npm test
+
+      - name: Production Build
+        run: npm run build
+        env:
+          DATABASE_URL: postgres://dummy:password@localhost:5432/db
+          BETTER_AUTH_SECRET: dummy-secret
+          BETTER_AUTH_URL: http://localhost:3000

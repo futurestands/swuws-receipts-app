@@ -5,6 +5,8 @@ import { receipt, customer, branch, waterScheme, billingPeriod, billingRun, bill
 import { Scope } from "../iam"
 import { db } from "../db"
 
+export type { UserPermissionsContext }
+
 /**
  * CENTRALIZED ORGANIZATIONAL SCOPE ENGINE
  *

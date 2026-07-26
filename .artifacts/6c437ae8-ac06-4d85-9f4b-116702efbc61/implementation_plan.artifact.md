@@ -1,53 +1,51 @@
-# Implementation Plan: Connecting Governance Actions to UI
+# Implementation Plan: Pivoting to EBS-Confirmed Financial Reporting
 
-This plan connects the backend "strengthening" logic we built (Receipt Voiding and Customer Deactivation) to the actual User Interface. This ensures that administrators can exercise their permissions directly through the dashboard.
+This plan aligns the system's metrics with the organizational reality: **Receipts are evidence of cash-in-hand, but the External Billing System (EBS) import is the only source of "Official Collected" data.**
 
 ## User Review Required
 
-> [!CAUTION]
-> **Financial Reversal**: The "Void" action will trigger an immediate restoration of the customer's balance. This cannot be undone automatically. I am adding a mandatory "Confirmation Dialog" to prevent accidental clicks.
+> [!IMPORTANT]
+> **Dashboard Metric Shift**: "Official Collected" and "Collection %" will now only increase AFTER you import the daily bank/EBS report. Receipts printed today will show up in a separate "Cash to be Deposited" KPI.
+>
+> **Arrears Logic**: "Arrears Collected" will now be calculated based on EBS records that are reconciled against older billing periods or unmatched receipts, rather than just "unlinked" receipts.
 
 ## Proposed Changes
 
 ---
 
-### 1. Receipt Management: Voiding Interface
+### 1. Dashboard: Operational vs. Official Metrics
 
-#### [NEW] [void-receipt-button.tsx](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/app/dashboard/receipts/[id]/void-receipt-button.tsx)
-- Create a client-side button component for "Voiding."
-- Includes an `AlertDialog` confirmation with a text area for the "Void Reason."
-- Visibility: Only shown if the user has the `receipts.void` permission.
-- Constraint: The button will be disabled if the receipt is already `matched` (reconciled).
+#### [MODIFY] [app/actions/billing.ts](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/app/actions/billing.ts)
+- **`getCollectionSummary`**:
+    - Change `totalCollected` source from `receipt` table to `daily_collection_record` (sum of amounts in the current billing period's date range).
+    - Add a new metric: `cashInHand` (sum of `receipts` issued but not yet matched/deposited).
 
-#### [MODIFY] [app/dashboard/receipts/[id]/page.tsx](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/app/dashboard/receipts/[id]/page.tsx)
-- Import and place the `VoidReceiptButton` next to the `PrintButton`.
-- Add a "Voided" watermark/badge to the receipt UI if the audit trail contains a void event (calculated dynamically).
-
----
-
-### 2. CRM Management: Customer Lifecycle
-
-#### [MODIFY] [app/dashboard/customers/[id]/edit-customer-form.tsx](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/app/dashboard/customers/[id]/edit-customer-form.tsx)
-- Add a "Deactivate Customer" (or "Activate") button at the bottom of the form.
-- Use `setCustomerActive` action.
-- Gated by the `customers.delete` permission.
-- Logic: "Deactivated" customers will be excluded from the operational "Quick Search" but remain in the "Report Search."
+#### [MODIFY] [app/dashboard/page.tsx](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/app/dashboard/page.tsx)
+- Add a third Stat Card: **"Unverified Cash (In-Hand)"**.
+- Label the existing Collected card as **"Official Bank Collections"**.
 
 ---
 
-### 3. Reporting Engine Updates
+### 2. Reporting: Re-engineering "Arrears Collected"
 
 #### [MODIFY] [app/actions/reports.ts](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/app/actions/reports.ts)
-- Update `getCustomerStatement` to explicitly label voided payments in the ledger.
+- **`getDashboardStats`**:
+    - Update the `collections` object to pull from `reconciliation_match` and `daily_collection_record`.
+    - **Confirmed Arrears**: Count an EBS record as "Arrears Collection" only if it matches a debt from a *previous* billing period.
+
+---
+
+### 3. Reconciliation Governance
+
+#### [MODIFY] [app/actions/reconciliation.ts](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/app/actions/reconciliation.ts)
+- Add a check to ensure that when an EBS record is "Matched" to an older debt, it triggers an audit log specifically categorized as "Arrears Resolution."
 
 ## Verification Plan
 
 ### Automated Verification
-- Run `npm run typecheck` to ensure new component imports are valid.
+- Update `math.test.ts` to include scenarios where Receipts > EBS Deposits (showing unverified cash) and EBS Deposits > Receipts (showing direct bank payments).
 
 ### Manual Verification
-1. Open a receipt as a **System Administrator**.
-2. Click "Void," enter a reason, and confirm.
-3. **Verify**: The customer's balance on their profile page increases by the receipt amount.
-4. **Verify**: The receipt page now shows a "VOIDED" badge.
-5. Deactivate a customer and verify they no longer appear in the "New Receipt" customer picker.
+1. Issue a USh 10,000 receipt. **Verify**: Dashboard "Official Collections" remains unchanged, but "Cash In-Hand" increases.
+2. Import an EBS report containing that USh 10,000 deposit. **Verify**: Dashboard "Official Collections" now increases, and "Collection Progress %" updates.
+3. Verify the "Arrears Collected" metric only updates after the EBS record is processed.

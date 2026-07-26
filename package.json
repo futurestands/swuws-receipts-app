@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
+    "test": "vitest run",
     "db:migrate": "node db/migrate.js"
   },
   "dependencies": {
@@ -43,7 +44,8 @@
     "postcss": "^8.5",
     "shadcn": "^4.13.0",
     "tailwindcss": "^4.2.0",
-    "typescript": "5.7.3"
+    "typescript": "5.7.3",
+    "vitest": "^3.0.4"
   },
   "overrides": {
     "hono": "4.12.25"
