@@ -4,6 +4,7 @@ import {
   timestamp,
   bigint,
   integer,
+  boolean,
   index,
 } from "drizzle-orm/pg-core"
 import { waterScheme } from "./hierarchy"
@@ -28,6 +29,7 @@ export const customer = pgTable(
     notes: text("notes"),
     openingArrears: integer("openingArrears").notNull().default(0),
     accountBalance: bigint("accountBalance", { mode: "number" }).notNull().default(0),
+    active: boolean("active").notNull().default(true),
     createdById: text("createdById").references(() => user.id, { onDelete: "set null" }),
     createdAt: timestamp("createdAt").notNull().defaultNow(),
     updatedAt: timestamp("updatedAt").notNull().defaultNow(),
@@ -35,6 +37,7 @@ export const customer = pgTable(
   (table) => ({
     nameIdx: index("customer_name_idx").on(table.name),
     schemeIdx: index("customer_scheme_idx").on(table.waterSchemeId),
+    activeIdx: index("customer_active_idx").on(table.active),
   }),
 )
 

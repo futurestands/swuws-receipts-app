@@ -6,10 +6,26 @@
 export type TemplateData = Record<string, string | number | boolean | null | undefined>
 
 /**
+ * Escapes HTML special characters to prevent XSS.
+ */
+export function escapeHtml(unsafe: string): string {
+  return unsafe
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;")
+}
+
+/**
  * Renders a template string by replacing {{variable}} with values from the data object.
  * Supports basic conditional rendering for presence of values.
  */
-export function renderTemplate(content: string, data: TemplateData): string {
+export function renderTemplate(
+  content: string,
+  data: TemplateData,
+  options?: { escape?: boolean },
+): string {
   let rendered = content
 
   // 1. Process variables: {{var_name}}
@@ -18,7 +34,8 @@ export function renderTemplate(content: string, data: TemplateData): string {
     if (value === undefined || value === null) {
       return "" // or keep match if we want to show missing tags
     }
-    return String(value)
+    const str = String(value)
+    return options?.escape ? escapeHtml(str) : str
   })
 
   // 2. Process conditional blocks: {{#if var_name}}...{{/if}}

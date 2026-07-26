@@ -2,7 +2,7 @@
 
 import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
-import { user, cluster, branch, waterScheme, organization } from "@/lib/db/schema"
+import { user, cluster, branch, waterScheme, organization, managedTemplate, templateVersion } from "@/lib/db/schema"
 import { requireUser } from "@/lib/session"
 import { writeAudit } from "@/lib/audit"
 import { ROLES, ROLE_LABELS, type Role } from "@/lib/permissions/roles"
@@ -341,22 +341,35 @@ export async function importBulkUsers(summary: ImportSummary): Promise<{ ok: tru
 export async function downloadBulkImportTemplate(format: "xlsx" | "csv") {
   await requireUser()
 
-  const headers = ["Name", "Email", "Password", "Role", "Cluster", "Area", "Scheme", "Phone", "Status"]
-  const data = [
-    {
-      Name: "John Doe",
-      Email: "john.doe@example.com",
-      Password: "OptionalStrongPassword123!",
-      Role: "Plumber (Agent)",
-      Cluster: "Western",
-      Area: "Mbarara",
-      Scheme: "Kabere",
-      Phone: "+256123456789",
-      Status: "Active",
-    },
-  ]
+  // 1. Resolve Headers from Template Hub
+  const [template] = await db.select().from(managedTemplate).where(eq(managedTemplate.code, 'import.users.bulk')).limit(1)
+  let mapping = {
+    name: "Name",
+    email: "Email",
+    password: "Password",
+    role: "Role",
+    cluster: "Cluster",
+    area: "Area",
+    scheme: "Scheme",
+    phone: "Phone",
+    status: "Status"
+  }
 
-  const worksheet = XLSX.utils.json_to_sheet(data, { header: headers })
+  if (template?.activeVersionId) {
+    const [version] = await db.select().from(templateVersion).where(eq(templateVersion.id, template.activeVersionId)).limit(1)
+    if (version) mapping = JSON.parse(version.content)
+  }
+
+  const headers = Object.values(mapping)
+  const sampleRow: any = {}
+  Object.entries(mapping).forEach(([key, col]) => {
+    if (key === 'email') sampleRow[col] = "john.doe@example.com"
+    else if (key === 'name') sampleRow[col] = "John Doe"
+    else if (key === 'role') sampleRow[col] = "Plumber (Agent)"
+    else sampleRow[col] = "Sample Value"
+  })
+
+  const worksheet = XLSX.utils.json_to_sheet([sampleRow], { header: headers })
   const workbook = XLSX.utils.book_new()
   XLSX.utils.book_append_sheet(workbook, worksheet, "Users")
 

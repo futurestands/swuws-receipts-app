@@ -16,6 +16,7 @@ export async function checkRateLimit(
   key: string,
   limit: number,
   windowSeconds: number,
+  options?: { failClosed?: boolean },
 ): Promise<{ allowed: boolean; remaining: number; retryAfterSeconds: number }> {
   try {
     const result = await db.execute<{ count: number }>(sql`
@@ -49,9 +50,15 @@ export async function checkRateLimit(
     // issue, etc.), it must never take down the feature it's protecting —
     // login, receipt creation, and password reset are all certified core
     // functionality and must keep working even if rate limiting can't be
-    // evaluated right now. Fail open (allow the request) and log loudly
-    // so the underlying issue is visible in server logs.
-    console.error(`checkRateLimit failed for key "${key}" — failing open`, e)
-    return { allowed: true, remaining: limit, retryAfterSeconds: windowSeconds }
+    // evaluated right now.
+    //
+    // However, for high-risk public endpoints (Login, Verify), we may
+    // choose to fail closed to prevent automated abuse during outages.
+    const allowed = options?.failClosed ? false : true
+    console.error(
+      `checkRateLimit failed for key "${key}" — failing ${allowed ? "open" : "closed"}`,
+      e,
+    )
+    return { allowed, remaining: 0, retryAfterSeconds: windowSeconds }
   }
 }

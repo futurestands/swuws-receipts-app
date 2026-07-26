@@ -199,11 +199,11 @@ export async function seedSystemTemplates() {
       category: 'Finance',
       type: 'IMPORT',
       content: JSON.stringify({
-        accountNumber: "CustomerRef",
-        billingPeriod: "BillPeriod",
-        arrears: "OpeningBalance",
+        accountNumber: "AccountNumber",
+        billAmount: "BillAmount",
+        arrears: "Arrears",
         currentCharges: "CurrentCharges",
-        totalDue: "AmountDue",
+        totalDue: "TotalDue",
         dueDate: "DueDate"
       }, null, 2)
     },
@@ -226,14 +226,32 @@ export async function seedSystemTemplates() {
       category: 'Commercial',
       type: 'IMPORT',
       content: JSON.stringify({
-        meterRef: "MeterRef",
-        serialNo: "MeterSerial",
-        customerAccount: "CustomerRef",
         name: "Name",
+        customerAccount: "CustomerRef",
         phone: "Phone",
         address: "VillageName",
         schemeName: "SchemeName",
-        openingArrears: "OpeningArrears"
+        meterRef: "MeterRef",
+        serialNo: "MeterSerial",
+        openingArrears: "OpeningArrears",
+        notes: "Notes"
+      }, null, 2)
+    },
+    {
+      code: 'import.users.bulk',
+      name: 'System User Import Schema',
+      category: 'System',
+      type: 'IMPORT',
+      content: JSON.stringify({
+        name: "Name",
+        email: "Email",
+        password: "Password",
+        role: "Role",
+        cluster: "Cluster",
+        area: "Area",
+        scheme: "Scheme",
+        phone: "Phone",
+        status: "Status"
       }, null, 2)
     }
   ]

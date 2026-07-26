@@ -36,6 +36,9 @@ export const orgSettings = pgTable("org_settings", {
   footerText: text("footerText").notNull().default("Thank you for your payment."),
   address: text("address"),
   phone: text("phone"),
+  billingGraceDays: integer("billingGraceDays").notNull().default(14),
+  currencyCode: text("currencyCode").notNull().default("UGX"),
+  receiptPrefix: text("receiptPrefix").notNull().default("SWUWS"),
   editableFields: jsonb("editableFields").$type<EditableFields>().notNull(),
   updatedAt: timestamp("updatedAt").notNull().defaultNow(),
 })

@@ -47,7 +47,7 @@ export async function verifyReceipt(receiptNumberInput: string) {
   const ip =
     h.get("x-forwarded-for")?.split(",")[0]?.trim() || h.get("x-real-ip") || "unknown"
 
-  const rate = await checkRateLimit(`verify:${ip}`, 20, 300)
+  const rate = await checkRateLimit(`verify:${ip}`, 20, 300, { failClosed: true })
   if (!rate.allowed) {
     return {
       ok: false as const,

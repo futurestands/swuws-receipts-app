@@ -1,10 +1,13 @@
-export function formatUGX(amount: number): string {
-  return new Intl.NumberFormat("en-UG", {
+export function formatCurrency(amount: number, currency = "UGX"): string {
+  return new Intl.NumberFormat(currency === "UGX" ? "en-UG" : "en-US", {
     style: "currency",
-    currency: "UGX",
+    currency: currency,
     maximumFractionDigits: 0,
   }).format(amount)
 }
+
+/** Legacy alias */
+export const formatUGX = formatCurrency
 
 export function formatDateTime(date: Date | string): string {
   const d = typeof date === "string" ? new Date(date) : date

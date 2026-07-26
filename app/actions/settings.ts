@@ -35,10 +35,10 @@ export async function getSettings() {
   const current = await getCurrentUser()
   if (!current) throw new Error("Unauthorized")
 
-  const [row] = await db.select().from(orgSettings).where(eq(orgSettings.id, 1)).limit(1)
-  if (row) return row
-
   try {
+    const [row] = await db.select().from(orgSettings).where(eq(orgSettings.id, 1)).limit(1)
+    if (row) return row
+
     const [created] = await db
       .insert(orgSettings)
       .values({ id: 1, editableFields: DEFAULT_EDITABLE })
@@ -49,10 +49,23 @@ export async function getSettings() {
       .returning()
     return created
   } catch (e) {
-    // Final fallback for high-concurrency race where onConflict might still flicker
-    const [retry] = await db.select().from(orgSettings).where(eq(orgSettings.id, 1)).limit(1)
-    if (retry) return retry
-    throw e
+    console.error("getSettings failed — using safety defaults", e)
+    // Return a safe, static object to prevent a 500 error if the DB is out of sync.
+    return {
+      id: 1,
+      orgName: "South Western Umbrella of Water and Sanitation",
+      logoUrl: null,
+      disclaimer:
+        "This is an official, non-transferable receipt issued by SWUWS. It cannot be reissued or altered.",
+      footerText: "Thank you for your payment.",
+      address: null,
+      phone: null,
+      billingGraceDays: 14,
+      currencyCode: "UGX",
+      receiptPrefix: "SWUWS",
+      editableFields: DEFAULT_EDITABLE,
+      updatedAt: new Date(),
+    }
   }
 }
 
@@ -71,6 +84,9 @@ export async function updateBranding(input: {
   footerText: string
   address?: string
   phone?: string
+  billingGraceDays?: number
+  currencyCode?: string
+  receiptPrefix?: string
 }) {
   const current = await requireUser()
   if (!canConfigureSystem(current)) throw new Error("Forbidden")
@@ -82,6 +98,9 @@ export async function updateBranding(input: {
       footerText: input.footerText.trim(),
       address: input.address?.trim() || null,
       phone: input.phone?.trim() || null,
+      billingGraceDays: input.billingGraceDays ?? undefined,
+      currencyCode: input.currencyCode?.trim() || undefined,
+      receiptPrefix: input.receiptPrefix?.trim() || undefined,
       updatedAt: new Date(),
     })
     .where(eq(orgSettings.id, 1))

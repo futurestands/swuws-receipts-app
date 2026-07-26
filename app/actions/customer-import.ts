@@ -4,6 +4,8 @@ import { db } from "@/lib/db"
 import {
   customer,
   waterScheme,
+  managedTemplate,
+  templateVersion,
 } from "@/lib/db/schema"
 import { requireUser } from "@/lib/session"
 import { writeAudit } from "@/lib/audit"
@@ -192,24 +194,38 @@ export async function importCustomers(summary: CustomerImportSummary): Promise<{
 
 export async function downloadCustomerTemplate() {
   await requireUser()
-  const headers = ["MeterRef", "MeterSerial", "CustomerRef", "Name", "Phone", "VillageName", "SchemeName", "UmbrellaName", "CustomerType", "OpeningArrears", "CreationDate"]
-  const data = [
-    {
-      MeterRef: "M-001",
-      MeterSerial: "SN-12345",
-      CustomerRef: "C-98765",
-      Name: "Jane Doe",
-      Phone: "+256700000000",
-      VillageName: "Sector 4",
-      SchemeName: "Mbarara Central",
-      UmbrellaName: "SWUWS",
-      CustomerType: "Domestic",
-      OpeningArrears: 50000,
-      CreationDate: new Date().toISOString().split("T")[0]
-    },
-  ]
 
-  const worksheet = XLSX.utils.json_to_sheet(data, { header: headers })
+  // 1. Resolve Headers from Template Hub
+  const [template] = await db.select().from(managedTemplate).where(eq(managedTemplate.code, 'import.customers.bulk')).limit(1)
+  let mapping = {
+    name: "Name",
+    customerAccount: "CustomerRef",
+    phone: "Phone",
+    address: "VillageName",
+    schemeName: "SchemeName",
+    meterRef: "MeterRef",
+    serialNo: "MeterSerial",
+    openingArrears: "OpeningArrears",
+    notes: "Notes"
+  }
+
+  if (template?.activeVersionId) {
+    const [version] = await db.select().from(templateVersion).where(eq(templateVersion.id, template.activeVersionId)).limit(1)
+    if (version) mapping = JSON.parse(version.content)
+  }
+
+  const headers = Object.values(mapping)
+  const sampleRow: any = {}
+  Object.entries(mapping).forEach(([key, col]) => {
+    // Basic defaults for samples
+    if (key === 'openingArrears') sampleRow[col] = 50000
+    else if (key === 'name') sampleRow[col] = "Jane Doe"
+    else if (key === 'customerAccount') sampleRow[col] = "C-98765"
+    else if (key === 'schemeName') sampleRow[col] = "Mbarara Central"
+    else sampleRow[col] = "Sample Value"
+  })
+
+  const worksheet = XLSX.utils.json_to_sheet([sampleRow], { header: headers })
   const workbook = XLSX.utils.book_new()
   XLSX.utils.book_append_sheet(workbook, worksheet, "Customers")
   const buffer = XLSX.write(workbook, { type: "buffer", bookType: "xlsx" })

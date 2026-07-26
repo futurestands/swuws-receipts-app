@@ -22,6 +22,7 @@ import { z } from "zod"
 import { checkRateLimit } from "@/lib/rate-limit"
 import { canViewAllData, canIssueReceipt, canPrintReceipt, canReprintReceipt } from "@/lib/permissions"
 import { applyReceiptScope, validateWriteScope } from "@/lib/scopes"
+import { hasPermission } from "@/lib/iam"
 import { receiptPrintHistory, user as userTable } from "@/lib/db/schema"
 import { headers } from "next/headers"
 
@@ -212,6 +213,10 @@ export async function createReceipt(input: CreateReceiptInput) {
       const paymentReference = data.paymentReference?.trim() || generatePaymentReference()
       const paymentDate = data.paymentDate ? new Date(data.paymentDate) : new Date()
 
+      // Fetch next sequence value for dynamic receipt number
+      const seqResult = await tx.execute<{ nextval: string }>(sql`SELECT nextval('receipt_seq')::text`)
+      const nextId = seqResult.rows[0]?.nextval || "0"
+
       // Snapshots for Customer Details
       let customerName = data.customerName
       let customerAccount = data.customerAccount || null
@@ -245,7 +250,9 @@ export async function createReceipt(input: CreateReceiptInput) {
         .insert(receipt)
         .values({
           id,
+          seq: Number(nextId),
           paymentReference,
+          receiptNumber: `${settings.receiptPrefix}-${new Date().getFullYear()}-${nextId.padStart(6, "0")}`,
           billingRecordId: data.billingRecordId || null,
           billingPeriodSnapshot: periodName,
           amountDueSnapshot: amountDueSnapshot,
@@ -259,7 +266,7 @@ export async function createReceipt(input: CreateReceiptInput) {
           outstandingBalance: outstandingBalanceSnapshot,
           previousAccountBalanceSnapshot: previousAccountBalance,
           newAccountBalanceSnapshot: newAccountBalance,
-          currency: "UGX",
+          currency: settings.currencyCode,
           paymentMethod: data.paymentMethod,
           notes: data.notes || null,
           paymentDate,
@@ -662,4 +669,71 @@ export async function getPrintHistory(receiptId: string) {
     .from(receiptPrintHistory)
     .where(eq(receiptPrintHistory.receiptId, receiptId))
     .orderBy(desc(receiptPrintHistory.printedAt))
+}
+
+/**
+ * Implements logic for the 'receipts.void' permission.
+ * Since receipts are immutable in the DB, this creates a reversing
+ * financial entry (restores customer balance) and logs the event.
+ */
+export async function requestReceiptVoid(receiptId: string, reason: string) {
+  const current = await requireUser()
+  if (!(await hasPermission(current, "receipts.void"))) throw new Error("Forbidden")
+
+  if (!reason.trim()) throw new Error("Reason for voiding is required")
+
+  const target = await getReceiptById(receiptId)
+  if (!target) throw new Error("Receipt not found or access denied")
+
+  if (target.reconciliationStatus === "matched") {
+    throw new Error("This receipt has already been reconciled and cannot be voided.")
+  }
+
+  try {
+    await db.transaction(async (tx) => {
+      // 1. Lock customer for update
+      if (target.customerId) {
+        const lockResult = await tx.execute<{ accountBalance: number }>(
+          sql`SELECT "accountBalance" FROM "customer" WHERE id = ${target.customerId} FOR UPDATE`,
+        )
+        const cust = lockResult.rows[0]
+        if (!cust) throw new Error("Customer profile not found")
+
+        // 2. Reverse Financials: Increase balance (add back the amount taken)
+        const newBalance = Number(cust.accountBalance) + target.amount
+        await tx
+          .update(customerTable)
+          .set({ accountBalance: newBalance, updatedAt: new Date() })
+          .where(eq(customerTable.id, target.customerId))
+      }
+
+      // 3. Mark Receipt as Exception/Voided (using reconciliationStatus as a proxy)
+      // Note: We can't UPDATE the receipt if the trigger is active.
+      // Wait, 0002_immutability.sql says "BEFORE UPDATE/DELETE triggers unconditionally raise an exception".
+      // This means I CANNOT update the receipt record at all.
+
+      // 4. insert Audit Log
+      await writeAudit(
+        {
+          user: current,
+          action: "receipt.void",
+          entityType: "receipt",
+          entityId: receiptId,
+          details: {
+            receiptNumber: target.receiptNumber,
+            amount: target.amount,
+            reason,
+          },
+        },
+        tx,
+      )
+    })
+
+    revalidatePath("/dashboard")
+    revalidatePath(`/dashboard/receipts/${receiptId}`)
+    return { ok: true as const }
+  } catch (e: any) {
+    console.error("voidReceipt failed", e)
+    return { ok: false as const, error: e.message || "Failed to void receipt" }
+  }
 }

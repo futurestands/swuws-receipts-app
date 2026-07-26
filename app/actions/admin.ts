@@ -17,13 +17,14 @@ import {
   canViewReports,
   canAudit
 } from "@/lib/permissions"
-import { applyReceiptScope } from "@/lib/scopes"
+import { applyReceiptScope, applyUserScope, validateWriteScope } from "@/lib/scopes"
 
 export async function listAgents() {
   const current = await requireUser()
   if (!canManageUsers(current)) throw new Error("Forbidden")
 
-  // Note: Agent listing will eventually be scoped to Cluster/Area.
+  const scope = applyUserScope(current)
+
   return db
     .select({
       id: user.id,
@@ -39,6 +40,7 @@ export async function listAgents() {
       createdAt: user.createdAt,
     })
     .from(user)
+    .where(scope)
     .orderBy(desc(user.createdAt))
 }
 
@@ -60,6 +62,14 @@ export async function createAgent(input: {
   if (!input.email?.trim()) return { ok: false as const, error: "Email is required" }
   if (!input.password || input.password.length < 8) {
     return { ok: false as const, error: "Password must be at least 8 characters" }
+  }
+
+  // Hierarchy Scope Validation: Ensure the user can create agents for the target hierarchy.
+  if (!(await validateWriteScope(current, "users.create", {
+    branchId: input.branchId,
+    schemeId: input.schemeId
+  }))) {
+    return { ok: false as const, error: "You are not authorized to create agents for this area" }
   }
 
   try {

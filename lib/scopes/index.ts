@@ -1,7 +1,7 @@
 import { eq, and, or, sql, inArray } from "drizzle-orm"
 import { ROLES } from "../permissions/roles"
 import { UserPermissionsContext, canViewAllData } from "../permissions"
-import { receipt, customer, branch, waterScheme, billingPeriod, billingRun, billingRecord } from "../db/schema"
+import { receipt, customer, branch, waterScheme, billingPeriod, billingRun, billingRecord, user as userTable } from "../db/schema"
 import { Scope } from "../iam"
 import { db } from "../db"
 
@@ -15,6 +15,32 @@ import { db } from "../db"
 function getScope(user: UserPermissionsContext, permissionCode: string): Scope | null {
   const grant = user.grants?.find(g => g.code === permissionCode)
   return (grant?.scope as Scope) || null
+}
+
+/**
+ * Applies organizational scope to User (Agent) queries.
+ */
+export function applyUserScope(user: UserPermissionsContext) {
+  const scope = getScope(user, "users.view")
+  if (!scope) return sql`1 = 0`
+
+  if (scope === "global") return undefined
+
+  if (scope === "cluster" && user.clusterId) {
+    return eq(userTable.clusterId, user.clusterId)
+  }
+
+  if (scope === "area" && user.branchId) {
+    return eq(userTable.branchId, user.branchId)
+  }
+
+  if (scope === "scheme" && user.schemeId) {
+    return eq(userTable.schemeId, user.schemeId)
+  }
+
+  // Fallback: Agents usually can't 'see' other users in 'own' scope unless
+  // they are looking at themselves.
+  return eq(userTable.id, user.id)
 }
 
 /**

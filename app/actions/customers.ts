@@ -17,14 +17,16 @@ import {
   canIssueReceipt
 } from "@/lib/permissions"
 import { applyCustomerScope, applyReceiptScope, validateWriteScope } from "@/lib/scopes"
+import { hasPermission } from "@/lib/iam"
 
 const customerSchema = z.object({
   name: z.string().trim().min(1, "Name is required").max(200),
   customerAccount: z.string().trim().max(100).optional(),
   phone: z.string().trim().max(30).optional(),
-  address: z.string().trim().max(300).optional(),
+  address: z.string().trim().max(30).optional(), // Audit note: Address field is short, but schema is text.
   waterSchemeId: z.string().trim().optional(),
   notes: z.string().trim().max(1000).optional(),
+  active: z.boolean().optional(),
 })
 export type CustomerInput = z.infer<typeof customerSchema>
 
@@ -61,6 +63,7 @@ export async function createCustomer(input: CustomerInput) {
         address: data.address || null,
         waterSchemeId: data.waterSchemeId || null,
         notes: data.notes || null,
+        active: data.active ?? true,
         createdById: current.id,
       })
       .returning()
@@ -114,6 +117,7 @@ export async function updateCustomer(id: string, input: CustomerInput) {
         address: data.address || null,
         waterSchemeId: data.waterSchemeId || null,
         notes: data.notes || null,
+        active: data.active,
         updatedAt: new Date(),
       })
       .where(eq(customer.id, id))
@@ -138,6 +142,35 @@ export async function updateCustomer(id: string, input: CustomerInput) {
     console.error("updateCustomer failed", e)
     return { ok: false as const, error: "Could not save changes. Please try again." }
   }
+}
+
+/**
+ * Implements logic for the seeded 'customers.delete' permission.
+ * Does not remove data; marks as inactive.
+ */
+export async function setCustomerActive(id: string, active: boolean) {
+  const current = await requireUser()
+  if (!(await hasPermission(current, "customers.delete"))) throw new Error("Forbidden")
+
+  const target = await getCustomerById(id)
+  if (!target || !(await validateWriteScope(current, "customers.edit", { schemeId: target.waterSchemeId }))) {
+    return { ok: false as const, error: "You are not authorized to modify this customer" }
+  }
+
+  await db
+    .update(customer)
+    .set({ active, updatedAt: new Date() })
+    .where(eq(customer.id, id))
+
+  await writeAudit({
+    user: current,
+    action: active ? "customer.activate" : "customer.deactivate",
+    entityType: "customer",
+    entityId: id,
+  })
+
+  revalidatePath("/dashboard/customers")
+  return { ok: true as const }
 }
 
 export async function getCustomerById(id: string) {
@@ -177,6 +210,7 @@ export async function searchCustomers(params: {
   branchId?: string
   page?: number
   pageSize?: number
+  showInactive?: boolean
 }) {
   const current = await requireUser()
   if (!canViewReports(current)) throw new Error("Forbidden")
@@ -187,6 +221,9 @@ export async function searchCustomers(params: {
   const offset = (page - 1) * pageSize
 
   const conditions = []
+  if (!params.showInactive) {
+    conditions.push(eq(customer.active, true))
+  }
   if (params.query?.trim()) {
     const q = `%${escapeLike(params.query.trim())}%`
     conditions.push(
@@ -246,6 +283,7 @@ export async function quickSearchCustomers(query: string) {
     .from(customer)
     .where(and(
       or(ilike(customer.name, q), ilike(customer.customerAccount, q), ilike(customer.phone, q)),
+      eq(customer.active, true),
       scope
     ))
     .orderBy(customer.name)

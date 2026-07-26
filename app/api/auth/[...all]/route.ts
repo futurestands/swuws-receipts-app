@@ -21,7 +21,7 @@ export async function POST(request: NextRequest) {
       request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
       request.headers.get("x-real-ip") ||
       "unknown"
-    const rate = await checkRateLimit(`login:${ip}`, 10, 60)
+    const rate = await checkRateLimit(`login:${ip}`, 10, 60, { failClosed: true })
     if (!rate.allowed) {
       return NextResponse.json(
         { error: "Too many sign-in attempts. Please wait a minute and try again." },

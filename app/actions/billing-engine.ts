@@ -14,6 +14,7 @@ import { applyCustomerScope, validateWriteScope } from "@/lib/scopes"
 import { renderTemplate } from "@/lib/templates/template-engine"
 import { sendSMS } from "@/lib/sms-service"
 import { createNotification } from "./notifications"
+import { getSettings } from "./settings"
 
 /**
  * Searches customers by name, account, or meter ref.
@@ -186,12 +187,24 @@ export async function submitMeterReading(data: {
     if (template?.activeVersionId) {
       const [version] = await db.select().from(templateVersion).where(eq(templateVersion.id, template.activeVersionId)).limit(1)
       if (version) {
-        const message = renderTemplate(version.content, {
-          customer_name: cust.name,
-          amount: calc.totalNewBill.toLocaleString(),
-          period: period?.periodName || "Current",
-          due_date: "Next week" // Placeholder for actual logic
-        })
+        const settings = await getSettings()
+        const dueDate = new Date(period.endDate)
+        dueDate.setDate(dueDate.getDate() + settings.billingGraceDays)
+
+        const message = renderTemplate(
+          version.content,
+          {
+            customer_name: cust.name,
+            amount: calc.totalNewBill.toLocaleString(),
+            period: period?.periodName || "Current",
+            due_date: dueDate.toLocaleDateString("en-GB", {
+              day: "numeric",
+              month: "short",
+              year: "numeric",
+            }),
+          },
+          { escape: template.type === "HTML" },
+        )
         await sendSMS(cust.phone, message, user.id)
 
         await db.update(meterReading)
