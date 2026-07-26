@@ -1,4 +1,5 @@
-- `[x]` Update `ReceiptForm` auto-fill logic for customer selection
-- `[x]` Add "Live Balance Tracker" to `ReceiptForm`
-- `[x]` Ensure all customer fields remain visible and updated on selection
-- `[x]` Verify partial payment and balance tracking in the UI
+- `[x]` Remove `turbopack` configuration from `next.config.mjs`
+- `[x]` Verify `sql` import in `app/actions/billing-engine.ts`
+- `[x]` Run local type check (`tsc --noEmit`)
+- `[x]` Run local production build (`npm run build`)
+- `[x]` Finalize deployment fix walkthrough
