@@ -2,7 +2,7 @@
 
 import { db } from "@/lib/db"
 import { customer, tariffConfiguration, meterReading, waterScheme, billingPeriod, managedTemplate, templateVersion, branch } from "@/lib/db/schema"
-import { eq, and, desc, or, ilike } from "drizzle-orm"
+import { eq, and, desc, or, ilike, sql } from "drizzle-orm"
 import { randomUUID } from "crypto"
 import { getCurrentUser, requireUser } from "@/lib/session"
 import { calculateBill } from "@/lib/billing/math"
@@ -13,6 +13,7 @@ import { writeAudit } from "@/lib/audit"
 import { applyCustomerScope, validateWriteScope } from "@/lib/scopes"
 import { renderTemplate } from "@/lib/templates/template-engine"
 import { sendSMS } from "@/lib/sms-service"
+import { createNotification } from "./notifications"
 
 /**
  * Searches customers by name, account, or meter ref.
@@ -362,6 +363,20 @@ export async function cancelMeterReading(readingId: string) {
         reason: "User requested cancellation"
       }
     }, tx)
+
+    // 5. Notify Original Agent (if different from canceller)
+    if (reading.recordedById !== user.id) {
+      const [custInfo] = await tx.select({ name: customer.name }).from(customer).where(eq(customer.id, reading.customerId)).limit(1)
+      await createNotification({
+        userId: reading.recordedById,
+        type: "reading_cancelled",
+        title: "Meter Reading Cancelled",
+        message: `Your reading for ${custInfo?.name || 'a customer'} was reversed by ${user.name}.`,
+        priority: "normal",
+        relatedEntityType: "customer",
+        relatedEntityId: reading.customerId
+      }, tx)
+    }
   })
 
   revalidatePath("/dashboard/billing/readings")

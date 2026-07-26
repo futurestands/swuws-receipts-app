@@ -10,8 +10,9 @@ import {
 } from "@/lib/db/schema"
 import { requireUser } from "@/lib/session"
 import { hasPermission } from "@/lib/iam"
+import { ROLES } from "@/lib/permissions/roles"
 import { writeAudit } from "@/lib/audit"
-import { and, eq, gte, lte, sql, count, desc, sum, ne } from "drizzle-orm"
+import { and, eq, gte, lte, sql, count, desc, sum, ne, or } from "drizzle-orm"
 import { randomUUID } from "crypto"
 import { createNotification } from "./notifications"
 import { revalidatePath } from "next/cache"
@@ -55,14 +56,21 @@ export async function submitForReview(batchId: string, comments?: string) {
       details: { batchId, comments }
     }, tx)
 
-    // Notify Approvers
-    const approvers = await tx.select({ id: userTable.id }).from(userTable).where(eq(userTable.role, 'admin'))
+    // Notify Approvers (Finance & Admin)
+    const approvers = await tx
+      .select({ id: userTable.id })
+      .from(userTable)
+      .where(and(
+        eq(userTable.active, true),
+        or(eq(userTable.role, ROLES.SYSTEM_ADMIN), eq(userTable.role, ROLES.FINANCE_OFFICER))
+      ))
+
     for (const app of approvers) {
       await createNotification({
         userId: app.id,
         type: "approval_pending",
-        title: "Reconciliation Awaiting Sign-off",
-        message: `Batch ${batchId.split('-')[0]} has been submitted for review.`,
+        title: "Reconciliation Sign-off Required",
+        message: `Batch ${batchId.split('-')[0]} is ready for review and final sign-off.`,
         priority: "high",
         relatedEntityType: "daily_collection_import",
         relatedEntityId: batchId

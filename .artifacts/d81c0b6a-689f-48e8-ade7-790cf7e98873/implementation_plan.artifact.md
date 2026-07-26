@@ -1,40 +1,45 @@
-# Implementation Plan - Fix Meter Reading Report Data Fetching
+# Implementation Plan - Notification Center Expansion
 
-The user is unable to fetch data for the Meter Reading Report. This is primarily caused by two issues:
-1.  **Date Range Limitation**: The current date filtering logic uses midnight of the end date, effectively excluding all readings captured during that day.
-2.  **Irrelevant Filters**: The "Reconciliation Status" filter is confusingly displayed for reports where it doesn't apply.
+This plan outlines the expansion of the operational notification system to improve team coordination and data awareness across Billing, Meter Reading, and Reconciliation modules.
+
+## User Review Required
+
+> [!NOTE]
+> These notifications are internal to the web portal and will appear in the top-right notification bell. They do not send external SMS or emails, which helps keep the system's operating costs low.
 
 ## Proposed Changes
 
-### Backend Reporting Logic
+### Meter Reading Domain
 
-#### [MODIFY] [executive-reports.ts](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/app/actions/executive-reports.ts)
-Update the date filtering logic for all reports to ensure the end date includes the entire day (up to 23:59:59.999).
+#### [MODIFY] [billing-engine.ts](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/app/actions/billing-engine.ts)
+Update `cancelMeterReading` to notify the original field agent when their reading is reversed by an administrator.
+- **Message**: "Your reading for [Customer Name] was cancelled by [Admin Name]."
+- **Trigger**: Only when an Admin cancels a reading they did not create.
 
-```typescript
-const start = new Date(filters.startDate)
-start.setHours(0, 0, 0, 0)
+### Billing Lifecycle Domain
 
-const end = new Date(filters.endDate)
-end.setHours(23, 59, 59, 999)
-```
+#### [MODIFY] [billing.ts](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/app/actions/billing.ts)
+Update `updateCollectionPeriodStatus` to notify all field agents when a new Billing Period is activated.
+- **Target**: All active users with `receipts.create` permission.
+- **Message**: "New Billing Period Active: [Period Name] is now open for collection and readings."
 
-### Reporting UI
+### Reconciliation Domain
 
-#### [MODIFY] [report-generator-client.tsx](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/app/dashboard/reports/catalog/%5Bid%5D/report-generator-client.tsx)
--   Conditionally hide the "Reconciliation Status" filter if the `reportId` is "meter-reading" or "audit-activity", as these don't support reconciliation.
--   Improve the empty state message to be more helpful.
+#### [MODIFY] [approval.ts](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/app/actions/approval.ts)
+Enhance `submitForReview` to explicitly target users with the `finance_officer` role for reconciliation sign-offs.
+- **Message**: "Reconciliation Sign-off Required: Batch [Batch ID] is ready for final approval."
 
 ---
 
 ## Verification Plan
 
 ### Manual Verification
-1.  **Fetch Today's Readings**:
-    -   Go to the **Meter Reading Report**.
-    -   Set both Start and End dates to today.
-    -   Click **Fetch Data**.
-    -   Verify that readings captured today are now visible.
-2.  **UI Cleanliness**:
-    -   Verify that the "Reconciliation Status" dropdown is no longer visible for the Meter Reading Report.
-    -   Verify it is still visible for the "Receipt Activity Report".
+1. **Cancellation Alert**:
+   - As an Admin, cancel a reading captured by a Plumber.
+   - Log in as the Plumber and verify the notification appears.
+2. **Activation Alert**:
+   - As an Admin, activate a new Billing Period.
+   - Verify that all active agents receive a notification about the new period.
+3. **Reconciliation Alert**:
+   - Submit a reconciliation batch for review.
+   - Verify that the designated finance/admin users receive the sign-off alert.

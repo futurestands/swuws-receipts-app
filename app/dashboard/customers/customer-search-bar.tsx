@@ -33,7 +33,7 @@ export function CustomerSearchBar({
   initialSchemeId,
   branches,
   schemes,
-  canImport
+  canImport,
 }: {
   initialQuery: string
   initialBranchId?: string
@@ -44,8 +44,8 @@ export function CustomerSearchBar({
 }) {
   const router = useRouter()
   const [query, setQuery] = useState(initialQuery)
-  const [branchId, setBranchId] = useState(initialBranchId || "all")
-  const [schemeId, setSchemeId] = useState(initialSchemeId || "all")
+  const [branchId, setBranchId] = useState<string>(initialBranchId || "all")
+  const [schemeId, setSchemeId] = useState<string>(initialSchemeId || "all")
 
   const [open, setOpen] = useState(false)
   const [name, setName] = useState("")
@@ -58,7 +58,7 @@ export function CustomerSearchBar({
   // Filter schemes based on selected branch
   const filteredSchemes = useMemo(() => {
     if (branchId === "all") return schemes
-    return schemes.filter(s => s.branchId === branchId)
+    return schemes.filter((s) => s.branchId === branchId)
   }, [branchId, schemes])
 
   function handleSearch(e: React.FormEvent) {
@@ -106,12 +106,27 @@ export function CustomerSearchBar({
     })
   }
 
+  // Wrapper handlers to satisfy Select's callback signature and normalize nulls
+  function handleBranchChange(value: string | null) {
+    setBranchId(value ?? "all")
+    setSchemeId("all")
+  }
+
+  function handleSchemeChange(value: string | null) {
+    setSchemeId(value ?? "all")
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex flex-col lg:flex-row items-end gap-3">
-        <form onSubmit={handleSearch} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 w-full flex-1">
+        <form
+          onSubmit={handleSearch}
+          className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 w-full flex-1"
+        >
           <div className="space-y-1">
-            <Label className="text-[10px] uppercase font-bold text-muted-foreground ml-1">Text Search</Label>
+            <Label className="text-[10px] uppercase font-bold text-muted-foreground ml-1">
+              Text Search
+            </Label>
             <Input
               placeholder="Name, account #, phone"
               value={query}
@@ -122,39 +137,38 @@ export function CustomerSearchBar({
           </div>
 
           <div className="space-y-1">
-            <Label className="text-[10px] uppercase font-bold text-muted-foreground ml-1">Branch</Label>
-            <Select
-              value={branchId}
-              onValueChange={(v) => {
-                setBranchId(v)
-                setSchemeId("all") // Reset scheme when branch changes
-              }}
-            >
+            <Label className="text-[10px] uppercase font-bold text-muted-foreground ml-1">
+              Branch
+            </Label>
+            <Select value={branchId} onValueChange={(v) => handleBranchChange(v)}>
               <SelectTrigger className="h-11">
                 <SelectValue placeholder="All Branches" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Branches</SelectItem>
-                {branches.map(b => (
-                  <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
+                {branches.map((b) => (
+                  <SelectItem key={b.id} value={b.id}>
+                    {b.name}
+                  </SelectItem>
                 ))}
               </SelectContent>
             </Select>
           </div>
 
           <div className="space-y-1">
-            <Label className="text-[10px] uppercase font-bold text-muted-foreground ml-1">Water Scheme</Label>
-            <Select
-              value={schemeId}
-              onValueChange={setSchemeId}
-            >
+            <Label className="text-[10px] uppercase font-bold text-muted-foreground ml-1">
+              Water Scheme
+            </Label>
+            <Select value={schemeId} onValueChange={(v) => handleSchemeChange(v)}>
               <SelectTrigger className="h-11">
                 <SelectValue placeholder="All Schemes" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Schemes</SelectItem>
-                {filteredSchemes.map(s => (
-                  <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                {filteredSchemes.map((s) => (
+                  <SelectItem key={s.id} value={s.id}>
+                    {s.name}
+                  </SelectItem>
                 ))}
               </SelectContent>
             </Select>
@@ -166,7 +180,14 @@ export function CustomerSearchBar({
               {pending ? "Filtering…" : "Search"}
             </Button>
             {(query || branchId !== "all" || schemeId !== "all") && (
-              <Button type="button" variant="ghost" size="icon" onClick={clearFilters} className="h-11 w-11 shrink-0" title="Clear Filters">
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                onClick={clearFilters}
+                className="h-11 w-11 shrink-0"
+                title="Clear Filters"
+              >
                 <X className="h-4 w-4" />
               </Button>
             )}
@@ -184,38 +205,61 @@ export function CustomerSearchBar({
 
           <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>
-              <Button variant="secondary" className="flex-1 lg:flex-initial h-11">New customer</Button>
-            </DialogTrigger>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>New customer profile</DialogTitle>
-            <DialogDescription>
-              Creates a reusable profile you can link receipts to later.
-            </DialogDescription>
-          </DialogHeader>
-          <form onSubmit={handleCreate} className="space-y-4">
-            <FormField label="Name" htmlFor="c-name" required>
-              <Input id="c-name" required value={name} onChange={(e) => setName(e.target.value)} className="h-11" />
-            </FormField>
-            <FormField label="Account number" htmlFor="c-account">
-              <Input id="c-account" value={account} onChange={(e) => setAccount(e.target.value)} className="h-11" />
-            </FormField>
-            <FormField label="Phone" htmlFor="c-phone">
-              <Input id="c-phone" value={phone} onChange={(e) => setPhone(e.target.value)} className="h-11" />
-            </FormField>
-            <FormField label="Address" htmlFor="c-address">
-              <Input id="c-address" value={address} onChange={(e) => setAddress(e.target.value)} className="h-11" />
-            </FormField>
-            {error && <p className="text-sm text-destructive">{error}</p>}
-            <FormActions>
-              <Button type="submit" disabled={pending} className="h-11">
-                {pending ? "Creating…" : "Create customer"}
+              <Button variant="secondary" className="flex-1 lg:flex-initial h-11">
+                New customer
               </Button>
-            </FormActions>
-          </form>
-        </DialogContent>
-      </Dialog>
-      </div>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>New customer profile</DialogTitle>
+                <DialogDescription>
+                  Creates a reusable profile you can link receipts to later.
+                </DialogDescription>
+              </DialogHeader>
+              <form onSubmit={handleCreate} className="space-y-4">
+                <FormField label="Name" htmlFor="c-name" required>
+                  <Input
+                    id="c-name"
+                    required
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    className="h-11"
+                  />
+                </FormField>
+                <FormField label="Account number" htmlFor="c-account">
+                  <Input
+                    id="c-account"
+                    value={account}
+                    onChange={(e) => setAccount(e.target.value)}
+                    className="h-11"
+                  />
+                </FormField>
+                <FormField label="Phone" htmlFor="c-phone">
+                  <Input
+                    id="c-phone"
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
+                    className="h-11"
+                  />
+                </FormField>
+                <FormField label="Address" htmlFor="c-address">
+                  <Input
+                    id="c-address"
+                    value={address}
+                    onChange={(e) => setAddress(e.target.value)}
+                    className="h-11"
+                  />
+                </FormField>
+                {error && <p className="text-sm text-destructive">{error}</p>}
+                <FormActions>
+                  <Button type="submit" disabled={pending} className="h-11">
+                    {pending ? "Creating…" : "Create customer"}
+                  </Button>
+                </FormActions>
+              </form>
+            </DialogContent>
+          </Dialog>
+        </div>
       </div>
     </div>
   )

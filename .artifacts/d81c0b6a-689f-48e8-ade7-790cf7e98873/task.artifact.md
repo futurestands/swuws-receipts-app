@@ -1,2 +1,4 @@
-- `[x]` Update `SidebarNav` component to implement "Best Match" logic for highlights
-- `[x]` Verify sidebar highlighting in nested routes
+- `[x]` Notify agent on meter reading cancellation (`billing-engine.ts`)
+- `[x]` Notify agents on billing period activation (`billing.ts`)
+- `[x]` Enhance reconciliation review alerts (`approval.ts`)
+- `[x]` Verify notifications in the UI
