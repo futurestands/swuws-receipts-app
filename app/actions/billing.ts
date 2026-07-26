@@ -68,7 +68,7 @@ export async function getAuthorizedSchemes() {
     .orderBy(waterScheme.name)
 
   const authorized = await Promise.all(
-    schemes.map((s) => validateWriteScope(current, { branchId: s.branchId, schemeId: s.id }))
+    schemes.map((s) => validateWriteScope(current, "system.settings.manage", { branchId: s.branchId, schemeId: s.id }))
   )
   return schemes.filter((_, i) => authorized[i])
 }
@@ -278,7 +278,7 @@ export async function validateBillingImport(
     .where(eq(waterScheme.id, schemeId))
     .limit(1)
 
-  if (!scheme || !(await validateWriteScope(current, { branchId: scheme.branchId, schemeId }))) {
+  if (!scheme || !(await validateWriteScope(current, "billing.import", { branchId: scheme.branchId, schemeId }))) {
     return { ok: false, error: "You are not authorized to upload for this scheme" }
   }
 

@@ -40,7 +40,7 @@ export async function createCustomer(input: CustomerInput) {
   if (!canCreateCustomer(current)) throw new Error("Forbidden")
 
   // Organizational Scope Validation
-  if (!(await validateWriteScope(current, { schemeId: input.waterSchemeId }))) {
+  if (!(await validateWriteScope(current, "customers.create", { schemeId: input.waterSchemeId }))) {
     return { ok: false as const, error: "You are not authorized to create customers for this scheme" }
   }
 
@@ -94,7 +94,7 @@ export async function updateCustomer(id: string, input: CustomerInput) {
 
   // Organizational Scope Validation: Ensure the user can edit this specific customer
   const target = await getCustomerById(id)
-  if (!target || !(await validateWriteScope(current, { schemeId: target.waterSchemeId }))) {
+  if (!target || !(await validateWriteScope(current, "customers.edit", { schemeId: target.waterSchemeId }))) {
     return { ok: false as const, error: "You are not authorized to edit this customer" }
   }
 

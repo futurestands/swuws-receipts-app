@@ -17,6 +17,22 @@ export interface PermissionGrant {
  * Fetches all permissions for a role, including those inherited from parent roles.
  */
 export const resolvePermissions = cache(async (roleId: string): Promise<PermissionGrant[]> => {
+  return resolvePermissionsRecursive(roleId, new Set<string>())
+})
+
+async function resolvePermissionsRecursive(roleId: string, visited: Set<string>): Promise<PermissionGrant[]> {
+  if (visited.has(roleId)) {
+    console.warn(`IAM: Circular role hierarchy detected for role ${roleId}. Breaking recursion.`)
+    return []
+  }
+  visited.add(roleId)
+
+  // Hard depth limit for safety
+  if (visited.size > 10) {
+    console.warn(`IAM: Max role depth reached for role ${roleId}. Breaking recursion.`)
+    return []
+  }
+
   const grants: PermissionGrant[] = []
 
   // 1. Fetch current role permissions
@@ -39,19 +55,12 @@ export const resolvePermissions = cache(async (roleId: string): Promise<Permissi
     .limit(1)
 
   if (role?.parentId) {
-    const parentGrants = await resolvePermissions(role.parentId)
-
-    // Merge strategy: Child overrides parent for same permission code
-    // (or keeps child's more specific scope).
-    // Actually, inheritance usually means you get EVERYTHING your parent has.
-    // If a child has 'own' and parent has 'area', 'area' is more permissive.
-    // But for SWUWS, usually children roles are more specialized.
-    // Let's stick to simple additive merge for now.
+    const parentGrants = await resolvePermissionsRecursive(role.parentId, visited)
     grants.push(...parentGrants)
   }
 
   return grants
-})
+}
 
 /**
  * Checks if a user has a specific permission and returns the most permissive scope.

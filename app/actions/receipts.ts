@@ -70,7 +70,7 @@ export async function createReceipt(input: CreateReceiptInput) {
 
   // Organizational Scope Validation:
   // Ensure the user is issuing a receipt for their assigned Area (Branch).
-  if (!(await validateWriteScope(current, { branchId: input.branchId }))) {
+  if (!(await validateWriteScope(current, "receipts.create", { branchId: input.branchId }))) {
     return { ok: false as const, error: "You are not authorized to issue receipts for this branch" }
   }
 
@@ -419,6 +419,22 @@ export async function uploadReceiptAttachment(receiptId: string, formData: FormD
     return {
       ok: false as const,
       error: "Only PDF, PNG, JPG, or JPEG files are accepted as attachments",
+    }
+  }
+
+  // Audit Hardening: Magic-Byte Verification (Phase 2 Remediation)
+  // Trust but verify: the client-supplied MIME type can be spoofed.
+  const buffer = await file.arrayBuffer()
+  const bytes = new Uint8Array(buffer.slice(0, 8))
+
+  const isPdf = bytes[0] === 0x25 && bytes[1] === 0x50 && bytes[2] === 0x44 && bytes[3] === 0x46 // %PDF
+  const isPng = bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4E && bytes[3] === 0x47 // \x89PNG
+  const isJpeg = bytes[0] === 0xFF && bytes[1] === 0xD8 && bytes[2] === 0xFF // JPEG SOI
+
+  if (!isPdf && !isPng && !isJpeg) {
+    return {
+      ok: false as const,
+      error: "Security Alert: File content does not match the allowed types (PDF, PNG, JPEG). The upload has been blocked.",
     }
   }
 

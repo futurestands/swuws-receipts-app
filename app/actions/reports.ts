@@ -145,6 +145,12 @@ export async function getDashboardStats(params: {
 
   return unstable_cache(
     async () => {
+      // 0. Fetch Period Data if filtered
+      let period: any = null
+      if (params.periodId) {
+        [period] = await db.select().from(billingPeriod).where(eq(billingPeriod.id, params.periodId)).limit(1)
+      }
+
       // Apply Scopes
       const receiptScope = applyReceiptScope(current)
       const billingScope = applyBillingScope(current) // applies to billingRun
@@ -223,8 +229,18 @@ export async function getDashboardStats(params: {
         .where(and(...arrearsConditions))
 
       // B. Arrears Collected in Period (Receipts not linked to a current bill)
-      const arrearsCollectedConditions = [...receiptConditions]
+      // Note: We don't reuse receiptConditions here because they link to billingRecord
+      const arrearsCollectedConditions = []
+      if (receiptScope) arrearsCollectedConditions.push(receiptScope)
+      if (params.schemeId) arrearsCollectedConditions.push(eq(customer.waterSchemeId, params.schemeId))
       arrearsCollectedConditions.push(sql`${receipt.billingRecordId} IS NULL`)
+
+      if (period) {
+        // Arrears collection in this context means money received during the period dates
+        // but not matched to a bill of that period.
+        arrearsCollectedConditions.push(gte(receipt.paymentDate, period.startDate))
+        arrearsCollectedConditions.push(lte(receipt.paymentDate, period.endDate))
+      }
 
       const [arrearsCollectedStats] = await db
         .select({

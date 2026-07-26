@@ -1,5 +1,5 @@
-- `[x]` Remove `turbopack` configuration from `next.config.mjs`
-- `[x]` Verify `sql` import in `app/actions/billing-engine.ts`
-- `[x]` Run local type check (`tsc --noEmit`)
-- `[x]` Run local production build (`npm run build`)
-- `[x]` Finalize deployment fix walkthrough
+- `[x]` Re-index migration files to strict sequential order (0001-0031)
+- `[x]` Create and run `sync-migrations.js` to update database tracking
+- `[x]` Implement magic-byte verification in `uploadReceiptAttachment`
+- `[x]` Verify upload security and migration consistency
+- `[x]` Finalize remediation walkthrough

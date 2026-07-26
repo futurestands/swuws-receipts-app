@@ -107,14 +107,12 @@ export function applyBillingScope(user: UserPermissionsContext) {
  * Validates if a user has write access to a specific scope level.
  * Used during creation/updates.
  */
-export async function validateWriteScope(user: UserPermissionsContext, target: {
+export async function validateWriteScope(user: UserPermissionsContext, permissionCode: string, target: {
   branchId?: string | null
   schemeId?: string | null
 }) {
-  // 1. Identify which permission is being exercised (simplified check)
-  // For production, we'd pass the required permission code as an argument.
-  // Assuming 'receipts.create' as the most common one.
-  const scope = getScope(user, "receipts.create") || getScope(user, "customers.create")
+  // Identify which permission is being exercised.
+  const scope = getScope(user, permissionCode)
   if (!scope) return false
 
   if (scope === "global") return true
