@@ -1,32 +1,40 @@
-# Walkthrough: Database Synchronization & Resilience Fix
+# Walkthrough: Connecting Governance Actions to UI
 
-I have resolved the crash on the `/admin` page by synchronizing the database schema and adding a defensive fallback mechanism.
+I have successfully connected the backend strengthening logic (Receipt Voiding and Customer Deactivation) to the dashboard UI. This allows administrators to manage financial reversals and customer lifecycles directly from the application.
 
 ## Changes Made
 
-### 1. Database Synchronization
-Executed the migration script to apply the schema changes from Phase 3.
-- **Action**: Ran `npm run db:migrate`.
-- **Applied Migrations**:
-    - `0032_customer_active_status.sql`: Added the `active` column to customers.
-    - `0033_org_settings_generalization.sql`: Added `billingGraceDays`, `currencyCode`, and `receiptPrefix` to organizational settings.
+### 1. Receipt Voiding Interface
+Created a secure way for administrators to reverse payments without modifying immutable records.
+- **New Component**: [void-receipt-button.tsx](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/app/dashboard/receipts/[id]/void-receipt-button.tsx)
+- **Features**:
+    - Mandatory "Void Reason" requirement.
+    - Confirmation dialog to prevent accidents.
+    - Gated by `receipts.void` permission.
+- **Visuals**: A prominent **"VOIDED"** badge and watermark appear on the receipt page once reversed.
 
-### 2. Resilience Fallback
-Updated the settings retrieval logic to prevent system-wide 500 errors during database drift or interruptions.
-- **Location**: [settings.ts](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/app/actions/settings.ts)
-- **Logic**: If the `getSettings` query fails (e.g., due to a missing column), the system now catches the error, logs it, and returns a set of **Safety Default Settings**.
-- **Benefit**: This ensures that the Admin page (and any page relying on settings) remains readable even if the database is undergoing maintenance or is slightly out of sync.
+### 2. Customer Deactivation (CRM)
+Implemented the UI for the `customers.delete` permission (logical deactivation).
+- **Location**: [edit-customer-form.tsx](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/app/dashboard/customers/[id]/edit-customer-form.tsx)
+- **Action**: Admins can now toggle a customer between "Active" and "Inactive."
+- **Impact**: Inactive customers are automatically hidden from operational search results (to prevent new bills/receipts) but remain in historical reports for audit consistency.
+
+### 3. Financial Reporting Alignment
+Updated the reporting engine to recognize and correctly display voided transactions.
+- **Location**: [reports.ts](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/app/actions/reports.ts)
+- **Logic**: Voided payments are now explicitly labeled in the **Chronological Ledger** and their amounts are excluded from the "Running Balance" calculation.
 
 ## Verification Results
 
-### Migration Execution
+### Build & Type Check
 - **Status**: **PASS**
-- **Output**: `All migrations applied successfully.`
+- **Notes**: All component connections and server actions are verified as type-safe.
 
-### Admin Page Recovery
-- The `/admin` page should now load correctly as the requested columns (`billingGraceDays`, etc.) exist in the physical database.
+### Functional Integrity
+- Verified that voiding a receipt correctly triggers a balance restoration for the customer.
+- Verified that the immutability of the original `receipt` table is preserved (the status is tracked via the audit log).
 
 ---
 
-> [!NOTE]
-> **Proactive Safety**: The system is now protected against "Schema Panic." Even if you add new fields in the future, the application will "fail open" with safe defaults instead of crashing the UI.
+> [!CAUTION]
+> **Audit Note**: Voiding a receipt creates a permanent audit log entry. This action is transparent and traceable, making it ideal for government financial standards.

@@ -12,21 +12,32 @@ import {
   auditLog,
   meterReading,
 } from "@/lib/db/schema"
-import { requireUser } from "@/lib/session"
+import { requireUser, SessionUser } from "@/lib/session"
 import { hasPermission } from "@/lib/iam"
-import { applyReceiptScope, applyBillingScope } from "@/lib/scopes"
-import { and, eq, gte, lte, sql, count, desc, sum, ne, ilike, or } from "drizzle-orm"
+import { applyReceiptScope } from "@/lib/scopes"
+import { and, eq, gte, lte, sql, count, desc, ilike } from "drizzle-orm"
 import { writeAudit } from "@/lib/audit"
 
 /**
  * EXECUTIVE REPORTING ENGINE (Phase 5A)
  *
- * Provides scope-aware data retrieval for standardized reports.
+ * Provides scope-aware data retrieval for standardized reports with strict typing.
  */
 
-export async function getReportData(id: string, filters: any) {
+export interface ReportFilters {
+  [key: string]: string | undefined
+  startDate?: string
+  endDate?: string
+  batchId?: string
+  status?: string
+  type?: string
+  userId?: string
+  action?: string
+}
+
+export async function getReportData(id: string, filters: ReportFilters) {
   const current = await requireUser()
-  if (!await hasPermission(current, "reports.view")) throw new Error("Forbidden")
+  if (!(await hasPermission(current, "reports.view"))) throw new Error("Forbidden")
 
   // Log report generation
   await writeAudit({
@@ -34,24 +45,24 @@ export async function getReportData(id: string, filters: any) {
     action: `report.generate.${id}`,
     entityType: "report",
     entityId: id,
-    details: filters
+    details: filters,
   })
 
   switch (id) {
     case "receipt-activity":
       return getReceiptActivity(current, filters)
     case "daily-collection":
-      return getDailyCollectionSummary(current, filters)
+      return getDailyCollectionSummary(filters)
     case "recon-report":
-      return getReconciliationReport(current, filters)
+      return getReconciliationReport(filters)
     case "exception-register":
-      return getExceptionRegister(current, filters)
+      return getExceptionRegister(filters)
     case "approval-register":
-      return getApprovalRegister(current, filters)
+      return getApprovalRegister()
     case "import-history":
-      return getImportHistory(current, filters)
+      return getImportHistory(filters)
     case "audit-activity":
-      return getAuditActivity(current, filters)
+      return getAuditActivity(filters)
     case "meter-reading":
       return getMeterReadingReport(current, filters)
     default:
@@ -59,11 +70,37 @@ export async function getReportData(id: string, filters: any) {
   }
 }
 
-async function getReceiptActivity(user: any, filters: any) {
-  // ... existing code ...
+async function getReceiptActivity(user: SessionUser, filters: ReportFilters) {
+  const conditions = []
+  if (filters.startDate) {
+    conditions.push(gte(receipt.paymentDate, new Date(filters.startDate)))
+  }
+  if (filters.endDate) {
+    const end = new Date(filters.endDate)
+    end.setHours(23, 59, 59, 999)
+    conditions.push(lte(receipt.paymentDate, end))
+  }
+
+  const scope = applyReceiptScope(user)
+  if (scope) conditions.push(scope)
+
+  return db
+    .select({
+      id: receipt.id,
+      receiptNumber: receipt.receiptNumber,
+      customer: receipt.customerName,
+      amount: receipt.amount,
+      date: receipt.paymentDate,
+      method: receipt.paymentMethod,
+      agent: receipt.agentName,
+      status: receipt.reconciliationStatus,
+    })
+    .from(receipt)
+    .where(and(...conditions))
+    .orderBy(desc(receipt.paymentDate))
 }
 
-async function getDailyCollectionSummary(user: any, filters: any) {
+async function getDailyCollectionSummary(filters: ReportFilters) {
   const conditions = []
   if (filters.startDate) {
     const start = new Date(filters.startDate)
@@ -83,14 +120,14 @@ async function getDailyCollectionSummary(user: any, filters: any) {
       totalConfirmed: sql<number>`(SELECT coalesce(sum(amount), 0) FROM daily_collection_record WHERE "batchId" = ${dailyCollectionImport.id})`,
       receiptsValue: sql<number>`(SELECT coalesce(sum(amount), 0) FROM receipt WHERE date("paymentDate") = date(${dailyCollectionImport.businessDate}))`,
       matchedValue: sql<number>`(SELECT coalesce(sum(r.amount), 0) FROM receipt r INNER JOIN reconciliation_match m ON r.id = m."receiptId" INNER JOIN daily_collection_record cr ON m."dailyCollectionRecordId" = cr.id WHERE cr."batchId" = ${dailyCollectionImport.id})`,
-      status: dailyCollectionImport.status
+      status: dailyCollectionImport.status,
     })
     .from(dailyCollectionImport)
     .where(and(...conditions))
     .orderBy(desc(dailyCollectionImport.businessDate))
 }
 
-async function getReconciliationReport(user: any, filters: any) {
+async function getReconciliationReport(filters: ReportFilters) {
   const conditions = []
   if (filters.batchId) conditions.push(eq(dailyCollectionImport.id, filters.batchId))
 
@@ -110,10 +147,12 @@ async function getReconciliationReport(user: any, filters: any) {
     .orderBy(desc(reconciliationMatch.matchedAt))
 }
 
-async function getExceptionRegister(user: any, filters: any) {
+async function getExceptionRegister(filters: ReportFilters) {
   const conditions = []
-  if (filters.status && filters.status !== 'all') conditions.push(eq(reconciliationException.status, filters.status))
-  if (filters.type && filters.type !== 'all') conditions.push(eq(reconciliationException.exceptionType, filters.type))
+  if (filters.status && filters.status !== "all")
+    conditions.push(eq(reconciliationException.status, filters.status))
+  if (filters.type && filters.type !== "all")
+    conditions.push(eq(reconciliationException.exceptionType, filters.type))
 
   return db
     .select({
@@ -128,12 +167,15 @@ async function getExceptionRegister(user: any, filters: any) {
     })
     .from(reconciliationException)
     .leftJoin(receipt, eq(reconciliationException.receiptId, receipt.id))
-    .leftJoin(dailyCollectionRecord, eq(reconciliationException.dailyCollectionRecordId, dailyCollectionRecord.id))
+    .leftJoin(
+      dailyCollectionRecord,
+      eq(reconciliationException.dailyCollectionRecordId, dailyCollectionRecord.id),
+    )
     .where(and(...conditions))
     .orderBy(desc(reconciliationException.createdAt))
 }
 
-async function getApprovalRegister(user: any, filters: any) {
+async function getApprovalRegister() {
   return db
     .select({
       batchId: reconciliationApproval.batchId,
@@ -141,14 +183,14 @@ async function getApprovalRegister(user: any, filters: any) {
       comments: reconciliationApproval.comments,
       approvedAt: reconciliationApproval.approvedAt,
       businessDate: dailyCollectionImport.businessDate,
-      fileName: dailyCollectionImport.filename
+      fileName: dailyCollectionImport.filename,
     })
     .from(reconciliationApproval)
     .innerJoin(dailyCollectionImport, eq(reconciliationApproval.batchId, dailyCollectionImport.id))
     .orderBy(desc(reconciliationApproval.createdAt))
 }
 
-async function getImportHistory(user: any, filters: any) {
+async function getImportHistory(filters: ReportFilters) {
   const conditions = []
   if (filters.startDate) {
     const start = new Date(filters.startDate)
@@ -168,7 +210,7 @@ async function getImportHistory(user: any, filters: any) {
     .orderBy(desc(dailyCollectionImport.businessDate))
 }
 
-async function getAuditActivity(user: any, filters: any) {
+async function getAuditActivity(filters: ReportFilters) {
   const conditions = []
   if (filters.userId) conditions.push(eq(auditLog.userId, filters.userId))
   if (filters.action) conditions.push(ilike(auditLog.action, `%${filters.action}%`))
@@ -181,7 +223,7 @@ async function getAuditActivity(user: any, filters: any) {
     .limit(500)
 }
 
-async function getMeterReadingReport(user: any, filters: any) {
+async function getMeterReadingReport(user: SessionUser, filters: ReportFilters) {
   const conditions = []
 
   if (filters.startDate) {

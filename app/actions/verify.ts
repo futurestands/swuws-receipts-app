@@ -1,8 +1,8 @@
 "use server"
 
 import { db } from "@/lib/db"
-import { receipt } from "@/lib/db/schema"
-import { eq } from "drizzle-orm"
+import { receipt, receiptPrintHistory } from "@/lib/db/schema"
+import { eq, count, sql } from "drizzle-orm"
 import { checkRateLimit } from "@/lib/rate-limit"
 import { headers } from "next/headers"
 
@@ -65,6 +65,15 @@ export async function verifyReceipt(receiptNumberInput: string) {
     return { ok: false as const, error: "No receipt was found with that number" }
   }
 
+  // Calculate print metadata from history (since receipt table is immutable)
+  const [historyRes] = (await db
+    .select({
+      count: count(),
+      last: sql<Date>`max(${receiptPrintHistory.printedAt})`,
+    })
+    .from(receiptPrintHistory)
+    .where(eq(receiptPrintHistory.receiptId, row.id))) as any[]
+
   const result: VerifyResult = {
     receiptNumber: row.receiptNumber,
     status: "valid",
@@ -74,8 +83,8 @@ export async function verifyReceipt(receiptNumberInput: string) {
     orgName: row.orgNameSnapshot,
     customerName: maskName(row.customerName),
     branchName: row.branchName,
-    printCount: row.printCount,
-    lastPrintedAt: row.lastPrintedAt,
+    printCount: Number(historyRes?.count || 0),
+    lastPrintedAt: historyRes?.last || null,
     verifiedAt: new Date(),
   }
   return { ok: true as const, result }

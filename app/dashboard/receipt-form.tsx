@@ -111,7 +111,7 @@ export function ReceiptForm({
     if (selectedCustomer) {
       const currentBalance = Number(selectedCustomer.accountBalance || 0)
       const amountPaid = Number(form.amount || 0)
-      const remaining = Math.max(0, currentBalance - amountPaid)
+      const remaining = currentBalance - amountPaid
       setForm(f => ({ ...f, outstandingBalance: String(remaining) }))
     }
   }, [form.amount, selectedCustomer])
@@ -340,12 +340,13 @@ export function ReceiptForm({
                     <p className="text-lg font-black">{formatUGX(selectedCustomer.accountBalance)}</p>
                   </div>
                   <div className="space-y-1 text-right">
-                    <p className="text-[10px] font-bold uppercase text-muted-foreground">Resulting Arrears</p>
+                    <p className="text-[10px] font-bold uppercase text-muted-foreground">Resulting Balance</p>
                     <p className={cn(
                       "text-xl font-black",
                       (Number(selectedCustomer.accountBalance) - Number(form.amount || 0)) <= 0 ? "text-primary" : "text-destructive"
                     )}>
-                      {formatUGX(Math.max(0, Number(selectedCustomer.accountBalance) - Number(form.amount || 0)))}
+                      {formatUGX(Math.abs(Number(selectedCustomer.accountBalance) - Number(form.amount || 0)))}
+                      {(Number(selectedCustomer.accountBalance) - Number(form.amount || 0)) < 0 && " (CR)"}
                     </p>
                   </div>
                </div>

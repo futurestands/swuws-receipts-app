@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useTransition } from "react"
-import { updateCustomer } from "@/app/actions/customers"
+import { updateCustomer, setCustomerActive } from "@/app/actions/customers"
 import type { Customer } from "@/lib/db/schema"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -15,7 +15,19 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog"
 import { toast } from "sonner"
+import { UserMinus, UserCheck, AlertTriangle } from "lucide-react"
 
 export function EditCustomerForm({
   customer,
@@ -32,6 +44,22 @@ export function EditCustomerForm({
   const [notes, setNotes] = useState(customer.notes ?? "")
   const [error, setError] = useState<string | null>(null)
   const [pending, startTransition] = useTransition()
+  const [deactivating, startDeactivateTransition] = useTransition()
+
+  function handleToggleActive() {
+    startDeactivateTransition(async () => {
+      try {
+        const result = await setCustomerActive(customer.id, !customer.active)
+        if (result.ok) {
+          toast.success(`Customer ${!customer.active ? 'activated' : 'deactivated'} successfully`)
+        } else {
+          toast.error("Failed to update customer status")
+        }
+      } catch (err: any) {
+        toast.error(err.message || "An error occurred")
+      }
+    })
+  }
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -99,11 +127,60 @@ export function EditCustomerForm({
             <Textarea id="notes" rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} />
           </div>
           {error && <p className="text-sm text-destructive">{error}</p>}
-          <Button type="submit" disabled={pending} className="w-full">
-            {pending ? "Saving…" : "Save changes"}
-          </Button>
+          <div className="flex flex-col gap-2 pt-2">
+            <Button type="submit" disabled={pending || deactivating} className="w-full">
+              {pending ? "Saving…" : "Save changes"}
+            </Button>
+
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className={cn(
+                    "w-full gap-2",
+                    customer.active ? "text-destructive hover:bg-destructive/5" : "text-primary hover:bg-primary/5"
+                  )}
+                  disabled={deactivating || pending}
+                >
+                  {customer.active ? (
+                    <><UserMinus className="size-4" /> Deactivate Customer</>
+                  ) : (
+                    <><UserCheck className="size-4" /> Reactivate Customer</>
+                  )}
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>
+                    {customer.active ? "Deactivate Customer?" : "Reactivate Customer?"}
+                  </AlertDialogTitle>
+                  <AlertDialogDescription>
+                    {customer.active ? (
+                      "Deactivating this customer will hide them from the operational dashboard and customer pickers. All financial history will be preserved."
+                    ) : (
+                      "This will restore the customer to the operational dashboard and allow agents to record new readings and payments."
+                    )}
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction
+                    onClick={handleToggleActive}
+                    className={customer.active ? "bg-destructive hover:bg-destructive/90" : "bg-primary hover:bg-primary/90"}
+                  >
+                    {customer.active ? "Confirm Deactivation" : "Confirm Reactivation"}
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          </div>
         </form>
       </CardContent>
     </Card>
   )
+}
+
+function cn(...inputs: any[]) {
+  return inputs.filter(Boolean).join(" ")
 }

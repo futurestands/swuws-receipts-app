@@ -349,17 +349,27 @@ export async function getPrintingReports() {
 
   const scope = applyReceiptScope(current)
 
-  // 1. Most Reprinted Receipts
+  // 1. Most Reprinted Receipts (NEW: Calculated from History Table)
+  const printCounts = db
+    .select({
+      receiptId: receiptPrintHistory.receiptId,
+      count: count().as("count"),
+    })
+    .from(receiptPrintHistory)
+    .groupBy(receiptPrintHistory.receiptId)
+    .as("print_counts")
+
   const mostReprinted = await db
     .select({
       id: receipt.id,
       receiptNumber: receipt.receiptNumber,
       customerName: receipt.customerName,
-      printCount: receipt.printCount,
+      printCount: sql<number>`${printCounts.count}::int`,
     })
     .from(receipt)
-    .where(and(scope, gte(receipt.printCount, 1)))
-    .orderBy(desc(receipt.printCount))
+    .innerJoin(printCounts, eq(receipt.id, printCounts.receiptId))
+    .where(scope)
+    .orderBy(desc(printCounts.count))
     .limit(10)
 
   // 2. Print Activity by User

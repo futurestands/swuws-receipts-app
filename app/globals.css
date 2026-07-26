@@ -180,24 +180,73 @@
 
 /* ---------------------------------------------------------------------
    Print styles for the receipt view (app/dashboard/receipts/[id]/page.tsx)
-   Only .print-area is shown when printing; everything else (nav, buttons,
-   the app chrome) is hidden so the printed/PDF page is just the receipt.
+   Aggressive layout resetting to prevent overflow-clipping and color issues.
    --------------------------------------------------------------------- */
 @media print {
-  body * {
-    visibility: hidden;
+  @page {
+    margin: 0;
+    size: auto;
   }
-  .print-area,
-  .print-area * {
-    visibility: visible;
+
+  /* Force visibility and reset colors */
+  html, body {
+    margin: 0 !important;
+    padding: 0 !important;
+    background: white !important;
+    color: black !important;
+    overflow: visible !important;
+    height: auto !important;
   }
-  .print-area {
-    position: absolute;
-    left: 0;
-    top: 0;
-    width: 100%;
+
+  /* Reset layout containers and UNLOCK overflows */
+  .md\:flex,
+  main,
+  .mx-auto,
+  [data-slot="card"],
+  .overflow-hidden,
+  .overflow-x-hidden {
+    display: block !important;
+    overflow: visible !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    max-width: none !important;
+    box-shadow: none !important;
+    border: none !important;
   }
-  .no-print {
+
+  /* Explicitly hide non-print elements */
+  .no-print,
+  aside,
+  header,
+  footer:not(.print-area footer),
+  nav,
+  button,
+  .shadow-sm,
+  .shadow-md,
+  .shadow-lg {
     display: none !important;
+  }
+
+  /* Position print area clearly at top-left */
+  .print-area {
+    visibility: visible !important;
+    position: relative !important;
+    display: block !important;
+    width: 100% !important;
+    padding: 2rem !important;
+    background: white !important;
+    overflow: visible !important;
+  }
+
+  /* Ensure text is black and crisp */
+  h1, h2, h3, p, dt, dd, span, div {
+    color: black !important;
+    background: transparent !important;
+  }
+
+  /* Force background colors/images for things like badges and watermarks */
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
   }
 }

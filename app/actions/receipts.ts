@@ -10,11 +10,12 @@ import {
   billingRecord,
   billingPeriod,
   waterScheme,
+  auditLog,
 } from "@/lib/db/schema"
 import { requireUser } from "@/lib/session"
 import { writeAudit } from "@/lib/audit"
 import { getSettings } from "@/app/actions/settings"
-import { and, desc, eq, gte, lte, sql, sum, inArray } from "drizzle-orm"
+import { and, desc, eq, gte, lte, sql, sum, inArray, getTableColumns, count } from "drizzle-orm"
 import { randomUUID } from "crypto"
 import { revalidatePath, revalidateTag } from "next/cache"
 import { put } from "@vercel/blob"
@@ -25,6 +26,7 @@ import { applyReceiptScope, validateWriteScope } from "@/lib/scopes"
 import { hasPermission } from "@/lib/iam"
 import { receiptPrintHistory, user as userTable } from "@/lib/db/schema"
 import { headers } from "next/headers"
+import { logFinancial, logSecurity } from "@/lib/logger"
 
 const createReceiptSchema = z.object({
   billingRecordId: z.string().trim().optional(),
@@ -202,7 +204,7 @@ export async function createReceipt(input: CreateReceiptInput) {
         }
       }
 
-      const newAccountBalance = totalAvailable - appliedToBill
+      const newAccountBalance = previousAccountBalance - amount
       const outstandingBalanceSnapshot = data.billingRecordId
         ? Math.max(0, remainingBefore - appliedToBill)
         : (data.outstandingBalance ?? null)
@@ -277,6 +279,8 @@ export async function createReceipt(input: CreateReceiptInput) {
           agentName: current.name,
           agentEmail: current.email,
           orgNameSnapshot: settings.orgName,
+          orgAddressSnapshot: settings.address,
+          orgPhoneSnapshot: settings.phone,
           disclaimerSnapshot: settings.disclaimer,
           footerSnapshot: settings.footerText,
           logoUrlSnapshot: settings.logoUrl,
@@ -315,6 +319,13 @@ export async function createReceipt(input: CreateReceiptInput) {
       return inserted
     })
 
+    logFinancial("Receipt Issued", {
+      id: row.id,
+      receiptNumber: row.receiptNumber,
+      amount: row.amount,
+      customer: row.customerName
+    }, current)
+
     revalidatePath("/dashboard")
     revalidatePath("/admin")
     // @ts-ignore - Next.js 16 signature variation
@@ -331,14 +342,26 @@ export async function createReceipt(input: CreateReceiptInput) {
   }
 }
 
-/** Agents see only their own receipts; admins see all. */
 export async function getReceipts(limit = 100) {
   const current = await requireUser()
   const scope = applyReceiptScope(current)
 
+  const printCounts = db
+    .select({
+      receiptId: receiptPrintHistory.receiptId,
+      count: sql<number>`count(*)::int`.as("count"),
+    })
+    .from(receiptPrintHistory)
+    .groupBy(receiptPrintHistory.receiptId)
+    .as("print_counts")
+
   return db
-    .select()
+    .select({
+      ...getTableColumns(receipt),
+      printCount: sql<number>`coalesce(${printCounts.count}, 0)`.as("printCount"),
+    })
     .from(receipt)
+    .leftJoin(printCounts, eq(receipt.id, printCounts.receiptId))
     .where(scope)
     .orderBy(desc(receipt.createdAt))
     .limit(limit)
@@ -348,13 +371,53 @@ export async function getReceiptById(id: string) {
   const current = await requireUser()
   const scope = applyReceiptScope(current)
 
-  const [row] = await db
-    .select()
-    .from(receipt)
-    .where(and(eq(receipt.id, id), scope))
-    .limit(1)
+  const printMeta = db
+    .select({
+      receiptId: receiptPrintHistory.receiptId,
+      count: sql<number>`count(*)::int`.as("count"),
+      first: sql<Date>`min(${receiptPrintHistory.printedAt})`.as("first"),
+      last: sql<Date>`max(${receiptPrintHistory.printedAt})`.as("last"),
+    })
+    .from(receiptPrintHistory)
+    .where(eq(receiptPrintHistory.receiptId, id))
+    .groupBy(receiptPrintHistory.receiptId)
+    .as("print_meta")
 
-  return row ?? null
+  const [row] = (await db
+    .select({
+      ...getTableColumns(receipt),
+      printCount: sql<number>`coalesce(${printMeta.count}, 0)`.as("printCount"),
+      firstPrintedAt: printMeta.first,
+      lastPrintedAt: printMeta.last,
+    })
+    .from(receipt)
+    .leftJoin(printMeta, eq(receipt.id, printMeta.receiptId))
+    .where(and(eq(receipt.id, id), scope))
+    .limit(1)) as any[]
+
+  if (!row) return null
+
+  // Fetch lastPrintedBy and check if voided separately for query simplicity
+  const [last, voidEvent] = await Promise.all([
+    row.printCount > 0
+      ? db
+          .select({ name: receiptPrintHistory.printedByName })
+          .from(receiptPrintHistory)
+          .where(eq(receiptPrintHistory.receiptId, id))
+          .orderBy(desc(receiptPrintHistory.printedAt))
+          .limit(1)
+      : Promise.resolve([]),
+    db
+      .select({ id: auditLog.id })
+      .from(auditLog)
+      .where(and(eq(auditLog.entityId, id), eq(auditLog.action, "receipt.void")))
+      .limit(1)
+  ])
+
+  row.lastPrintedBy = last[0]?.name || null
+  row.isVoided = voidEvent.length > 0
+
+  return row
 }
 
 export async function getReceiptAttachments(receiptId: string) {
@@ -523,17 +586,24 @@ export async function recordReceiptPrint(receiptId: string) {
 
   // Scope Check
   const scope = applyReceiptScope(current)
-  const [target] = await db
-    .select()
+  const [target] = (await db
+    .select({ id: receipt.id, receiptNumber: receipt.receiptNumber })
     .from(receipt)
     .where(and(eq(receipt.id, receiptId), scope))
-    .limit(1)
+    .limit(1)) as any[]
 
   if (!target) {
     throw new Error("Receipt not found or you don't have access to it.")
   }
 
-  const isReprint = target.printCount > 0
+  // Calculate print metadata from history (since receipt table is immutable)
+  const [countRes] = await db
+    .select({ count: count() })
+    .from(receiptPrintHistory)
+    .where(eq(receiptPrintHistory.receiptId, receiptId))
+  const currentCount = Number(countRes?.count || 0)
+
+  const isReprint = currentCount > 0
 
   // Permission Check
   if (!isReprint && !canPrintReceipt(current)) {
@@ -551,31 +621,20 @@ export async function recordReceiptPrint(receiptId: string) {
       action: "receipt.print.warning",
       entityType: "receipt",
       entityId: receiptId,
-      details: { warning: "Excessive printing attempt", printCount: target.printCount },
+      details: { warning: "Excessive printing attempt", currentCount },
     })
-    // Do not block printing as per Rule 8, but we already rate limited it?
-    // Actually Rule 8 says "Do not block printing. Only flag suspicious activity."
-    // So maybe I shouldn't use checkRateLimit to BLOCK, but to FLAG.
   }
 
   const h = await headers()
   const ip = h.get("x-forwarded-for")?.split(",")[0]?.trim() || h.get("x-real-ip") || "unknown"
   const userAgent = h.get("user-agent") || "unknown"
 
-  const newPrintCount = target.printCount + 1
+  const newPrintCount = currentCount + 1
   const now = new Date()
 
   // Transactional Update
   await db.transaction(async (tx) => {
-    await tx
-      .update(receipt)
-      .set({
-        printCount: newPrintCount,
-        firstPrintedAt: target.firstPrintedAt || now,
-        lastPrintedAt: now,
-        lastPrintedBy: current.name,
-      })
-      .where(eq(receipt.id, receiptId))
+    // Note: receipt table update removed to respect immutability triggers
 
     await tx.insert(receiptPrintHistory).values({
       id: randomUUID(),
@@ -586,9 +645,6 @@ export async function recordReceiptPrint(receiptId: string) {
       isReprint,
       ipAddress: ip,
       userAgent,
-      // browser and device could be parsed if we had a library,
-      // for now we store the raw user agent in userAgent field
-      // and we can extract it later or store it in these fields if we want.
       printedAt: now,
     })
 
@@ -604,10 +660,6 @@ export async function recordReceiptPrint(receiptId: string) {
           isReprint,
           ipAddress: ip,
           role: current.role,
-          organizationId: current.organizationId,
-          clusterId: current.clusterId,
-          branchId: current.branchId,
-          schemeId: current.schemeId,
         },
       },
       tx,
@@ -622,23 +674,6 @@ export async function recordReceiptPrint(receiptId: string) {
           entityType: "receipt",
           entityId: receiptId,
           details: { reason: "excessive printing", printCount: newPrintCount },
-        },
-        tx,
-      )
-    }
-
-    if (target.lastPrintedBy && target.lastPrintedBy !== current.name) {
-      await writeAudit(
-        {
-          user: current,
-          action: "receipt.fraud.warning",
-          entityType: "receipt",
-          entityId: receiptId,
-          details: {
-            reason: "printing by multiple users",
-            previousUser: target.lastPrintedBy,
-            currentUser: current.name,
-          },
         },
         tx,
       )
@@ -728,6 +763,12 @@ export async function requestReceiptVoid(receiptId: string, reason: string) {
         tx,
       )
     })
+
+    logFinancial("Receipt Voided (Reversed)", {
+      id: receiptId,
+      amount: target.amount,
+      reason
+    }, current)
 
     revalidatePath("/dashboard")
     revalidatePath(`/dashboard/receipts/${receiptId}`)

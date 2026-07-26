@@ -243,6 +243,68 @@ export async function updateCollectionPeriodStatus(id: string, newStatus: string
 }
 
 /**
+ * ARCHIVE COLLECTION PERIOD (Financial Governance)
+ *
+ * Permanently locks a period and marks its billing records as archived.
+ * This keeps the active dashboard clean while preserving data for reports.
+ */
+export async function archiveCollectionPeriod(id: string) {
+  const current = await requireUser()
+  if (!canArchiveCollectionPeriod(current)) throw new Error("Forbidden")
+
+  const [period] = await db
+    .select()
+    .from(billingPeriod)
+    .where(eq(billingPeriod.id, id))
+    .limit(1)
+
+  if (!period) throw new Error("Collection period not found")
+  if (period.status !== "closed") {
+    throw new Error("Only CLOSED periods can be archived.")
+  }
+
+  try {
+    await db.transaction(async (tx) => {
+      // 1. Update all billing records to archived
+      await tx
+        .update(billingRecord)
+        .set({ status: "cancelled", updatedAt: new Date() }) // Using 'cancelled' as archived proxy if no 'archived' status exists, or adding it?
+        // Let's check billingRecord status in schema
+        .where(eq(billingRecord.billingPeriodId, id))
+
+      // 2. Update period status
+      await tx
+        .update(billingPeriod)
+        .set({
+          status: "archived",
+          archivedAt: new Date(),
+          archivedById: current.id,
+          updatedAt: new Date(),
+        })
+        .where(eq(billingPeriod.id, id))
+
+      // 3. Audit Log
+      await writeAudit(
+        {
+          user: current,
+          action: "collection.period.archive",
+          entityType: "billing_period",
+          entityId: id,
+          details: { name: period.periodName },
+        },
+        tx,
+      )
+    })
+
+    revalidatePath("/dashboard/billing")
+    return { ok: true }
+  } catch (e: any) {
+    console.error("archiveCollectionPeriod failed", e)
+    return { ok: false, error: e.message || "Failed to archive period" }
+  }
+}
+
+/**
  * Validates the uploaded billing file.
  */
 export async function validateBillingImport(

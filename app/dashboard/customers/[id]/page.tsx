@@ -133,7 +133,7 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
                               entry.description
                             )}
                           </TableCell>
-                          <TableCell className={`text-right ${entry.type === "payment" ? "text-primary font-medium" : ""}`}>
+                          <TableCell className={`text-right ${entry.type === "payment" ? (entry.isVoided ? "line-through text-muted-foreground/60" : "text-primary font-medium") : ""}`}>
                             {entry.type === "payment" ? "+" : ""}{formatUGX(entry.amount)}
                           </TableCell>
                           <TableCell className="text-right font-mono font-bold">
@@ -208,13 +208,14 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
                       </TableHeader>
                       <TableBody>
                         {receipts.map((r) => (
-                          <TableRow key={r.id}>
+                          <TableRow key={r.id} className={r.isVoided ? "bg-destructive/5 opacity-80" : ""}>
                             <TableCell>
                               <Link
                                 href={`/dashboard/receipts/${r.id}`}
-                                className="font-medium text-primary hover:underline"
+                                className="font-medium text-primary hover:underline flex items-center gap-2"
                               >
                                 {r.receiptNumber}
+                                {r.isVoided && <Badge variant="destructive" className="h-4 text-[8px] uppercase">Voided</Badge>}
                               </Link>
                             </TableCell>
                             <TableCell className="text-xs">{r.billingPeriod || "—"}</TableCell>

@@ -68,13 +68,22 @@ export const receipt = pgTable(
     schemeNameSnapshot: text("schemeNameSnapshot"),
     reconciliationStatus: text("reconciliationStatus").notNull().default("pending"), // pending, matched, exception, manual
     orgNameSnapshot: text("orgNameSnapshot").notNull(),
+    orgAddressSnapshot: text("orgAddressSnapshot"),
+    orgPhoneSnapshot: text("orgPhoneSnapshot"),
     disclaimerSnapshot: text("disclaimerSnapshot").notNull(),
     footerSnapshot: text("footerSnapshot").notNull(),
     logoUrlSnapshot: text("logoUrlSnapshot"),
+
+    // -----------------------------------------------------------------------
+    // LEGACY PRINTING COLUMNS (DO NOT USE)
+    // These are no longer updated because the receipt table is immutable.
+    // Use the receipt_print_history table aggregates instead.
+    // -----------------------------------------------------------------------
     printCount: integer("printCount").notNull().default(0),
     firstPrintedAt: timestamp("firstPrintedAt"),
     lastPrintedAt: timestamp("lastPrintedAt"),
     lastPrintedBy: text("lastPrintedBy"),
+
     createdAt: timestamp("createdAt").notNull().defaultNow(),
   },
   (table) => ({

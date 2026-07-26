@@ -11,6 +11,7 @@ import {
   branch,
   cluster,
   user as userTable,
+  auditLog,
 } from "@/lib/db/schema"
 import { requireUser } from "@/lib/session"
 import { applyReceiptScope, applyBillingScope, applyCustomerScope } from "@/lib/scopes"
@@ -51,8 +52,8 @@ export async function getCustomerStatement(customerId: string) {
     .where(eq(billingRecord.customerId, customerId))
     .orderBy(desc(billingPeriod.year), desc(billingPeriod.month))
 
-  // 3. Fetch all receipts
-  const receipts = await db
+  // 3. Fetch all receipts and check for void status
+  const rawReceipts = await db
     .select({
       id: receipt.id,
       receiptNumber: receipt.receiptNumber,
@@ -67,6 +68,22 @@ export async function getCustomerStatement(customerId: string) {
     .where(eq(receipt.customerId, customerId))
     .orderBy(desc(receipt.paymentDate))
 
+  // Check for void events in audit log for these receipts
+  const voidEvents = await db
+    .select({ entityId: auditLog.entityId })
+    .from(auditLog)
+    .where(and(
+      inArray(auditLog.entityId, rawReceipts.length > 0 ? rawReceipts.map(r => r.id) : ['none']),
+      eq(auditLog.action, "receipt.void")
+    ))
+
+  const voidedIds = new Set(voidEvents.map(e => e.entityId))
+
+  const receipts = rawReceipts.map(r => ({
+    ...r,
+    isVoided: voidedIds.has(r.id)
+  }))
+
   // 4. Create chronological ledger (Objective 2)
   const ledger: Array<{
     date: Date
@@ -75,6 +92,7 @@ export async function getCustomerStatement(customerId: string) {
     amount: number
     balance: number
     referenceId: string
+    isVoided?: boolean
   }> = []
 
   let runningBalance = 0
@@ -97,21 +115,26 @@ export async function getCustomerStatement(customerId: string) {
         referenceId: event.data.id,
       })
     } else {
-      runningBalance -= event.data.amount
+      // Reversal logic: If voided, the payment doesn't affect the balance
+      if (!event.data.isVoided) {
+        runningBalance -= event.data.amount
+      }
+
       ledger.push({
         date: event.date,
         type: "payment",
-        description: `Receipt #${event.data.receiptNumber}`,
+        description: `Receipt #${event.data.receiptNumber}${event.data.isVoided ? " (VOIDED)" : ""}`,
         amount: event.data.amount,
         balance: runningBalance,
         referenceId: event.data.id,
+        isVoided: event.data.isVoided
       })
     }
   }
 
   // 5. Calculate Running Totals
   const totalBilled = bills.reduce((sum, b) => sum + b.totalDue, 0)
-  const totalPaid = receipts.reduce((sum, r) => sum + r.amount, 0)
+  const totalPaid = receipts.filter(r => !r.isVoided).reduce((sum, r) => sum + r.amount, 0)
   const currentBalance = totalBilled - totalPaid
 
   return {

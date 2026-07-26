@@ -1,26 +1,34 @@
 import { notFound } from "next/navigation"
 import { getReceiptById, getReceiptAttachments, getPrintHistory } from "@/app/actions/receipts"
 import { PrintButton } from "@/app/dashboard/receipts/[id]/print-button"
+import { VoidReceiptButton } from "@/app/dashboard/receipts/[id]/void-receipt-button"
 import { AttachmentUpload } from "@/app/dashboard/receipts/[id]/attachment-upload"
 import { Card, CardContent } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { formatUGX, formatDateTime } from "@/lib/format"
 import { getSiteUrl } from "@/lib/site-url"
+import { getCurrentUser } from "@/lib/session"
+import { hasPermission } from "@/lib/iam"
 import Link from "next/link"
-import { ArrowLeft, History } from "lucide-react"
+import { ArrowLeft, History, Ban } from "lucide-react"
 import { SectionHeader } from "@/components/ui/page-header"
 import { ScrollableTableContainer } from "@/components/ui/responsive-table"
 import { EmptyState } from "@/components/ui/empty-state"
+import { Badge } from "@/components/ui/badge"
 
 export default async function ReceiptDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
-  const [receipt, attachments, printHistory] = await Promise.all([
+  const [receipt, attachments, printHistory, current] = await Promise.all([
     getReceiptById(id),
     getReceiptAttachments(id),
-    getPrintHistory(id)
+    getPrintHistory(id),
+    getCurrentUser()
   ])
 
   if (!receipt) notFound()
+
+  const canVoid = current ? await hasPermission(current, "receipts.void") : false
+  const isMatched = receipt.reconciliationStatus === "matched"
 
   const siteUrl = await getSiteUrl()
   const verifyUrl = `${siteUrl}/verify?number=${encodeURIComponent(receipt.receiptNumber)}`
@@ -47,19 +55,15 @@ export default async function ReceiptDetailPage({ params }: { params: Promise<{ 
 
   // Financial Breakdown Logic
   const amountCollected = receipt.amount
-
-  // Let's use the actual stored snapshots.
   const prevBalance = receipt.previousAccountBalanceSnapshot
-  const totalAvailable = amountCollected + prevBalance
   const newBalance = receipt.newAccountBalanceSnapshot
 
-  // Amount applied to bill is the portion of totalAvailable that was consumed.
-  // If there's a bill, applied = totalAvailable - newBalance.
-  const appliedToBill = receipt.billingRecordId ? (totalAvailable - newBalance) : 0
+  const isCredit = newBalance < 0
+  const absBalance = Math.abs(newBalance)
   const remainingOutstanding = receipt.outstandingBalance ?? 0
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 print-page">
       <div className="flex items-center justify-between no-print">
         <Link
           href="/dashboard"
@@ -67,13 +71,31 @@ export default async function ReceiptDetailPage({ params }: { params: Promise<{ 
         >
           <ArrowLeft className="size-4" /> Back to dashboard
         </Link>
-        <PrintButton receiptId={receipt.id} />
+        <div className="flex items-center gap-2">
+          {canVoid && (
+            <VoidReceiptButton
+              receiptId={receipt.id}
+              isVoided={receipt.isVoided}
+              disabled={isMatched}
+            />
+          )}
+          <PrintButton receiptId={receipt.id} />
+        </div>
       </div>
 
-      <Card className="relative overflow-hidden">
-        <CardContent className="print-area p-8 relative">
+      <Card className="relative !overflow-visible shadow-none border-none md:border md:shadow-sm">
+        <CardContent className="print-area p-8 relative !overflow-visible">
+          {/* Voided Watermark */}
+          {receipt.isVoided && (
+            <div className="absolute inset-0 pointer-events-none z-10 flex items-center justify-center opacity-[0.15] rotate-[-25deg] select-none">
+              <span className="text-[140px] font-black tracking-tighter text-destructive border-[12px] border-destructive px-8 rounded-3xl">
+                VOIDED
+              </span>
+            </div>
+          )}
+
           {/* Reprint Watermark */}
-          {receipt.printCount > 0 && (
+          {!receipt.isVoided && receipt.printCount > 0 && (
             <div className="absolute inset-0 pointer-events-none hidden print:flex items-center justify-center opacity-[0.08] rotate-[-35deg] select-none">
               <span className="text-[120px] font-black tracking-tighter">
                 REPRINT {receipt.printCount > 1 && `#${receipt.printCount}`}
@@ -89,11 +111,22 @@ export default async function ReceiptDetailPage({ params }: { params: Promise<{ 
               )}
               <div>
                 <p className="font-semibold text-lg">{receipt.orgNameSnapshot}</p>
-                <p className="text-xs text-muted-foreground">Official Payment Receipt</p>
+                <div className="text-[10px] text-muted-foreground leading-tight">
+                  {receipt.orgAddressSnapshot && <p>{receipt.orgAddressSnapshot}</p>}
+                  {receipt.orgPhoneSnapshot && <p>Tel: {receipt.orgPhoneSnapshot}</p>}
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">Official Payment Receipt</p>
               </div>
             </div>
             <div className="text-right">
-              <p className="font-mono font-semibold">{receipt.receiptNumber}</p>
+              <div className="flex flex-col items-end gap-1 mb-1">
+                <p className="font-mono font-semibold">{receipt.receiptNumber}</p>
+                {receipt.isVoided && (
+                  <Badge variant="destructive" className="animate-pulse flex gap-1">
+                    <Ban className="size-3" /> VOIDED
+                  </Badge>
+                )}
+              </div>
               <p className="text-xs text-muted-foreground">{formatDateTime(receipt.createdAt)}</p>
             </div>
           </div>
@@ -110,15 +143,8 @@ export default async function ReceiptDetailPage({ params }: { params: Promise<{ 
           <div className="space-y-2 mb-6 border rounded-lg p-4 bg-muted/20">
             <h3 className="text-xs font-bold uppercase text-muted-foreground mb-4 border-b pb-2">Financial Breakdown</h3>
 
-            {receipt.amountDueSnapshot && (
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-muted-foreground">Imported Bill Amount</span>
-                <span className="font-mono">{formatUGX(receipt.amountDueSnapshot)}</span>
-              </div>
-            )}
-
             <div className="flex items-center justify-between text-sm">
-              <span className="text-muted-foreground">Previous Account Balance</span>
+              <span className="text-muted-foreground">Previous Arrears</span>
               <span className="font-mono">{formatUGX(prevBalance)}</span>
             </div>
 
@@ -127,19 +153,9 @@ export default async function ReceiptDetailPage({ params }: { params: Promise<{ 
               <span className="font-mono text-primary">{formatUGX(amountCollected)}</span>
             </div>
 
-            <div className="flex items-center justify-between text-sm italic">
-              <span className="text-muted-foreground">Applied to Bill</span>
-              <span className="font-mono">({formatUGX(appliedToBill)})</span>
-            </div>
-
-            <div className="flex items-center justify-between text-sm border-t pt-2">
-              <span className="font-medium">Remaining Outstanding</span>
-              <span className="font-mono text-destructive">{formatUGX(remainingOutstanding)}</span>
-            </div>
-
-            <div className="flex items-center justify-between text-base font-bold text-primary mt-2 pt-2 border-t border-double">
-              <span>New Account Balance</span>
-              <span className="font-mono">{formatUGX(newBalance)}</span>
+            <div className="flex items-center justify-between text-base font-bold text-primary mt-4 pt-2 border-t border-double">
+              <span>{isCredit ? "New Credit Balance" : "New Account Arrears"}</span>
+              <span className="font-mono">{formatUGX(absBalance)}</span>
             </div>
           </div>
 
