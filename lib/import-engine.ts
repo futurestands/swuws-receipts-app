@@ -57,6 +57,10 @@ export async function processExcelImport<T extends Record<string, any>>(params: 
   const firstSheet = workbook.Sheets[workbook.SheetNames[0]]
   const rawData = XLSX.utils.sheet_to_json(firstSheet)
 
+  if (rawData.length > 50000) {
+    throw new Error(`Import exceeds maximum limit of 50,000 rows. Please split the file and try again.`)
+  }
+
   const results: ValidationResult<T>[] = []
   let validCount = 0
   let errorCount = 0

@@ -77,7 +77,10 @@ export async function createNotification(data: {
   const current = await requireUser()
   const authorized =
     (await hasPermission(current, "reconciliation.run")) ||
-    (await hasPermission(current, "reconciliation.approve"))
+    (await hasPermission(current, "reconciliation.approve")) ||
+    (await hasPermission(current, "branding.manage")) ||
+    (await hasPermission(current, "collection.view"))
+
   if (!authorized) throw new Error("Forbidden")
 
   const id = randomUUID()

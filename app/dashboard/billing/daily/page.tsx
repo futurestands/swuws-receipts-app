@@ -41,10 +41,6 @@ export default async function DailyCollectionImportPage() {
               description="Daily Collection reports imported from the External Billing System will appear here. This will be the official source for confirmed daily totals."
               action={
                 <div className="flex flex-col items-center gap-4">
-                  <div className="flex items-center gap-2 text-[10px] text-green-600 font-bold uppercase tracking-wider bg-green-50 px-3 py-1 rounded-full border border-green-100">
-                    <Info className="h-3 w-3" />
-                    Import Engine Operational (Phase 2B)
-                  </div>
                   <DailyImportWizard />
                 </div>
               }

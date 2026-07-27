@@ -3,7 +3,7 @@ const nextConfig = {
   // Increase payload limit for large Excel/CSV imports
   experimental: {
     serverActions: {
-      bodySizeLimit: "10mb",
+      bodySizeLimit: "50mb",
     },
   },
 

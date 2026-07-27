@@ -52,11 +52,12 @@ export async function bootstrapAdmin(input: { name: string; email: string; passw
 
   let userId: string | null = null
   const email = input.email.trim().toLowerCase()
+  const sanitizedName = input.name.replace(/<[^>]*>?/gm, "").trim()
 
   try {
     // 2. Attempt to create the user via Better Auth
     const created = await auth.api.signUpEmail({
-      body: { name: input.name.trim(), email, password: input.password },
+      body: { name: sanitizedName, email, password: input.password },
       headers: await headers(),
     })
     userId = created?.user?.id ?? null

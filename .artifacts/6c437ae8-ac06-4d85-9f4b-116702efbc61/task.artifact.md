@@ -1,13 +1,14 @@
-# Tasks: Feature Completion & Hardening (Slow Mode)
+# Tasks: Phase 11 - Enterprise-Scale Hardening (50,000+ Rows)
 
-- `[/]` 1. Critical Build Fixes
-    - `[ ]` Fix mismatched JSX tag in `app/admin/system-reset-panel.tsx`
-- `[ ]` 2. Password Reset Repair
-    - `[ ]` Wire reset token in `app/login/reset-password/reset-password-client.tsx`
-- `[ ]` 3. System Reset Integrity
-    - `[ ]` Create bypass migration `0036_maintenance_bypass_trigger.sql`
-    - `[ ]` Update `wipeOperationalData` in `app/actions/admin.ts`
-- `[ ]` 4. Security & Scoping Hardening
-    - `[ ]` Add HTML escaping in `lib/email-service.ts`
-    - `[ ]` Add per-row scoping in `app/actions/tariff-import.ts`
-- `[ ]` Final Verification
+- `[x]` 1. Scaling Resource Governance
+    - `[x]` Increase body size limit to 50MB in `next.config.mjs`
+    - `[x]` Add 50,000 row limit to `lib/import-engine.ts`
+- `[x]` 2. High-Coverage Notifications
+    - `[x]` Broaden `createNotification` permissions in `app/actions/notifications.ts`
+- `[x]` 3. Identity Injection Protection
+    - `[x]` Add HTML name sanitization in `app/actions/admin.ts`
+    - `[x]` Add HTML name sanitization in `app/actions/bootstrap.ts`
+- `[x]` 4. CI/CD Audit Trail
+    - `[x]` Verify `.github/workflows/ci.yml` includes all tests
+- `[/]` Final Verification
+    - `[ ]` Run `npm run typecheck`

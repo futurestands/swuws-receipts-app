@@ -92,10 +92,13 @@ export async function createAgent(input: {
     return { ok: false as const, error: "You are not authorized to create agents for this area" }
   }
 
+  // Security Hardening: HTML Sanitization for User Names
+  const sanitizedName = input.name.replace(/<[^>]*>?/gm, "").trim()
+
   try {
     const created = await auth.api.signUpEmail({
       body: {
-        name: input.name.trim(),
+        name: sanitizedName,
         email: input.email.trim().toLowerCase(),
         password: input.password,
       },

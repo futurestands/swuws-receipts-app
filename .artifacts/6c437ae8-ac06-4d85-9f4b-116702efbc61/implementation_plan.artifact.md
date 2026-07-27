@@ -1,61 +1,61 @@
-# Implementation Plan: Final Feature Completion & Hardening
+# Phase 11: Enterprise-Scale Hardening (50,000+ Rows)
 
-This plan addresses the blocking bugs and functional gaps identified in the third forensic audit, ensuring the system is buildable, functional, and secure for production.
+This phase scales the system's resource governance to handle large-scale population data while closing the final security and notification gaps.
 
 ## User Review Required
 
 > [!IMPORTANT]
-> **Database Trigger Modification**: To allow the "System Reset" feature to work while keeping receipts immutable during normal operation, I will add a **Bypass Path** to your database triggers. This path will only be accessible during the administrative reset transaction.
->
-> **Password Reset Dependency**: The password reset feature requires the user to click a link in an email. Ensure you have access to your server logs to see these links until a real email provider is configured.
+> **Scaling the Walls**: We are increasing the import limit to **50,000 rows**.
+> - To support this, I am raising the server's intake limit to **50MB**.
+> - **Recommendation**: For files larger than 50,000 rows, it is best practice to split them into two files to ensure they complete within the 60-second server timeout.
 
 ## Proposed Changes
 
 ---
 
-### 1. Critical Build Fixes
+### 1. Scaling Resource Governance
 
-#### [MODIFY] [app/admin/system-reset-panel.tsx](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/app/admin/system-reset-panel.tsx)
-- Fix mismatched JSX tag: Change `</li>` to `</p>` on line 82.
+#### [MODIFY] [next.config.mjs](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/next.config.mjs)
+- Increase `serverActions.bodySizeLimit` from `10mb` to **`50mb`**.
+- Why: 50,000 rows of Excel data (including names/addresses) can easily exceed 10MB.
 
----
-
-### 2. Password Reset Repair
-
-#### [MODIFY] [app/login/reset-password/reset-password-client.tsx](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/app/login/reset-password/reset-password-client.tsx)
-- Import `useSearchParams` from `next/navigation`.
-- Extract the `token` from the URL query parameters.
-- Pass the `token` to `authClient.resetPassword` to validate the request.
+#### [MODIFY] [import-engine.ts](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/lib/import-engine.ts)
+- Add a hard limit of **50,000 rows** per import.
+- Add an explicit memory-cleanup step to clear the Excel buffer immediately after parsing.
 
 ---
 
-### 3. System Reset Integrity
+### 2. High-Coverage Notifications
 
-#### [NEW] [db/migrations/0036_maintenance_bypass_trigger.sql](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/db/migrations/0036_maintenance_bypass_trigger.sql)
-- Update the immutability triggers for `receipt` and `receipt_attachment` to allow deletion ONLY if a session variable `app.allow_operational_wipe` is set to `'true'`.
-
-#### [MODIFY] [app/actions/admin.ts](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/app/actions/admin.ts)
-- Update `wipeOperationalData` to execute `SET app.allow_operational_wipe = 'true'` inside the transaction before deleting records.
-- Add logic to explicitly delete from the `audit_log` table as promised in the UI.
+#### [MODIFY] [notifications.ts](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/app/actions/notifications.ts)
+- Broaden `createNotification` permissions.
+- Allow any user with `branding.manage` (System Admins) or `collection.view` (Finance) to trigger notifications.
+- Why: This ensures that when a Regional Manager imports a large file, the correct people are notified across the whole organization.
 
 ---
 
-### 4. Security & Scoping Hardening
+### 3. Identity Injection Protection
 
-#### [MODIFY] [lib/email-service.ts](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/lib/email-service.ts)
-- Add `{ escape: true }` to the `renderTemplate` call to prevent HTML injection via user names.
+#### [MODIFY] [admin.ts](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/app/actions/admin.ts)
+#### [MODIFY] [bootstrap.ts](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/app/actions/bootstrap.ts)
+- **HTML Sanitization**: Add a regex filter to strip HTML tags (`<b>`, `<script>`, etc.) from the user's `name` during creation.
+- Why: This prevents an attacker from putting malicious code in their name, which would then be sent to other people's inboxes in your HTML emails.
 
-#### [MODIFY] [app/actions/tariff-import.ts](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/app/actions/tariff-import.ts)
-- Inside the bulk import loop, call `validateWriteScope(current, "system.settings.manage", { branchId, schemeId })`.
-- This ensures a Branch Manager cannot use bulk import to change prices in a different branch.
+---
+
+### 4. CI/CD Audit Trail
+
+#### [VERIFY] [.github/workflows/ci.yml](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/.github/workflows/ci.yml)
+- Confirm that the math and scope unit tests are part of the automated check.
 
 ## Verification Plan
 
 ### Automated Verification
-- Run `npm run typecheck` to verify the build-break is resolved.
-- Run `npm test` to ensure existing logic remains sound.
+- Run `npm run typecheck`.
+- Run `npm test`.
 
 ### Manual Verification
-1. **System Reset**: Create a test receipt, then run the "System Reset" tool. **Verify**: It succeeds without a database error.
-2. **Password Reset**: Request a reset, copy the link from logs, and verify you can set a new password.
-3. **Scoping**: Try to import a tariff for a branch you don't manage. **Verify**: The row is flagged as "Forbidden."
+1. **Stress Test**: Upload a file with 1,000 rows to verify the 50MB intake limit is working correctly.
+2. **Security Test**: Create a user with name `<script>alert(1)</script>Mugisha`.
+   - **Verify**: The name is stored in the database as `Mugisha`.
+3. **Audit Check**: Verify that `tariff.bulk_import` and `system.full_wipe` are recorded correctly.
