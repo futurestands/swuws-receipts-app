@@ -56,16 +56,19 @@ export function AppShell({
       >
         <div className="flex h-14 shrink-0 items-center justify-between border-b border-sidebar-border px-3">
           <div className="flex flex-col min-w-0">
-            <Link
-              href={brandHref}
-              className={collapsed ? "sr-only" : "truncate text-sm font-bold text-sidebar-foreground"}
-            >
-              {brand}
-            </Link>
-            {!collapsed && (
-              <p className="text-[7px] font-black text-brand-blue truncate leading-none mt-0.5">
-                SOUTHWESTERN UMBRELLA OF WATER AND SANITATION
-              </p>
+            {!collapsed ? (
+              <Link href={brandHref} className="flex flex-col group leading-tight">
+                <span className="text-[12px] font-black text-sidebar-foreground tracking-tight uppercase">
+                  SWUWS Collection
+                </span>
+                <span className="text-[12px] font-black text-sidebar-foreground tracking-tight uppercase">
+                  Portal
+                </span>
+              </Link>
+            ) : (
+              <Link href={brandHref} className="sr-only">
+                {brand}
+              </Link>
             )}
           </div>
           <Button
@@ -87,10 +90,10 @@ export function AppShell({
       <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
         <SheetContent side="left" className="w-72 max-w-[85vw] border-sidebar-border bg-sidebar p-0">
           <SheetHeader className="h-20 flex flex-col items-start justify-center border-b border-sidebar-border px-4">
-            <SheetTitle className="text-sidebar-foreground text-left">{brand}</SheetTitle>
-            <p className="text-[8px] font-black text-brand-blue text-left">
-              SOUTHWESTERN UMBRELLA OF WATER AND SANITATION
-            </p>
+            <SheetTitle className="text-sidebar-foreground text-left flex flex-col leading-tight">
+              <span className="text-sm font-black tracking-tight uppercase">SWUWS COLLECTION</span>
+              <span className="text-sm font-black tracking-tight uppercase">PORTAL</span>
+            </SheetTitle>
           </SheetHeader>
           <div className="flex-1 overflow-y-auto">
             <SidebarNav sections={sections} onNavigate={() => setMobileOpen(false)} />
@@ -110,13 +113,11 @@ export function AppShell({
           >
             <Menu />
           </Button>
-          <div className="flex flex-col min-w-0 md:hidden">
-            <Link href={brandHref} className="truncate text-sm font-bold text-primary">
-              {brand}
+          <div className="flex flex-col min-w-0 md:hidden leading-tight">
+            <Link href={brandHref} className="flex flex-col">
+              <span className="text-[11px] font-black text-primary uppercase">SWUWS COLLECTION</span>
+              <span className="text-[11px] font-black text-primary uppercase">PORTAL</span>
             </Link>
-            <p className="text-[7px] font-black text-brand-blue truncate leading-none">
-              SOUTHWESTERN UMBRELLA OF WATER AND SANITATION
-            </p>
           </div>
 
           <div className="hidden md:flex items-center flex-1 px-4 min-w-0 overflow-hidden">

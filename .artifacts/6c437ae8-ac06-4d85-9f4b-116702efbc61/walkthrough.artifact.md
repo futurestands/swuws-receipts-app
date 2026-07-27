@@ -1,37 +1,28 @@
-# Walkthrough: Phase 11 - Enterprise-Scale Hardening
+# Walkthrough: Sidebar Branding Refinement
 
-I have successfully scaled the system's resource governance to support a population of 50,000+ customers and closed the final security and notification gaps identified in the forensic re-audit.
+I have successfully refined the sidebar and mobile branding to ensure "SWUWS Collection Portal" fits perfectly and professionally without truncation.
 
 ## Changes Made
 
-### 1. Scaling for 50,000+ Customers
-Removed the previous resource bottlenecks to allow for organization-wide imports.
-- **Server Capacity**: Increased the `serverActions.bodySizeLimit` to **50MB** in [next.config.mjs](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/next.config.mjs). This ensures large Excel files with 50k rows (which can exceed 10MB) are not rejected by the server.
-- **Import Governance**: Established a hard limit of **50,000 rows** per import in the [Unified Import Engine](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/lib/import-engine.ts). This prevents memory-related server crashes while providing ample headroom for population growth.
+### 1. Two-Line Sidebar Branding
+Restructured the sidebar header to use two lines, providing more vertical space and improving legibility.
+- **Top Line**: "SWUWS COLLECTION" in bold, black-weight font.
+- **Bottom Line**: "PORTAL" in a secondary brand color with wider letter spacing for an enterprise look.
+- **Subtitle Removal**: Removed the long "SOUTHWESTERN UMBRELLA OF WATER AND SANITATION" text from the sidebar to eliminate clutter and improve focus on the core system identity.
 
-### 2. Identity Injection Protection (XSS)
-Hardened the user creation process to prevent malicious code from entering the system.
-- **Locations**: [admin.ts](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/app/actions/admin.ts) and [bootstrap.ts](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/app/actions/bootstrap.ts).
-- **Sanitization**: Added a real-time HTML filter that strips all tags (e.g., `<script>`, `<b>`) from a user's display name.
-- **Impact**: This closes the security backdoor where an attacker could put code in their name to infect the organization's official HTML emails.
-
-### 3. Comprehensive Notification Coverage
-Broadened the notification system to ensure all administrative events are visible to the correct stakeholders.
-- **Location**: [notifications.ts](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/app/actions/notifications.ts).
-- **Change**: Expanded the `createNotification` permission check to include **System Admins** and **Finance Managers**.
-- **Result**: Administrators and Finance officers will now correctly receive alerts when large-scale imports or organizational changes occur.
+### 2. Mobile UI Consistency
+Propagated the branding changes to all mobile entry points:
+- **Mobile Drawer**: Updated the slide-out navigation menu to match the two-line branding.
+- **Mobile Top Bar**: Redesigned the mini-header shown on mobile devices to fit the two-line logo format.
 
 ## Verification Results
 
-### Logic & Performance
-- **Capacity Test**: Verified that the import engine is now configured for 5X more data than the previous baseline.
-- **Security Test**: Verified that user names are now automatically "Cleaned" of HTML tags during account creation.
-
-### Build Status
-- **Status**: **STABLE**
-- **Notes**: Verified via `npm run typecheck`.
+### Visual Inspection
+- **Desktop**: Verified that the text fits within the `13.5rem` sidebar width without being cut off by ellipses.
+- **Contrast**: The "PORTAL" text in brand-blue provides better contrast and hierarchy than the previous dark greyscale subtitle.
+- **Consistency**: Checked all three header locations for unified branding.
 
 ---
 
-> [!NOTE]
-> **Production Standard**: The system is now technically "Future-Proofed." It has the resource limits of an enterprise-scale platform and the security sanitization required for professional email communication.
+> [!TIP]
+> **Branding Note**: This two-line approach is common in enterprise "SaaS" platforms as it maximizes use of the narrow sidebar space while maintaining a high-impact organizational identity.
