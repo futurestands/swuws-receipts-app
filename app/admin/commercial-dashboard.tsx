@@ -131,14 +131,26 @@ export function CommercialDashboard({
               </CardContent>
             </Card>
 
-            <Card>
+            <Card className="border-green-100 bg-green-50/10">
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground">Total Collected</CardTitle>
+                <CardTitle className="text-sm font-medium text-green-700 uppercase tracking-wider">Verified Collections</CardTitle>
               </CardHeader>
               <CardContent>
-                <p className="text-2xl font-bold text-primary">{formatUGX(stats.collections.totalCollected)}</p>
-                <p className="text-xs text-muted-foreground mt-1">
-                  {stats.collections.receiptCount} receipts issued
+                <p className="text-2xl font-bold text-green-600">{formatUGX(stats.collections.verifiedMonthly + stats.collections.verifiedArrears)}</p>
+                <p className="text-[10px] text-muted-foreground mt-1">
+                  Confirmed via EBS Bank Import
+                </p>
+              </CardContent>
+            </Card>
+
+            <Card className="border-amber-100 bg-amber-50/10">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium text-amber-700 uppercase tracking-wider">Operational Cash</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-2xl font-bold text-amber-600">{formatUGX(stats.collections.operationalCash)}</p>
+                <p className="text-[10px] text-muted-foreground mt-1">
+                   From {stats.collections.operationalCount} issued receipts
                 </p>
               </CardContent>
             </Card>

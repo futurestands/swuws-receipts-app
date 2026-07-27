@@ -32,7 +32,7 @@ const createReceiptSchema = z.object({
   billingRecordId: z.string().trim().optional(),
   billingPeriodId: z.string().trim().optional(),
   schemeId: z.string().trim().optional(),
-  customerId: z.string().trim().optional(),
+  customerId: z.string().trim().min(1, "Customer ID is required"),
   customerName: z.string().trim().min(1, "Customer name is required").max(200),
   customerAccount: z.string().trim().max(100).optional(),
   customerPhone: z.string().trim().max(30).optional(),
@@ -178,7 +178,9 @@ export async function createReceipt(input: CreateReceiptInput) {
         // Apply totalAvailable to bill, capped at remainingBefore
         appliedToBill = Math.min(totalAvailable, remainingBefore)
         const outstandingAfter = remainingBefore - appliedToBill
-        newStatus = outstandingAfter <= 0 ? "paid" : "partially_paid"
+        // Goal Alignment: Bills only move to 'paid' AFTER bank reconciliation.
+        // For now, we move them to 'pending_bank_confirmation'.
+        newStatus = outstandingAfter <= 0 ? "pending_bank_confirmation" : "partially_paid"
 
         // Update Billing Record Status
         await tx

@@ -179,6 +179,22 @@ export async function runReconciliation(batchId: string) {
           .set({ importStatus: 'matched' })
           .where(inArray(dailyCollectionRecord.id, Array.from(matchedRecordIds)))
 
+        // Goal Alignment: Move bills to 'paid' status only when bank-reconciled.
+        await tx.execute(sql`
+          UPDATE billing_record
+          SET status = 'paid', "updatedAt" = now()
+          WHERE id IN (
+            SELECT r."billingRecordId"
+            FROM receipt r
+            INNER JOIN billing_record br ON r."billingRecordId" = br.id
+            WHERE r."reconciliationStatus" = 'matched'
+            AND r."billingRecordId" IS NOT NULL
+            GROUP BY r."billingRecordId", br."totalDue"
+            HAVING SUM(r.amount) >= br."totalDue"
+          )
+          AND status != 'paid'
+        `)
+
         // Update Batch Status
         await tx.update(dailyCollectionImport)
           .set({ status: 'processed', updatedAt: new Date() })

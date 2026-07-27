@@ -197,6 +197,7 @@ export async function getDashboardStats(params: {
           totalBilled: sum(billingRecord.totalDue),
           billedCount: count(billingRecord.id),
           paidCount: sql<number>`count(case when ${billingRecord.status} = 'paid' then 1 end)::int`,
+          confirmedCount: sql<number>`count(case when ${billingRecord.status} = 'pending_bank_confirmation' then 1 end)::int`,
           partialCount: sql<number>`count(case when ${billingRecord.status} = 'partially_paid' then 1 end)::int`,
           unpaidCount: sql<number>`count(case when ${billingRecord.status} = 'pending' then 1 end)::int`,
         })
@@ -309,6 +310,7 @@ export async function getDashboardStats(params: {
           totalBilled,
           billedCount: Number(billingStats?.billedCount || 0),
           paidCount: Number(billingStats?.paidCount || 0),
+          confirmedCount: Number(billingStats?.confirmedCount || 0),
           partialCount: Number(billingStats?.partialCount || 0),
           unpaidCount: Number(billingStats?.unpaidCount || 0),
         },

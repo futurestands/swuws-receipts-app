@@ -19,15 +19,15 @@ import {
 } from "@/components/ui/select"
 import { toast } from "sonner"
 import { formatUGX } from "@/lib/format"
-import { AlertCircle, Search } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { ResponsiveFormLayout, FormField, FormActions } from "@/components/ui/form-layout"
+import Link from "next/link"
+import { AlertCircle, Search, UserPlus } from "lucide-react"
 
 const emptyFormBase = {
   billingRecordId: "",
   billingPeriodId: "",
   schemeId: "",
-  customerName: "",
   customerAccount: "",
   customerPhone: "",
   customerAddress: "",
@@ -154,8 +154,8 @@ export function ReceiptForm({
       setError("Select a payment method")
       return
     }
-    if (!selectedCustomer && !form.customerName) {
-      setError("Enter a customer name, or select an existing customer profile")
+    if (!selectedCustomer) {
+      setError("You must select a customer profile to issue a receipt")
       return
     }
 
@@ -164,11 +164,11 @@ export function ReceiptForm({
         billingRecordId: form.billingRecordId || undefined,
         billingPeriodId: form.billingPeriodId || undefined,
         schemeId: form.schemeId || undefined,
-        customerId: selectedCustomer?.id,
-        customerName: selectedCustomer?.name || form.customerName,
-        customerAccount: selectedCustomer ? undefined : form.customerAccount || undefined,
-        customerPhone: selectedCustomer ? undefined : form.customerPhone || undefined,
-        customerAddress: selectedCustomer ? undefined : form.customerAddress || undefined,
+        customerId: selectedCustomer.id,
+        customerName: selectedCustomer.name,
+        customerAccount: undefined,
+        customerPhone: undefined,
+        customerAddress: undefined,
         amount,
         outstandingBalance: form.outstandingBalance ? Number(form.outstandingBalance) : undefined,
         paymentMethod: form.paymentMethod,
@@ -239,7 +239,6 @@ export function ReceiptForm({
                     setSelectedCustomer(null)
                     setForm(prev => ({
                       ...prev,
-                      customerName: "",
                       customerAccount: "",
                       customerPhone: "",
                       customerAddress: "",
@@ -260,7 +259,6 @@ export function ReceiptForm({
                     setCustomerQuery("")
                     setForm(prev => ({
                       ...prev,
-                      customerName: "",
                       customerAccount: "",
                       customerPhone: "",
                       customerAddress: "",
@@ -269,6 +267,16 @@ export function ReceiptForm({
                 >
                   Change
                 </Button>
+              )}
+              {customerResults.length === 0 && customerQuery.trim() !== "" && !selectedCustomer && (
+                <div className="absolute z-10 mt-1 p-4 w-full rounded-lg border bg-popover shadow-md ring-1 ring-black/5 text-center">
+                   <p className="text-sm text-muted-foreground mb-2">No customer found for "{customerQuery}"</p>
+                   <Button asChild variant="outline" size="sm" className="gap-2">
+                      <Link href="/dashboard/customers">
+                        <UserPlus className="h-4 w-4" /> Create New Profile
+                      </Link>
+                   </Button>
+                </div>
               )}
               {customerResults.length > 0 && !selectedCustomer && (
                 <div className="absolute z-10 mt-1 max-h-64 w-full overflow-y-auto rounded-lg border bg-popover shadow-md ring-1 ring-black/5">
@@ -282,7 +290,6 @@ export function ReceiptForm({
                         setCustomerResults([])
                         setForm(prev => ({
                           ...prev,
-                          customerName: c.name,
                           customerAccount: c.customerAccount || "",
                           customerPhone: c.phone || "",
                           customerAddress: c.address || "",
@@ -431,17 +438,6 @@ export function ReceiptForm({
               </Select>
             </FormField>
           </ResponsiveFormLayout>
-
-          <FormField label="Customer name" htmlFor="customerName" required>
-            <Input
-              id="customerName"
-              required
-              value={form.customerName}
-              onChange={(e) => set("customerName", e.target.value)}
-              className="h-11"
-              readOnly={!!selectedCustomer}
-            />
-          </FormField>
 
           <FormField label="Account number" htmlFor="customerAccount">
             <Input

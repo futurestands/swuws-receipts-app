@@ -5,7 +5,7 @@ import { db } from "@/lib/db"
 import { user, receipt, auditLog, organization, receiptPrintHistory, branch, waterScheme } from "@/lib/db/schema"
 import { requireUser } from "@/lib/session"
 import { writeAudit } from "@/lib/audit"
-import { and, desc, eq, gte, lte, sql, ne, count } from "drizzle-orm"
+import { and, desc, eq, gte, lte, sql, ne, count, notInArray } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { headers } from "next/headers"
 import { checkRateLimit } from "@/lib/rate-limit"
@@ -278,7 +278,17 @@ export async function getCollectionsSummary(dateISO?: string) {
   const end = new Date(day)
   end.setHours(23, 59, 59, 999)
 
-  const baseConditions = [gte(receipt.createdAt, start), lte(receipt.createdAt, end)]
+  // Subquery to exclude voided receipts
+  const voidedIds = db
+    .select({ id: auditLog.entityId })
+    .from(auditLog)
+    .where(eq(auditLog.action, "receipt.void"))
+
+  const baseConditions = [
+    gte(receipt.createdAt, start),
+    lte(receipt.createdAt, end),
+    notInArray(receipt.id, voidedIds)
+  ]
   const conditions = scope ? and(...baseConditions, scope) : and(...baseConditions)
 
   const rows = await db
@@ -324,17 +334,25 @@ export async function getSystemStats() {
   if (!canViewReports(current)) throw new Error("Forbidden")
 
   const scope = applyReceiptScope(current)
+
+  // Subquery to exclude voided receipts
+  const voidedIds = db
+    .select({ id: auditLog.entityId })
+    .from(auditLog)
+    .where(eq(auditLog.action, "receipt.void"))
+
   const [agents] = await db
     .select({ count: sql<number>`count(*)::int` })
     .from(user)
     .where(ne(user.role, ROLES.SYSTEM_ADMIN))
+
   const [receipts] = await db
     .select({
       count: sql<number>`count(*)::int`,
       total: sql<number>`coalesce(sum(${receipt.amount}), 0)::bigint`,
     })
     .from(receipt)
-    .where(scope)
+    .where(and(scope, notInArray(receipt.id, voidedIds)))
 
   return {
     agentCount: Number(agents?.count ?? 0),
@@ -349,13 +367,20 @@ export async function getPrintingReports() {
 
   const scope = applyReceiptScope(current)
 
-  // 1. Most Reprinted Receipts (NEW: Calculated from History Table)
+  // Subquery to exclude voided receipts
+  const voidedIds = db
+    .select({ id: auditLog.entityId })
+    .from(auditLog)
+    .where(eq(auditLog.action, "receipt.void"))
+
+  // 1. Most Reprinted Receipts (NEW: Calculated from History Table, EXCLUDING VOIDED)
   const printCounts = db
     .select({
       receiptId: receiptPrintHistory.receiptId,
       count: count().as("count"),
     })
     .from(receiptPrintHistory)
+    .where(notInArray(receiptPrintHistory.receiptId, voidedIds))
     .groupBy(receiptPrintHistory.receiptId)
     .as("print_counts")
 
@@ -381,7 +406,7 @@ export async function getPrintingReports() {
     })
     .from(receiptPrintHistory)
     .innerJoin(receipt, eq(receiptPrintHistory.receiptId, receipt.id))
-    .where(scope)
+    .where(and(scope, notInArray(receipt.id, voidedIds)))
     .groupBy(receiptPrintHistory.printedById, receiptPrintHistory.printedByName)
     .orderBy(desc(count()))
     .limit(10)
@@ -395,7 +420,7 @@ export async function getPrintingReports() {
     })
     .from(receiptPrintHistory)
     .innerJoin(receipt, eq(receiptPrintHistory.receiptId, receipt.id))
-    .where(scope)
+    .where(and(scope, notInArray(receipt.id, voidedIds)))
     .groupBy(receipt.branchId, receipt.branchName)
     .orderBy(desc(count()))
     .limit(10)
@@ -411,7 +436,7 @@ export async function getPrintingReports() {
     .innerJoin(receipt, eq(receiptPrintHistory.receiptId, receipt.id))
     .innerJoin(user, eq(receipt.agentId, user.id))
     .innerJoin(waterScheme, eq(user.schemeId, waterScheme.id))
-    .where(scope)
+    .where(and(scope, notInArray(receipt.id, voidedIds)))
     .groupBy(user.schemeId, waterScheme.name)
     .orderBy(desc(count()))
     .limit(10)
@@ -426,7 +451,7 @@ export async function getPrintingReports() {
     })
     .from(receiptPrintHistory)
     .innerJoin(receipt, eq(receiptPrintHistory.receiptId, receipt.id))
-    .where(and(scope, gte(receiptPrintHistory.printedAt, sevenDaysAgo)))
+    .where(and(scope, gte(receiptPrintHistory.printedAt, sevenDaysAgo), notInArray(receipt.id, voidedIds)))
     .groupBy(sql`DATE(${receiptPrintHistory.printedAt})`)
     .orderBy(desc(sql`DATE(${receiptPrintHistory.printedAt})`))
 
@@ -444,7 +469,7 @@ export async function getPrintingReports() {
     })
     .from(receiptPrintHistory)
     .innerJoin(receipt, eq(receiptPrintHistory.receiptId, receipt.id))
-    .where(scope)
+    .where(and(scope, notInArray(receipt.id, voidedIds)))
     .orderBy(desc(receiptPrintHistory.printedAt))
     .limit(100)
 

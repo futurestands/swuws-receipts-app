@@ -9,11 +9,12 @@ import {
   reconciliationException,
   reconciliationApproval,
   billingPeriod,
+  auditLog,
 } from "@/lib/db/schema"
 import { requireUser } from "@/lib/session"
 import { hasPermission } from "@/lib/iam"
 import { applyReceiptScope, applyBillingScope } from "@/lib/scopes"
-import { and, eq, gte, lte, sql, count, desc, sum, ne } from "drizzle-orm"
+import { and, eq, gte, lte, sql, count, desc, sum, ne, notInArray } from "drizzle-orm"
 
 /**
  * FINANCIAL OPERATIONS ANALYTICS (Phase 4A)
@@ -29,6 +30,12 @@ export async function getFinancialOpsDashboard() {
   const receiptScope = applyReceiptScope(current)
   const billingScope = applyBillingScope(current)
 
+  // Subquery to exclude voided receipts
+  const voidedIds = db
+    .select({ id: auditLog.entityId })
+    .from(auditLog)
+    .where(eq(auditLog.action, "receipt.void"))
+
   // 1. Executive Summary: Active Period Context
   const [activePeriod] = await db
     .select()
@@ -37,6 +44,9 @@ export async function getFinancialOpsDashboard() {
     .limit(1)
 
   // 2. Reconciliation KPIs
+  const baseConditions = [notInArray(receipt.id, voidedIds)]
+  if (receiptScope) baseConditions.push(receiptScope)
+
   const reconStats = await db
     .select({
       totalReceipts: count(receipt.id),
@@ -44,7 +54,7 @@ export async function getFinancialOpsDashboard() {
       totalValue: sum(receipt.amount),
     })
     .from(receipt)
-    .where(receiptScope ? and(receiptScope) : undefined)
+    .where(and(...baseConditions))
 
   // 3. Exception Analytics
   const exceptionStats = await db

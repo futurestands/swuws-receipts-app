@@ -145,24 +145,31 @@ export default async function ReportsPage({
           <CardContent className="space-y-4">
             <div className="space-y-2">
               <div className="flex items-center justify-between text-sm">
-                <span>Fully Paid</span>
+                <span className="font-bold text-green-600">Bank Verified</span>
                 <span className="font-medium">{billing.paidCount}</span>
               </div>
-              <Progress value={(billing.paidCount / billing.billedCount) * 100} className="h-2" />
+              <Progress value={(billing.paidCount / (billing.billedCount || 1)) * 100} className="h-2 bg-green-100" />
+            </div>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-amber-600">Pending Bank Confirmation</span>
+                <span className="font-medium">{billing.confirmedCount}</span>
+              </div>
+              <Progress value={(billing.confirmedCount / (billing.billedCount || 1)) * 100} className="h-2 bg-amber-100" />
             </div>
             <div className="space-y-2">
               <div className="flex items-center justify-between text-sm">
                 <span>Partially Paid</span>
                 <span className="font-medium">{billing.partialCount}</span>
               </div>
-              <Progress value={(billing.partialCount / billing.billedCount) * 100} className="h-2 bg-secondary" />
+              <Progress value={(billing.partialCount / (billing.billedCount || 1)) * 100} className="h-2 bg-secondary" />
             </div>
             <div className="space-y-2">
               <div className="flex items-center justify-between text-sm">
                 <span>Unpaid / Pending</span>
                 <span className="font-medium">{billing.unpaidCount}</span>
               </div>
-              <Progress value={(billing.unpaidCount / billing.billedCount) * 100} className="h-2 bg-destructive/20" />
+              <Progress value={(billing.unpaidCount / (billing.billedCount || 1)) * 100} className="h-2 bg-destructive/10" />
             </div>
           </CardContent>
         </Card>

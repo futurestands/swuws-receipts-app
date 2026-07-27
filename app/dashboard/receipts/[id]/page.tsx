@@ -10,7 +10,7 @@ import { getSiteUrl } from "@/lib/site-url"
 import { getCurrentUser } from "@/lib/session"
 import { hasPermission } from "@/lib/iam"
 import Link from "next/link"
-import { ArrowLeft, History, Ban } from "lucide-react"
+import { ArrowLeft, History, Ban, AlertCircle } from "lucide-react"
 import { SectionHeader } from "@/components/ui/page-header"
 import { ScrollableTableContainer } from "@/components/ui/responsive-table"
 import { EmptyState } from "@/components/ui/empty-state"
@@ -124,6 +124,11 @@ export default async function ReceiptDetailPage({ params }: { params: Promise<{ 
                 {receipt.isVoided && (
                   <Badge variant="destructive" className="animate-pulse flex gap-1">
                     <Ban className="size-3" /> VOIDED
+                  </Badge>
+                )}
+                {!receipt.customerId && (
+                  <Badge variant="destructive" className="flex gap-1 border-2 border-destructive bg-destructive/10 text-destructive font-black">
+                    <AlertCircle className="size-3" /> UNLINKED TRANSACTION
                   </Badge>
                 )}
               </div>
