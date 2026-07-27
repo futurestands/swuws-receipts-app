@@ -403,28 +403,27 @@ export async function getBillPaymentHistory(billingRecordId: string) {
 
 /**
  * TOP DEBTORS (Objective 7 & 14)
+ * Fetches customers with the highest live account balances (arrears).
  */
 export async function getTopDebtors(limit = 10) {
   const current = await requireUser()
   if (!canViewReports(current)) throw new Error("Forbidden")
 
-  // This is a complex query: we need customers with highest (billed - paid)
-  // We'll use a raw SQL approach or subqueries for efficiency.
   return db
     .select({
       id: customer.id,
       name: customer.name,
       account: customer.customerAccount,
       scheme: waterScheme.name,
-      totalBilled: sql<number>`sum(${billingRecord.totalDue})::bigint`,
-      totalPaid: sql<number>`(select coalesce(sum(amount), 0) from receipt where receipt."customerId" = ${customer.id})::bigint`,
-      outstanding: sql<number>`sum(${billingRecord.totalDue}) - (select coalesce(sum(amount), 0) from receipt where receipt."customerId" = ${customer.id})::bigint`,
+      outstanding: customer.accountBalance,
     })
     .from(customer)
-    .innerJoin(billingRecord, eq(billingRecord.customerId, customer.id))
-    .innerJoin(waterScheme, eq(customer.waterSchemeId, waterScheme.id))
-    .where(applyCustomerScope(current))
-    .groupBy(customer.id, customer.name, customer.customerAccount, waterScheme.name)
-    .orderBy(desc(sql`sum(${billingRecord.totalDue}) - (select coalesce(sum(amount), 0) from receipt where receipt."customerId" = ${customer.id})`))
+    .leftJoin(waterScheme, eq(customer.waterSchemeId, waterScheme.id))
+    .where(and(
+      eq(customer.active, true),
+      sql`${customer.accountBalance} > 0`,
+      applyCustomerScope(current)
+    ))
+    .orderBy(desc(customer.accountBalance))
     .limit(limit)
 }

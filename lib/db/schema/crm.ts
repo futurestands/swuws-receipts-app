@@ -38,6 +38,7 @@ export const customer = pgTable(
     nameIdx: index("customer_name_idx").on(table.name),
     schemeIdx: index("customer_scheme_idx").on(table.waterSchemeId),
     activeIdx: index("customer_active_idx").on(table.active),
+    balanceIdx: index("customer_balance_idx").on(table.accountBalance),
   }),
 )
 

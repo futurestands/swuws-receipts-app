@@ -1,56 +1,55 @@
-# Implementation Plan: Separating Operational Cash from Verified Collections
+# Implementation Plan: Accurate Top Debtors List
 
-This plan aligns the **Performance Dashboard** with the organizational requirement that receipts are only evidence of cash-in-hand, while the **External Billing System (EBS)** import is the only source of verified revenue.
+This plan fixes the "Top Debtors" card on the Performance Dashboard to accurately reflect the 10 customers with the highest outstanding arrears (Account Balance).
 
 ## User Review Required
 
 > [!IMPORTANT]
-> **Source of Truth Shift**: "Monthly Collected" and "Collection Rate %" will now only increase when a bank/EBS report is imported and matched. Receipts will be shown in a separate **"Operational Cash"** card to track money that has been collected but not yet verified by the bank.
+> **Data Accuracy**: This change switches the "Top Debtors" source from calculated bills to the **Live Account Balance**. This ensures that the list is perfectly synced with your USh 1.4B "Total System Arrears" metric.
 >
-> **The 30k Mystery**: I have identified that the "USh 30,000" was appearing because the system was incorrectly subtracting "Verified Arrears" (from EBS) from "Total Collections" (from Receipts), leading to a mixed and inaccurate figure.
+> **Interactive Management**: Clicking a customer name in the list will now take you directly to their **Customer Profile**, allowing you to view their full ledger and follow up on payments.
 
 ## Proposed Changes
 
 ---
 
-### 1. Re-engineering Reporting Metrics
+### 1. Database Optimization
+
+#### [MODIFY] [lib/db/schema/crm.ts](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/lib/db/schema/crm.ts)
+- Add a database index on the `accountBalance` column.
+- This ensures the "Top 10" list loads instantly even as your customer base grows.
+
+#### [NEW] [db/migrations/0035_customer_balance_index.sql](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/db/migrations/0035_customer_balance_index.sql)
+- Migration to create the new index.
+
+---
+
+### 2. Reporting Logic Realignment
 
 #### [MODIFY] [app/actions/reports.ts](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/app/actions/reports.ts)
-- **`getDashboardStats`**:
-    - **Verified Metrics (EBS)**:
-        - `verifiedMonthly`: Sum of matched `daily_collection_record` entries for the selected billing period.
-        - `verifiedArrears`: Sum of matched `daily_collection_record` entries linked to *past* billing periods.
-    - **Operational Metrics (Receipts)**:
-        - `receiptTotal`: Sum of all non-voided `receipt` records.
-        - `receiptCount`: Total number of issued receipts.
-    - Update the return object to structure these metrics clearly for the UI.
+- **Refactor `getTopDebtors`**:
+    - Remove the complex join with `billingRecord`.
+    - Query the `customer` table directly.
+    - Sort by `accountBalance` descending.
+    - Filter for `accountBalance > 0`.
+    - Join with `waterScheme` only to display the scheme name for context.
 
 ---
 
-### 2. Performance Dashboard UI Updates
+### 3. Dashboard Interface Enhancement
 
 #### [MODIFY] [app/dashboard/reports/page.tsx](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/app/dashboard/reports/page.tsx)
-- **Row 1 Enhancements**:
-    - Update "Arrears Collected" to show `verifiedArrears` (EBS confirmed money against old debt).
-- **Row 2 Enhancements**:
-    - Add a new Stat Card: **"Operational Cash (Receipts)"**. This will show the total value and count of receipts printed.
-    - Update "Monthly Collected" to **"Bank Verified Collections"**. This will show `verifiedMonthly`.
-    - Update "Collection Rate" to be calculated strictly using **Bank Verified** money vs. Monthly Billed.
-
----
-
-### 3. Logic Standardization
-
-#### [MODIFY] [app/actions/billing.ts](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/app/actions/billing.ts)
-- Ensure the `getCollectionSummary` (used on the main dashboard) uses the same "EBS-First" logic to ensure consistency between the Dashboard and the Reports page.
+- Increase the debtor limit from 5 to **10**.
+- Ensure the list items remain clickable and visually distinct.
 
 ## Verification Plan
 
 ### Automated Verification
-- Run `npm run typecheck` to verify the updated report data structure.
+- Run `npm run typecheck` to verify no data type regressions.
+- Execute unit tests to confirm the reporting engine stability.
 
 ### Manual Verification
-1. Open the Performance Dashboard.
-2. **Verify**: A new card "Operational Cash (Receipts)" appears with the sum of all your printed receipts (going beyond the 30k you mentioned).
-3. **Verify**: "Bank Verified Collections" shows only money imported from EBS reports.
-4. **Verify**: The "Collection Rate" progress bar correctly reflects only the verified bank money.
+1. Navigate to the **Reports** dashboard.
+2. **Verify**: The "Top Debtors" list now displays 10 customers.
+3. **Verify**: The amounts shown are consistent with the "Total System Arrears" (all values > 0).
+4. **Verify**: Clicking a customer name redirects to their detail page.

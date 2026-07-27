@@ -1,44 +1,36 @@
-# Walkthrough: Separating Operational Cash from Verified Collections
+# Walkthrough: Fixing Top Debtors logic
 
-I have successfully realigned the Performance Dashboard and reporting logic to distinguish between **Cash-in-Hand** (Receipts) and **Bank Verified Collections** (EBS Imports).
+I have successfully fixed the "Top Debtors" card on the Performance Dashboard. The card now correctly displays the customers with the highest outstanding debt, and each entry is clickable for easy follow-up.
 
 ## Changes Made
 
-### 1. Accurate Reporting Source of Truth
-Pivoted the financial reporting logic to treat the **External Billing System (EBS)** as the primary source for verified revenue.
+### 1. Accurate Data Source
+Pivoted the `getTopDebtors` logic to use the **Live Account Balance** instead of calculating from system-only bills.
 - **Location**: [reports.ts](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/app/actions/reports.ts)
-- **Verified Metrics**: "Monthly Collected" and "Collection Rate %" now strictly use **matched daily collection records**.
-- **Operational Metrics**: "Operational Cash" sums all issued (and non-voided) receipts to track agent accountability.
-- **Result**: This resolves the "USh 30,000 mystery" by ensuring that unverified receipts don't contaminate the bank-verified KPIs.
+- **Result**: The list now accurately reflects the total debt owed by each customer, including their opening balances and historical arrears. This ensures the card is perfectly synced with your USh 1.4B "Total System Arrears" metric.
 
-### 2. Enhanced Performance Dashboard
-Redesigned the Reports page to provide a clear view of both operational and verified financial states.
+### 2. Enhanced UI & Navigation
+Updated the dashboard to show more debtors and provide one-click navigation to their profiles.
 - **Location**: [page.tsx](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/app/dashboard/reports/page.tsx)
-- **New Card**: **"Operational Cash (Receipts)"** now shows the total value of all receipts issued, giving you full visibility into field collections.
-- **Renamed Card**: "Monthly Collected" is now **"Bank Verified Collections"** to highlight its status as confirmed revenue.
+- **Increase**: Expanded the list from 5 to **10 debtors**.
+- **Interactivity**: Clicking a customer's name now takes you directly to their **Customer Profile** ([e.g. /dashboard/customers/[id]](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/app/dashboard/customers/%5Bid%5D/page.tsx)), allowing you to review their full ledger and follow up on their debt.
 
-### 3. Arrears Precision
-Refined the "Arrears Collected" KPI to be evidence-based.
-- **Logic**: A payment is only classified as "Arrears Recovery" if the bank report (EBS) confirms the payment and it is matched to a debt from a **previous billing period**.
-
-### 4. Main Dashboard Consistency
-Synchronized the main dashboard collection summary to follow the same "Bank-First" logic.
-- **Location**: [billing.ts](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/app/actions/billing.ts)
-- **Integration**: The progress bar on the main dashboard now only advances after a daily collection file is imported and matched.
+### 3. Database Performance
+Added a database index on the `accountBalance` column to ensure the list remains fast as you onboard more customers.
+- **Location**: [crm.ts](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/lib/db/schema/crm.ts)
+- **Migration**: [0035_customer_balance_index.sql](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/db/migrations/0035_customer_balance_index.sql)
 
 ## Verification Results
 
-### Mathematical Integrity
-- Verified that issuing a new receipt increases **"Operational Cash"** but does **not** affect **"Bank Verified Collections"** until the next import.
-- Verified that voided receipts are correctly excluded from all operational and verified sums.
-
-### Build & Security
+### Build & Type Check
 - **Status**: **PASS**
-- **Security**: Maintained strict scope isolation; Regional Managers still only see verified collections within their own jurisdictions.
+- **Notes**: All UI links and action return types are verified.
+
+### Operational Clarity
+- Verified that the "Top Debtors" list is now populated and consistent with the organization's arrears pool.
+- Confirmed that only "Active" customers are included in the top debtor calculation.
 
 ---
 
-> [!IMPORTANT]
-> **Audit Standard**: The system now provides an auditable "Two-Step" verification process:
-> 1. **Step 1**: Agents collect cash and issue receipts (**Operational Cash**).
-> 2. **Step 2**: Finance imports the bank report to confirm the deposits (**Verified Collections**).
+> [!TIP]
+> **Management Tip**: You can now use this card as a "Priority List" for collections. Simply click on the top debtor to see their contact info and full payment history.

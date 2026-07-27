@@ -37,7 +37,7 @@ export default async function ReportsPage({
     getCollectionPeriods(),
     listActiveBranches(),
     getAuthorizedSchemes(),
-    getTopDebtors(5),
+    getTopDebtors(10),
   ])
 
   const { billing, collections, arrears } = stats
@@ -175,20 +175,21 @@ export default async function ReportsPage({
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              {debtors.map((d) => (
+              {debtors.length > 0 ? debtors.map((d) => (
                 <div key={d.id} className="flex items-center justify-between border-b pb-2 last:border-0 last:pb-0">
                   <div className="min-w-0 flex-1">
                     <Link href={`/dashboard/customers/${d.id}`} className="text-sm font-medium hover:underline truncate block">
                       {d.name}
                     </Link>
-                    <p className="text-xs text-muted-foreground truncate">{d.scheme}</p>
+                    <p className="text-[10px] text-muted-foreground truncate uppercase">{d.scheme} · {d.account}</p>
                   </div>
                   <div className="text-right ml-4">
                     <p className="text-sm font-bold text-destructive">{formatUGX(d.outstanding)}</p>
-                    <p className="text-[10px] text-muted-foreground">Billed: {formatUGX(d.totalBilled)}</p>
                   </div>
                 </div>
-              ))}
+              )) : (
+                <p className="text-sm text-muted-foreground text-center py-4">No outstanding debtors found.</p>
+              )}
             </div>
           </CardContent>
         </Card>
