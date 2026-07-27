@@ -23,6 +23,7 @@ export type NavSection = {
 export function getNavSections(current: UserPermissionsContext): NavSection[] {
   const primary: NavItem[] = [
     { href: "/dashboard", label: "Dashboard", icon: "LayoutDashboard" },
+    { href: "/dashboard/account", label: "My Account", icon: "User" },
   ]
 
   // customers/page.tsx calls searchCustomers(), which requires reports.view -

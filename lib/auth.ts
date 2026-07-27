@@ -2,6 +2,7 @@ import { betterAuth } from "better-auth"
 import { admin as adminPlugin } from "better-auth/plugins"
 import { pool } from "@/lib/db"
 import { ROLES } from "./permissions/roles"
+import { sendPasswordResetEmail } from "./email-service"
 
 const baseURL =
   process.env.BETTER_AUTH_URL ||
@@ -50,6 +51,9 @@ export const auth = betterAuth({
   trustedOrigins,
   emailAndPassword: {
     enabled: true,
+    sendResetPassword: async ({ user, url }) => {
+      await sendPasswordResetEmail(user.email, user.name, url)
+    },
   },
   user: {
     additionalFields: {

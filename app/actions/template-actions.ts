@@ -263,6 +263,50 @@ export async function seedSystemTemplates() {
         phone: "Phone",
         status: "Status"
       }, null, 2)
+    },
+    {
+      code: 'import.tariffs.bulk',
+      name: 'System Tariff Import Schema',
+      category: 'System',
+      type: 'IMPORT',
+      content: JSON.stringify({
+        targetType: "Type",
+        targetName: "AreaName",
+        unitPrice: "UnitPrice",
+        serviceFee: "ServiceFee",
+        vatPercentage: "VAT",
+        active: "Status"
+      }, null, 2)
+    },
+    {
+      code: 'email.auth.reset_password',
+      name: 'Password Reset Email',
+      category: 'System',
+      type: 'HTML',
+      content: `
+<div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; rounded-lg">
+  <div style="text-align: center; margin-bottom: 20px;">
+    <h1 style="color: #0f172a; margin: 0;">SWUWS Collection Portal</h1>
+    <p style="color: #64748b; font-size: 14px;">Secure Account Access</p>
+  </div>
+
+  <div style="background-color: #f8fafc; padding: 30px; border-radius: 8px;">
+    <h2 style="margin-top: 0;">Reset Your Password</h2>
+    <p>Hello <strong>{{user_name}}</strong>,</p>
+    <p>We received a request to reset the password for your account on the SWUWS Collection Portal. Click the button below to choose a new password:</p>
+
+    <div style="text-align: center; margin: 30px 0;">
+      <a href="{{reset_link}}" style="background-color: #3b82f6; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">Reset Password</a>
+    </div>
+
+    <p style="font-size: 14px; color: #64748b;">If you did not request this reset, you can safely ignore this email. This link will expire in 1 hour.</p>
+  </div>
+
+  <div style="text-align: center; margin-top: 20px; font-size: 12px; color: #94a3b8;">
+    <p>&copy; {{year}} South Western Umbrella of Water and Sanitation. All rights reserved.</p>
+  </div>
+</div>
+      `
     }
   ]
 

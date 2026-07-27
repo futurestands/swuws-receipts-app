@@ -2,7 +2,26 @@
 
 import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
-import { user, receipt, auditLog, organization, receiptPrintHistory, branch, waterScheme } from "@/lib/db/schema"
+import {
+  user,
+  receipt,
+  auditLog,
+  organization,
+  receiptPrintHistory,
+  branch,
+  waterScheme,
+  receiptAttachment,
+  billingRecord,
+  billingRun,
+  billingUpload,
+  meterReading,
+  customer,
+  dailyCollectionRecord,
+  dailyCollectionImport,
+  reconciliationMatch,
+  reconciliationException,
+  reconciliationApproval,
+} from "@/lib/db/schema"
 import { requireUser } from "@/lib/session"
 import { writeAudit } from "@/lib/audit"
 import { and, desc, eq, gte, lte, sql, ne, count, notInArray } from "drizzle-orm"
@@ -15,7 +34,8 @@ import {
   canManageUsers,
   canResetPasswords,
   canViewReports,
-  canAudit
+  canAudit,
+  canConfigureSystem,
 } from "@/lib/permissions"
 import { applyReceiptScope, applyUserScope, validateWriteScope } from "@/lib/scopes"
 
@@ -480,5 +500,62 @@ export async function getPrintingReports() {
     byScheme,
     dailySummary: dailySummary.map(d => ({ date: d.date, count: Number(d.count) })),
     recentPrints,
+  }
+}
+
+/**
+ * SYSTEM RESET (Objective: Fresh Start for Production)
+ *
+ * Permanently deletes all operational data (Receipts, Bills, Customers)
+ * while preserving system setup (Users, Areas, Tariffs).
+ */
+export async function wipeOperationalData(confirmText: string) {
+  const current = await requireUser()
+  if (!canConfigureSystem(current)) throw new Error("Forbidden")
+
+  if (confirmText !== "RESET") {
+    throw new Error("Invalid confirmation text")
+  }
+
+  try {
+    await db.transaction(async (tx) => {
+      // 1. Clear Reconciliation Data
+      await tx.delete(reconciliationMatch)
+      await tx.delete(reconciliationException)
+      await tx.delete(reconciliationApproval)
+      await tx.delete(dailyCollectionRecord)
+      await tx.delete(dailyCollectionImport)
+
+      // 2. Clear Finance Data
+      await tx.delete(receiptAttachment)
+      await tx.delete(receiptPrintHistory)
+      await tx.delete(receipt)
+
+      // 3. Clear Billing Data
+      await tx.delete(meterReading)
+      await tx.delete(billingRecord)
+      await tx.delete(billingUpload)
+      await tx.delete(billingRun)
+
+      // 4. Clear CRM Data ( रियल डाटा के लिए ताज़ा शुरुआत)
+      await tx.delete(customer)
+
+      // 5. Reset Receipt Sequence
+      await tx.execute(sql`ALTER SEQUENCE receipt_seq RESTART WITH 1`)
+
+      // 6. Audit the system wipe
+      await writeAudit({
+        user: current,
+        action: "system.full_wipe",
+        details: { timestamp: new Date().toISOString() }
+      }, tx)
+    })
+
+    revalidatePath("/dashboard")
+    revalidatePath("/admin")
+    return { ok: true }
+  } catch (e: any) {
+    console.error("wipeOperationalData failed", e)
+    return { ok: false, error: e.message || "A database error occurred during reset" }
   }
 }

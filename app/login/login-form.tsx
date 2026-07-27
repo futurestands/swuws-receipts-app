@@ -6,6 +6,7 @@ import { signIn } from "@/lib/auth-client"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import Link from "next/link"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 
 export function LoginForm() {
@@ -65,9 +66,11 @@ export function LoginForm() {
             {loading ? "Signing in…" : "Sign in"}
           </Button>
         </form>
-        <p className="text-xs text-muted-foreground mt-4">
-          Forgotten your password? Ask an administrator to reset it for you from the admin console.
-        </p>
+        <p className="text-xs text-muted-foreground mt-4 text-center">
+        <Link href="/login/forgot-password" global-link="true" className="hover:text-primary underline underline-offset-4 font-medium">
+          Forgotten your password? Reset via email
+        </Link>
+      </p>
       </CardContent>
     </Card>
   )

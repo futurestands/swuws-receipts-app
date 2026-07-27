@@ -10,8 +10,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { toast } from "sonner"
 import { formatUGX } from "@/lib/format"
-import { Settings2, Plus, Trash2, Globe, Home } from "lucide-react"
+import { Settings2, Plus, Trash2, Globe, Home, FileUp } from "lucide-react"
 import { upsertTariff, deleteTariff } from "@/app/actions/billing-engine"
+import { TariffImportWizard } from "./tariff-import-wizard"
 import type { Branch, WaterScheme } from "@/lib/db/schema"
 
 type TariffWithMetadata = {
@@ -95,13 +96,15 @@ export function TariffPanel({
             </CardTitle>
             <CardDescription>Configure water rates, service fees, and taxes for different areas.</CardDescription>
           </div>
-          <Dialog open={open} onOpenChange={setOpen}>
-            <DialogTrigger asChild>
-              <Button size="sm" className="gap-2">
-                <Plus className="h-4 w-4" /> Add Tariff
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
+          <div className="flex gap-2">
+            <TariffImportWizard />
+            <Dialog open={open} onOpenChange={setOpen}>
+              <DialogTrigger asChild>
+                <Button size="sm" className="gap-2">
+                  <Plus className="h-4 w-4" /> Add Tariff
+                </Button>
+              </DialogTrigger>
+              <DialogContent>
               <DialogHeader>
                 <DialogTitle>Configure New Rate</DialogTitle>
               </DialogHeader>
@@ -175,7 +178,8 @@ export function TariffPanel({
               </DialogFooter>
             </DialogContent>
           </Dialog>
-        </CardHeader>
+        </div>
+      </CardHeader>
         <CardContent>
           <Table>
             <TableHeader>

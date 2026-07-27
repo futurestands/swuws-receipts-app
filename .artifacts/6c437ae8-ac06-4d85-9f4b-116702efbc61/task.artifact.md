@@ -1,10 +1,12 @@
-# Tasks: Synchronizing Admin Dashboard with Voided Transactions
+# Tasks: Phase 8 - Bulk Tariff Management & Imports
 
-- `[x]` Update `app/actions/admin.ts`
-    - `[x]` Add `notInArray` import
-    - `[x]` Update `getSystemStats` to filter out voided receipts
-    - `[x]` Update `getCollectionsSummary` to filter out voided receipts
-    - `[x]` Update `getPrintingReports` to filter out voided receipts
-- `[x]` Update `app/actions/financial-stats.ts` to exclude voided records
-- `[ ]` Verify system builds and type-checks successfully
-- `[ ]` Final walkthrough
+- `[x]` Tariff Import Engine (Server Side)
+    - `[x]` Create `app/actions/tariff-import.ts`
+- `[x]` Admin Interface Enhancements
+    - `[x]` Create `app/admin/tariff-import-wizard.tsx`
+    - `[x]` Update `app/admin/tariff-panel.tsx` with import integration
+- `[x]` System Configuration
+    - `[x]` Update `app/actions/template-actions.ts` with tariff import schema
+- `[x]` Verification & Final Walkthrough
+    - `[x]` Run `npm run typecheck`
+    - `[x]` Final walkthrough
