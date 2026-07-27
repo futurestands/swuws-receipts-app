@@ -13,6 +13,8 @@ import {
   managedTemplate,
   templateVersion,
   dailyCollectionRecord,
+  reconciliationMatch,
+  auditLog,
 } from "@/lib/db/schema"
 import { requireUser } from "@/lib/session"
 import { writeAudit } from "@/lib/audit"
@@ -24,13 +26,14 @@ import {
   canIssueReceipt
 } from "@/lib/permissions"
 import { validateWriteScope, applyCustomerScope } from "@/lib/scopes"
-import { and, eq, sql, desc, or, inArray, count, sum } from "drizzle-orm"
+import { and, eq, sql, desc, or, inArray, count, sum, notInArray } from "drizzle-orm"
 import * as XLSX from "xlsx"
 import { z } from "zod"
 import { randomUUID } from "crypto"
 import { revalidatePath } from "next/cache"
 import { createNotification } from "./notifications"
 import { processExcelImport, getImportMapping, type ImportSummary } from "@/lib/import-engine"
+import { logFinancial } from "@/lib/logger"
 
 /**
  * Validation Schema for a single billing row.
@@ -297,6 +300,11 @@ export async function archiveCollectionPeriod(id: string) {
       )
     })
 
+    logFinancial("Collection Period Archived", {
+      id,
+      name: period.periodName
+    }, current)
+
     revalidatePath("/dashboard/billing")
     return { ok: true }
   } catch (e: any) {
@@ -521,6 +529,12 @@ export async function importBilling(
       importedCount = validRows.length
     })
 
+    logFinancial("Billing Imported", {
+      filename,
+      imported: importedCount,
+      totalAmount
+    }, current)
+
     summary.rows.forEach((r) => {
       reportRows.push({ ...r.data, Result: r.valid ? "Success" : "Failed", Details: r.errors.join("; ") })
     })
@@ -627,19 +641,27 @@ export async function getCollectionSummary() {
     .where(eq(billingRecord.billingPeriodId, displayPeriod.id))
 
   // OFFICIAL COLLECTIONS: Confirmed via External Billing System (EBS)
-  // We sum matched daily collection records that are linked to bills of this period
+  // Sum of matched records for THIS billing period
   const [ebsStats] = await db
     .select({
       totalConfirmed: sum(dailyCollectionRecord.amount),
     })
     .from(dailyCollectionRecord)
-    .innerJoin(billingRecord, eq(dailyCollectionRecord.accountNumber, billingRecord.accountNumber))
+    .innerJoin(reconciliationMatch, eq(dailyCollectionRecord.id, reconciliationMatch.dailyCollectionRecordId))
+    .innerJoin(receipt, eq(reconciliationMatch.receiptId, receipt.id))
+    .innerJoin(billingRecord, eq(receipt.billingRecordId, billingRecord.id))
     .where(and(
       eq(billingRecord.billingPeriodId, displayPeriod.id),
       eq(dailyCollectionRecord.importStatus, 'matched')
     ))
 
   // OPERATIONAL CASH: Receipts printed but not yet necessarily confirmed by bank
+  // Exclude voided receipts
+  const voidedIdsSubquery = db
+    .select({ id: auditLog.entityId })
+    .from(auditLog)
+    .where(eq(auditLog.action, 'receipt.void'))
+
   const [cashStats] = await db
     .select({
       totalCashInHand: sum(receipt.amount),
@@ -648,7 +670,10 @@ export async function getCollectionSummary() {
     })
     .from(receipt)
     .leftJoin(billingRecord, eq(receipt.billingRecordId, billingRecord.id))
-    .where(eq(billingRecord.billingPeriodId, displayPeriod.id))
+    .where(and(
+      eq(billingRecord.billingPeriodId, displayPeriod.id),
+      notInArray(receipt.id, voidedIdsSubquery)
+    ))
 
   const recentUploads = await db
     .select({

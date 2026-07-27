@@ -726,7 +726,18 @@ export async function requestReceiptVoid(receiptId: string, reason: string) {
 
   try {
     await db.transaction(async (tx) => {
-      // 1. Lock customer for update
+      // 1. Idempotency Check: Verify if already voided
+      const [existingVoid] = await tx
+        .select({ id: auditLog.id })
+        .from(auditLog)
+        .where(and(eq(auditLog.entityId, receiptId), eq(auditLog.action, "receipt.void")))
+        .limit(1)
+
+      if (existingVoid) {
+        throw new Error("This receipt has already been voided.")
+      }
+
+      // 2. Lock customer for update
       if (target.customerId) {
         const lockResult = await tx.execute<{ accountBalance: number }>(
           sql`SELECT "accountBalance" FROM "customer" WHERE id = ${target.customerId} FOR UPDATE`,

@@ -1,42 +1,44 @@
-# Walkthrough: Pivoting to EBS-Confirmed Financial Reporting
+# Walkthrough: Separating Operational Cash from Verified Collections
 
-I have successfully realigned the system's core financial metrics to prioritize the **External Billing System (EBS)** as the primary source of truth for verified collections.
+I have successfully realigned the Performance Dashboard and reporting logic to distinguish between **Cash-in-Hand** (Receipts) and **Bank Verified Collections** (EBS Imports).
 
 ## Changes Made
 
-### 1. Official vs. Operational Metrics
-Separated "Verified Money" from "Cash-in-Hand" on the dashboard to provide a clearer picture of financial progress.
-- **Location**: [billing.ts](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/app/actions/billing.ts)
-- **Change**: `totalCollected` (and thus `Collection Progress %`) is now derived from **matched EBS records** (`daily_collection_record`).
-- **New Metric**: `cashInHand` sums all issued receipts that have not yet been verified by an EBS import.
-
-### 2. Dashboard Interface Update
-Updated the dashboard cards to clearly distinguish between bank-confirmed revenue and operational cash.
-- **Location**: [page.tsx](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/app/dashboard/page.tsx)
-- **Visuals**:
-    - **Official Bank Collections** (Green): Verified via EBS.
-    - **Unverified Cash (In-Hand)** (Yellow): Collected by agents but pending bank confirmation.
-
-### 3. Re-engineering "Arrears Collected"
-Redefined arrears recovery to be evidence-based rather than estimated.
+### 1. Accurate Reporting Source of Truth
+Pivoted the financial reporting logic to treat the **External Billing System (EBS)** as the primary source for verified revenue.
 - **Location**: [reports.ts](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/app/actions/reports.ts)
-- **Logic**: A payment is only counted as "Arrears Collection" if it is confirmed via EBS AND matched to a debt from a **previous billing period**.
+- **Verified Metrics**: "Monthly Collected" and "Collection Rate %" now strictly use **matched daily collection records**.
+- **Operational Metrics**: "Operational Cash" sums all issued (and non-voided) receipts to track agent accountability.
+- **Result**: This resolves the "USh 30,000 mystery" by ensuring that unverified receipts don't contaminate the bank-verified KPIs.
 
-### 4. Arrears Resolution Auditing
-Added specialized auditing to track whenever a reconciliation match resolves an old debt.
-- **Location**: [reconciliation.ts](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/app/actions/reconciliation.ts)
-- **Feature**: Automatically logs a `financial.arrears_resolved` event with the total amount recovered during a reconciliation run.
+### 2. Enhanced Performance Dashboard
+Redesigned the Reports page to provide a clear view of both operational and verified financial states.
+- **Location**: [page.tsx](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/app/dashboard/reports/page.tsx)
+- **New Card**: **"Operational Cash (Receipts)"** now shows the total value of all receipts issued, giving you full visibility into field collections.
+- **Renamed Card**: "Monthly Collected" is now **"Bank Verified Collections"** to highlight its status as confirmed revenue.
+
+### 3. Arrears Precision
+Refined the "Arrears Collected" KPI to be evidence-based.
+- **Logic**: A payment is only classified as "Arrears Recovery" if the bank report (EBS) confirms the payment and it is matched to a debt from a **previous billing period**.
+
+### 4. Main Dashboard Consistency
+Synchronized the main dashboard collection summary to follow the same "Bank-First" logic.
+- **Location**: [billing.ts](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/app/actions/billing.ts)
+- **Integration**: The progress bar on the main dashboard now only advances after a daily collection file is imported and matched.
 
 ## Verification Results
 
-### Mathematical Alignment
-- Verified that `Collection Progress %` remains at 0% even after issuing a receipt, until the corresponding bank report is imported and reconciled.
-- Verified that the "Arrears Collected" KPI in the Reporting dashboard correctly excludes current-period payments.
+### Mathematical Integrity
+- Verified that issuing a new receipt increases **"Operational Cash"** but does **not** affect **"Bank Verified Collections"** until the next import.
+- Verified that voided receipts are correctly excluded from all operational and verified sums.
 
-### Build Check
-- **Status**: **PASS** (Application code is fully type-safe).
+### Build & Security
+- **Status**: **PASS**
+- **Security**: Maintained strict scope isolation; Regional Managers still only see verified collections within their own jurisdictions.
 
 ---
 
 > [!IMPORTANT]
-> **Audit Standard**: The system now adheres to a strict "Bank-First" reporting standard. This prevents the over-reporting of revenue and provides a clear mechanism to verify that cash collected by field agents actually reaches the organization's bank accounts.
+> **Audit Standard**: The system now provides an auditable "Two-Step" verification process:
+> 1. **Step 1**: Agents collect cash and issue receipts (**Operational Cash**).
+> 2. **Step 2**: Finance imports the bank report to confirm the deposits (**Verified Collections**).

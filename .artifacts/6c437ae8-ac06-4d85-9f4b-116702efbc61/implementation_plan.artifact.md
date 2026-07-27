@@ -1,60 +1,56 @@
-# Phase 6: Final Hardening & Audit Closure
+# Implementation Plan: Separating Operational Cash from Verified Collections
 
-This is the final push to resolve the new "Remediation Defects" and the remaining enterprise gaps identified in the second forensic pass.
+This plan aligns the **Performance Dashboard** with the organizational requirement that receipts are only evidence of cash-in-hand, while the **External Billing System (EBS)** import is the only source of verified revenue.
 
 ## User Review Required
 
-> [!CAUTION]
-> **Financial Idempotency**: We are fixing a "Double-Credit" bug. Once applied, the system will physically block any attempt to void a receipt that has already been reversed.
+> [!IMPORTANT]
+> **Source of Truth Shift**: "Monthly Collected" and "Collection Rate %" will now only increase when a bank/EBS report is imported and matched. Receipts will be shown in a separate **"Operational Cash"** card to track money that has been collected but not yet verified by the bank.
 >
-> **Secret Rotation**: I cannot rotate your actual production secrets (BETTER_AUTH_SECRET, etc.), but I will add a script to help you "Clean" your exports so you don't accidentally share secrets in the future.
+> **The 30k Mystery**: I have identified that the "USh 30,000" was appearing because the system was incorrectly subtracting "Verified Arrears" (from EBS) from "Total Collections" (from Receipts), leading to a mixed and inaccurate figure.
 
 ## Proposed Changes
 
 ---
 
-### 1. High Priority: Financial Idempotency
+### 1. Re-engineering Reporting Metrics
 
-#### [MODIFY] [app/actions/receipts.ts](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/app/actions/receipts.ts)
-- **`requestReceiptVoid`**:
-    - Inside the transaction, add a check for an existing `receipt.void` action in the `audit_log` table for the given `receiptId`.
-    - If found, throw a specific "Already Voided" error.
-    - This ensures that even if the UI button "flickers," the database only ever processes one reversal.
+#### [MODIFY] [app/actions/reports.ts](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/app/actions/reports.ts)
+- **`getDashboardStats`**:
+    - **Verified Metrics (EBS)**:
+        - `verifiedMonthly`: Sum of matched `daily_collection_record` entries for the selected billing period.
+        - `verifiedArrears`: Sum of matched `daily_collection_record` entries linked to *past* billing periods.
+    - **Operational Metrics (Receipts)**:
+        - `receiptTotal`: Sum of all non-voided `receipt` records.
+        - `receiptCount`: Total number of issued receipts.
+    - Update the return object to structure these metrics clearly for the UI.
 
 ---
 
-### 2. Enterprise Governance & Auditing
+### 2. Performance Dashboard UI Updates
 
-#### [MODIFY] [app/actions/template-actions.ts](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/app/actions/template-actions.ts)
-- Add `writeAudit` to `publishTemplateVersion`.
-- Why: Templates control customer-facing SMS/HTML. Changes to them MUST be in the immutable audit log for compliance.
+#### [MODIFY] [app/dashboard/reports/page.tsx](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/app/dashboard/reports/page.tsx)
+- **Row 1 Enhancements**:
+    - Update "Arrears Collected" to show `verifiedArrears` (EBS confirmed money against old debt).
+- **Row 2 Enhancements**:
+    - Add a new Stat Card: **"Operational Cash (Receipts)"**. This will show the total value and count of receipts printed.
+    - Update "Monthly Collected" to **"Bank Verified Collections"**. This will show `verifiedMonthly`.
+    - Update "Collection Rate" to be calculated strictly using **Bank Verified** money vs. Monthly Billed.
+
+---
+
+### 3. Logic Standardization
 
 #### [MODIFY] [app/actions/billing.ts](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/app/actions/billing.ts)
-#### [MODIFY] [app/actions/reconciliation.ts](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/app/actions/reconciliation.ts)
-- Expand the use of `logFinancial` and `logSecurity` from `lib/logger.ts` across these modules to provide a consistent observability trail.
-
----
-
-### 3. Test Suite Repair (Rigor)
-
-#### [MODIFY] [lib/scopes/index.test.ts](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/lib/scopes/index.test.ts)
-- Fix the test-authoring bug.
-- Instead of `JSON.stringify` on the Drizzle SQL object (which is circular), I will use `Drizzle's` built-in `getSQL()` or simple property existence checks to verify the filter is generated correctly.
-
----
-
-### 4. Deployment Safety
-
-#### [NEW] [scripts/clean-export.sh](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/scripts/clean-export.sh)
-- Create a simple utility script that prepares a "Safe" zip of the project by explicitly removing `.env`, `node_modules`, and `server_log.txt`.
+- Ensure the `getCollectionSummary` (used on the main dashboard) uses the same "EBS-First" logic to ensure consistency between the Dashboard and the Reports page.
 
 ## Verification Plan
 
 ### Automated Verification
-- **Test Fix**: Run `npm test` and ensure **8/8 tests pass** (fixing the 2 failures).
-- **Type Safety**: Re-verify `tsc --noEmit` passes once the test types are correctly exported.
+- Run `npm run typecheck` to verify the updated report data structure.
 
 ### Manual Verification
-1. Attempt to call `requestReceiptVoid` via the console twice for the same ID.
-2. **Verify**: The second call must fail with "Receipt is already voided."
-3. Publish a template and verify the event appears in the **Audit Log** tab.
+1. Open the Performance Dashboard.
+2. **Verify**: A new card "Operational Cash (Receipts)" appears with the sum of all your printed receipts (going beyond the 30k you mentioned).
+3. **Verify**: "Bank Verified Collections" shows only money imported from EBS reports.
+4. **Verify**: The "Collection Rate" progress bar correctly reflects only the verified bank money.

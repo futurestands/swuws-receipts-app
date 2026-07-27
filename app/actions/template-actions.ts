@@ -7,6 +7,7 @@ import { randomUUID } from "crypto"
 import { getCurrentUser } from "@/lib/session"
 import { revalidatePath } from "next/cache"
 import { canConfigureSystem } from "@/lib/permissions"
+import { writeAudit } from "@/lib/audit"
 
 /**
  * Lists all managed templates with their active version metadata.
@@ -120,6 +121,15 @@ export async function publishTemplateVersion(templateId: string, versionId: stri
     await tx.update(managedTemplate)
       .set({ activeVersionId: versionId, updatedAt: new Date() })
       .where(eq(managedTemplate.id, templateId))
+
+    // 4. Audit Log
+    await writeAudit({
+      user,
+      action: "template.publish",
+      entityType: "managed_template",
+      entityId: templateId,
+      details: { versionId, templateCode: temp?.code }
+    }, tx)
   })
 
   revalidatePath("/admin")

@@ -19,6 +19,7 @@ import { and, eq, gte, lte, sql, inArray, count, desc, asc, notInArray, ne } fro
 import { randomUUID } from "crypto"
 import { createNotification } from "./notifications"
 import { revalidatePath } from "next/cache"
+import { logFinancial, logSecurity } from "@/lib/logger"
 
 /**
  * AUTOMATED RECONCILIATION ENGINE (Phase 3A)
@@ -269,6 +270,13 @@ export async function runReconciliation(batchId: string) {
         }
       })
     }
+
+    logFinancial("Reconciliation Completed", {
+      batchId,
+      matched: matches.length,
+      unmatched: records.length - matches.length,
+      duration: Date.now() - startTime
+    }, current)
 
     revalidatePath(`/dashboard/billing/daily/${batchId}`)
     return {

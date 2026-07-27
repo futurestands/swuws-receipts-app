@@ -76,8 +76,8 @@ export default async function ReportsPage({
             <TrendingUp className="h-4 w-4 text-green-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-black text-green-600">{formatUGX(collections.collectedFromArrears)}</div>
-            <p className="text-xs text-muted-foreground mt-1">Payments towards old debt (Selected Period)</p>
+            <div className="text-3xl font-black text-green-600">{formatUGX(collections.verifiedArrears)}</div>
+            <p className="text-xs text-muted-foreground mt-1">Bank Confirmed (Against past debts)</p>
           </CardContent>
         </Card>
 
@@ -101,27 +101,27 @@ export default async function ReportsPage({
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{formatUGX(billing.totalBilled)}</div>
-            <p className="text-xs text-muted-foreground">{billing.billedCount} bills issued (Selected Period)</p>
+            <p className="text-xs text-muted-foreground">{billing.billedCount} bills (Selected Period)</p>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="border-green-100 bg-green-50/30">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Monthly Collected</CardTitle>
-            <TrendingUp className="h-4 w-4 text-green-500" />
+            <CardTitle className="text-sm font-medium text-green-700">Bank Verified Collections</CardTitle>
+            <TrendingUp className="h-4 w-4 text-green-600" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-green-600">{formatUGX(collections.collectedFromBills)}</div>
-            <p className="text-xs text-muted-foreground">Directly against this month's bills</p>
+            <div className="text-2xl font-bold text-green-600">{formatUGX(collections.verifiedMonthly)}</div>
+            <p className="text-xs text-green-700/70">Confirmed via EBS Import</p>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="border-amber-100 bg-amber-50/30">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Period Outstanding</CardTitle>
-            <AlertCircle className="h-4 w-4 text-destructive" />
+            <CardTitle className="text-sm font-medium text-amber-700">Operational Cash (Receipts)</CardTitle>
+            <FileText className="h-4 w-4 text-amber-600" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-destructive">{formatUGX(collections.outstanding)}</div>
-            <p className="text-xs text-muted-foreground">Balance remaining for this period</p>
+            <div className="text-2xl font-bold text-amber-600">{formatUGX(collections.operationalCash)}</div>
+            <p className="text-xs text-amber-700/70">{collections.operationalCount} receipts printed</p>
           </CardContent>
         </Card>
         <Card>

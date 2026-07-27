@@ -1,8 +1,10 @@
-# Tasks: Phase 6 - Final Hardening & Audit Closure
+# Tasks: Separating Operational Cash from Verified Collections
 
-- `[ ]` Fix Double-Void Risk in `app/actions/receipts.ts`
-- `[ ]` Add audit logging to `publishTemplateVersion` in `app/actions/template-actions.ts`
-- `[ ]` Expand observability in `app/actions/billing.ts` and `app/actions/reconciliation.ts`
-- `[ ]` Fix failing unit tests in `lib/scopes/index.test.ts`
-- `[ ]` Create export safety script `scripts/clean-export.sh`
-- `[ ]` Final system verification
+- `[/]` Re-engineering Reporting Metrics
+    - `[ ]` Update `getDashboardStats` in `app/actions/reports.ts` to separate EBS vs Receipt data
+- `[/]` Performance Dashboard UI Updates
+    - `[ ]` Add "Operational Cash (Receipts)" card to `app/dashboard/reports/page.tsx`
+    - `[ ]` Rename "Monthly Collected" and update "Collection Rate" logic
+- `[/]` Main Dashboard Alignment
+    - `[ ]` Synchronize `getCollectionSummary` logic in `app/actions/billing.ts`
+- `[ ]` Final Verification & Walkthrough

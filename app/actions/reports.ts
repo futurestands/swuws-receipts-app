@@ -17,7 +17,7 @@ import {
 } from "@/lib/db/schema"
 import { requireUser } from "@/lib/session"
 import { applyReceiptScope, applyBillingScope, applyCustomerScope } from "@/lib/scopes"
-import { and, eq, sql, desc, sum, count, gte, lte, inArray, ne } from "drizzle-orm"
+import { and, eq, sql, desc, sum, count, gte, lte, inArray, ne, notInArray } from "drizzle-orm"
 import { canViewReports, canUploadBilling } from "@/lib/permissions"
 import { unstable_cache } from "next/cache"
 
@@ -208,33 +208,79 @@ export async function getDashboardStats(params: {
 
       const [billingStats] = await baseQuery.where(and(...billingConditions))
 
-      // Receipt Aggregation
-      const receiptConditions = []
+      // 1. BANK VERIFIED COLLECTIONS (Source: EBS Matched Records)
+      const verifiedConditions = [
+        eq(dailyCollectionRecord.importStatus, 'matched')
+      ]
+      if (params.schemeId) verifiedConditions.push(eq(customer.waterSchemeId, params.schemeId))
+      if (params.branchId) verifiedConditions.push(eq(waterScheme.branchId, params.branchId))
+
+      // Matched against CURRENT month bills
+      const monthlyVerifiedConditions = [...verifiedConditions]
       if (params.periodId) {
-        // We join with billingRecord to filter receipts by billing period
-        receiptConditions.push(eq(billingRecord.billingPeriodId, params.periodId))
-      }
-      if (receiptScope) receiptConditions.push(receiptScope)
-      if (params.schemeId) {
-         // Join through customer to check scheme
-         receiptConditions.push(eq(customer.waterSchemeId, params.schemeId))
+        monthlyVerifiedConditions.push(eq(billingRecord.billingPeriodId, params.periodId))
       }
 
-      const [collectionStats] = await db
+      const [monthlyVerifiedStats] = await db
         .select({
-          totalCollected: sum(receipt.amount),
-          receiptCount: count(receipt.id),
+          amount: sum(dailyCollectionRecord.amount),
+        })
+        .from(dailyCollectionRecord)
+        .innerJoin(reconciliationMatch, eq(dailyCollectionRecord.id, reconciliationMatch.dailyCollectionRecordId))
+        .innerJoin(receipt, eq(reconciliationMatch.receiptId, receipt.id))
+        .innerJoin(customer, eq(receipt.customerId, customer.id))
+        .leftJoin(waterScheme, eq(customer.waterSchemeId, waterScheme.id))
+        .leftJoin(billingRecord, eq(receipt.billingRecordId, billingRecord.id))
+        .where(and(...monthlyVerifiedConditions))
+
+      // Matched against PAST month bills (Arrears Recovery)
+      const arrearsVerifiedConditions = [...verifiedConditions]
+      if (params.periodId) {
+        arrearsVerifiedConditions.push(ne(billingRecord.billingPeriodId, params.periodId))
+      }
+
+      const [arrearsVerifiedStats] = await db
+        .select({
+          amount: sum(dailyCollectionRecord.amount),
+        })
+        .from(dailyCollectionRecord)
+        .innerJoin(reconciliationMatch, eq(dailyCollectionRecord.id, reconciliationMatch.dailyCollectionRecordId))
+        .innerJoin(receipt, eq(reconciliationMatch.receiptId, receipt.id))
+        .innerJoin(customer, eq(receipt.customerId, customer.id))
+        .leftJoin(waterScheme, eq(customer.waterSchemeId, waterScheme.id))
+        .leftJoin(billingRecord, eq(receipt.billingRecordId, billingRecord.id))
+        .where(and(...arrearsVerifiedConditions))
+
+      // 2. OPERATIONAL CASH (Source: All Issued Receipts)
+      const receiptConditions = []
+      if (receiptScope) receiptConditions.push(receiptScope)
+      if (params.schemeId) receiptConditions.push(eq(customer.waterSchemeId, params.schemeId))
+
+      // Exclude voided receipts by checking audit log
+      const voidedIdsSubquery = db
+        .select({ id: auditLog.entityId })
+        .from(auditLog)
+        .where(eq(auditLog.action, 'receipt.void'))
+
+      const [receiptStats] = await db
+        .select({
+          totalAmount: sum(receipt.amount),
+          totalCount: count(receipt.id),
         })
         .from(receipt)
         .innerJoin(customer, eq(receipt.customerId, customer.id))
-        .leftJoin(billingRecord, eq(receipt.billingRecordId, billingRecord.id))
-        .where(and(...receiptConditions))
+        .where(and(
+          ...receiptConditions,
+          notInArray(receipt.id, voidedIdsSubquery)
+        ))
 
       const totalBilled = Number(billingStats?.totalBilled || 0)
-      const totalCollected = Number(collectionStats?.totalCollected || 0)
+      const verifiedMonthly = Number(monthlyVerifiedStats?.amount || 0)
+      const verifiedArrears = Number(arrearsVerifiedStats?.amount || 0)
+      const operationalCash = Number(receiptStats?.totalAmount || 0)
+      const operationalCount = Number(receiptStats?.totalCount || 0)
 
-      // Finding 9 Fix: Deep Arrears & Advance Tracking
-      // A. Total System Arrears (Current Snapshot for selected scope)
+      // Total System Arrears (Current Snapshot)
       const arrearsConditions = []
       if (params.schemeId) arrearsConditions.push(eq(customer.waterSchemeId, params.schemeId))
       if (params.branchId) arrearsConditions.push(eq(waterScheme.branchId, params.branchId))
@@ -243,7 +289,7 @@ export async function getDashboardStats(params: {
       const customerScope = applyCustomerScope(current)
       if (customerScope) arrearsConditions.push(customerScope)
 
-      const [arrearsStats] = await db
+      const [arrearsSnapshot] = await db
         .select({
           totalDebt: sql<number>`sum(case when ${customer.accountBalance} > 0 then ${customer.accountBalance} else 0 end)::bigint`,
           totalCredit: sql<number>`sum(case when ${customer.accountBalance} < 0 then abs(${customer.accountBalance}) else 0 end)::bigint`,
@@ -253,34 +299,10 @@ export async function getDashboardStats(params: {
         .leftJoin(branch, eq(waterScheme.branchId, branch.id))
         .where(and(...arrearsConditions))
 
-      // B. Arrears Collected in Period (EBS records matched to past debts)
-      const arrearsCollectedConditions = [
-        eq(dailyCollectionRecord.importStatus, 'matched')
-      ]
-      if (params.schemeId) arrearsCollectedConditions.push(eq(customer.waterSchemeId, params.schemeId))
+      const totalArrears = Number(arrearsSnapshot?.totalDebt || 0)
+      const totalUpfront = Number(arrearsSnapshot?.totalCredit || 0)
 
-      // Define "Past Debt" as any billing record NOT in the current period
-      if (params.periodId) {
-        arrearsCollectedConditions.push(ne(billingRecord.billingPeriodId, params.periodId))
-      }
-
-      const [arrearsCollectedStats] = await db
-        .select({
-          amount: sum(dailyCollectionRecord.amount),
-        })
-        .from(dailyCollectionRecord)
-        .innerJoin(reconciliationMatch, eq(dailyCollectionRecord.id, reconciliationMatch.dailyCollectionRecordId))
-        .innerJoin(receipt, eq(reconciliationMatch.receiptId, receipt.id))
-        .innerJoin(customer, eq(receipt.customerId, customer.id))
-        .leftJoin(billingRecord, eq(receipt.billingRecordId, billingRecord.id))
-        .where(and(...arrearsCollectedConditions))
-
-      const totalArrears = Number(arrearsStats?.totalDebt || 0)
-      const totalUpfront = Number(arrearsStats?.totalCredit || 0)
-      const collectedFromArrears = Number(arrearsCollectedStats?.amount || 0)
-      const collectedFromBills = totalCollected - collectedFromArrears
-
-      const rate = totalBilled > 0 ? (totalCollected / totalBilled) * 100 : 0
+      const rate = totalBilled > 0 ? (verifiedMonthly / totalBilled) * 100 : 0
 
       return {
         billing: {
@@ -291,11 +313,11 @@ export async function getDashboardStats(params: {
           unpaidCount: Number(billingStats?.unpaidCount || 0),
         },
         collections: {
-          totalCollected,
-          collectedFromBills,
-          collectedFromArrears,
-          receiptCount: Number(collectionStats?.receiptCount || 0),
-          outstanding: Math.max(0, totalBilled - collectedFromBills),
+          verifiedMonthly,
+          verifiedArrears,
+          operationalCash,
+          operationalCount,
+          outstanding: Math.max(0, totalBilled - verifiedMonthly),
           collectionRate: rate,
         },
         arrears: {
