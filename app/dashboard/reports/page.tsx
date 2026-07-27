@@ -106,11 +106,11 @@ export default async function ReportsPage({
         </Card>
         <Card className="border-green-100 bg-green-50/30">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-green-700">Bank Verified Collections</CardTitle>
+            <CardTitle className="text-sm font-medium text-green-700">Bank Verified (Total)</CardTitle>
             <TrendingUp className="h-4 w-4 text-green-600" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-green-600">{formatUGX(collections.verifiedMonthly)}</div>
+            <div className="text-2xl font-bold text-green-600">{formatUGX(collections.verifiedTotal)}</div>
             <p className="text-xs text-green-700/70">Confirmed via EBS Import</p>
           </CardContent>
         </Card>
@@ -126,7 +126,7 @@ export default async function ReportsPage({
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Collection Rate</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">Global Collection Rate</CardTitle>
             <TrendingUp className="h-4 w-4 text-primary" />
           </CardHeader>
           <CardContent>
@@ -134,6 +134,61 @@ export default async function ReportsPage({
             <Progress value={collections.collectionRate} className="h-2 mt-2" />
           </CardContent>
         </Card>
+      </div>
+
+      {/* Collection Breakdown Row */}
+      <div className="grid gap-4 md:grid-cols-2">
+         <Card className="border-green-100">
+           <CardHeader className="pb-2">
+             <CardTitle className="text-sm font-bold text-green-800">Arrears Recovery Performance</CardTitle>
+             <CardDescription>Efficiency in collecting old debt (Historical Arrears).</CardDescription>
+           </CardHeader>
+           <CardContent className="space-y-4">
+             <div className="flex justify-between items-end">
+               <div>
+                 <p className="text-xs text-muted-foreground uppercase">Arrears Billed</p>
+                 <p className="text-xl font-bold">{formatUGX(billing.arrearsBilled)}</p>
+               </div>
+               <div className="text-right">
+                 <p className="text-xs text-muted-foreground uppercase text-green-600">Arrears Collected</p>
+                 <p className="text-xl font-black text-green-600">{formatUGX(collections.verifiedArrears)}</p>
+               </div>
+             </div>
+             <div className="space-y-2">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="font-medium">Recovery Rate</span>
+                  <span className="font-black text-green-600">{formatPercent(collections.arrearsRate)}</span>
+                </div>
+                <Progress value={collections.arrearsRate} className="h-3 bg-green-50" />
+             </div>
+           </CardContent>
+         </Card>
+
+         <Card className="border-blue-100">
+           <CardHeader className="pb-2">
+             <CardTitle className="text-sm font-bold text-blue-800">Current Month Performance</CardTitle>
+             <CardDescription>Efficiency in collecting this month's generated revenue.</CardDescription>
+           </CardHeader>
+           <CardContent className="space-y-4">
+             <div className="flex justify-between items-end">
+               <div>
+                 <p className="text-xs text-muted-foreground uppercase">Current Billed</p>
+                 <p className="text-xl font-bold">{formatUGX(billing.currentBilled)}</p>
+               </div>
+               <div className="text-right">
+                 <p className="text-xs text-muted-foreground uppercase text-blue-600">Current Collected</p>
+                 <p className="text-xl font-black text-blue-600">{formatUGX(collections.verifiedMonthly)}</p>
+               </div>
+             </div>
+             <div className="space-y-2">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="font-medium">Collection Rate</span>
+                  <span className="font-black text-blue-600">{formatPercent(collections.currentRate)}</span>
+                </div>
+                <Progress value={collections.currentRate} className="h-3 bg-blue-50" />
+             </div>
+           </CardContent>
+         </Card>
       </div>
 
       <div className="grid gap-6 md:grid-cols-2">

@@ -85,6 +85,7 @@ export function AdminTabs({
         {permissions.canManageHierarchy && <TabsTrigger value="reference">Branches &amp; schemes</TabsTrigger>}
         {permissions.canConfigureSystem && <TabsTrigger value="branding">Branding</TabsTrigger>}
         {permissions.canAudit && <TabsTrigger value="audit">Audit log</TabsTrigger>}
+        {permissions.canConfigureSystem && <TabsTrigger value="maintenance" className="text-destructive font-bold">Maintenance</TabsTrigger>}
       </TabsList>
 
       {permissions.canViewReports && (
@@ -149,6 +150,12 @@ export function AdminTabs({
       {permissions.canAudit && (
         <TabsContent value="audit" className="mt-4">
           <AuditLogPanel logs={auditLogs} />
+        </TabsContent>
+      )}
+
+      {permissions.canConfigureSystem && (
+        <TabsContent value="maintenance" className="mt-4">
+          <SystemResetPanel />
         </TabsContent>
       )}
     </Tabs>

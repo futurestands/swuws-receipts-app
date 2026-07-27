@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import { useSearchParams } from "next/navigation"
 import { authClient } from "@/lib/auth-client"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -9,6 +10,9 @@ import { AlertCircle, CheckCircle2 } from "lucide-react"
 import Link from "next/link"
 
 export function ResetPasswordClient() {
+  const searchParams = useSearchParams()
+  const token = searchParams.get("token")
+
   const [password, setPassword] = useState("")
   const [confirmPassword, setConfirmPassword] = useState("")
   const [status, setStatus] = useState<"idle" | "loading" | "success" | "error">("idle")
@@ -16,6 +20,12 @@ export function ResetPasswordClient() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
+
+    if (!token) {
+      setError("Invalid or expired reset token. Please request a new one.")
+      return
+    }
+
     if (password !== confirmPassword) {
       setError("Passwords do not match")
       return
@@ -26,6 +36,7 @@ export function ResetPasswordClient() {
 
     const { error } = await authClient.resetPassword({
       newPassword: password,
+      token,
     })
 
     if (error) {

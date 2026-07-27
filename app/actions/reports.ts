@@ -187,14 +187,14 @@ export async function getDashboardStats(params: {
       if (params.branchId) billingConditions.push(eq(waterScheme.branchId, params.branchId))
       if (params.clusterId) billingConditions.push(eq(branch.clusterId, params.clusterId))
 
-      // This subquery ensures we only see billing records the user is scoped for
-      // by joining through customer/scheme/branch hierarchy.
       const billingScopeFilter = applyBillingScope(current)
       if (billingScopeFilter) billingConditions.push(billingScopeFilter)
 
       const baseQuery = db
         .select({
           totalBilled: sum(billingRecord.totalDue),
+          totalArrearsBilled: sum(billingRecord.arrears),
+          totalCurrentBilled: sum(billingRecord.currentCharges),
           billedCount: count(billingRecord.id),
           paidCount: sql<number>`count(case when ${billingRecord.status} = 'paid' then 1 end)::int`,
           confirmedCount: sql<number>`count(case when ${billingRecord.status} = 'pending_bank_confirmation' then 1 end)::int`,
@@ -210,47 +210,31 @@ export async function getDashboardStats(params: {
       const [billingStats] = await baseQuery.where(and(...billingConditions))
 
       // 1. BANK VERIFIED COLLECTIONS (Source: EBS Matched Records)
+      // Base conditions for verified collections
       const verifiedConditions = [
         eq(dailyCollectionRecord.importStatus, 'matched')
       ]
       if (params.schemeId) verifiedConditions.push(eq(customer.waterSchemeId, params.schemeId))
       if (params.branchId) verifiedConditions.push(eq(waterScheme.branchId, params.branchId))
+      if (params.periodId) verifiedConditions.push(eq(billingRecord.billingPeriodId, params.periodId))
 
-      // Matched against CURRENT month bills
-      const monthlyVerifiedConditions = [...verifiedConditions]
-      if (params.periodId) {
-        monthlyVerifiedConditions.push(eq(billingRecord.billingPeriodId, params.periodId))
-      }
-
-      const [monthlyVerifiedStats] = await db
+      // We perform a waterfall calculation: Pay off Arrears first, then Current Charges.
+      const waterfallQuery = db
         .select({
-          amount: sum(dailyCollectionRecord.amount),
+          totalPaid: sum(dailyCollectionRecord.amount),
+          // For each bill, we sum up matched payments and split them
+          // This subquery logic handles the waterfall at the aggregate level
+          arrearsCollected: sql<number>`sum(least(${dailyCollectionRecord.amount}, ${billingRecord.arrears}))`,
+          currentCollected: sql<number>`sum(greatest(0, ${dailyCollectionRecord.amount} - ${billingRecord.arrears}))`,
         })
         .from(dailyCollectionRecord)
         .innerJoin(reconciliationMatch, eq(dailyCollectionRecord.id, reconciliationMatch.dailyCollectionRecordId))
         .innerJoin(receipt, eq(reconciliationMatch.receiptId, receipt.id))
+        .innerJoin(billingRecord, eq(receipt.billingRecordId, billingRecord.id))
         .innerJoin(customer, eq(receipt.customerId, customer.id))
         .leftJoin(waterScheme, eq(customer.waterSchemeId, waterScheme.id))
-        .leftJoin(billingRecord, eq(receipt.billingRecordId, billingRecord.id))
-        .where(and(...monthlyVerifiedConditions))
 
-      // Matched against PAST month bills (Arrears Recovery)
-      const arrearsVerifiedConditions = [...verifiedConditions]
-      if (params.periodId) {
-        arrearsVerifiedConditions.push(ne(billingRecord.billingPeriodId, params.periodId))
-      }
-
-      const [arrearsVerifiedStats] = await db
-        .select({
-          amount: sum(dailyCollectionRecord.amount),
-        })
-        .from(dailyCollectionRecord)
-        .innerJoin(reconciliationMatch, eq(dailyCollectionRecord.id, reconciliationMatch.dailyCollectionRecordId))
-        .innerJoin(receipt, eq(reconciliationMatch.receiptId, receipt.id))
-        .innerJoin(customer, eq(receipt.customerId, customer.id))
-        .leftJoin(waterScheme, eq(customer.waterSchemeId, waterScheme.id))
-        .leftJoin(billingRecord, eq(receipt.billingRecordId, billingRecord.id))
-        .where(and(...arrearsVerifiedConditions))
+      const [collectionStats] = await waterfallQuery.where(and(...verifiedConditions))
 
       // 2. OPERATIONAL CASH (Source: All Issued Receipts)
       const receiptConditions = []
@@ -276,10 +260,20 @@ export async function getDashboardStats(params: {
         ))
 
       const totalBilled = Number(billingStats?.totalBilled || 0)
-      const verifiedMonthly = Number(monthlyVerifiedStats?.amount || 0)
-      const verifiedArrears = Number(arrearsVerifiedStats?.amount || 0)
+      const arrearsBilled = Number(billingStats?.totalArrearsBilled || 0)
+      const currentBilled = Number(billingStats?.totalCurrentBilled || 0)
+
+      const verifiedTotal = Number(collectionStats?.totalPaid || 0)
+      const verifiedArrears = Number(collectionStats?.arrearsCollected || 0)
+      const verifiedCurrent = Number(collectionStats?.currentCollected || 0)
+
       const operationalCash = Number(receiptStats?.totalAmount || 0)
       const operationalCount = Number(receiptStats?.totalCount || 0)
+
+      // Collection Rates
+      const globalRate = totalBilled > 0 ? (verifiedTotal / totalBilled) * 100 : 0
+      const arrearsRate = arrearsBilled > 0 ? (verifiedArrears / arrearsBilled) * 100 : 0
+      const currentRate = currentBilled > 0 ? (verifiedCurrent / currentBilled) * 100 : 0
 
       // Total System Arrears (Current Snapshot)
       const arrearsConditions = []
@@ -303,11 +297,13 @@ export async function getDashboardStats(params: {
       const totalArrears = Number(arrearsSnapshot?.totalDebt || 0)
       const totalUpfront = Number(arrearsSnapshot?.totalCredit || 0)
 
-      const rate = totalBilled > 0 ? (verifiedMonthly / totalBilled) * 100 : 0
+      const rate = totalBilled > 0 ? (verifiedTotal / totalBilled) * 100 : 0
 
       return {
         billing: {
           totalBilled,
+          arrearsBilled,
+          currentBilled,
           billedCount: Number(billingStats?.billedCount || 0),
           paidCount: Number(billingStats?.paidCount || 0),
           confirmedCount: Number(billingStats?.confirmedCount || 0),
@@ -315,12 +311,15 @@ export async function getDashboardStats(params: {
           unpaidCount: Number(billingStats?.unpaidCount || 0),
         },
         collections: {
-          verifiedMonthly,
+          verifiedTotal,
+          verifiedMonthly: verifiedCurrent,
           verifiedArrears,
           operationalCash,
           operationalCount,
-          outstanding: Math.max(0, totalBilled - verifiedMonthly),
-          collectionRate: rate,
+          outstanding: Math.max(0, totalBilled - verifiedTotal),
+          collectionRate: globalRate,
+          arrearsRate,
+          currentRate,
         },
         arrears: {
           totalArrears,

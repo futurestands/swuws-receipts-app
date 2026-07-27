@@ -5,6 +5,7 @@ import { tariffConfiguration, waterScheme, branch } from "@/lib/db/schema"
 import { requireUser } from "@/lib/session"
 import { writeAudit } from "@/lib/audit"
 import { canConfigureSystem } from "@/lib/permissions"
+import { validateWriteScope } from "@/lib/scopes"
 import { eq, and, sql } from "drizzle-orm"
 import * as XLSX from "xlsx"
 import { z } from "zod"
@@ -52,15 +53,27 @@ export async function validateTariffImport(formData: FormData): Promise<{ ok: tr
     file,
     schema: tariffImportSchema,
     mapping,
-    onValidateRow: (data) => {
+    onValidateRow: async (data) => {
       const errors: string[] = []
       const warnings: string[] = []
 
       const nameLower = data.targetName.toLowerCase()
+      let targetId: string | undefined
+
       if (data.targetType === "branch") {
-        if (!branchMap.has(nameLower)) errors.push(`Branch "${data.targetName}" not found`)
+        targetId = branchMap.get(nameLower)
+        if (!targetId) errors.push(`Branch "${data.targetName}" not found`)
       } else {
-        if (!schemeMap.has(nameLower)) errors.push(`Scheme "${data.targetName}" not found`)
+        targetId = schemeMap.get(nameLower)
+        if (!targetId) errors.push(`Scheme "${data.targetName}" not found`)
+      }
+
+      if (targetId) {
+        const isAuthorized = await validateWriteScope(current, "system.settings.manage", {
+          branchId: data.targetType === "branch" ? targetId : undefined,
+          schemeId: data.targetType === "scheme" ? targetId : undefined
+        })
+        if (!isAuthorized) errors.push("Access Denied: You are not authorized to manage tariffs for this area.")
       }
 
       return { errors, warnings }
@@ -94,6 +107,17 @@ export async function executeTariffImport(summary: TariffImportSummary): Promise
         const targetId = data.targetType === "branch"
           ? branchMap.get(data.targetName.toLowerCase())!
           : schemeMap.get(data.targetName.toLowerCase())!
+
+        // Goal Alignment: Verify scope for each individual tariff update
+        const isAuthorized = await validateWriteScope(current, "system.settings.manage", {
+          branchId: data.targetType === "branch" ? targetId : undefined,
+          schemeId: data.targetType === "scheme" ? targetId : undefined
+        })
+
+        if (!isAuthorized) {
+          reportRows.push({ ...data, Result: "Failed", Details: "Access Denied: You are not authorized to manage tariffs for this area." })
+          continue
+        }
 
         // Upsert logic: check if exists
         const [existing] = await tx

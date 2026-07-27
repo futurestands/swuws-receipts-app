@@ -50,7 +50,7 @@ export async function processExcelImport<T extends Record<string, any>>(params: 
   file: File
   schema: z.ZodSchema<T>
   mapping: Record<keyof T, string>
-  onValidateRow?: (row: T) => { errors: string[]; warnings: string[] }
+  onValidateRow?: (row: T) => { errors: string[]; warnings: string[] } | Promise<{ errors: string[]; warnings: string[] }>
 }): Promise<ImportSummary<T>> {
   const buffer = await params.file.arrayBuffer()
   const workbook = XLSX.read(buffer)
@@ -83,7 +83,7 @@ export async function processExcelImport<T extends Record<string, any>>(params: 
 
     // 3. Custom Domain Validation (e.g. checking duplicates in DB)
     if (params.onValidateRow) {
-      const custom = params.onValidateRow(data)
+      const custom = await params.onValidateRow(data)
       errors.push(...custom.errors)
       warnings.push(...custom.warnings)
     }

@@ -79,7 +79,7 @@ export function SystemResetPanel() {
             <div className="p-4 rounded-lg border bg-green-50/20 space-y-2">
               <p className="text-sm font-bold flex items-center gap-2 text-green-700">
                 <CheckCircle2 className="size-4" /> PRESERVED SETUP
-              </li>
+              </p>
               <ul className="text-xs space-y-1 text-muted-foreground list-disc pl-4">
                 <li>Area Offices & Water Schemes</li>
                 <li>Tariffs & Billing Rates</li>

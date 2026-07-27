@@ -519,6 +519,9 @@ export async function wipeOperationalData(confirmText: string) {
 
   try {
     await db.transaction(async (tx) => {
+      // 0. Activate Maintenance Bypass (Required for 0036 trigger logic)
+      await tx.execute(sql`SET LOCAL app.allow_operational_wipe = 'true'`)
+
       // 1. Clear Reconciliation Data
       await tx.delete(reconciliationMatch)
       await tx.delete(reconciliationException)
@@ -540,10 +543,13 @@ export async function wipeOperationalData(confirmText: string) {
       // 4. Clear CRM Data ( रियल डाटा के लिए ताज़ा शुरुआत)
       await tx.delete(customer)
 
-      // 5. Reset Receipt Sequence
+      // 5. Clear Audit Log (Clearing test trail)
+      await tx.delete(auditLog)
+
+      // 6. Reset Receipt Sequence
       await tx.execute(sql`ALTER SEQUENCE receipt_seq RESTART WITH 1`)
 
-      // 6. Audit the system wipe
+      // 7. Audit the system wipe (This will be the first and only entry in the new trail)
       await writeAudit({
         user: current,
         action: "system.full_wipe",

@@ -513,17 +513,16 @@ export async function importBilling(
         details: { schemeId: summary.schemeId, imported: validRows.length },
       }, tx)
 
-      // Synchronize customer balances
-      const successfullyImportedCustomerIds = validRows.map(
-        (row) => customerMap.get(row.data.accountNumber.toLowerCase())!
-      )
-
-      if (successfullyImportedCustomerIds.length > 0) {
-        await tx.execute(sql`
-          UPDATE "customer"
-          SET "accountBalance" = 0, "updatedAt" = now()
-          WHERE id IN ${successfullyImportedCustomerIds} AND "accountBalance" > 0
-        `)
+      // 5. Synchronize Customer Balances with EBS Source of Truth
+      // For every imported bill, we set the customer's LIVE balance to match the TotalDue
+      for (const record of recordsToInsert) {
+        await tx
+          .update(customer)
+          .set({
+            accountBalance: record.totalDue,
+            updatedAt: new Date()
+          })
+          .where(eq(customer.id, record.customerId))
       }
 
       importedCount = validRows.length

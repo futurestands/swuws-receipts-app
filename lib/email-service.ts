@@ -49,7 +49,7 @@ export async function sendPasswordResetEmail(email: string, userName: string, re
     user_name: userName,
     reset_link: resetLink,
     year: new Date().getFullYear()
-  })
+  }, { escape: true })
 
   return sendRawEmail({
     to: email,
