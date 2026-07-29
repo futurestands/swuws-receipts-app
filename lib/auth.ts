@@ -4,13 +4,20 @@ import { pool } from "@/lib/db"
 import { ROLES } from "./permissions/roles"
 import { sendPasswordResetEmail } from "./email-service"
 
-const baseURL =
-  process.env.BETTER_AUTH_URL ||
+const isProduction = process.env.NODE_ENV === "production"
+
+// Goal Alignment: Robust baseURL detection. In production, we prioritize
+// Vercel provided URLs and ensure localhost is never used.
+const rawBaseURL =
+  (isProduction ? undefined : process.env.BETTER_AUTH_URL) ||
   (process.env.VERCEL_PROJECT_PRODUCTION_URL
     ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
     : undefined) ||
   (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : undefined) ||
-  process.env.V0_RUNTIME_URL
+  process.env.V0_RUNTIME_URL ||
+  "http://localhost:3000"
+
+const baseURL = rawBaseURL.startsWith('http') ? rawBaseURL : `https://${rawBaseURL}`
 
 // Audit finding 9.7: previously this list was built ONLY from
 // Vercel-specific environment variables, so any non-Vercel deployment that
@@ -33,9 +40,15 @@ const trustedOrigins = [
   ...explicitTrustedOrigins,
   ...dynamicVercelOrigins,
   process.env.V0_RUNTIME_URL,
+  "http://localhost:3000" // Always trust local
 ].filter(Boolean) as string[]
 
-if (process.env.NODE_ENV === "production" && trustedOrigins.length === 0) {
+if (isProduction) {
+  console.log(`[AUTH INIT] baseURL: ${baseURL}`)
+  console.log(`[AUTH INIT] trustedOrigins: ${trustedOrigins.join(", ")}`)
+}
+
+if (isProduction && trustedOrigins.length === 0) {
   // Fail loudly rather than silently running with a weakened CSRF/origin
   // check, which is what happened before (audit finding 9.7).
   throw new Error(
