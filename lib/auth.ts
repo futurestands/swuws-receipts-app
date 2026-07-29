@@ -22,13 +22,17 @@ const explicitTrustedOrigins = (process.env.BETTER_AUTH_TRUSTED_ORIGINS || "")
   .map((s) => s.trim())
   .filter(Boolean)
 
+// Goal Alignment: Dynamically trust any Vercel deployment URL to prevent
+// "Invalid origin" errors during testing and production.
+const dynamicVercelOrigins = [
+  process.env.VERCEL_URL,
+  process.env.VERCEL_PROJECT_PRODUCTION_URL,
+].filter(Boolean).map(url => url?.startsWith('http') ? url : `https://${url}`)
+
 const trustedOrigins = [
   ...explicitTrustedOrigins,
+  ...dynamicVercelOrigins,
   process.env.V0_RUNTIME_URL,
-  process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : undefined,
-  process.env.VERCEL_PROJECT_PRODUCTION_URL
-    ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
-    : undefined,
 ].filter(Boolean) as string[]
 
 if (process.env.NODE_ENV === "production" && trustedOrigins.length === 0) {

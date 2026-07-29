@@ -1,40 +1,40 @@
-# Implementation Plan: Production Database Stability & Deployment Sync
+# Implementation Plan: Production Auth & Localhost Stability
 
-This plan hardens your database connection logic to handle the unique constraints of **Vercel (Serverless)** and **Supabase (Connection Limits)**, ensuring the system stays stable under load.
+This plan addresses two critical issues: the **"Invalid origin"** error preventing production login on Vercel, and the mysterious **404 error** on the localhost dashboard.
 
 ## User Review Required
 
 > [!IMPORTANT]
-> **The "Stability" Problem**: You are likely hitting the Supabase connection limit. Vercel spins up many "Serverless Functions," and each one is currently trying to reserve 20 connections.
+> **Vercel Auth Dynamic Fix**: I am updating the authentication engine to automatically recognize and trust your Vercel deployment URL. This removes the need for manual "Trusted Origin" updates every time the URL changes.
 >
-> **The Fix**: I will cap the connection pool to **1 per function** in production. This is the industry standard for Vercel + Postgres and will make the system 100% stable.
->
-> **The "Old Code" Problem**: Your Vercel screenshot shows commit `2c61c8b`. You need to ensure Vercel is deploying your latest push (`329f095`).
+> **Localhost 404 Diagnosis**: If a file exists (like `/dashboard/customers/page.tsx`) but returns a 404, it is almost always a **Next.js Cache** or **Dev Server** issue. I will provide a command to "Purge & Restart" your local environment.
 
 ## Proposed Changes
 
 ---
 
-### 1. Hardening the Connection Layer
+### 1. Hardening Auth for Vercel
 
-#### [MODIFY] [db-index](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/lib/db/index.ts)
-- Update the pool configuration:
-    - **Production (Vercel)**: Set `max: 1` connection per pool.
-    - **Development (Local)**: Keep `max: 20` for speed.
-- This prevents the "Too many clients" error that causes the red box you saw.
+#### [MODIFY] [lib/auth.ts](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/lib/auth.ts)
+- Update the `trustedOrigins` logic to automatically include the `VERCEL_URL` and `VERCEL_PROJECT_PRODUCTION_URL` if they are present.
+- Ensure the `baseURL` uses the production URL preferentially when deployed.
 
 ---
 
-### 2. Vercel Deployment Sync
+### 2. Localhost 404 Resolution
 
-- I will provide instructions to check the **Vercel Build Logs** to see why your latest push isn't showing up.
+- To fix the 404 on `localhost:3000/dashboard/customers`:
+  1. **Stop the dev server** (Ctrl+C).
+  2. **Delete the `.next` folder** (this is where stale cache lives).
+  3. **Restart the server**: `npm run dev`.
+- I will provide this as a single command for you to run.
 
 ## Verification Plan
 
 ### Automated Verification
-- Run `npm run typecheck` to ensure the logic changes don't break the build.
+- Run `npm run typecheck` to ensure the auth logic update is safe.
 
 ### Manual Verification
-1. Push the changes to GitHub.
-2. Monitor Vercel until the deployment for commit "Database Stability Hardening" is **Ready**.
-3. Open the site and verify that the "Something went wrong" error is permanently resolved.
+1. **Local Check**: Run the "Purge & Restart" command. Verify that `/dashboard/customers` now loads.
+2. **Production Check**: Push the code to GitHub. Refresh Vercel. Attempt to sign in.
+   - **Verify**: The "Invalid origin" error is gone.
