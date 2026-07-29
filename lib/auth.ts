@@ -8,36 +8,38 @@ const isProduction = process.env.NODE_ENV === "production"
 
 // Goal Alignment: Robust baseURL detection.
 // We strictly normalize all origins to include the protocol.
-const normalizeOrigin = (url: string) => url.startsWith('http') ? url : `https://${url}`
+const normalizeOrigin = (url: string | undefined | null) => {
+  if (!url) return undefined
+  return url.startsWith('http') ? url : `https://${url}`
+}
 
 const baseURL = normalizeOrigin(
   process.env.BETTER_AUTH_URL ||
   process.env.VERCEL_PROJECT_PRODUCTION_URL ||
   process.env.VERCEL_URL ||
-  process.env.V0_RUNTIME_URL ||
-  "http://localhost:3000"
-)
+  process.env.V0_RUNTIME_URL
+) || "http://localhost:3000"
 
 // Audit finding 9.7: Environment variable trust list.
 const explicitTrustedOrigins = (process.env.BETTER_AUTH_TRUSTED_ORIGINS || "")
   .split(",")
   .map((s) => s.trim())
   .filter(Boolean)
-  .map(normalizeOrigin)
+  .map(url => normalizeOrigin(url))
 
 // Goal Alignment: Automatic Vercel URL trust.
 // We trust the specific deployment URL AND the production project URL.
 const dynamicVercelOrigins = [
   process.env.VERCEL_URL,
   process.env.VERCEL_PROJECT_PRODUCTION_URL,
-].filter(Boolean).map(url => normalizeOrigin(url!))
+  process.env.V0_RUNTIME_URL
+].map(url => normalizeOrigin(url))
 
-const trustedOrigins = [
+const trustedOrigins = Array.from(new Set([
   ...explicitTrustedOrigins,
   ...dynamicVercelOrigins,
-  normalizeOrigin(process.env.V0_RUNTIME_URL || ""),
   "http://localhost:3000"
-].filter(Boolean) as string[]
+].filter((url): url is string => !!url)))
 
 if (isProduction) {
   console.log(`[AUTH INIT] baseURL: ${baseURL}`)
