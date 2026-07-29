@@ -15,7 +15,7 @@ import {
 import { requireUser } from "@/lib/session"
 import { hasPermission } from "@/lib/iam"
 import { writeAudit } from "@/lib/audit"
-import { and, eq, gte, lte, sql, inArray, count, desc, asc, notInArray, ne } from "drizzle-orm"
+import { and, eq, gte, lte, sql, inArray, count, desc, asc, ne } from "drizzle-orm"
 import { randomUUID } from "crypto"
 import { createNotification } from "./notifications"
 import { revalidatePath } from "next/cache"

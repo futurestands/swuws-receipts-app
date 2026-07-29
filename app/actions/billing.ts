@@ -26,7 +26,7 @@ import {
   canIssueReceipt
 } from "@/lib/permissions"
 import { validateWriteScope, applyCustomerScope } from "@/lib/scopes"
-import { and, eq, sql, desc, or, inArray, count, sum, notInArray } from "drizzle-orm"
+import { and, eq, sql, desc, or, inArray, count, sum } from "drizzle-orm"
 import * as XLSX from "xlsx"
 import { z } from "zod"
 import { randomUUID } from "crypto"
@@ -675,7 +675,7 @@ export async function getCollectionSummary() {
     .leftJoin(billingRecord, eq(receipt.billingRecordId, billingRecord.id))
     .where(and(
       eq(billingRecord.billingPeriodId, displayPeriod.id),
-      notInArray(receipt.id, voidedIdsSubquery)
+      sql`${receipt.id} NOT IN (${voidedIdsSubquery})`
     ))
 
   const recentUploads = await db

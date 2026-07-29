@@ -17,7 +17,7 @@ import {
 } from "@/lib/db/schema"
 import { requireUser } from "@/lib/session"
 import { applyReceiptScope, applyBillingScope, applyCustomerScope } from "@/lib/scopes"
-import { and, eq, sql, desc, sum, count, gte, lte, inArray, ne, notInArray } from "drizzle-orm"
+import { and, eq, sql, desc, sum, count, gte, lte, inArray, ne } from "drizzle-orm"
 import { canViewReports, canUploadBilling } from "@/lib/permissions"
 import { unstable_cache } from "next/cache"
 
@@ -256,7 +256,7 @@ export async function getDashboardStats(params: {
         .innerJoin(customer, eq(receipt.customerId, customer.id))
         .where(and(
           ...receiptConditions,
-          notInArray(receipt.id, voidedIdsSubquery)
+          sql`${receipt.id} NOT IN (${voidedIdsSubquery})`
         ))
 
       const totalBilled = Number(billingStats?.totalBilled || 0)

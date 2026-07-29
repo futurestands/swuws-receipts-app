@@ -14,7 +14,7 @@ import {
 import { requireUser } from "@/lib/session"
 import { hasPermission } from "@/lib/iam"
 import { applyReceiptScope, applyBillingScope } from "@/lib/scopes"
-import { and, eq, gte, lte, sql, count, desc, sum, ne, notInArray } from "drizzle-orm"
+import { and, eq, gte, lte, sql, count, desc, sum, ne } from "drizzle-orm"
 
 /**
  * FINANCIAL OPERATIONS ANALYTICS (Phase 4A)
@@ -44,7 +44,7 @@ export async function getFinancialOpsDashboard() {
     .limit(1)
 
   // 2. Reconciliation KPIs
-  const baseConditions = [notInArray(receipt.id, voidedIds)]
+  const baseConditions = [sql`${receipt.id} NOT IN (${voidedIds})`]
   if (receiptScope) baseConditions.push(receiptScope)
 
   const reconStats = await db

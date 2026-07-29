@@ -24,7 +24,7 @@ import {
 } from "@/lib/db/schema"
 import { requireUser } from "@/lib/session"
 import { writeAudit } from "@/lib/audit"
-import { and, desc, eq, gte, lte, sql, ne, count, notInArray } from "drizzle-orm"
+import { and, desc, eq, gte, lte, sql, ne, count } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { headers } from "next/headers"
 import { checkRateLimit } from "@/lib/rate-limit"
@@ -310,7 +310,7 @@ export async function getCollectionsSummary(dateISO?: string) {
   const baseConditions = [
     gte(receipt.createdAt, start),
     lte(receipt.createdAt, end),
-    notInArray(receipt.id, voidedIds)
+    sql`${receipt.id} NOT IN (${voidedIds})`
   ]
   const conditions = scope ? and(...baseConditions, scope) : and(...baseConditions)
 
@@ -375,7 +375,7 @@ export async function getSystemStats() {
       total: sql<number>`coalesce(sum(${receipt.amount}), 0)::bigint`,
     })
     .from(receipt)
-    .where(and(scope, notInArray(receipt.id, voidedIds)))
+    .where(and(scope, sql`${receipt.id} NOT IN (${voidedIds})`))
 
   return {
     agentCount: Number(agents?.count ?? 0),
@@ -403,7 +403,7 @@ export async function getPrintingReports() {
       count: count().as("count"),
     })
     .from(receiptPrintHistory)
-    .where(notInArray(receiptPrintHistory.receiptId, voidedIds))
+    .where(sql`${receiptPrintHistory.receiptId} NOT IN (${voidedIds})`)
     .groupBy(receiptPrintHistory.receiptId)
     .as("print_counts")
 
@@ -429,7 +429,7 @@ export async function getPrintingReports() {
     })
     .from(receiptPrintHistory)
     .innerJoin(receipt, eq(receiptPrintHistory.receiptId, receipt.id))
-    .where(and(scope, notInArray(receipt.id, voidedIds)))
+    .where(and(scope, sql`${receipt.id} NOT IN (${voidedIds})`))
     .groupBy(receiptPrintHistory.printedById, receiptPrintHistory.printedByName)
     .orderBy(desc(count()))
     .limit(10)
@@ -443,7 +443,7 @@ export async function getPrintingReports() {
     })
     .from(receiptPrintHistory)
     .innerJoin(receipt, eq(receiptPrintHistory.receiptId, receipt.id))
-    .where(and(scope, notInArray(receipt.id, voidedIds)))
+    .where(and(scope, sql`${receipt.id} NOT IN (${voidedIds})`))
     .groupBy(receipt.branchId, receipt.branchName)
     .orderBy(desc(count()))
     .limit(10)
@@ -459,7 +459,7 @@ export async function getPrintingReports() {
     .innerJoin(receipt, eq(receiptPrintHistory.receiptId, receipt.id))
     .innerJoin(user, eq(receipt.agentId, user.id))
     .innerJoin(waterScheme, eq(user.schemeId, waterScheme.id))
-    .where(and(scope, notInArray(receipt.id, voidedIds)))
+    .where(and(scope, sql`${receipt.id} NOT IN (${voidedIds})`))
     .groupBy(user.schemeId, waterScheme.name)
     .orderBy(desc(count()))
     .limit(10)
@@ -474,7 +474,7 @@ export async function getPrintingReports() {
     })
     .from(receiptPrintHistory)
     .innerJoin(receipt, eq(receiptPrintHistory.receiptId, receipt.id))
-    .where(and(scope, gte(receiptPrintHistory.printedAt, sevenDaysAgo), notInArray(receipt.id, voidedIds)))
+    .where(and(scope, gte(receiptPrintHistory.printedAt, sevenDaysAgo), sql`${receipt.id} NOT IN (${voidedIds})`))
     .groupBy(sql`DATE(${receiptPrintHistory.printedAt})`)
     .orderBy(desc(sql`DATE(${receiptPrintHistory.printedAt})`))
 
@@ -492,7 +492,7 @@ export async function getPrintingReports() {
     })
     .from(receiptPrintHistory)
     .innerJoin(receipt, eq(receiptPrintHistory.receiptId, receipt.id))
-    .where(and(scope, notInArray(receipt.id, voidedIds)))
+    .where(and(scope, sql`${receipt.id} NOT IN (${voidedIds})`))
     .orderBy(desc(receiptPrintHistory.printedAt))
     .limit(100)
 
