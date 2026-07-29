@@ -1,40 +1,45 @@
-# Implementation Plan: Production Reliability & Security Hardening
+# Implementation Plan: Android Assets & Hardware Integration
 
-This plan addresses specific technical risks identified during the third-party forensic audit regarding SSL detection, production file storage, and database connection pooling.
+This plan focuses on professionalizing the Android application by adding custom branding (Icons & Splash Screen) and preparing the foundation for native hardware access (Bluetooth printing & QR scanning).
 
 ## User Review Required
 
 > [!IMPORTANT]
-> **SSL Detection Strategy**: I am switching from substring-matching (`supabase.com`) to a hostname-based check. This ensures that direct Supabase connections (which use `.co`) are correctly recognized as requiring SSL, preventing connection failures in production.
+> **Source Images Needed**: To generate professional icons and splash screens, you should provide two high-resolution images:
+> 1. `assets/icon.png`: **1024 x 1024 px** (The app icon)
+> 2. `assets/splash.png`: **2732 x 2732 px** (The loading screen)
 >
-> **File Storage Policy**: Local filesystem writes (for logos) will now be **Physically Blocked** in production. This prevents data loss on ephemeral platforms like Vercel and forces the use of a persistent cloud provider (Vercel Blob).
+> Until these are provided, I will use your current web icons as placeholders.
 
 ## Proposed Changes
 
-### 1. Database Connection Layer
+---
 
-#### [MODIFY] [lib/db/index.ts](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/lib/db/index.ts)
-- **Refined SSL Detection**:
-  - Replace `.includes()` check with a hostname check: `url.hostname !== "localhost" && url.hostname !== "127.0.0.1"`.
-- **Dynamic Pool Sizing**:
-  - Distinguish between **Vercel** and generic production.
-  - If `process.env.VERCEL` is present, use `max: 1` (safest for serverless).
-  - If production but not Vercel, use `max: 10` (standard for always-on servers).
-  - Local development remains at `max: 20`.
+### 1. Asset Generation (Branding)
 
-### 2. Administrative Settings & Storage
+#### [NEW] Assets Pipeline
+- Install `@capacitor/assets` to automatically generate all 20+ required Android icon and splash screen sizes.
+- Create an `assets/` directory in the project root.
 
-#### [MODIFY] [app/actions/settings.ts](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/app/actions/settings.ts)
-- **Hardened Upload Logic**:
-  - In `uploadLogo`, add an explicit check: If `NODE_ENV` is production and `BLOB_READ_WRITE_TOKEN` is missing, throw a fatal error.
-  - Remove the "Local Fallback" for production builds to prevent silent data loss.
+#### [MODIFY] Android Resources
+- Run the asset generator to overwrite the default Capacitor/Android icons with SWUWS branding.
+
+---
+
+### 2. Native Capabilities (Hardware Access)
+
+#### [MODIFY] [AndroidManifest.xml](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/android/app/src/main/AndroidManifest.xml)
+- Add required Android permissions for future features:
+    - `BLUETOOTH` & `BLUETOOTH_ADMIN`: For portable thermal printing.
+    - `CAMERA`: For scanning customer ID/Meter QR codes.
+
+#### [TODO] Install Native Plugins
+- `@capacitor/barcode-scanner`: For high-speed QR detection.
+- `@capacitor-community/bluetooth-le`: For communication with field printers.
 
 ## Verification Plan
 
-### Automated Verification
-- Run `npm run typecheck` to ensure the new environment checks are correctly implemented.
-
 ### Manual Verification
-1. **SSL Test**: Connect to a non-localhost database. **Verify**: The logs show `(SSL: true)`.
-2. **Storage Test**: In a production-simulated environment without a blob token, attempt to upload a logo. **Verify**: The system returns a "Configuration Error" instead of attempting a disk write.
-3. **Pooling Test**: Check startup logs in production. **Verify**: The connection max is correctly assigned based on the platform.
+1. **Asset Check**: Run the generation script and verify that the `android/app/src/main/res/mipmap-*` folders are updated with the new icons.
+2. **Permissions Check**: Open the app on your phone. Go to **Settings > Apps > SWUWS**. **Verify**: The Camera and Bluetooth permissions are listed as available.
+3. **Studio Sync**: In Android Studio, click **"Sync Project with Gradle Files"**. **Verify**: No errors occur.

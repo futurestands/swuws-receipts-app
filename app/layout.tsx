@@ -6,6 +6,7 @@ import './globals.css'
 export const metadata: Metadata = {
   title: 'SWUWS Collection Portal',
   description: 'Revenue Assurance and Payment Tracking System — Southwestern Umbrella of Water and Sanitation',
+  manifest: '/manifest.json',
 }
 
 export const viewport: Viewport = {

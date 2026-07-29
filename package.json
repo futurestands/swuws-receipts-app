@@ -13,6 +13,11 @@
   },
   "dependencies": {
     "@base-ui/react": "^1.5.0",
+    "@capacitor-community/bluetooth-le": "^8.2.0",
+    "@capacitor/android": "^8.4.2",
+    "@capacitor/barcode-scanner": "^3.1.0",
+    "@capacitor/cli": "^8.4.2",
+    "@capacitor/core": "^8.4.2",
     "@vercel/analytics": "1.6.1",
     "@vercel/blob": "^2.5.0",
     "better-auth": "^1.6.23",
