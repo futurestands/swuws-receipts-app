@@ -31,6 +31,8 @@ function createPool(): Pool {
 
   try {
     const url = new URL(urlString)
+    const isProduction = process.env.NODE_ENV === "production"
+
     const config = {
       host: url.hostname,
       port: url.port ? parseInt(url.port) : 5432,
@@ -38,9 +40,12 @@ function createPool(): Pool {
       password: decodeURIComponent(url.password),
       database: url.pathname.slice(1) || "postgres",
       ssl: sslConfig,
-      max: 20, // Increased pool size
+      // Goal Alignment: In production (Vercel), we must cap the pool to 1
+      // because each serverless function gets its own instance.
+      // This prevents exhausting Supabase's connection limit.
+      max: isProduction ? 1 : 20,
       idleTimeoutMillis: 30_000,
-      connectionTimeoutMillis: 30_000, // Increased timeout to 30s
+      connectionTimeoutMillis: 30_000,
     }
 
     console.log(`[DB Init] Connection config: ${config.user}@${config.host}:${config.port}/${config.database} (SSL: ${!!config.ssl})`)

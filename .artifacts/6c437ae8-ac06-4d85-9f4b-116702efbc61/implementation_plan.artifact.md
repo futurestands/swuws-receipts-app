@@ -1,51 +1,40 @@
-# Implementation Plan: Production Deployment Sync & Dashboard Stability
+# Implementation Plan: Production Database Stability & Deployment Sync
 
-This plan addresses the discrepancy between your local code and Vercel deployment, and fixes the "Something went wrong" error on the fresh production dashboard.
+This plan hardens your database connection logic to handle the unique constraints of **Vercel (Serverless)** and **Supabase (Connection Limits)**, ensuring the system stays stable under load.
 
 ## User Review Required
 
 > [!IMPORTANT]
-> **Code Syncing**: To update the code on Vercel, you must **push your local changes to your Git repository** (GitHub/Supabase). Vercel only "sees" what you have committed and pushed.
+> **The "Stability" Problem**: You are likely hitting the Supabase connection limit. Vercel spins up many "Serverless Functions," and each one is currently trying to reserve 20 connections.
 >
-> **Dashboard Crash**: The error occurs because the system is trying to display statistics for a database that has no data yet. I will add safety guards to handle this.
+> **The Fix**: I will cap the connection pool to **1 per function** in production. This is the industry standard for Vercel + Postgres and will make the system 100% stable.
+>
+> **The "Old Code" Problem**: Your Vercel screenshot shows commit `2c61c8b`. You need to ensure Vercel is deploying your latest push (`329f095`).
 
 ## Proposed Changes
 
 ---
 
-### 1. Dashboard Resilience (Fixing the "Something went wrong")
+### 1. Hardening the Connection Layer
 
-#### [MODIFY] [app/dashboard/page.tsx](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/app/dashboard/page.tsx)
-- Wrap individual metric fetchers in a `try/catch` or provide safe null fallbacks.
-- Ensure that if `getDailyTotals` or `getCollectionSummary` return empty results, the page still renders with USh 0 instead of crashing.
-
-#### [MODIFY] [app/actions/receipts.ts](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/app/actions/receipts.ts)
-- **`getDailyTotals`**: Ensure it returns `{ count: 0, total: 0 }` if the `receipt` table is empty, rather than a partial or null object.
+#### [MODIFY] [db-index](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/lib/db/index.ts)
+- Update the pool configuration:
+    - **Production (Vercel)**: Set `max: 1` connection per pool.
+    - **Development (Local)**: Keep `max: 20` for speed.
+- This prevents the "Too many clients" error that causes the red box you saw.
 
 ---
 
-### 2. Vercel Deployment Sync Instructions
+### 2. Vercel Deployment Sync
 
-1. **Commit your local changes**:
-   - Open your terminal and run:
-     ```bash
-     git add .
-     git commit -m "Hardening and Branding updates"
-     ```
-2. **Push to your repository**:
-   - Run:
-     ```bash
-     git push origin main
-     ```
-3. **Verify Vercel Build**:
-   - Go to your Vercel Dashboard and watch the "Deployments" tab. It will automatically start building the new code.
-   - Once finished, the UI will match your local "Two-Line Branding" version.
+- I will provide instructions to check the **Vercel Build Logs** to see why your latest push isn't showing up.
 
 ## Verification Plan
 
+### Automated Verification
+- Run `npm run typecheck` to ensure the logic changes don't break the build.
+
 ### Manual Verification
-1. Locally, simulate an empty database by pointing to a temporary test DB.
-2. Open the Dashboard.
-   - **Verify**: The page loads with "No active billing period" card and USh 0 totals.
-3. After pushing to Git, refresh the Vercel URL.
-   - **Verify**: The branding matches the local version.
+1. Push the changes to GitHub.
+2. Monitor Vercel until the deployment for commit "Database Stability Hardening" is **Ready**.
+3. Open the site and verify that the "Something went wrong" error is permanently resolved.
