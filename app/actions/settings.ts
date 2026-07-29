@@ -155,6 +155,7 @@ export async function uploadLogo(formData: FormData) {
 
   let logoUrl: string
 
+  const isProduction = process.env.NODE_ENV === "production"
   const hasBlobToken = process.env.BLOB_READ_WRITE_TOKEN &&
     process.env.BLOB_READ_WRITE_TOKEN !== "replace-with-a-real-vercel-blob-token"
 
@@ -164,8 +165,8 @@ export async function uploadLogo(formData: FormData) {
       addRandomSuffix: true,
     })
     logoUrl = blob.url
-  } else {
-    // Local fallback for development/no-token environments
+  } else if (!isProduction) {
+    // Local fallback for development/no-token environments only
     const bytes = await file.arrayBuffer()
     const buffer = Buffer.from(bytes)
     const filename = `${Date.now()}-${file.name.replace(/\s+/g, "-")}`
@@ -174,6 +175,10 @@ export async function uploadLogo(formData: FormData) {
     await fs.mkdir(uploadDir, { recursive: true })
     await fs.writeFile(path.join(uploadDir, filename), buffer)
     logoUrl = `/uploads/${filename}`
+  } else {
+    // Goal Alignment: Physically block local filesystem writes in production.
+    // This prevents data loss on serverless/ephemeral platforms.
+    return { ok: false as const, error: "Cloud storage (Vercel Blob) is not configured. Please contact the system administrator." }
   }
 
   await db

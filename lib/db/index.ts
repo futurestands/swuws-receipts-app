@@ -25,14 +25,21 @@ function createPool(): Pool {
     return new Pool()
   }
 
-  // Supabase/Pooler require SSL with rejectUnauthorized: false
-  const useSsl = urlString.includes("supabase.com") || urlString.includes("pooler.supabase.com")
+  const isProduction = process.env.NODE_ENV === "production"
+  const isVercel = !!process.env.VERCEL
+
+  // Goal Alignment: More robust SSL detection. Enable SSL for all remote hosts.
+  let useSsl = false
+  try {
+    const url = new URL(urlString)
+    useSsl = url.hostname !== "localhost" && url.hostname !== "127.0.0.1"
+  } catch (e) {
+    useSsl = urlString.includes("supabase.co") || urlString.includes("pooler.supabase.com")
+  }
   const sslConfig = useSsl ? { rejectUnauthorized: false } : false
 
   try {
     const url = new URL(urlString)
-    const isProduction = process.env.NODE_ENV === "production"
-
     const config = {
       host: url.hostname,
       port: url.port ? parseInt(url.port) : 5432,
@@ -40,10 +47,11 @@ function createPool(): Pool {
       password: decodeURIComponent(url.password),
       database: url.pathname.slice(1) || "postgres",
       ssl: sslConfig,
-      // Goal Alignment: In production (Vercel), we must cap the pool to 1
-      // because each serverless function gets its own instance.
-      // This prevents exhausting Supabase's connection limit.
-      max: isProduction ? 1 : 20,
+      // Goal Alignment: Platform-aware pool sizing.
+      // - Vercel: Cap at 1 (Serverless concurrency limit safety)
+      // - Generic Production: Cap at 10 (standard dedicated server)
+      // - Local: Cap at 20 (Speed for development)
+      max: isVercel ? 1 : (isProduction ? 10 : 20),
       idleTimeoutMillis: 30_000,
       connectionTimeoutMillis: 30_000,
     }
