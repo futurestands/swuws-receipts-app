@@ -6,41 +6,37 @@ import { sendPasswordResetEmail } from "./email-service"
 
 const isProduction = process.env.NODE_ENV === "production"
 
-// Goal Alignment: Robust baseURL detection. In production, we prioritize
-// Vercel provided URLs and ensure localhost is never used.
-const rawBaseURL =
-  (isProduction ? undefined : process.env.BETTER_AUTH_URL) ||
-  (process.env.VERCEL_PROJECT_PRODUCTION_URL
-    ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
-    : undefined) ||
-  (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : undefined) ||
+// Goal Alignment: Robust baseURL detection.
+// We strictly normalize all origins to include the protocol.
+const normalizeOrigin = (url: string) => url.startsWith('http') ? url : `https://${url}`
+
+const baseURL = normalizeOrigin(
+  process.env.BETTER_AUTH_URL ||
+  process.env.VERCEL_PROJECT_PRODUCTION_URL ||
+  process.env.VERCEL_URL ||
   process.env.V0_RUNTIME_URL ||
   "http://localhost:3000"
+)
 
-const baseURL = rawBaseURL.startsWith('http') ? rawBaseURL : `https://${rawBaseURL}`
-
-// Audit finding 9.7: previously this list was built ONLY from
-// Vercel-specific environment variables, so any non-Vercel deployment that
-// didn't happen to set those would silently end up with an empty
-// trustedOrigins array. BETTER_AUTH_TRUSTED_ORIGINS is a new, always-honored
-// variable independent of the hosting provider.
+// Audit finding 9.7: Environment variable trust list.
 const explicitTrustedOrigins = (process.env.BETTER_AUTH_TRUSTED_ORIGINS || "")
   .split(",")
   .map((s) => s.trim())
   .filter(Boolean)
+  .map(normalizeOrigin)
 
-// Goal Alignment: Dynamically trust any Vercel deployment URL to prevent
-// "Invalid origin" errors during testing and production.
+// Goal Alignment: Automatic Vercel URL trust.
+// We trust the specific deployment URL AND the production project URL.
 const dynamicVercelOrigins = [
   process.env.VERCEL_URL,
   process.env.VERCEL_PROJECT_PRODUCTION_URL,
-].filter(Boolean).map(url => url?.startsWith('http') ? url : `https://${url}`)
+].filter(Boolean).map(url => normalizeOrigin(url!))
 
 const trustedOrigins = [
   ...explicitTrustedOrigins,
   ...dynamicVercelOrigins,
-  process.env.V0_RUNTIME_URL,
-  "http://localhost:3000" // Always trust local
+  normalizeOrigin(process.env.V0_RUNTIME_URL || ""),
+  "http://localhost:3000"
 ].filter(Boolean) as string[]
 
 if (isProduction) {
