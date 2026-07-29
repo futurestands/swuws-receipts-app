@@ -16,15 +16,17 @@ export default async function DashboardPage() {
   const current = await getCurrentUser()
   const canViewAll = current ? canViewAllData(current) : false
   const canIssue = current ? canIssueReceipt(current) : false
+
+  // Wrap all fetchers in a promise-safe result pattern or defaults
   const [receipts, totals, settings, branches, methods, periods, schemes, collectionSummary] = await Promise.all([
-    getReceipts(50),
+    getReceipts(50).catch(() => []),
     getDailyTotals(),
     getSettings(),
-    listActiveBranches(),
-    listActivePaymentMethods(),
-    getCollectionPeriods(),
-    getAuthorizedSchemes(),
-    getCollectionSummary(),
+    listActiveBranches().catch(() => []),
+    listActivePaymentMethods().catch(() => []),
+    getCollectionPeriods().catch(() => []),
+    getAuthorizedSchemes().catch(() => []),
+    getCollectionSummary().catch(() => null),
   ])
 
   return (

@@ -1,7 +1,8 @@
-# Tasks: Sidebar Branding Refinement
+# Tasks: Production Dashboard Stability
 
-- `[x]` Refactor AppShell Sidebar Header
-    - `[x]` Update desktop sidebar header layout
-    - `[x]` Update mobile drawer header layout
-    - `[x]` Update mobile-view top bar header layout
-- `[x]` Final Verification
+- `[/]` Backend Data Guards
+    - `[ ]` Ensure `getDailyTotals` in `app/actions/receipts.ts` returns safe defaults
+- `[/]` Dashboard UI Resilience
+    - `[ ]` Add safety fallbacks to `app/dashboard/page.tsx`
+    - `[ ]` Harden `components/dashboard/collection-summary-card.tsx` against zero-division
+- `[ ]` Final Verification

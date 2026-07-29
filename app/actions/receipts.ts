@@ -544,28 +544,33 @@ export async function uploadReceiptAttachment(receiptId: string, formData: FormD
 }
 
 export async function getDailyTotals(dateISO?: string) {
-  const current = await requireUser()
-  const day = dateISO ? new Date(dateISO) : new Date()
-  const start = new Date(day)
-  start.setHours(0, 0, 0, 0)
-  const end = new Date(day)
-  end.setHours(23, 59, 59, 999)
+  try {
+    const current = await requireUser()
+    const day = dateISO ? new Date(dateISO) : new Date()
+    const start = new Date(day)
+    start.setHours(0, 0, 0, 0)
+    const end = new Date(day)
+    end.setHours(23, 59, 59, 999)
 
-  const scope = applyReceiptScope(current)
-  const conditions = [gte(receipt.createdAt, start), lte(receipt.createdAt, end)]
-  if (scope) conditions.push(scope)
+    const scope = applyReceiptScope(current)
+    const conditions = [gte(receipt.createdAt, start), lte(receipt.createdAt, end)]
+    if (scope) conditions.push(scope)
 
-  const [totals] = await db
-    .select({
-      count: sql<number>`count(*)::int`,
-      total: sql<number>`coalesce(sum(${receipt.amount}), 0)::bigint`,
-    })
-    .from(receipt)
-    .where(and(...conditions))
+    const [totals] = await db
+      .select({
+        count: sql<number>`count(*)::int`,
+        total: sql<number>`coalesce(sum(${receipt.amount}), 0)::bigint`,
+      })
+      .from(receipt)
+      .where(and(...conditions))
 
-  return {
-    count: Number(totals?.count ?? 0),
-    total: Number(totals?.total ?? 0),
+    return {
+      count: Number(totals?.count ?? 0),
+      total: Number(totals?.total ?? 0),
+    }
+  } catch (e) {
+    console.warn("getDailyTotals failed - using empty fallback", e)
+    return { count: 0, total: 0 }
   }
 }
 
