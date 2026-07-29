@@ -37,12 +37,12 @@ async function getExistenceMaps() {
   ])
 
   return {
-    clusters: new Map(clusters.map((c) => [c.name.toLowerCase(), c])),
-    clusterCodes: new Set(clusters.map((c) => c.code.toLowerCase())),
-    areas: new Map(areas.map((a) => [a.name.toLowerCase(), a])),
-    areaCodes: new Set(areas.map((a) => a.code.toLowerCase())),
-    schemes: new Map(schemes.map((s) => [s.name.toLowerCase(), s])),
-    schemeCodes: new Set(schemes.map((s) => s.code.toLowerCase())),
+    clusters: new Map(clusters.map((c) => [String(c.name).toLowerCase(), c])),
+    clusterCodes: new Set(clusters.map((c) => String(c.code).toLowerCase())),
+    areas: new Map(areas.map((a) => [String(a.name).toLowerCase(), a])),
+    areaCodes: new Set(areas.map((a) => String(a.code).toLowerCase())),
+    schemes: new Map(schemes.map((s) => [String(s.name).toLowerCase(), s])),
+    schemeCodes: new Set(schemes.map((s) => String(s.code).toLowerCase())),
   }
 }
 
@@ -88,30 +88,30 @@ export async function validateHierarchy(formData: FormData): Promise<{ ok: true;
 
       if (data.type === "Cluster") {
         if (!canManageClusters(current)) errors.push("You are not authorized to create Clusters")
-        if (existence.clusterCodes.has(data.code)) errors.push(`Cluster code ${data.code} already exists`)
+        if (existence.clusterCodes.has(String(data.code).toLowerCase())) errors.push(`Cluster code ${data.code} already exists`)
       } else if (data.type === "Branch") {
         if (!canManageAreas(current)) errors.push("You are not authorized to create Branches (Areas)")
-        if (existence.areaCodes.has(data.code)) errors.push(`Branch code ${data.code} already exists`)
+        if (existence.areaCodes.has(String(data.code).toLowerCase())) errors.push(`Branch code ${data.code} already exists`)
         if (data.parentName) {
-          if (!existence.clusters.has(data.parentName.toLowerCase())) {
+          if (!existence.clusters.has(String(data.parentName).toLowerCase())) {
             errors.push(`Parent Cluster not found: ${data.parentName}`)
           }
         }
       } else if (data.type === "Scheme") {
         if (!canManageSchemes(current)) errors.push("You are not authorized to create Schemes")
-        if (existence.schemeCodes.has(data.code)) errors.push(`Scheme code ${data.code} already exists`)
+        if (existence.schemeCodes.has(String(data.code).toLowerCase())) errors.push(`Scheme code ${data.code} already exists`)
 
         if (!data.parentName) {
           errors.push("Parent Area Office is required for Schemes")
-        } else if (!existence.areas.has(data.parentName.toLowerCase())) {
+        } else if (!existence.areas.has(String(data.parentName).toLowerCase())) {
           warnings.push(`New Area Office will be created: ${data.parentName}`)
         }
       }
 
-      if (seenCodes.has(data.code)) {
+      if (seenCodes.has(String(data.code).toLowerCase())) {
         errors.push(`Duplicate code in file: ${data.code}`)
       }
-      seenCodes.add(data.code)
+      seenCodes.add(String(data.code).toLowerCase())
 
       return { errors, warnings }
     }
