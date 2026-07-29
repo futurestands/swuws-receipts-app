@@ -514,8 +514,12 @@ export async function importBilling(
       }, tx)
 
       // 5. Synchronize Customer Balances with EBS Source of Truth
-      // For every imported bill, we set the customer's LIVE balance to match the TotalDue
+      // For every imported bill, we set the customer's LIVE balance to match the TotalDue.
+      // Goal Alignment: Added FOR UPDATE row locking to prevent race conditions during high-volume collections.
       for (const record of recordsToInsert) {
+        // Lock the customer row specifically for this balance overwrite
+        await tx.execute(sql`SELECT id FROM "customer" WHERE id = ${record.customerId} FOR UPDATE`)
+
         await tx
           .update(customer)
           .set({

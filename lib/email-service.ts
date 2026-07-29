@@ -17,11 +17,32 @@ export interface EmailOptions {
 }
 
 async function sendRawEmail(options: EmailOptions) {
-  const hasKey = !!process.env.RESEND_API_KEY && process.env.RESEND_API_KEY !== "re-place-with-real-key"
+  const apiKey = process.env.RESEND_API_KEY
+  const hasKey = !!apiKey && apiKey !== "re-place-with-real-key"
 
   if (hasKey) {
-    // Implementation for a real provider like Resend
-    // await fetch("https://api.resend.com/emails", { ... })
+    try {
+      const res = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          from: "SWUWS Portal <noreply@receipts.swuws.org>", // Replace with your verified domain
+          to: [options.to],
+          subject: options.subject,
+          html: options.html,
+        }),
+      })
+
+      if (!res.ok) {
+        const error = await res.json()
+        console.error("[EMAIL SERVICE] Resend API Error:", error)
+      }
+    } catch (e) {
+      console.error("[EMAIL SERVICE] Failed to reach email provider:", e)
+    }
   }
 
   // Always log to console in development/testing

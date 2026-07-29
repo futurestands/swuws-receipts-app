@@ -6,16 +6,18 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { AlertCircle, Trash2, ShieldAlert, CheckCircle2, Loader2 } from "lucide-react"
+import { Checkbox } from "@/components/ui/checkbox"
 import { toast } from "sonner"
 import { wipeOperationalData } from "@/app/actions/admin"
 
 export function SystemResetPanel() {
   const [confirmText, setConfirmText] = useState("")
+  const [confirmAuditDelete, setConfirmAuditDelete] = useState(false)
   const [isPending, startTransition] = useTransition()
   const [success, setSuccess] = useState(false)
 
   function handleReset() {
-    if (confirmText !== "RESET") return
+    if (confirmText !== "RESET" || !confirmAuditDelete) return
 
     startTransition(async () => {
       const res = await wipeOperationalData(confirmText)
@@ -73,7 +75,7 @@ export function SystemResetPanel() {
                 <li>All Customers & Meter Readings</li>
                 <li>Every Receipt & Print History</li>
                 <li>All Monthly Bills & Daily Collections</li>
-                <li>Audit Logs (Testing Phase)</li>
+                <li>Entire System Audit History (Full Trail)</li>
               </ul>
             </div>
             <div className="p-4 rounded-lg border bg-green-50/20 space-y-2">
@@ -99,7 +101,27 @@ export function SystemResetPanel() {
             </div>
           </div>
 
-          <div className="space-y-4 max-w-sm mx-auto pt-4">
+          <div className="space-y-4 max-w-md mx-auto pt-4">
+            <div className="flex items-start space-x-3 p-4 rounded-md bg-destructive/5 border border-destructive/10">
+              <Checkbox
+                id="audit-confirm"
+                checked={confirmAuditDelete}
+                onCheckedChange={(checked) => setConfirmAuditDelete(!!checked)}
+                className="mt-1"
+              />
+              <div className="grid gap-1.5 leading-none">
+                <label
+                  htmlFor="audit-confirm"
+                  className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                >
+                  Confirm Audit Log Deletion
+                </label>
+                <p className="text-xs text-muted-foreground">
+                  I understand that this will permanently delete all security, IAM, and system configuration logs, starting a completely fresh audit trail.
+                </p>
+              </div>
+            </div>
+
             <div className="space-y-2 text-center">
               <Label htmlFor="reset-confirm" className="text-sm font-medium">
                 Type <span className="font-mono font-bold text-destructive underline">RESET</span> to confirm
@@ -119,7 +141,7 @@ export function SystemResetPanel() {
             variant="destructive"
             size="lg"
             className="w-full max-w-sm gap-2 font-black"
-            disabled={confirmText !== "RESET" || isPending}
+            disabled={confirmText !== "RESET" || !confirmAuditDelete || isPending}
             onClick={handleReset}
           >
             {isPending ? (
