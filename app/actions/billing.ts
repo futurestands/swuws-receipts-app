@@ -390,7 +390,7 @@ export async function validateBillingImport(
       const errors: string[] = []
       const warnings: string[] = []
 
-      const accLower = data.accountNumber?.toLowerCase()
+      const accLower = String(data.accountNumber).toLowerCase()
       const targetCustomer = customerMap.get(accLower)
 
       if (!targetCustomer) {

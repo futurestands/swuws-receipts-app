@@ -15,7 +15,7 @@ import { processExcelImport, getImportMapping, type ImportSummary } from "@/lib/
 
 const tariffImportSchema = z.object({
   targetType: z.enum(["branch", "scheme"]),
-  targetName: z.string().trim().min(1, "Area name is required"),
+  targetName: z.coerce.string().trim().min(1, "Area name is required"),
   unitPrice: z.coerce.number().min(0, "Unit price cannot be negative"),
   serviceFee: z.coerce.number().min(0, "Service fee cannot be negative"),
   vatPercentage: z.coerce.number().min(0).max(100).default(18),
@@ -57,15 +57,16 @@ export async function validateTariffImport(formData: FormData): Promise<{ ok: tr
       const errors: string[] = []
       const warnings: string[] = []
 
-      const nameLower = data.targetName.toLowerCase()
+      const targetNameStr = String(data.targetName)
+      const nameLower = targetNameStr.toLowerCase()
       let targetId: string | undefined
 
       if (data.targetType === "branch") {
         targetId = branchMap.get(nameLower)
-        if (!targetId) errors.push(`Branch "${data.targetName}" not found`)
+        if (!targetId) errors.push(`Branch "${targetNameStr}" not found`)
       } else {
         targetId = schemeMap.get(nameLower)
-        if (!targetId) errors.push(`Scheme "${data.targetName}" not found`)
+        if (!targetId) errors.push(`Scheme "${targetNameStr}" not found`)
       }
 
       if (targetId) {

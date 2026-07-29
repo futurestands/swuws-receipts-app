@@ -19,10 +19,10 @@ import { processExcelImport, getImportMapping, type ImportSummary } from "@/lib/
 
 const customerImportSchema = z.object({
   name: z.string().trim().min(1, "Name is required"),
-  customerAccount: z.string().trim().min(1, "Account number is required"),
+  customerAccount: z.coerce.string().trim().min(1, "Account number is required"),
   phone: z.coerce.string().trim().optional(),
   address: z.string().trim().optional(),
-  schemeName: z.string().trim().min(1, "Water Scheme is required"),
+  schemeName: z.coerce.string().trim().min(1, "Water Scheme is required"),
   meterRef: z.coerce.string().trim().optional(),
   serialNo: z.coerce.string().trim().optional(),
   openingArrears: z.coerce.number().default(0),
@@ -72,7 +72,7 @@ export async function validateCustomerImport(formData: FormData): Promise<{ ok: 
       const warnings: string[] = []
 
       if (data.customerAccount) {
-        const accLower = data.customerAccount.toLowerCase()
+        const accLower = String(data.customerAccount).toLowerCase()
         if (existingAccounts.has(accLower)) {
           if (allowUpdates) {
             warnings.push("Existing customer: Details will be updated")
@@ -87,7 +87,7 @@ export async function validateCustomerImport(formData: FormData): Promise<{ ok: 
       }
 
       if (data.schemeName) {
-        if (!schemeMap.has(data.schemeName.toLowerCase())) {
+        if (!schemeMap.has(String(data.schemeName).toLowerCase())) {
           errors.push(`Water Scheme not found: ${data.schemeName}`)
         }
       }
