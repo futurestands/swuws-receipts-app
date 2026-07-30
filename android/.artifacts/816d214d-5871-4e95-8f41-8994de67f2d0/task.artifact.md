@@ -1,0 +1,7 @@
+- [x] Downgrade Gradle Wrapper to 8.10.2
+- [x] Downgrade AGP to 8.7.3 in root `build.gradle`
+- [x] Downgrade SDK versions to 35 in `variables.gradle`
+- [x] Enforce stable dependency versions to fix "prolog" errors
+- [x] Increase minSdkVersion to 26 for plugin compatibility
+- [x] Sync Gradle and verify resolution
+- [x] Build project
