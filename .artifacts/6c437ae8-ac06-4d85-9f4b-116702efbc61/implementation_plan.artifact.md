@@ -1,45 +1,69 @@
-# Implementation Plan: Android Assets & Hardware Integration
+# Implementation Plan: Category-Based Tariff System
 
-This plan focuses on professionalizing the Android application by adding custom branding (Icons & Splash Screen) and preparing the foundation for native hardware access (Bluetooth printing & QR scanning).
+This plan introduces support for different water rates within a single scheme based on customer categories (Domestic, Institutional, PSP, Commercial).
 
 ## User Review Required
 
 > [!IMPORTANT]
-> **Source Images Needed**: To generate professional icons and splash screens, you should provide two high-resolution images:
-> 1. `assets/icon.png`: **1024 x 1024 px** (The app icon)
-> 2. `assets/splash.png`: **2732 x 2732 px** (The loading screen)
+> **Data Migration**: I will add a `category` field to all existing customers. By default, I will set everyone to **'Domestic'**. You will then be able to update these categories via the Bulk Import tool.
 >
-> Until these are provided, I will use your current web icons as placeholders.
+> **Tariff Hierarchy**: The billing engine will now look for a tariff that matches **both** the Scheme/Branch AND the Customer Category. If no category-specific tariff exists, it will fall back to the base rate if you configure one (or require a category-specific one).
 
 ## Proposed Changes
 
 ---
 
-### 1. Asset Generation (Branding)
+### 1. Database Schema Updates
 
-#### [NEW] Assets Pipeline
-- Install `@capacitor/assets` to automatically generate all 20+ required Android icon and splash screen sizes.
-- Create an `assets/` directory in the project root.
+#### [MODIFY] [lib/db/schema/crm.ts](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/lib/db/schema/crm.ts)
+- Add `category` column to the `customer` table.
+- Type: `text`, default: `'domestic'`.
+- Allowed values: `domestic`, `institutional`, `psp`, `commercial`.
 
-#### [MODIFY] Android Resources
-- Run the asset generator to overwrite the default Capacitor/Android icons with SWUWS branding.
+#### [MODIFY] [lib/db/schema/billing.ts](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/lib/db/schema/billing.ts)
+- Add `customerCategory` column to `tariff_configuration`.
+- Update the unique index `tariff_target_idx` to include `customerCategory`. This allows you to have 4 different prices for the same Water Scheme.
+
+#### [NEW] [db/migrations/0037_customer_category_tariffs.sql](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/db/migrations/0037_customer_category_tariffs.sql)
+- Migration script to add the columns and update the constraints.
 
 ---
 
-### 2. Native Capabilities (Hardware Access)
+### 2. Import Engine Hardening
 
-#### [MODIFY] [AndroidManifest.xml](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/android/app/src/main/AndroidManifest.xml)
-- Add required Android permissions for future features:
-    - `BLUETOOTH` & `BLUETOOTH_ADMIN`: For portable thermal printing.
-    - `CAMERA`: For scanning customer ID/Meter QR codes.
+#### [MODIFY] [app/actions/customer-import.ts](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/app/actions/customer-import.ts)
+- Update the Excel schema to include a "Category" column.
+- Logic: Map "Domestic", "Institution", etc., from Excel to the internal database keys.
 
-#### [TODO] Install Native Plugins
-- `@capacitor/barcode-scanner`: For high-speed QR detection.
-- `@capacitor-community/bluetooth-le`: For communication with field printers.
+#### [MODIFY] [app/actions/tariff-import.ts](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/app/actions/tariff-import.ts)
+- Update the Tariff Excel schema to include "Category".
+- Ensure bulk updates can set different prices for different categories in the same file.
+
+---
+
+### 3. Billing Engine Intelligence
+
+#### [MODIFY] [app/actions/billing-engine.ts](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/app/actions/billing-engine.ts)
+- **`getTariffForCustomer`**:
+    - Fetch the customer's category first.
+    - Query `tariff_configuration` where `targetId` matches AND `customerCategory` matches the customer's category.
+- **`upsertTariff`**: Update to handle the new category field.
+
+---
+
+### 4. Admin UI Enhancements
+
+#### [MODIFY] [app/admin/tariff-panel.tsx](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/app/admin/tariff-panel.tsx)
+- Update the "Add Tariff" form to include a "Category" dropdown.
+- Update the display table to show which category each price applies to.
 
 ## Verification Plan
 
+### Automated Verification
+- Update `math.test.ts` to verify that a "Commercial" customer is billed correctly using a commercial tariff, even if a cheaper "Domestic" tariff exists for the same scheme.
+
 ### Manual Verification
-1. **Asset Check**: Run the generation script and verify that the `android/app/src/main/res/mipmap-*` folders are updated with the new icons.
-2. **Permissions Check**: Open the app on your phone. Go to **Settings > Apps > SWUWS**. **Verify**: The Camera and Bluetooth permissions are listed as available.
-3. **Studio Sync**: In Android Studio, click **"Sync Project with Gradle Files"**. **Verify**: No errors occur.
+1. Import a customer with category "Institutional".
+2. Create a "Domestic" tariff for their scheme (e.g. 2000 UGX) and an "Institutional" tariff (e.g. 5000 UGX).
+3. Record a meter reading for that customer.
+4. **Verify**: The "Amount Due" is calculated using the 5000 UGX rate.

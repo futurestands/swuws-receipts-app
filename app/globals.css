@@ -250,3 +250,23 @@
     print-color-adjust: exact !important;
   }
 }
+
+/* ---------------------------------------------------------------------
+   Capacitor Barcode Scanner Support
+   --------------------------------------------------------------------- */
+body.scanner-active {
+  background-color: transparent !important;
+}
+
+body.scanner-active * {
+  visibility: hidden;
+}
+
+body.scanner-active div[className*="z-50"] {
+  visibility: visible;
+  pointer-events: auto;
+}
+
+body.scanner-active div[className*="z-50"] * {
+  visibility: visible;
+}

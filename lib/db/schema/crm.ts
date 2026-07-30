@@ -29,6 +29,7 @@ export const customer = pgTable(
     notes: text("notes"),
     openingArrears: integer("openingArrears").notNull().default(0),
     accountBalance: bigint("accountBalance", { mode: "number" }).notNull().default(0),
+    category: text("category").notNull().default("domestic"), // domestic, institutional, psp, commercial
     active: boolean("active").notNull().default(true),
     createdById: text("createdById").references(() => user.id, { onDelete: "set null" }),
     createdAt: timestamp("createdAt").notNull().defaultNow(),

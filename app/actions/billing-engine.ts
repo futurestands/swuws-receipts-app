@@ -46,6 +46,7 @@ export async function getTariffForCustomer(customerId: string) {
       id: customer.id,
       waterSchemeId: customer.waterSchemeId,
       branchId: waterScheme.branchId,
+      category: customer.category,
     })
     .from(customer)
     .leftJoin(waterScheme, eq(customer.waterSchemeId, waterScheme.id))
@@ -53,6 +54,8 @@ export async function getTariffForCustomer(customerId: string) {
     .limit(1)
 
   if (!cust) return null
+
+  const category = cust.category || 'domestic'
 
   if (cust.waterSchemeId) {
     const [schemeTariff] = await db
@@ -62,6 +65,7 @@ export async function getTariffForCustomer(customerId: string) {
         and(
           eq(tariffConfiguration.targetType, "scheme"),
           eq(tariffConfiguration.targetId, cust.waterSchemeId),
+          eq(tariffConfiguration.customerCategory, category),
           eq(tariffConfiguration.active, true)
         )
       )
@@ -78,6 +82,7 @@ export async function getTariffForCustomer(customerId: string) {
         and(
           eq(tariffConfiguration.targetType, "branch"),
           eq(tariffConfiguration.targetId, cust.branchId),
+          eq(tariffConfiguration.customerCategory, category),
           eq(tariffConfiguration.active, true)
         )
       )
@@ -242,6 +247,7 @@ export async function upsertTariff(data: {
   id?: string
   targetType: "branch" | "scheme"
   targetId: string
+  customerCategory: string
   unitPrice: number
   serviceFee: number
   vatPercentage: number
@@ -250,6 +256,7 @@ export async function upsertTariff(data: {
   if (!user || !canConfigureSystem(user)) throw new Error("Unauthorized")
 
   const id = data.id || randomUUID()
+  const category = data.customerCategory.toLowerCase().trim()
 
   await db
     .insert(tariffConfiguration)
@@ -257,6 +264,7 @@ export async function upsertTariff(data: {
       id,
       targetType: data.targetType,
       targetId: data.targetId,
+      customerCategory: category,
       unitPrice: data.unitPrice,
       serviceFee: data.serviceFee,
       vatPercentage: data.vatPercentage,
@@ -264,7 +272,7 @@ export async function upsertTariff(data: {
       updatedAt: new Date(),
     })
     .onConflictDoUpdate({
-      target: [tariffConfiguration.targetType, tariffConfiguration.targetId],
+      target: [tariffConfiguration.targetType, tariffConfiguration.targetId, tariffConfiguration.customerCategory],
       set: {
         unitPrice: data.unitPrice,
         serviceFee: data.serviceFee,

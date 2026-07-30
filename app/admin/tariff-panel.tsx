@@ -20,6 +20,7 @@ type TariffWithMetadata = {
   targetType: string
   targetId: string
   targetName: string
+  customerCategory: string
   unitPrice: number
   serviceFee: number
   vatPercentage: number
@@ -40,6 +41,7 @@ export function TariffPanel({
   const [formData, setFormData] = useState({
     targetType: "branch" as "branch" | "scheme",
     targetId: "",
+    customerCategory: "domestic",
     unitPrice: "",
     serviceFee: "",
     vatPercentage: "18",
@@ -56,6 +58,7 @@ export function TariffPanel({
         const result = await upsertTariff({
           targetType: formData.targetType,
           targetId: formData.targetId,
+          customerCategory: formData.customerCategory,
           unitPrice: Number(formData.unitPrice),
           serviceFee: Number(formData.serviceFee || 0),
           vatPercentage: Number(formData.vatPercentage),
@@ -64,7 +67,14 @@ export function TariffPanel({
         if (result.ok) {
           toast.success("Tariff saved successfully")
           setOpen(false)
-          setFormData({ targetType: "branch", targetId: "", unitPrice: "", serviceFee: "", vatPercentage: "18" })
+          setFormData({
+            targetType: "branch",
+            targetId: "",
+            customerCategory: "domestic",
+            unitPrice: "",
+            serviceFee: "",
+            vatPercentage: "18"
+          })
         }
       } catch (err: any) {
         toast.error(err.message || "Failed to save tariff")
@@ -140,6 +150,22 @@ export function TariffPanel({
                   </div>
                 </div>
 
+                <div className="space-y-2">
+                  <Label>Customer Category</Label>
+                  <Select
+                    value={formData.customerCategory}
+                    onValueChange={(v) => setFormData(f => ({ ...f, customerCategory: v ?? "domestic" }))}
+                  >
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="domestic">Domestic</SelectItem>
+                      <SelectItem value="institutional">Institutional</SelectItem>
+                      <SelectItem value="psp">PSP (Public Stand Pipes)</SelectItem>
+                      <SelectItem value="commercial">Commercial</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label>Unit Rate (UGX/m³)</Label>
@@ -186,6 +212,7 @@ export function TariffPanel({
               <TableRow>
                 <TableHead>Target Area</TableHead>
                 <TableHead>Level</TableHead>
+                <TableHead>Category</TableHead>
                 <TableHead>Unit Price</TableHead>
                 <TableHead>Service Fee</TableHead>
                 <TableHead>VAT %</TableHead>
@@ -195,7 +222,7 @@ export function TariffPanel({
             <TableBody>
               {tariffs.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center py-8 text-muted-foreground italic">
+                  <TableCell colSpan={7} className="text-center py-8 text-muted-foreground italic">
                     No tariffs configured yet. Click "Add Tariff" to begin.
                   </TableCell>
                 </TableRow>
@@ -208,6 +235,11 @@ export function TariffPanel({
                         {t.targetType === 'branch' ? <Globe className="h-3 w-3" /> : <Home className="h-3 w-3" />}
                         {t.targetType.toUpperCase()}
                       </span>
+                    </TableCell>
+                    <TableCell>
+                      <div className="text-xs uppercase font-bold text-brand-blue">
+                        {t.customerCategory}
+                      </div>
                     </TableCell>
                     <TableCell>{formatUGX(t.unitPrice)} / m³</TableCell>
                     <TableCell>{formatUGX(t.serviceFee)} / mo</TableCell>

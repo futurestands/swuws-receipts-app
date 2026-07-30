@@ -26,6 +26,7 @@ const customerImportSchema = z.object({
   meterRef: z.coerce.string().trim().optional(),
   serialNo: z.coerce.string().trim().optional(),
   openingArrears: z.coerce.number().default(0),
+  category: z.string().trim().toLowerCase().default("domestic"), // domestic, institutional, psp, commercial
   notes: z.string().trim().optional(),
 })
 
@@ -60,6 +61,7 @@ export async function validateCustomerImport(formData: FormData): Promise<{ ok: 
     meterRef: "MeterRef",
     serialNo: "MeterSerial",
     openingArrears: "OpeningArrears",
+    category: "Category",
     notes: "Notes"
   }
 
@@ -134,6 +136,7 @@ export async function importCustomers(summary: CustomerImportSummary): Promise<{
           waterSchemeId: schemeId || existing.waterSchemeId,
           meterRef: data.meterRef || existing.meterRef,
           serialNo: data.serialNo || existing.serialNo,
+          category: data.category || existing.category,
           openingArrears: data.openingArrears, // Arrears update is explicit
           accountBalance: data.openingArrears, // Reset balance to new arrears snapshot
           updatedAt: new Date(),
@@ -152,6 +155,7 @@ export async function importCustomers(summary: CustomerImportSummary): Promise<{
           waterSchemeId: schemeId || null,
           meterRef: data.meterRef || null,
           serialNo: data.serialNo || null,
+          category: data.category || "domestic",
           openingArrears: data.openingArrears,
           accountBalance: data.openingArrears,
           notes: data.notes || null,
@@ -206,6 +210,7 @@ export async function downloadCustomerTemplate() {
     meterRef: "MeterRef",
     serialNo: "MeterSerial",
     openingArrears: "OpeningArrears",
+    category: "Category",
     notes: "Notes"
   }
 
@@ -222,6 +227,7 @@ export async function downloadCustomerTemplate() {
     else if (key === 'name') sampleRow[col] = "Jane Doe"
     else if (key === 'customerAccount') sampleRow[col] = "C-98765"
     else if (key === 'schemeName') sampleRow[col] = "Mbarara Central"
+    else if (key === 'category') sampleRow[col] = "domestic"
     else sampleRow[col] = "Sample Value"
   })
 

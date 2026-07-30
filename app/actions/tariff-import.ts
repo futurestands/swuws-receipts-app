@@ -16,6 +16,7 @@ import { processExcelImport, getImportMapping, type ImportSummary } from "@/lib/
 const tariffImportSchema = z.object({
   targetType: z.enum(["branch", "scheme"]),
   targetName: z.coerce.string().trim().min(1, "Area name is required"),
+  customerCategory: z.string().trim().toLowerCase().default("domestic"),
   unitPrice: z.coerce.number().min(0, "Unit price cannot be negative"),
   serviceFee: z.coerce.number().min(0, "Service fee cannot be negative"),
   vatPercentage: z.coerce.number().min(0).max(100).default(18),
@@ -43,6 +44,7 @@ export async function validateTariffImport(formData: FormData): Promise<{ ok: tr
   const mapping = (await getImportMapping('import.tariffs.bulk')) as any || {
     targetType: "Type", // "branch" or "scheme"
     targetName: "AreaName",
+    customerCategory: "Category",
     unitPrice: "UnitPrice",
     serviceFee: "ServiceFee",
     vatPercentage: "VAT",
@@ -126,7 +128,8 @@ export async function executeTariffImport(summary: TariffImportSummary): Promise
           .from(tariffConfiguration)
           .where(and(
             eq(tariffConfiguration.targetType, data.targetType),
-            eq(tariffConfiguration.targetId, targetId)
+            eq(tariffConfiguration.targetId, targetId),
+            eq(tariffConfiguration.customerCategory, data.customerCategory)
           ))
           .limit(1)
 
@@ -146,6 +149,7 @@ export async function executeTariffImport(summary: TariffImportSummary): Promise
             id: randomUUID(),
             targetType: data.targetType,
             targetId: targetId,
+            customerCategory: data.customerCategory,
             unitPrice: data.unitPrice,
             serviceFee: data.serviceFee,
             vatPercentage: data.vatPercentage,
@@ -174,10 +178,11 @@ export async function executeTariffImport(summary: TariffImportSummary): Promise
 
 export async function downloadTariffTemplate() {
   await requireUser()
-  const headers = ["Type", "AreaName", "UnitPrice", "ServiceFee", "VAT", "Status"]
+  const headers = ["Type", "AreaName", "Category", "UnitPrice", "ServiceFee", "VAT", "Status"]
   const data = [
-    { Type: "scheme", AreaName: "MASTYORO", UnitPrice: 3000, ServiceFee: 123, VAT: 18, Status: "true" },
-    { Type: "branch", AreaName: "BUSHENYI", UnitPrice: 2000, ServiceFee: 2000, VAT: 18, Status: "true" },
+    { Type: "scheme", AreaName: "MASTYORO", Category: "domestic", UnitPrice: 3000, ServiceFee: 123, VAT: 18, Status: "true" },
+    { Type: "scheme", AreaName: "MASTYORO", Category: "commercial", UnitPrice: 5000, ServiceFee: 5000, VAT: 18, Status: "true" },
+    { Type: "branch", AreaName: "BUSHENYI", Category: "domestic", UnitPrice: 2000, ServiceFee: 2000, VAT: 18, Status: "true" },
   ]
   const worksheet = XLSX.utils.json_to_sheet(data, { header: headers })
   const workbook = XLSX.utils.book_new()

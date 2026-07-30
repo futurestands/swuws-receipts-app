@@ -22,10 +22,12 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { toast } from "sonner"
-import { FileUp, Search, X } from "lucide-react"
+import { FileUp, Search, X, Camera, Loader2 } from "lucide-react"
 import Link from "next/link"
 import { FormField, FormActions } from "@/components/ui/form-layout"
 import type { Branch, WaterScheme } from "@/lib/db/schema"
+import { isNative } from "@/lib/mobile-hardware"
+import { CapacitorBarcodeScanner } from "@capacitor/barcode-scanner"
 
 export function CustomerSearchBar({
   initialQuery,
@@ -54,6 +56,7 @@ export function CustomerSearchBar({
   const [address, setAddress] = useState("")
   const [error, setError] = useState<string | null>(null)
   const [pending, startTransition] = useTransition()
+  const [isScanning, setIsScanning] = useState(false)
 
   // Filter schemes based on selected branch
   const filteredSchemes = useMemo(() => {
@@ -114,6 +117,49 @@ export function CustomerSearchBar({
 
   function handleSchemeChange(value: string | null) {
     setSchemeId(value ?? "all")
+  }
+
+  async function handleScan() {
+    if (!isNative()) {
+      toast.error("QR Scanning is only available on the Android app.")
+      return
+    }
+
+    try {
+      setIsScanning(true)
+      const result = await CapacitorBarcodeScanner.scanBarcode({
+        hint: 1 // 1 is for QR codes, or we can use CapacitorBarcodeScannerType.ALL if available
+      })
+
+      setIsScanning(false)
+
+      if (result.ScanResult) {
+        setQuery(result.ScanResult)
+        // Trigger search automatically
+        const params = new URLSearchParams()
+        params.set("q", result.ScanResult)
+        if (branchId !== "all") params.set("branchId", branchId)
+        if (schemeId !== "all") params.set("schemeId", schemeId)
+        startTransition(() => {
+          router.push(`/dashboard/customers?${params.toString()}`)
+        })
+      }
+    } catch (err) {
+      console.error(err)
+      setIsScanning(false)
+      toast.error("Scanning failed")
+    }
+  }
+
+  if (isScanning) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-6">
+        <div className="flex flex-col items-center gap-4">
+           <Loader2 className="size-12 text-white animate-spin" />
+           <p className="text-white font-bold">Initializing Scanner...</p>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -179,6 +225,20 @@ export function CustomerSearchBar({
               <Search className={`h-4 w-4 mr-2 ${pending ? "animate-pulse" : ""}`} />
               {pending ? "Filtering…" : "Search"}
             </Button>
+
+            {isNative() && (
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                onClick={handleScan}
+                className="h-11 w-11 shrink-0 border-brand-blue text-brand-blue"
+                title="Scan QR Code"
+              >
+                <Camera className="h-4 w-4" />
+              </Button>
+            )}
+
             {(query || branchId !== "all" || schemeId !== "all") && (
               <Button
                 type="button"

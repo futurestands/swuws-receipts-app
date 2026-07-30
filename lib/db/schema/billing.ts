@@ -163,6 +163,7 @@ export const tariffConfiguration = pgTable(
     id: text("id").primaryKey(),
     targetType: text("targetType").notNull(), // 'branch' or 'scheme'
     targetId: text("targetId").notNull(), // branchId or schemeId
+    customerCategory: text("customerCategory").notNull().default("domestic"), // domestic, institutional, psp, commercial
     unitPrice: bigint("unitPrice", { mode: "number" }).notNull().default(0), // UGX per m3
     serviceFee: bigint("serviceFee", { mode: "number" }).notNull().default(0), // Fixed monthly
     vatPercentage: integer("vatPercentage").notNull().default(18), // Default 18%
@@ -171,7 +172,7 @@ export const tariffConfiguration = pgTable(
     updatedAt: timestamp("updatedAt").notNull().defaultNow(),
   },
   (table) => ({
-    targetIdx: uniqueIndex("tariff_target_idx").on(table.targetType, table.targetId),
+    targetIdx: uniqueIndex("tariff_target_idx").on(table.targetType, table.targetId, table.customerCategory),
   }),
 )
 
