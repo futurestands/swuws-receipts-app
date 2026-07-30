@@ -22,8 +22,12 @@ export default async function AdminPage() {
 
   // Seed system templates on load for this version (v1.2)
   if (current && canConfigureSystem(current)) {
-    await seedV12Permissions()
-    await seedSystemTemplates()
+    try {
+      await seedV12Permissions()
+      await seedSystemTemplates()
+    } catch (e) {
+      console.error("Admin: Seeding failed", e)
+    }
   }
 
   const canManageUsersVal = current ? canManageUsers(current) : false
@@ -34,21 +38,21 @@ export default async function AdminPage() {
   const canManageIAMVal = current ? (current.permissions?.includes("roles.view") || current.permissions?.includes("permissions.view")) : false
 
   const [agents, auditLogs, stats, collections, printingStats, clusters, branches, methods, schemes, settings, periods, iamRoles, allPermissions, tariffs, templates] = await Promise.all([
-    canManageUsersVal ? listAgents() : Promise.resolve([]),
-    canAuditVal ? getAuditLogs(200) : Promise.resolve([]),
-    canViewReportsVal ? getSystemStats() : Promise.resolve({ agentCount: 0, receiptCount: 0, receiptTotal: 0 }),
-    canViewReportsVal ? getCollectionsSummary() : Promise.resolve({ perAgent: [], totalCount: 0, totalAmount: 0 }),
-    canViewReportsVal ? getPrintingReports() : Promise.resolve({ mostReprinted: [], byUser: [], byBranch: [], dailySummary: [], byScheme: [], recentPrints: [] }),
-    canManageHierarchyVal ? listClusters() : Promise.resolve([]),
-    canManageHierarchyVal ? listBranches() : Promise.resolve([]),
-    canConfigureSystemVal ? listPaymentMethods() : Promise.resolve([]),
-    canManageHierarchyVal ? listWaterSchemes() : Promise.resolve([]),
+    canManageUsersVal ? listAgents().catch(() => []) : Promise.resolve([]),
+    canAuditVal ? getAuditLogs(200).catch(() => []) : Promise.resolve([]),
+    canViewReportsVal ? getSystemStats().catch(() => ({ agentCount: 0, receiptCount: 0, receiptTotal: 0 })) : Promise.resolve({ agentCount: 0, receiptCount: 0, receiptTotal: 0 }),
+    canViewReportsVal ? getCollectionsSummary().catch(() => ({ perAgent: [], totalCount: 0, totalAmount: 0 })) : Promise.resolve({ perAgent: [], totalCount: 0, totalAmount: 0 }),
+    canViewReportsVal ? getPrintingReports().catch(() => ({ mostReprinted: [], byUser: [], byBranch: [], dailySummary: [], byScheme: [], recentPrints: [] })) : Promise.resolve({ mostReprinted: [], byUser: [], byBranch: [], dailySummary: [], byScheme: [], recentPrints: [] }),
+    canManageHierarchyVal ? listClusters().catch(() => []) : Promise.resolve([]),
+    canManageHierarchyVal ? listBranches().catch(() => []) : Promise.resolve([]),
+    canConfigureSystemVal ? listPaymentMethods().catch(() => []) : Promise.resolve([]),
+    canManageHierarchyVal ? listWaterSchemes().catch(() => []) : Promise.resolve([]),
     getSettings(), // Settings is readable by all for branding
-    getCollectionPeriods(),
-    canManageIAMVal ? listRoles() : Promise.resolve([]),
-    canManageIAMVal ? listAllPermissions() : Promise.resolve([]),
-    canConfigureSystemVal ? listAllTariffs() : Promise.resolve([]),
-    canConfigureSystemVal ? listTemplates() : Promise.resolve([]),
+    getCollectionPeriods().catch(() => []),
+    canManageIAMVal ? listRoles().catch(() => []) : Promise.resolve([]),
+    canManageIAMVal ? listAllPermissions().catch(() => []) : Promise.resolve([]),
+    canConfigureSystemVal ? listAllTariffs().catch(() => []) : Promise.resolve([]),
+    canConfigureSystemVal ? listTemplates().catch(() => []) : Promise.resolve([]),
   ])
 
   const permissions = {
