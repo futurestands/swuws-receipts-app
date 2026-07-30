@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { toast } from "sonner"
-import { ShieldCheck, Lock, User } from "lucide-react"
+import { ShieldCheck, Lock, User, Smartphone, Download } from "lucide-react"
 
 export function AccountClient({ user }: { user: any }) {
   const [currentPassword, setCurrentPassword] = useState("")
@@ -120,6 +120,46 @@ export function AccountClient({ user }: { user: any }) {
           </form>
         </Card>
       </div>
+
+      {/* Mobile App Section */}
+      <Card className="border-brand-blue/20 bg-brand-blue/5">
+        <CardHeader>
+          <div className="flex items-center gap-3">
+             <div className="p-2 rounded-lg bg-brand-blue/10 text-brand-blue">
+                <Smartphone className="h-6 w-6" />
+             </div>
+             <div>
+                <CardTitle>SWUWS Mobile App</CardTitle>
+                <CardDescription>Get the official Android application for field operations.</CardDescription>
+             </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="grid gap-6 md:grid-cols-2 items-center">
+             <div className="space-y-2">
+                <p className="text-sm text-muted-foreground leading-relaxed">
+                  The SWUWS Mobile App is optimized for field collection. It includes features not available in the web version:
+                </p>
+                <ul className="text-xs space-y-1 text-muted-foreground list-disc pl-4">
+                   <li>High-speed QR Code scanning for customer lookup</li>
+                   <li>Bluetooth Thermal Receipt printing</li>
+                   <li>Location-aware meter reading capture</li>
+                   <li>Optimized interface for one-handed use</li>
+                </ul>
+             </div>
+             <div className="flex flex-col gap-3">
+                <Button asChild size="lg" className="w-full gap-2 font-bold shadow-md">
+                   <a href="/swuws-portal.apk" download>
+                      <Download className="h-5 w-5" /> Download for Android (APK)
+                   </a>
+                </Button>
+                <p className="text-[10px] text-center text-muted-foreground italic">
+                   Note: You may need to enable "Install from Unknown Sources" in your phone settings.
+                </p>
+             </div>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   )
 }
