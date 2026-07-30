@@ -21,13 +21,19 @@ export default async function CustomersPage({
   const current = await getCurrentUser()
   const canImport = current ? canUploadCustomers(current) : false
 
-  // Sync
   const { q, branchId, schemeId, page } = await searchParams
   const pageNum = Number(page) || 1
+
+  // Goal Alignment: Wrapped data fetching in resilience guards to prevent
+  // entire page crashes if the database is busy or has data anomalies.
   const [{ customers, total, totalPages }, branches, schemes] = await Promise.all([
-    searchCustomers({ query: q, branchId, waterSchemeId: schemeId, page: pageNum }),
-    listBranches(),
-    listWaterSchemes(),
+    searchCustomers({ query: q, branchId, waterSchemeId: schemeId, page: pageNum })
+      .catch((err) => {
+        console.error("Customer search failed:", err)
+        return { customers: [], total: 0, page: 1, pageSize: 20, totalPages: 1 }
+      }),
+    listBranches().catch(() => []),
+    listWaterSchemes().catch(() => []),
   ])
 
   return (

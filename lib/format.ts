@@ -17,6 +17,7 @@ export function formatDateTime(date: Date | string): string {
     year: "numeric",
     hour: "2-digit",
     minute: "2-digit",
+    timeZone: "UTC", // Force UTC to prevent hydration mismatch
   }).format(d)
 }
 
@@ -26,6 +27,7 @@ export function formatDate(date: Date | string): string {
     day: "2-digit",
     month: "short",
     year: "numeric",
+    timeZone: "UTC", // Force UTC to prevent hydration mismatch
   }).format(d)
 }
 

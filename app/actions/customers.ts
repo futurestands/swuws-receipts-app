@@ -226,8 +226,14 @@ export async function searchCustomers(params: {
   }
   if (params.query?.trim()) {
     const q = `%${escapeLike(params.query.trim())}%`
+    // Goal Alignment: Explicitly cast columns to text to prevent 'Operator does not exist'
+    // errors on cloud databases if numeric data is encountered.
     conditions.push(
-      or(ilike(customer.name, q), ilike(customer.customerAccount, q), ilike(customer.phone, q)),
+      or(
+        ilike(customer.name, q),
+        sql`${customer.customerAccount}::text ilike ${q}`,
+        sql`${customer.phone}::text ilike ${q}`
+      ),
     )
   }
   if (params.waterSchemeId) {
