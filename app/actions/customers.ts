@@ -4,7 +4,7 @@ import { db } from "@/lib/db"
 import { customer, receipt, waterScheme, branch } from "@/lib/db/schema"
 import { requireUser } from "@/lib/session"
 import { writeAudit } from "@/lib/audit"
-import { and, desc, eq, ilike, or, sql, getTableColumns } from "drizzle-orm"
+import { and, desc, eq, ilike, or, sql, getTableColumns, gte, lte } from "drizzle-orm"
 import { randomUUID } from "crypto"
 import { revalidatePath } from "next/cache"
 import { z } from "zod"
@@ -208,6 +208,8 @@ export async function searchCustomers(params: {
   query?: string
   waterSchemeId?: string
   branchId?: string
+  minBalance?: number
+  maxBalance?: number
   page?: number
   pageSize?: number
   showInactive?: boolean
@@ -241,6 +243,12 @@ export async function searchCustomers(params: {
   }
   if (params.branchId) {
     conditions.push(eq(waterScheme.branchId, params.branchId))
+  }
+  if (params.minBalance !== undefined) {
+    conditions.push(gte(customer.accountBalance, params.minBalance))
+  }
+  if (params.maxBalance !== undefined) {
+    conditions.push(lte(customer.accountBalance, params.maxBalance))
   }
   if (scope) {
     conditions.push(scope)

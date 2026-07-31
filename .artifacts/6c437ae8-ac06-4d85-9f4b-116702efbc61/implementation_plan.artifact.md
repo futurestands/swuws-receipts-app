@@ -1,52 +1,50 @@
-# Implementation Plan: Vercel Admin Page Stability (100/100 Certification)
+# Add Balance Range Search for Customers
 
-This plan fixes the "Something went wrong" error on the Vercel Admin page and resolves the `manifest.json` syntax error reported in the logs.
+This plan details the implementation of a balance range filter (Min/Max Arrears) on the Customers page to allow administrators to find customers within specific debt or credit brackets.
 
 ## User Review Required
 
 > [!IMPORTANT]
-> **Seeding Strategy Change**: I am moving the "System Seeding" (permissions and templates) from the page render cycle to a safer **On-Demand** trigger. This prevents the initial page load from crashing if the database is busy.
->
-> **Manifest Encoding**: I will re-save the `manifest.json` to ensure it is 100% compliant with Vercel's strict production parsers.
+> The search will use the `accountBalance` field, which is displayed as "Arrears" in the UI.
+> Positive balances indicate arrears (money owed), while negative balances (if applicable) would indicate credit.
 
 ## Proposed Changes
 
----
+### Backend (Server Actions)
 
-### 1. Hardening the Admin Dashboard (Production Resilience)
+#### [MODIFY] [customers.ts](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/app/actions/customers.ts)
+- Update `searchCustomers` parameters to include optional `minBalance` and `maxBalance` (numbers).
+- Import `gte` and `lte` from `drizzle-orm`.
+- Add conditions to the `where` clause:
+    - If `minBalance` is provided: `gte(customer.accountBalance, minBalance)`
+    - If `maxBalance` is provided: `lte(customer.accountBalance, maxBalance)`
 
-#### [MODIFY] [admin-page](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/app/admin/page.tsx)
-- Remove the `seedV12Permissions` and `seedSystemTemplates` calls from the initial render.
-- **Reason**: Write operations during a render cycle are unstable on serverless platforms and are likely the cause of the "Server Component Render Error."
-- Add a `.catch(() => null)` to `getSettings()` to match the resilience of other dashboard fetchers.
+### Frontend (Dashboard Pages)
 
-#### [NEW] [admin-init-button](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/app/admin/admin-init-button.tsx)
-- Create a small UI component that appears ONLY if system data is missing.
-- Allows administrators to manually trigger the "Repair System Data" action if templates or permissions are out of sync.
+#### [MODIFY] [page.tsx](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/app/dashboard/customers/page.tsx)
+- Update `searchParams` type to include `minBalance` and `maxBalance`.
+- Extract and parse `minBalance` and `maxBalance` from `searchParams`.
+- Pass these values to the `searchCustomers` action.
+- Pass these values as `initialMinBalance` and `initialMaxBalance` to the `CustomerSearchBar` component.
+- Ensure the pagination links preserve the new balance parameters.
 
----
-
-### 2. Infrastructure & UI Cleanup
-
-#### [REPAIR] [manifest.json](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/public/manifest.json)
-- Rewrite the file with no trailing whitespace or hidden characters.
-
-#### [MODIFY] [layout.tsx](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/app/layout.tsx)
-- Add a suppression for the "Hydration Mismatch" warning on the `<body>` tag, as third-party browser extensions (like translation or dark mode) often cause this in production.
-
----
-
-### 3. Git Synchronization
-
-- I will provide instructions to perform a `git pull` (which I already did for you) and then a final `git push` to sync your local environment with Vercel.
+#### [MODIFY] [customer-search-bar.tsx](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/app/dashboard/customers/customer-search-bar.tsx)
+- Add `initialMinBalance` and `initialMaxBalance` to props.
+- Add state for `minBalance` and `maxBalance` (strings for input handling).
+- Add two new `Input` fields in the search form for "Min Balance" and "Max Balance".
+- Update `handleSearch` to include `minBalance` and `maxBalance` in the URL search parameters.
+- Update `clearFilters` to reset the balance fields.
+- Adjust the grid layout (`lg:grid-cols-4` -> `lg:grid-cols-6` or similar) to accommodate the new fields.
 
 ## Verification Plan
 
-### Automated Verification
-- Run `npm run build` locally to verify the production bundle compiles without errors.
+### Automated Tests
+- I will check if I can add a basic unit test if existing tests exist, but primarily I will verify via manual review of the code logic.
 
 ### Manual Verification
-1. Push code to GitHub.
-2. Visit the Admin page on Vercel.
-3. **Verify**: The page loads instantly without the "Something went wrong" error.
-4. **Verify**: Check Vercel logs for "Manifest syntax error." It should be resolved.
+- Navigate to `/dashboard/customers`.
+- Enter a value in "Min Balance" and click Search. Verify only customers with arrears $\ge$ Min are shown.
+- Enter a value in "Max Balance" and click Search. Verify only customers with arrears $\le$ Max are shown.
+- Enter both values and verify the range search.
+- Click "Clear Filters" and verify the balance fields are reset.
+- Navigate between pages and verify filters are preserved.

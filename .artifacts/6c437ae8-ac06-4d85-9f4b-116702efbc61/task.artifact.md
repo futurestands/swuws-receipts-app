@@ -1,8 +1,4 @@
-# Tasks: Production Dashboard Stability
-
-- `[/]` Backend Data Guards
-    - `[ ]` Ensure `getDailyTotals` in `app/actions/receipts.ts` returns safe defaults
-- `[/]` Dashboard UI Resilience
-    - `[ ]` Add safety fallbacks to `app/dashboard/page.tsx`
-    - `[ ]` Harden `components/dashboard/collection-summary-card.tsx` against zero-division
-- `[ ]` Final Verification
+- [x] Update `app/actions/customers.ts` to support `minBalance` and `maxBalance` in `searchCustomers`
+- [x] Update `app/dashboard/customers/page.tsx` to pass balance filters to the action and search bar
+- [x] Update `app/dashboard/customers/customer-search-bar.tsx` to add UI fields for balance range
+- [x] Verify pagination preserves balance filters in `app/dashboard/customers/page.tsx`

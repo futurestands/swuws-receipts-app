@@ -16,18 +16,34 @@ import { Users } from "lucide-react"
 export default async function CustomersPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; branchId?: string; schemeId?: string; page?: string }>
+  searchParams: Promise<{
+    q?: string;
+    branchId?: string;
+    schemeId?: string;
+    page?: string;
+    minBalance?: string;
+    maxBalance?: string;
+  }>
 }) {
   const current = await getCurrentUser()
   const canImport = current ? canUploadCustomers(current) : false
 
-  const { q, branchId, schemeId, page } = await searchParams
+  const { q, branchId, schemeId, page, minBalance, maxBalance } = await searchParams
   const pageNum = Number(page) || 1
+  const minBalNum = minBalance ? Number(minBalance) : undefined
+  const maxBalNum = maxBalance ? Number(maxBalance) : undefined
 
   // Goal Alignment: Wrapped data fetching in resilience guards to prevent
   // entire page crashes if the database is busy or has data anomalies.
   const [{ customers, total, totalPages }, branches, schemes] = await Promise.all([
-    searchCustomers({ query: q, branchId, waterSchemeId: schemeId, page: pageNum })
+    searchCustomers({
+      query: q,
+      branchId,
+      waterSchemeId: schemeId,
+      page: pageNum,
+      minBalance: minBalNum,
+      maxBalance: maxBalNum
+    })
       .catch((err) => {
         console.error("Customer search failed:", err)
         return { customers: [], total: 0, page: 1, pageSize: 20, totalPages: 1 }
@@ -44,6 +60,8 @@ export default async function CustomersPage({
         initialQuery={q ?? ""}
         initialBranchId={branchId}
         initialSchemeId={schemeId}
+        initialMinBalance={minBalance}
+        initialMaxBalance={maxBalance}
         branches={branches}
         schemes={schemes}
         canImport={canImport}
@@ -109,7 +127,14 @@ export default async function CustomersPage({
             <div className="flex items-center justify-center gap-2 pt-4">
               <Button variant="outline" size="sm" asChild disabled={pageNum <= 1} className="h-11">
                 <Link
-                  href={`/dashboard/customers?${new URLSearchParams({ ...(q ? { q } : {}), page: String(pageNum - 1) })}`}
+                  href={`/dashboard/customers?${new URLSearchParams({
+                    ...(q ? { q } : {}),
+                    ...(branchId ? { branchId } : {}),
+                    ...(schemeId ? { schemeId } : {}),
+                    ...(minBalance ? { minBalance } : {}),
+                    ...(maxBalance ? { maxBalance } : {}),
+                    page: String(pageNum - 1)
+                  })}`}
                 >
                   Previous
                 </Link>
@@ -119,7 +144,14 @@ export default async function CustomersPage({
               </span>
               <Button variant="outline" size="sm" asChild disabled={pageNum >= totalPages} className="h-11">
                 <Link
-                  href={`/dashboard/customers?${new URLSearchParams({ ...(q ? { q } : {}), page: String(pageNum + 1) })}`}
+                  href={`/dashboard/customers?${new URLSearchParams({
+                    ...(q ? { q } : {}),
+                    ...(branchId ? { branchId } : {}),
+                    ...(schemeId ? { schemeId } : {}),
+                    ...(minBalance ? { minBalance } : {}),
+                    ...(maxBalance ? { maxBalance } : {}),
+                    page: String(pageNum + 1)
+                  })}`}
                 >
                   Next
                 </Link>
