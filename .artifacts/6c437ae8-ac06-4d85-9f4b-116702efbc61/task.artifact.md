@@ -1,4 +1,9 @@
+- [x] Update `lib/import-engine.ts` to support aliases and positional (no-header) mapping
+- [x] Update `app/actions/billing.ts` to support no-header imports and arrears aliases
+- [x] Update `app/dashboard/customers/customer-search-bar.tsx` to add UI fields for balance range
 - [x] Update `app/actions/customers.ts` to support `minBalance` and `maxBalance` in `searchCustomers`
 - [x] Update `app/dashboard/customers/page.tsx` to pass balance filters to the action and search bar
-- [x] Update `app/dashboard/customers/customer-search-bar.tsx` to add UI fields for balance range
 - [x] Verify pagination preserves balance filters in `app/dashboard/customers/page.tsx`
+- [x] Implement `exportCustomersExcel` server action in `app/actions/customers.ts`
+- [x] Add "Download Excel" button and logic to `app/dashboard/customers/customer-search-bar.tsx`
+- [x] Verify Excel export respects active filters

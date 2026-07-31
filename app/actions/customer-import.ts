@@ -52,7 +52,7 @@ export async function validateCustomerImport(formData: FormData): Promise<{ ok: 
   const existingAccounts = new Set(existingCustomers.map((c) => c.account?.toLowerCase()))
   const seenInUpload = new Set<string>()
 
-  const mapping = (await getImportMapping('import.customers.bulk')) as any || {
+  const mapping = (await getImportMapping("import.customers.bulk")) as any || {
     name: "Name",
     customerAccount: "CustomerRef",
     phone: "Phone",
@@ -60,9 +60,9 @@ export async function validateCustomerImport(formData: FormData): Promise<{ ok: 
     schemeName: "SchemeName",
     meterRef: "MeterRef",
     serialNo: "MeterSerial",
-    openingArrears: "OpeningArrears",
+    openingArrears: ["OpeningArrears", "Arrears", "Balance Brought Forward", "BalanceBroughtForward", "Brought Forward"],
     category: "Category",
-    notes: "Notes"
+    notes: "Notes",
   }
 
   const summary = await processExcelImport({

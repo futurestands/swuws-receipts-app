@@ -2,7 +2,7 @@
 
 import { useState, useTransition, useMemo } from "react"
 import { useRouter } from "next/navigation"
-import { createCustomer } from "@/app/actions/customers"
+import { createCustomer, exportCustomersExcel } from "@/app/actions/customers"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -22,7 +22,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { toast } from "sonner"
-import { FileUp, Search, X, Camera, Loader2 } from "lucide-react"
+import { FileUp, Search, X, Camera, Loader2, Download } from "lucide-react"
 import Link from "next/link"
 import { FormField, FormActions } from "@/components/ui/form-layout"
 import type { Branch, WaterScheme } from "@/lib/db/schema"
@@ -63,6 +63,7 @@ export function CustomerSearchBar({
   const [error, setError] = useState<string | null>(null)
   const [pending, startTransition] = useTransition()
   const [isScanning, setIsScanning] = useState(false)
+  const [isExporting, setIsExporting] = useState(false)
 
   // Filter schemes based on selected branch
   const filteredSchemes = useMemo(() => {
@@ -160,6 +161,42 @@ export function CustomerSearchBar({
       console.error(err)
       setIsScanning(false)
       toast.error("Scanning failed")
+    }
+  }
+
+  async function handleExport() {
+    try {
+      setIsExporting(true)
+      const base64 = await exportCustomersExcel({
+        query: query.trim() || undefined,
+        branchId,
+        waterSchemeId: schemeId,
+        minBalance: minBalance ? Number(minBalance) : undefined,
+        maxBalance: maxBalance ? Number(maxBalance) : undefined,
+      })
+
+      const byteCharacters = atob(base64)
+      const byteNumbers = new Array(byteCharacters.length)
+      for (let i = 0; i < byteCharacters.length; i++) {
+        byteNumbers[i] = byteCharacters.charCodeAt(i)
+      }
+      const byteArray = new Uint8Array(byteNumbers)
+      const blob = new Blob([byteArray], {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      })
+
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = `customers_export_${new Date().toISOString().split("T")[0]}.xlsx`
+      a.click()
+      window.URL.revokeObjectURL(url)
+      toast.success("Excel export downloaded")
+    } catch (err) {
+      console.error(err)
+      toast.error("Export failed")
+    } finally {
+      setIsExporting(false)
     }
   }
 
@@ -295,6 +332,20 @@ export function CustomerSearchBar({
         </form>
 
         <div className="flex items-center gap-2 w-full lg:w-auto pb-0.5">
+          <Button
+            variant="outline"
+            className="flex-1 lg:flex-initial h-11"
+            onClick={handleExport}
+            disabled={isExporting}
+          >
+            {isExporting ? (
+              <Loader2 className="h-4 w-4 animate-spin mr-2" />
+            ) : (
+              <Download className="h-4 w-4 mr-2" />
+            )}
+            Download Excel
+          </Button>
+
           {canImport && (
             <Button variant="outline" asChild className="flex-1 lg:flex-initial h-11 border-dashed">
               <Link href="/dashboard/customers/bulkimport">

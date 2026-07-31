@@ -45,20 +45,56 @@ export async function getImportMapping(code: string): Promise<Record<string, str
 
 /**
  * Core engine to process an Excel file into validated typed objects.
+ * Supports both Header-based mapping (with aliases) and Positional mapping.
  */
 export async function processExcelImport<T extends Record<string, any>>(params: {
   file: File
   schema: z.ZodSchema<T>
-  mapping: Record<keyof T, string>
-  onValidateRow?: (row: T) => { errors: string[]; warnings: string[] } | Promise<{ errors: string[]; warnings: string[] }>
+  mapping: Record<keyof T, string | string[] | number>
+  headerMode?: "headers" | "none"
+  onValidateRow?: (
+    row: T,
+  ) => { errors: string[]; warnings: string[] } | Promise<{ errors: string[]; warnings: string[] }>
 }): Promise<ImportSummary<T>> {
   const buffer = await params.file.arrayBuffer()
   const workbook = XLSX.read(buffer)
   const firstSheet = workbook.Sheets[workbook.SheetNames[0]]
-  const rawData = XLSX.utils.sheet_to_json(firstSheet)
+
+  // If no headers, we read the sheet as an array of arrays (header: 1)
+  const isNoHeaders = params.headerMode === "none"
+  const rawData = XLSX.utils.sheet_to_json(firstSheet, {
+    header: isNoHeaders ? 1 : undefined,
+  })
 
   if (rawData.length > 50000) {
-    throw new Error(`Import exceeds maximum limit of 50,000 rows. Please split the file and try again.`)
+    throw new Error(
+      `Import exceeds maximum limit of 50,000 rows. Please split the file and try again.`,
+    )
+  }
+
+  // Header Discovery (for header mode)
+  let actualHeaderMap: Record<string, string> = {}
+  if (!isNoHeaders && rawData.length > 0) {
+    const firstRow = rawData[0] as any
+    const fileHeaders = Object.keys(firstRow)
+
+    for (const [field, aliasOrList] of Object.entries(params.mapping)) {
+      const aliases = Array.isArray(aliasOrList)
+        ? aliasOrList
+        : typeof aliasOrList === "string"
+        ? [aliasOrList]
+        : []
+
+      if (aliases.length > 0) {
+        // Find the first alias that exists in the file (case-insensitive)
+        const matched = fileHeaders.find((h) =>
+          aliases.some((a) => a.toLowerCase() === h.toLowerCase()),
+        )
+        if (matched) {
+          actualHeaderMap[field] = matched
+        }
+      }
+    }
   }
 
   const results: ValidationResult<T>[] = []
@@ -72,9 +108,24 @@ export async function processExcelImport<T extends Record<string, any>>(params: 
 
     // 1. Dynamic Mapping
     const mappedRow: any = {}
-    for (const [field, excelColumn] of Object.entries(params.mapping)) {
-      mappedRow[field] = rawRow[excelColumn as string]
+    for (const [field, aliasOrIndex] of Object.entries(params.mapping)) {
+      if (isNoHeaders && typeof aliasOrIndex === "number") {
+        // Positional Mapping (Array index)
+        mappedRow[field] = rawRow[aliasOrIndex]
+      } else if (!isNoHeaders) {
+        // Header Mapping (using discovered actual header or direct name)
+        const headerName = actualHeaderMap[field] || (typeof aliasOrIndex === "string" ? aliasOrIndex : null)
+        if (headerName) {
+          mappedRow[field] = rawRow[headerName]
+        }
+      }
     }
+
+    // Skip empty rows (often generated at end of files)
+    const hasData = Object.values(mappedRow).some(
+      (v) => v !== undefined && v !== null && v !== "",
+    )
+    if (!hasData) continue
 
     // 2. Schema Validation
     const parsed = params.schema.safeParse(mappedRow)
@@ -109,7 +160,7 @@ export async function processExcelImport<T extends Record<string, any>>(params: 
   }
 
   return {
-    totalRows: rawData.length,
+    totalRows: results.length,
     validRows: validCount,
     errorRows: errorCount,
     warningRows: warningCount,

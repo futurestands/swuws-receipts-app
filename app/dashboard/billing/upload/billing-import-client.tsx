@@ -40,6 +40,7 @@ export function BillingImportClient({ schemes, periods }: Props) {
   const [schemeId, setSchemeId] = useState("")
   const [periodId, setPeriodId] = useState("")
   const [file, setFile] = useState<File | null>(null)
+  const [noHeaders, setNoHeaders] = useState(false)
   const [summary, setSummary] = useState<BillingImportSummary | null>(null)
   const [isValidating, startValidating] = useTransition()
   const [isImporting, startImporting] = useTransition()
@@ -83,6 +84,7 @@ export function BillingImportClient({ schemes, periods }: Props) {
     formData.append("file", file)
     formData.append("schemeId", schemeId)
     formData.append("billingPeriodId", periodId)
+    formData.append("noHeaders", String(noHeaders))
 
     startValidating(async () => {
       const response = await validateBillingImport(formData)
@@ -218,6 +220,19 @@ export function BillingImportClient({ schemes, periods }: Props) {
               <FormField label="Monthly Billing File" htmlFor="billingFileInput">
                 <Input id="billingFileInput" type="file" accept=".csv, .xlsx" onChange={handleFileChange} className="h-11" />
               </FormField>
+
+              <div className="flex items-center gap-2 px-1">
+                <input
+                  type="checkbox"
+                  id="noHeaders"
+                  checked={noHeaders}
+                  onChange={(e) => setNoHeaders(e.target.checked)}
+                  className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+                />
+                <label htmlFor="noHeaders" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                  File has no headers (use system arrangement)
+                </label>
+              </div>
             </CardContent>
             <CardFooter>
               <Button className="w-full h-11" onClick={handleValidate} disabled={!file || !schemeId || !periodId || isValidating}>
