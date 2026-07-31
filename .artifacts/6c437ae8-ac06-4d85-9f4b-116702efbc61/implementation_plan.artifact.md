@@ -1,38 +1,40 @@
-# Focused Delivery Dialog for Meter Readings
+# Fix Delivery Modal Visibility for Mobile
 
-Redesign the post-confirmation workflow to use a focused Modal (Dialog) instead of an inline section. This ensures that after confirming a reading, the agent is presented exclusively with the two delivery options (Print and SMS) without having to scroll or interact with the rest of the page.
+This plan fixes the visibility issues of the delivery modal (specifically the Print button) and optimizes the layout for mobile phone screens.
 
 ## User Review Required
 
 > [!IMPORTANT]
-> The "Confirm & Save Reading" button will now automatically open a centered pop-up window containing the Print and SMS choices. The rest of the page will be obscured until the dialog is closed.
+> I will be switching from custom "brand-blue" classes to standard Tailwind/Shadcn classes (like `primary`) to ensure consistent visibility and theme support. I will also unify the modal into a single professional card layout which works better on small mobile screens.
 
 ## Proposed Changes
+
+### Styling & Theme
+
+#### [MODIFY] [globals.css](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/app/globals.css)
+- Register `brand-blue`, `brand-green`, etc., in the `@theme` block so Tailwind can recognize them as utility classes (e.g., `bg-brand-blue`).
+- Add a `--brand-blue-dark` variant for the button shadows.
 
 ### Frontend (Components)
 
 #### [MODIFY] [reading-entry-form.tsx](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/components/billing/reading-entry-form.tsx)
-- **Import Dialog Components**: Add `Dialog`, `DialogContent`, `DialogHeader`, `DialogTitle`, `DialogDescription` from `@/components/ui/dialog`.
-- **Exclusive Modal View**:
-    - Wrap the current "Success & Delivery Options" cards in a `Dialog`.
-    - Set the `open` state of the dialog to `!!lastSubmission`.
-    - Use `onOpenChange={(open) => !open && setLastSubmission(null)}` to reset state when closed.
-- **Improved Separation**:
-    - The Dialog will prominently show the two cards (Print and SMS) as the ONLY available actions.
-    - Add `no-print` to the `DialogContent` and `DialogOverlay` to ensure they don't appear in the physical printout.
-- **Refine Layout**:
-    - Ensure the "Amount Due" is bold and central in the dialog.
-    - Keep the "Resend" and "History" synchronization intact.
+- **Unify Modal UI**: Instead of transparent backgrounds and floating cards, use a single solid Card inside the `DialogContent`. This provides a cleaner look on mobile.
+- **Button Contrast**: Change the "PRINT NOW" button to use `bg-primary` (which is already configured as the brand blue) to ensure it is fully visible.
+- **Mobile Optimization**:
+    - Adjust `DialogContent` to fit full-width on very small screens.
+    - Ensure the "Amount Due" text doesn't overflow on small devices.
+    - Make sure the "Close" button is easy to tap.
+- **Fix "No phone provided"**: Ensure the text color is distinct enough to be readable even if no phone is present.
 
 ---
 
 ## Verification Plan
 
 ### Manual Verification
-1. Capture a meter reading and click "Confirm & Save".
-2. Verify that a Modal pops up immediately.
-3. Verify that the capture form and history list are hidden/obscured behind the modal.
-4. Click "Print Ticket" inside the modal and verify the print preview shows only the receipt.
-5. Click "Send SMS" inside the modal and verify the success toast appears and the button updates.
-6. Click "Close" or outside the modal and verify it returns to the empty capture form.
-7. Click "Reprint" in the history table and verify the same Modal opens for that historical record.
+1. Open the portal on a device (or use browser dev tools mobile emulator).
+2. Capture a reading and observe the modal.
+3. Verify that:
+    - The modal has a solid white background.
+    - The "PRINT NOW" button is clearly blue with white text.
+    - The "SEND SMS" button is clearly green with white text.
+    - No content is cut off on a 375px wide screen (iPhone SE size).

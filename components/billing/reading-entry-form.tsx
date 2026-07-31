@@ -217,72 +217,69 @@ export function ReadingEntryForm({
          open={!!lastSubmission}
          onOpenChange={(open) => !open && setLastSubmission(null)}
       >
-        <DialogContent className="max-w-4xl no-print p-0 overflow-hidden border-none bg-transparent shadow-none">
-          <div className="space-y-4 animate-in zoom-in-95 duration-500">
-            <div className="flex items-center justify-between bg-white p-4 rounded-xl shadow-sm border">
+        <DialogContent className="max-w-md w-[95vw] no-print p-0 overflow-hidden border-none shadow-2xl bg-white rounded-2xl">
+          <div className="flex flex-col animate-in zoom-in-95 duration-500">
+            {/* Header */}
+            <div className="flex items-center justify-between p-4 border-b bg-green-50/50">
                <div className="flex items-center gap-3">
-                  <div className="h-10 w-10 rounded-full bg-green-100 flex items-center justify-center text-green-600">
-                     <CheckCircle2 className="h-6 w-6" />
+                  <div className="h-8 w-8 rounded-full bg-green-100 flex items-center justify-center text-green-600">
+                     <CheckCircle2 className="h-5 w-5" />
                   </div>
-                  <h2 className="text-xl font-black text-foreground">Reading Captured Successfully</h2>
+                  <h2 className="text-lg font-black text-green-900 tracking-tight">Saved Successfully</h2>
                </div>
                <Button
                   variant="ghost"
                   size="icon"
-                  className="h-10 w-10"
+                  className="h-8 w-8 hover:bg-green-100/50"
                   onClick={() => setLastSubmission(null)}
                >
-                  <XCircle className="h-5 w-5 text-muted-foreground" />
+                  <XCircle className="h-4 w-4 text-muted-foreground" />
                </Button>
             </div>
 
-            <div className="grid gap-4 md:grid-cols-2">
-               {/* PRINT CARD */}
-               <Card className="border-brand-blue/20 bg-white shadow-2xl">
-                  <CardHeader className="pb-3">
-                     <CardTitle className="text-base flex items-center gap-2">
-                        <Printer className="h-4 w-4 text-brand-blue" />
-                        Print Physical Ticket
-                     </CardTitle>
-                     <CardDescription>Generate a demand note for the customer.</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                     <div className="mb-4 p-4 bg-brand-blue/5 rounded-lg border border-brand-blue/10">
-                        <p className="text-[10px] uppercase font-bold text-muted-foreground mb-1">Amount Due</p>
-                        <p className="text-3xl font-black text-brand-blue">{lastSubmission ? formatUGX(lastSubmission.totalDue) : "—"}</p>
-                     </div>
+            <div className="p-6 space-y-6">
+               {/* Amount Due Display */}
+               <div className="text-center space-y-1">
+                  <p className="text-[10px] uppercase font-black text-muted-foreground tracking-widest">Total Amount Due</p>
+                  <p className="text-4xl font-black text-primary drop-shadow-sm">
+                     {lastSubmission ? formatUGX(lastSubmission.totalDue) : "—"}
+                  </p>
+                  <p className="text-xs text-muted-foreground font-medium">for {lastSubmission?.customerName}</p>
+               </div>
+
+               <div className="grid grid-cols-1 gap-4">
+                  {/* PRINT OPTION */}
+                  <div className="space-y-2">
                      <Button
-                        className="w-full h-16 text-xl bg-brand-blue hover:bg-brand-blue/90 gap-3 shadow-lg border-b-4 border-brand-blue-dark"
+                        className="w-full h-16 text-lg bg-primary hover:bg-primary/90 text-white font-black gap-3 shadow-lg border-b-4 border-brand-blue-dark active:border-b-0 active:translate-y-1 transition-all"
                         onClick={() => window.print()}
                      >
-                        <Printer className="h-6 w-6" /> PRINT NOW
+                        <Printer className="h-6 w-6" /> PRINT PHYSICAL TICKET
                      </Button>
-                  </CardContent>
-               </Card>
+                     <p className="text-[10px] text-center text-muted-foreground uppercase font-bold">Generate a paper demand note</p>
+                  </div>
 
-               {/* SMS CARD */}
-               <Card className={cn(
-                  "shadow-2xl transition-colors duration-500 bg-white",
-                  lastSubmission?.isSmsSent ? "border-green-200" : "border-emerald-200"
-               )}>
-                  <CardHeader className="pb-3">
-                     <CardTitle className="text-base flex items-center gap-2 text-emerald-700">
-                        <Smartphone className="h-4 w-4" />
-                        Send SMS Notification
-                     </CardTitle>
-                     <CardDescription>Instant mobile bill delivery.</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                     <div className="mb-4 p-4 bg-emerald-50/50 rounded-lg border border-emerald-100">
-                        <p className="text-[10px] uppercase font-bold text-muted-foreground mb-1">Recipient Phone</p>
-                        <p className="text-2xl font-bold text-emerald-900">{lastSubmission?.phone || "No phone provided"}</p>
+                  <div className="relative py-2">
+                     <div className="absolute inset-0 flex items-center"><span className="w-full border-t" /></div>
+                     <div className="relative flex justify-center text-[10px] uppercase"><span className="bg-white px-2 text-muted-foreground font-bold italic">OR</span></div>
+                  </div>
+
+                  {/* SMS OPTION */}
+                  <div className="space-y-2">
+                     <div className={cn(
+                        "p-3 rounded-lg border text-center transition-colors mb-2",
+                        lastSubmission?.isSmsSent ? "bg-green-50 border-green-100 text-green-800" : "bg-muted/30 border-muted text-muted-foreground"
+                     )}>
+                        <p className="text-[10px] uppercase font-bold mb-0.5">Recipient Phone</p>
+                        <p className="text-sm font-bold">{lastSubmission?.phone || "No phone provided"}</p>
                      </div>
+
                      <Button
                         className={cn(
-                           "w-full h-16 text-xl gap-3 shadow-lg transition-all border-b-4",
+                           "w-full h-16 text-lg gap-3 font-black shadow-lg border-b-4 active:border-b-0 active:translate-y-1 transition-all",
                            lastSubmission?.isSmsSent
-                              ? "bg-green-600 hover:bg-green-700 border-green-800"
-                              : "bg-emerald-600 hover:bg-emerald-700 border-emerald-800"
+                              ? "bg-green-600 hover:bg-green-700 text-white border-green-800"
+                              : "bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-800"
                         )}
                         onClick={() => lastSubmission && handleSendSms(lastSubmission.readingId)}
                         disabled={isSendingSms || !lastSubmission?.phone}
@@ -290,13 +287,20 @@ export function ReadingEntryForm({
                         {isSendingSms ? (
                            <Loader2 className="h-6 w-6 animate-spin" />
                         ) : lastSubmission?.isSmsSent ? (
-                           <><CheckCircle2 className="h-6 w-6" /> RESEND SMS</>
+                           <><CheckCircle2 className="h-6 w-6" /> RESEND SMS BILL</>
                         ) : (
-                           <><Send className="h-6 w-6" /> SEND SMS BILL</>
+                           <><Send className="h-6 w-6" /> SEND SMS NOTIFICATION</>
                         )}
                      </Button>
-                  </CardContent>
-               </Card>
+                  </div>
+               </div>
+            </div>
+
+            {/* Footer Tip */}
+            <div className="bg-muted/20 p-3 text-center border-t">
+               <p className="text-[10px] font-medium text-muted-foreground italic">
+                  Tip: You can always reprint or resend from the history table below.
+               </p>
             </div>
           </div>
         </DialogContent>

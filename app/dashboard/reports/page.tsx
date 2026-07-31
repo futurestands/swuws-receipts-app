@@ -37,7 +37,7 @@ export default async function ReportsPage({
     getCollectionPeriods(),
     listActiveBranches(),
     getAuthorizedSchemes(),
-    getTopDebtors(10),
+    getTopDebtors(100),
   ])
 
   const { billing, collections, arrears } = stats
@@ -236,7 +236,7 @@ export default async function ReportsPage({
             <CardDescription>Customers with highest outstanding balances.</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="space-y-4">
+            <div className="space-y-4 max-h-[600px] overflow-y-auto pr-2 scrollbar-hide">
               {debtors.length > 0 ? debtors.map((d) => (
                 <div key={d.id} className="flex items-center justify-between border-b pb-2 last:border-0 last:pb-0">
                   <div className="min-w-0 flex-1">
