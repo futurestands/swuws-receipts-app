@@ -36,6 +36,7 @@ import {
   canViewReports,
   canAudit,
   canConfigureSystem,
+  canCreateRole,
 } from "@/lib/permissions"
 import { applyReceiptScope, applyUserScope, validateWriteScope } from "@/lib/scopes"
 
@@ -90,6 +91,15 @@ export async function createAgent(input: {
     schemeId: input.schemeId
   }))) {
     return { ok: false as const, error: "You are not authorized to create agents for this area" }
+  }
+
+  // SECURITY: role-ceiling check. Without this, anyone permitted to create
+  // agents at all could hand a new account role: "admin" — several code
+  // paths (billing-engine.ts's meter-reading cancel check, approval.ts's
+  // approver lookup) treat that legacy role string as full authority
+  // regardless of the account's actual IAM permissions.
+  if (!canCreateRole(current, input.role)) {
+    return { ok: false as const, error: "You are not authorized to assign this role" }
   }
 
   // Security Hardening: HTML Sanitization for User Names
@@ -182,6 +192,17 @@ export async function setAgentRole(userId: string, role: string, iamRoleId?: str
   if (userId === current.id) {
     return { ok: false as const, error: "You cannot change your own role" }
   }
+
+  // SECURITY: role-ceiling check. This previously had NO restriction beyond
+  // canManageUsers (gated on the "users.view" permission) — anyone who
+  // could view the agents list could promote or demote ANY other user to
+  // ANY role, including System Administrator. See canCreateRole for why
+  // that legacy role string carries real authority independent of IAM
+  // permissions.
+  if (!canCreateRole(current, role)) {
+    return { ok: false as const, error: "You are not authorized to assign this role" }
+  }
+
   const [updated] = await db
     .update(user)
     .set({ role, iamRoleId: iamRoleId || null, updatedAt: new Date() })

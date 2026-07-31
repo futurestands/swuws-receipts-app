@@ -1,4 +1,4 @@
-import { Role, ROLES } from "./roles"
+import { Role, ROLES, ROLE_RANK } from "./roles"
 
 /**
  * CENTRALIZED PERMISSION ENGINE
@@ -39,13 +39,32 @@ export function canManageUsers(user: UserPermissionsContext) {
 
 /**
  * Role Creation Hierarchy: Defines which roles a user can create.
- * A user may ONLY create users with roles at or below their level.
+ * A user may ONLY create or promote another user to a role at or below
+ * their own rank (see ROLE_RANK in ./roles).
+ *
+ * SECURITY: previously this function accepted `targetRoleCode` but never
+ * actually checked it — any user with the `users.create` permission could
+ * assign ANY role, including System Administrator, to a new or existing
+ * user. That's a real privilege-escalation path: the legacy `role` field
+ * this assigns is also read directly (bypassing the IAM permission system
+ * entirely) by billing-engine.ts's meter-reading cancellation check and by
+ * approval.ts's approver lookup, so setting role: "admin" via a low-bar
+ * permission like `users.create` had real financial-authorization impact,
+ * not just a cosmetic label.
  */
 export function canCreateRole(currentUser: UserPermissionsContext, targetRoleCode: string) {
-  if (currentUser.permissions?.includes("roles.manage")) return true
+  const hasCreatePermission =
+    currentUser.permissions?.includes("roles.manage") ||
+    currentUser.permissions?.includes("users.create")
+  if (!hasCreatePermission) return false
 
-  // This is a simplified check for the migration phase.
-  return currentUser.permissions?.includes("users.create") ?? false
+  const targetRank = ROLE_RANK[targetRoleCode as Role]
+  if (targetRank === undefined) return false // unrecognized role — reject rather than assume safe
+
+  const currentRole = getRole(currentUser)
+  const currentRank = currentRole ? ROLE_RANK[currentRole] : 0
+
+  return targetRank <= currentRank
 }
 
 /**

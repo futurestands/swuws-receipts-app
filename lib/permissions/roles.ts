@@ -25,6 +25,27 @@ export type Role = (typeof ROLES)[keyof typeof ROLES]
 export const ALL_ROLES = Object.values(ROLES)
 
 /**
+ * Role hierarchy, used to enforce that a user can only create or promote
+ * another user to a role at or below their own level (see canCreateRole in
+ * lib/permissions/index.ts). Higher number = more authority.
+ *
+ * This does not grant permissions by itself — actual capabilities come from
+ * the dynamic IAM system (iamRoleId / getEffectivePermissions). It exists
+ * only to bound *which legacy role label* one user is allowed to hand to
+ * another, since a handful of code paths (billing-engine.ts cancel-reading
+ * check, approval.ts approver lookup) key off this legacy `role` string
+ * directly, independent of IAM permissions.
+ */
+export const ROLE_RANK: Record<Role, number> = {
+  [ROLES.SYSTEM_ADMIN]: 100,
+  [ROLES.HEAD_COMMERCIAL]: 80,
+  [ROLES.FINANCE_OFFICER]: 80,
+  [ROLES.CLUSTER_MANAGER]: 50,
+  [ROLES.COMMERCIAL_OFFICER]: 50,
+  [ROLES.PLUMBER]: 10,
+}
+
+/**
  * Human-readable labels for UI display.
  */
 export const ROLE_LABELS: Record<Role, string> = {
