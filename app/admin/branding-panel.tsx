@@ -15,13 +15,15 @@ export function BrandingPanel({ settings }: { settings: OrgSettings }) {
   const [footerText, setFooterText] = useState(settings.footerText)
   const [address, setAddress] = useState(settings.address ?? "")
   const [phone, setPhone] = useState(settings.phone ?? "")
+  const [receiptPrefix, setReceiptPrefix] = useState(settings.receiptPrefix)
+  const [developerCredit, setDeveloperCredit] = useState(settings.developerCredit)
   const [logoUrl, setLogoUrl] = useState(settings.logoUrl)
   const [pending, startTransition] = useTransition()
 
   function handleSave(e: React.FormEvent) {
     e.preventDefault()
     startTransition(async () => {
-      const result = await updateBranding({ orgName, footerText, address, phone })
+      const result = await updateBranding({ orgName, footerText, address, phone, developerCredit, receiptPrefix })
       if (!result.ok) {
         toast.error("Failed to save")
         return
@@ -74,6 +76,29 @@ export function BrandingPanel({ settings }: { settings: OrgSettings }) {
                 <Label htmlFor="phone">Phone</Label>
                 <Input id="phone" value={phone} onChange={(e) => setPhone(e.target.value)} />
               </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="receiptPrefix">Acronym (e.g. SWUWS)</Label>
+              <Input
+                id="receiptPrefix"
+                value={receiptPrefix}
+                onChange={(e) => setReceiptPrefix(e.target.value)}
+              />
+              <p className="text-[10px] text-muted-foreground">
+                Used in receipt numbers and short branding areas.
+              </p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="developerCredit">Developer attribution (Advertisement)</Label>
+              <Input
+                id="developerCredit"
+                value={developerCredit}
+                onChange={(e) => setDeveloperCredit(e.target.value)}
+                placeholder="e.g. Developed by Mugarura Johnson IT"
+              />
+              <p className="text-[10px] text-muted-foreground">
+                Leave empty to remove the attribution from login, sidebar, and receipts.
+              </p>
             </div>
             <div className="space-y-2">
               <Label htmlFor="logo">Logo</Label>

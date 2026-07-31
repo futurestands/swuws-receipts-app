@@ -5,7 +5,7 @@ const config: CapacitorConfig = {
   appName: 'SWUWS',
   webDir: 'out',
   server: {
-    url: 'https://swuws-receipts-app-q2z9.vercel.app',
+    url: process.env.NEXT_PUBLIC_APP_URL || 'https://swuws-receipts-app-q2z9.vercel.app',
     cleartext: true
   },
   android: {

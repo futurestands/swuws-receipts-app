@@ -30,6 +30,8 @@ export function ReadingEntryForm({
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null)
 
   const [currentReading, setCurrentReading] = useState("")
+  const [customerPhone, setCustomerPhone] = useState("")
+  const [shouldSendSms, setShouldSendSms] = useState(true)
   const [notes, setNotes] = useState("")
   const [tariff, setTariff] = useState<any>(null)
   const [calculation, setCalculation] = useState<BillingCalculation | null>(null)
@@ -74,8 +76,11 @@ export function ReadingEntryForm({
       getTariffForCustomer(selectedCustomer.id).then(setTariff)
       setCalculation(null)
       setCurrentReading("")
+      setCustomerPhone(selectedCustomer.phone || "")
+      setShouldSendSms(true)
     } else {
       setTariff(null)
+      setCustomerPhone("")
     }
   }, [selectedCustomer])
 
@@ -108,11 +113,13 @@ export function ReadingEntryForm({
           customerId: selectedCustomer.id,
           billingPeriodId: activePeriod.id,
           currentReading: readingValue,
-          notes
+          notes,
+          phoneNumber: customerPhone,
+          sendSms: shouldSendSms
         })
 
         if (result.ok) {
-          toast.success("Reading captured and bill generated!")
+          toast.success(shouldSendSms ? "Reading captured and SMS bill sent!" : "Reading captured successfully!")
 
           // Store last submission for printing before clearing form
           if (calculation) {
@@ -143,7 +150,8 @@ export function ReadingEntryForm({
               previousBalance,
               totalDue,
               createdAt: new Date(),
-              periodName: activePeriod.periodName
+              periodName: activePeriod.periodName,
+              isNotified: shouldSendSms
             }, ...prev.slice(0, 19)])
           }
 
@@ -337,6 +345,37 @@ export function ReadingEntryForm({
               />
             </div>
 
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="phone">Customer Phone Number</Label>
+                <Input
+                  id="phone"
+                  type="tel"
+                  placeholder="e.g. 2567..."
+                  value={customerPhone}
+                  onChange={(e) => setCustomerPhone(e.target.value)}
+                  disabled={!selectedCustomer}
+                  className="h-11"
+                />
+              </div>
+
+              <div className="flex flex-col justify-center space-y-2 pt-2 md:pt-6">
+                <label className="flex items-center gap-2 cursor-pointer group">
+                  <input
+                    type="checkbox"
+                    checked={shouldSendSms}
+                    onChange={(e) => setShouldSendSms(e.target.checked)}
+                    disabled={!selectedCustomer}
+                    className="size-5 rounded border-gray-300 text-primary focus:ring-primary"
+                  />
+                  <div className="flex flex-col">
+                    <span className="text-sm font-bold group-hover:text-primary transition-colors">Send Bill via SMS</span>
+                    <span className="text-[10px] text-muted-foreground uppercase">Instant Notification</span>
+                  </div>
+                </label>
+              </div>
+            </div>
+
             <div className="space-y-2">
               <Label htmlFor="notes">Field Notes</Label>
               <Textarea
@@ -348,8 +387,13 @@ export function ReadingEntryForm({
               />
             </div>
 
-            <Button type="submit" className="w-full h-12 text-base font-bold" disabled={isPending || !currentReading}>
-              {isPending ? "Processing..." : "Confirm & Send Bill"}
+            <Button type="submit" className="w-full h-12 text-base font-bold gap-2" disabled={isPending || !currentReading}>
+              {isPending ? "Processing..." : (
+                <>
+                  <Send className={cn("size-4", shouldSendSms && "animate-pulse")} />
+                  Confirm & {shouldSendSms ? "Send Bill via SMS" : "Save Reading"}
+                </>
+              )}
             </Button>
           </form>
         </CardContent>
@@ -443,7 +487,12 @@ export function ReadingEntryForm({
                     <TableCell className="text-xs">{formatDateTime(item.createdAt)}</TableCell>
                     <TableCell>
                       <div className="font-bold">{item.customerName}</div>
-                      <div className="text-[10px] text-muted-foreground uppercase">{item.meterRef || 'No Meter #'}</div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] text-muted-foreground uppercase">{item.meterRef || 'No Meter #'}</span>
+                        {item.isNotified && (
+                          <span className="text-[9px] bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded-full font-bold uppercase tracking-tighter">SMS Sent</span>
+                        )}
+                      </div>
                     </TableCell>
                     <TableCell className="text-xs">
                       {item.previousReading} → {item.currentReading} ({item.consumption} m³)

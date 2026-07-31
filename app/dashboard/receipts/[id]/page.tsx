@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation"
 import { getReceiptById, getReceiptAttachments, getPrintHistory } from "@/app/actions/receipts"
+import { getSettings } from "@/app/actions/settings"
 import { PrintButton } from "@/app/dashboard/receipts/[id]/print-button"
 import { VoidReceiptButton } from "@/app/dashboard/receipts/[id]/void-receipt-button"
 import { AttachmentUpload } from "@/app/dashboard/receipts/[id]/attachment-upload"
@@ -18,11 +19,12 @@ import { Badge } from "@/components/ui/badge"
 
 export default async function ReceiptDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
-  const [receipt, attachments, printHistory, current] = await Promise.all([
+  const [receipt, attachments, printHistory, current, settings] = await Promise.all([
     getReceiptById(id),
     getReceiptAttachments(id),
     getPrintHistory(id),
-    getCurrentUser()
+    getCurrentUser(),
+    getSettings()
   ])
 
   if (!receipt) notFound()
@@ -186,11 +188,13 @@ export default async function ReceiptDetailPage({ params }: { params: Promise<{ 
               <img src={qrSrc} alt="Scan to verify this receipt" width={70} height={70} />
             </div>
           </div>
-          <div className="mt-8 pt-4 border-t border-dashed text-center">
-            <p className="text-[9px] text-muted-foreground uppercase tracking-widest font-medium">
-              &copy; {new Date().getFullYear()} Developed by Mugarura Johnson IT
-            </p>
-          </div>
+          {settings.developerCredit && (
+            <div className="mt-8 pt-4 border-t border-dashed text-center">
+              <p className="text-[9px] text-muted-foreground uppercase tracking-widest font-medium">
+                &copy; {new Date().getFullYear()} {settings.developerCredit}
+              </p>
+            </div>
+          )}
         </CardContent>
       </Card>
 

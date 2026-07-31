@@ -39,6 +39,9 @@ export const orgSettings = pgTable("org_settings", {
   billingGraceDays: integer("billingGraceDays").notNull().default(14),
   currencyCode: text("currencyCode").notNull().default("UGX"),
   receiptPrefix: text("receiptPrefix").notNull().default("SWUWS"),
+  developerCredit: text("developerCredit")
+    .notNull()
+    .default("Developed by Mugarura Johnson IT"),
   editableFields: jsonb("editableFields").$type<EditableFields>().notNull(),
   updatedAt: timestamp("updatedAt").notNull().defaultNow(),
 })
