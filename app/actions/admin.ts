@@ -39,6 +39,7 @@ import {
   canCreateRole,
 } from "@/lib/permissions"
 import { applyReceiptScope, applyUserScope, validateWriteScope } from "@/lib/scopes"
+import { canAssignIamRole } from "@/lib/iam"
 
 export async function listAgents() {
   const current = await requireUser()
@@ -100,6 +101,15 @@ export async function createAgent(input: {
   // regardless of the account's actual IAM permissions.
   if (!canCreateRole(current, input.role)) {
     return { ok: false as const, error: "You are not authorized to assign this role" }
+  }
+
+  // SECURITY: same ceiling, but for the dynamic IAM role (iamRoleId), which
+  // is what actually grants permissions day-to-day. Without this, someone
+  // with basic user-creation rights could hand a new account any
+  // pre-existing IAM role — including one carrying "roles.manage" — even
+  // without holding that permission themselves.
+  if (!(await canAssignIamRole(current, input.iamRoleId))) {
+    return { ok: false as const, error: "You are not authorized to assign this permission role" }
   }
 
   // Security Hardening: HTML Sanitization for User Names
@@ -201,6 +211,15 @@ export async function setAgentRole(userId: string, role: string, iamRoleId?: str
   // permissions.
   if (!canCreateRole(current, role)) {
     return { ok: false as const, error: "You are not authorized to assign this role" }
+  }
+
+  // SECURITY: same ceiling, but for the dynamic IAM role (iamRoleId), which
+  // is what actually grants permissions day-to-day. Without this, someone
+  // with basic user-editing rights could hand an existing user any
+  // pre-existing IAM role — including one carrying "roles.manage" — even
+  // without holding that permission themselves.
+  if (!(await canAssignIamRole(current, iamRoleId))) {
+    return { ok: false as const, error: "You are not authorized to assign this permission role" }
   }
 
   const [updated] = await db

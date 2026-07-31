@@ -104,6 +104,52 @@ export async function hasPermission(user: SessionUser, permissionCode: string): 
 }
 
 /**
+ * Authorizes whether `user` is allowed to assign `targetRoleId` to someone
+ * (themselves excluded — that's handled by the caller).
+ *
+ * SECURITY CONTEXT: iam_role.level already existed as a field (editable in
+ * the admin panel, used to sort the role list) but was never actually
+ * enforced anywhere. Role *definition* (createRole/updateRole/
+ * updateRolePermissions in app/actions/iam.ts) is correctly gated behind
+ * the high-bar "roles.manage" permission — but *assigning* an
+ * already-existing role to a user (setAgentRole/createAgent in
+ * app/actions/admin.ts) was only gated behind "users.create"/"users.view".
+ * That's a real gap: someone with basic user-management rights could hand
+ * a colleague a pre-existing role carrying "roles.manage" or any other
+ * broad permission, without ever needing "roles.manage" themselves.
+ *
+ * Unassigning a role (targetRoleId null/undefined) is always allowed —
+ * removing authority isn't the risk here, granting it is.
+ */
+export async function canAssignIamRole(user: SessionUser, targetRoleId: string | null | undefined): Promise<boolean> {
+  if (!targetRoleId) return true
+
+  // Holders of roles.manage already have full authority over the role
+  // system itself (defining roles, editing their permissions), so letting
+  // them assign any role too is consistent, not an escalation.
+  if (await hasPermission(user, "roles.manage")) return true
+
+  const [targetRole] = await db
+    .select({ level: iamRole.level })
+    .from(iamRole)
+    .where(eq(iamRole.id, targetRoleId))
+    .limit(1)
+
+  // Assigning a role that doesn't exist shouldn't be possible via the UI,
+  // but if it happens, reject rather than assume it's safe.
+  if (!targetRole) return false
+
+  const currentLevel = user.iamRoleId ? (await getOwnRoleLevel(user.iamRoleId)) : 0
+
+  return targetRole.level <= currentLevel
+}
+
+const getOwnRoleLevel = cache(async (roleId: string): Promise<number> => {
+  const [row] = await db.select({ level: iamRole.level }).from(iamRole).where(eq(iamRole.id, roleId)).limit(1)
+  return row?.level ?? 0
+})
+
+/**
  * Returns all permission codes and their best scopes assigned to a user.
  * optimized for pre-fetching in getCurrentUser.
  */
