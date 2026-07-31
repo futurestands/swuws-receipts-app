@@ -74,19 +74,30 @@ export function AdminTabs({
 
   return (
     <Tabs defaultValue={defaultTab}>
-      <TabsList>
-        {permissions.canViewReports && <TabsTrigger value="overview">Overview</TabsTrigger>}
-        {permissions.canViewReports && <TabsTrigger value="commercial">Commercial</TabsTrigger>}
-        {permissions.canViewReports && <TabsTrigger value="printing">Printing</TabsTrigger>}
-        {permissions.canManageUsers && <TabsTrigger value="agents">Agents</TabsTrigger>}
-        {permissions.canManageIAM && <TabsTrigger value="iam">IAM</TabsTrigger>}
-        {permissions.canConfigureSystem && <TabsTrigger value="tariffs">Tariffs</TabsTrigger>}
-        {permissions.canConfigureSystem && <TabsTrigger value="templates">Templates</TabsTrigger>}
-        {permissions.canManageHierarchy && <TabsTrigger value="reference">Branches &amp; schemes</TabsTrigger>}
-        {permissions.canConfigureSystem && <TabsTrigger value="branding">Branding</TabsTrigger>}
-        {permissions.canAudit && <TabsTrigger value="audit">Audit log</TabsTrigger>}
-        {permissions.canConfigureSystem && <TabsTrigger value="maintenance" className="text-destructive font-bold">Maintenance</TabsTrigger>}
-      </TabsList>
+      {/*
+        TabsList is `inline-flex w-fit` with no wrapping (see
+        components/ui/tabs.tsx), so on narrow/mobile viewports it overflows
+        past the visible width and everything after "IAM" gets visually
+        clipped by the page with no way to reach it. Wrapping it in a
+        horizontally-scrollable container fixes that without touching the
+        shared Tabs primitive (which is also used elsewhere). `shrink-0` on
+        each trigger stops flex from squishing labels instead of scrolling.
+      */}
+      <div className="overflow-x-auto scrollbar-hide -mx-1 px-1">
+        <TabsList className="w-max">
+          {permissions.canViewReports && <TabsTrigger value="overview" className="shrink-0">Overview</TabsTrigger>}
+          {permissions.canViewReports && <TabsTrigger value="commercial" className="shrink-0">Commercial</TabsTrigger>}
+          {permissions.canViewReports && <TabsTrigger value="printing" className="shrink-0">Printing</TabsTrigger>}
+          {permissions.canManageUsers && <TabsTrigger value="agents" className="shrink-0">Agents</TabsTrigger>}
+          {permissions.canManageIAM && <TabsTrigger value="iam" className="shrink-0">IAM</TabsTrigger>}
+          {permissions.canConfigureSystem && <TabsTrigger value="tariffs" className="shrink-0">Tariffs</TabsTrigger>}
+          {permissions.canConfigureSystem && <TabsTrigger value="templates" className="shrink-0">Templates</TabsTrigger>}
+          {permissions.canManageHierarchy && <TabsTrigger value="reference" className="shrink-0">Branches &amp; schemes</TabsTrigger>}
+          {permissions.canConfigureSystem && <TabsTrigger value="branding" className="shrink-0">Branding</TabsTrigger>}
+          {permissions.canAudit && <TabsTrigger value="audit" className="shrink-0">Audit log</TabsTrigger>}
+          {permissions.canConfigureSystem && <TabsTrigger value="maintenance" className="shrink-0 text-destructive font-bold">Maintenance</TabsTrigger>}
+        </TabsList>
+      </div>
 
       {permissions.canViewReports && (
         <TabsContent value="overview" className="mt-4">

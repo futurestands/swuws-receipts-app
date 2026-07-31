@@ -233,3 +233,17 @@ body.scanner-active div[className*="z-50"] {
 body.scanner-active div[className*="z-50"] * {
   visibility: visible;
 }
+
+/* ---------------------------------------------------------------------
+   Scrollable tab bars (e.g. admin nav) — hides the scrollbar while
+   keeping the row swipeable/scrollable on narrow (mobile) viewports,
+   instead of clipping items that don't fit.
+   --------------------------------------------------------------------- */
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
