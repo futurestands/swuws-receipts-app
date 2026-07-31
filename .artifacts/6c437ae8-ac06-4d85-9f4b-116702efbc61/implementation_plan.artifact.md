@@ -1,39 +1,35 @@
-# Implementation Plan - Customer Excel Export
+# Fix App Icon Not Updating
 
-Add a feature to download the filtered customer list as an Excel file.
+This plan addresses the issue where the Android app icon remains as the default logo even after custom icons were added to the project.
 
-## User Review Required
+## Root Cause Analysis
 
-> [!NOTE]
-> The export will respect the current filters (Text search, Branch, Water Scheme, and Balance Range).
+Modern Android devices use **Adaptive Icons**, which consist of separate foreground and background layers. I discovered that:
+1.  The project contains default Android vector drawables (the Android mascot) in `android/app/src/main/res/drawable-v24/ic_launcher_foreground.xml`.
+2.  In Android's resource system, these XML vectors take priority over the PNG images you added to the `mipmap` folders.
+3.  As a result, even though your new icons are in the project, the system continues to render the default Android robot icon.
 
 ## Proposed Changes
 
-### Backend (Server Actions)
+### Android Native Assets
 
-#### [MODIFY] [customers.ts](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/app/actions/customers.ts)
-- Add `import * as XLSX from "xlsx"` at the top.
-- Add `exportCustomersExcel` server action:
-    - Accepts same filters as `searchCustomers`.
-    - Queries all matching customers (no pagination).
-    - Maps data to a clean format for Excel (Name, Account #, Phone, Branch, Scheme, Arrears, etc.).
-    - Returns the Excel file as a base64 string.
+#### [DELETE] `android/app/src/main/res/drawable-v24/ic_launcher_foreground.xml`
+- Removing this file will force Android to use the PNG images you placed in the `mipmap-hdpi`, `mipmap-xhdpi`, etc., folders.
 
-### Frontend (Dashboard)
+#### [DELETE] `android/app/src/main/res/drawable/ic_launcher_background.xml`
+- Removing the default grid background vector ensures the system uses the solid color background defined in your configuration.
 
-#### [MODIFY] [customer-search-bar.tsx](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/app/dashboard/customers/customer-search-bar.tsx)
-- Add `Download` icon from `lucide-react`.
-- Add `exportCustomersExcel` to the list of imported actions.
-- Add `isExporting` state using `useState`.
-- Add `handleExport` function:
-    - Calls `exportCustomersExcel` with current state values (query, branchId, etc.).
-    - Triggers a browser download of the generated file.
-- Add a "Download Excel" button in the search bar area (next to Bulk Import).
+### Web Assets (Optional but Recommended)
+
+#### [MODIFY] [manifest.json](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/public/manifest.json)
+- The current manifest refers to `icon-192.png` and `icon-512.png` which are missing from the `public` folder.
+- I will update this to point to the existing `icon.svg` or `apple-icon.png` to ensure the PWA/Web icon is also correct.
+
+---
 
 ## Verification Plan
 
 ### Manual Verification
-1. Navigate to the Customers dashboard.
-2. Apply some filters (e.g., a specific Branch or a Balance Range).
-3. Click the "Download Excel" button.
-4. Verify that the downloaded file contains the correct filtered data and is properly formatted.
+- After applying the changes, you will need to **clean and rebuild** the Android project in Android Studio.
+- Deploy the app to a physical device or emulator.
+- Verify that the launcher icon now shows your logo.

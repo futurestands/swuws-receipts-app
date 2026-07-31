@@ -7,3 +7,5 @@
 - [x] Implement `exportCustomersExcel` server action in `app/actions/customers.ts`
 - [x] Add "Download Excel" button and logic to `app/dashboard/customers/customer-search-bar.tsx`
 - [x] Verify Excel export respects active filters
+- [x] Fix App Icon: Delete default Android vector icons (`ic_launcher_foreground.xml`, `ic_launcher_background.xml`)
+- [x] Fix App Icon: Update `public/manifest.json` to use available icon assets

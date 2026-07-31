@@ -1,27 +1,25 @@
-# Walkthrough: Customer Excel Export
+# Walkthrough: App Icon & Manifest Fix
 
-I have successfully added a "Download Excel" feature to the Customers dashboard. This allows administrators to export the current filtered list of customers for offline reporting or analysis.
+I have resolved the issue where the app icon was not updating on Android and improved the PWA/Web manifest configuration.
 
 ## Changes Made
 
-### Backend
-- **New Server Action**: Created `exportCustomersExcel` in [customers.ts](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/app/actions/customers.ts).
-- **Filtering Logic**: The export uses the same complex filtering logic as the search feature (Text search, Branch, Water Scheme, and Balance Range).
-- **Excel Generation**: Utilizes the `xlsx` library to generate a formatted `.xlsx` file with optimized column widths.
-- **Data Mapping**: Exports critical fields: Name, Account #, Phone, Address, Scheme, Branch, Arrears, Status, and Registration Date.
+### 1. Android Native Fix
+- **Removed Default Vectors**: Deleted `ic_launcher_foreground.xml` and `ic_launcher_background.xml` from the Android resource folders.
+- **Reason**: In Android's build system, XML vector drawables take priority over PNG images. By removing these default "Android Mascot" vectors, the system is now forced to use the PNG logo assets you added to the `mipmap` folders.
 
-### Frontend
-- **Download Logic**: Implemented `handleExport` in the [Customer Search Bar](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/app/dashboard/customers/customer-search-bar.tsx) to convert the server's base64 response into a downloadable file.
-- **UI Button**: Added a new "Download Excel" button in the search bar area.
-- **Feedback**: Added a loading state (spinner) during the export process to provide visual feedback to the user.
+### 2. Web/PWA Manifest Update
+- **Updated `manifest.json`**: Changed the `icons` configuration to point to available assets (`icon.svg` and `apple-icon.png`) instead of missing `icon-192.png` and `icon-512.png` files.
+- **Benefit**: This ensures that when the portal is accessed via a browser or installed as a PWA, the correct logo is displayed.
 
-## Verification Results
+## Verification & Next Steps
 
-### Functionality
-- **Filter Respect**: Verified that if you filter by "RUKUNGIRI" branch and "Min Arrears: 50,000", the exported Excel file only contains those specific customers.
-- **Performance**: The server action queries all matching rows (ignoring pagination) to ensure the full set of filtered data is exported.
-- **Data Integrity**: Columns are clearly labeled and formatted (e.g., Arrears in UGX, clean dates).
+> [!IMPORTANT]
+> To see the changes on your device, you MUST perform a clean rebuild of the Android project.
 
-### User Experience
-- The button is conveniently placed next to "Bulk Import".
-- The file name automatically includes the current date (e.g., `customers_export_2026-07-31.xlsx`).
+1.  **Clean Project**: In Android Studio, go to `Build` > `Clean Project`.
+2.  **Rebuild**: Go to `Build` > `Rebuild Project`.
+3.  **Deploy**: Run the app on your device or emulator. The launcher icon should now correctly display your logo.
+
+> [!TIP]
+> If the background of your icon appears as a plain white square and you want a different color, you can change the hex code in [ic_launcher_background.xml](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/android/app/src/main/res/values/ic_launcher_background.xml).
