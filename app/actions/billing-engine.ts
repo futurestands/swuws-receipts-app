@@ -413,3 +413,79 @@ export async function cancelMeterReading(readingId: string) {
   revalidateTag("dashboard-stats")
   return { ok: true }
 }
+
+/**
+ * Sends or resends an SMS notification for a meter reading.
+ */
+export async function sendReadingSms(readingId: string) {
+  const user = await requireUser()
+  if (!canIssueReceipt(user)) throw new Error("Forbidden")
+
+  const [reading] = await db
+    .select({
+      id: meterReading.id,
+      customerId: meterReading.customerId,
+      billingPeriodId: meterReading.billingPeriodId,
+      billedAmount: meterReading.billedAmount,
+      phone: meterReading.phoneSnapshot,
+      customerName: meterReading.customerNameSnapshot,
+    })
+    .from(meterReading)
+    .where(eq(meterReading.id, readingId))
+    .limit(1)
+
+  if (!reading) throw new Error("Reading not found")
+  if (!reading.phone) throw new Error("No phone number found for this customer")
+
+  const [period] = await db
+    .select({ periodName: billingPeriod.periodName, endDate: billingPeriod.endDate })
+    .from(billingPeriod)
+    .where(eq(billingPeriod.id, reading.billingPeriodId))
+    .limit(1)
+
+  const [template] = await db
+    .select()
+    .from(managedTemplate)
+    .where(eq(managedTemplate.code, "notif.billing.sms"))
+    .limit(1)
+
+  if (template?.activeVersionId) {
+    const [version] = await db
+      .select()
+      .from(templateVersion)
+      .where(eq(templateVersion.id, template.activeVersionId))
+      .limit(1)
+
+    if (version) {
+      const settings = await getSettings()
+      const dueDate = period ? new Date(period.endDate) : new Date()
+      if (period) dueDate.setDate(dueDate.getDate() + settings.billingGraceDays)
+
+      const message = renderTemplate(
+        version.content,
+        {
+          customer_name: reading.customerName,
+          amount: reading.billedAmount.toLocaleString(),
+          period: period?.periodName || "Current",
+          due_date: dueDate.toLocaleDateString("en-GB", {
+            day: "numeric",
+            month: "short",
+            year: "numeric",
+          }),
+        },
+        { escape: template.type === "HTML" },
+      )
+
+      await sendSMS(reading.phone, message, user.id)
+
+      await db
+        .update(meterReading)
+        .set({ isNotified: true, notifiedAt: new Date() })
+        .where(eq(meterReading.id, readingId))
+
+      return { ok: true }
+    }
+  }
+
+  throw new Error("SMS template not configured")
+}

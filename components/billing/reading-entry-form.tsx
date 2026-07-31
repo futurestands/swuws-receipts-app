@@ -6,10 +6,17 @@ import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog"
 import { toast } from "sonner"
 import { formatUGX } from "@/lib/format"
-import { AlertCircle, CheckCircle2, Calculator, Send, Search, User, Printer, XCircle, History, Trash2 } from "lucide-react"
-import { getTariffForCustomer, submitMeterReading, searchCustomersForReading, cancelMeterReading } from "@/app/actions/billing-engine"
+import { AlertCircle, CheckCircle2, Calculator, Send, Search, User, Printer, XCircle, History, Trash2, Smartphone, Loader2 } from "lucide-react"
+import { getTariffForCustomer, submitMeterReading, searchCustomersForReading, cancelMeterReading, sendReadingSms } from "@/app/actions/billing-engine"
 import { calculateBill, type BillingCalculation } from "@/lib/billing/math"
 import type { Customer, BillingPeriod } from "@/lib/db/schema"
 import { cn } from "@/lib/utils"
@@ -43,9 +50,12 @@ export function ReadingEntryForm({
     calc: BillingCalculation;
     previousBalance: number;
     totalDue: number;
+    phone: string;
+    isSmsSent: boolean;
   } | null>(null)
   const [history, setHistory] = useState(initialHistory)
   const [isPending, startTransition] = useTransition()
+  const [isSendingSms, setIsSendingSms] = useState(false)
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Quick Search Logic
@@ -115,11 +125,11 @@ export function ReadingEntryForm({
           currentReading: readingValue,
           notes,
           phoneNumber: customerPhone,
-          sendSms: shouldSendSms
+          sendSms: false // Finding: Decoupling SMS from creation
         })
 
         if (result.ok) {
-          toast.success(shouldSendSms ? "Reading captured and SMS bill sent!" : "Reading captured successfully!")
+          toast.success("Reading captured successfully!")
 
           // Store last submission for printing before clearing form
           if (calculation) {
@@ -133,7 +143,9 @@ export function ReadingEntryForm({
               meterRef: selectedCustomer.meterRef,
               calc: calculation,
               previousBalance,
-              totalDue
+              totalDue,
+              phone: customerPhone,
+              isSmsSent: false
             }
 
             setLastSubmission(newSubmission)
@@ -151,7 +163,7 @@ export function ReadingEntryForm({
               totalDue,
               createdAt: new Date(),
               periodName: activePeriod.periodName,
-              isNotified: shouldSendSms
+              isNotified: false
             }, ...prev.slice(0, 19)])
           }
 
@@ -165,6 +177,22 @@ export function ReadingEntryForm({
         toast.error(err.message || "Failed to submit reading")
       }
     })
+  }
+
+  async function handleSendSms(readingId: string) {
+    try {
+      setIsSendingSms(true)
+      const result = await sendReadingSms(readingId)
+      if (result.ok) {
+        toast.success("SMS Bill sent successfully!")
+        setLastSubmission(prev => prev ? { ...prev, isSmsSent: true } : null)
+        setHistory(prev => prev.map(h => h.id === readingId ? { ...h, isNotified: true } : h))
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Failed to send SMS")
+    } finally {
+      setIsSendingSms(false)
+    }
   }
 
   async function handleCancel(id: string) {
@@ -184,41 +212,95 @@ export function ReadingEntryForm({
 
   return (
     <div className="space-y-6">
-      {/* SUCCESS & PRINT DIALOG */}
-      {lastSubmission && (
-        <Card className="border-green-200 bg-green-50/30 animate-in zoom-in-95 duration-500 mb-6">
-          <CardContent className="pt-6">
-            <div className="flex flex-col md:flex-row items-center justify-between gap-6">
-              <div className="flex items-center gap-4">
-                <div className="h-12 w-12 rounded-full bg-green-100 flex items-center justify-center text-green-600">
-                  <CheckCircle2 className="h-7 w-7" />
-                </div>
-                <div>
-                  <p className="text-lg font-black text-green-900 leading-tight">Reading Successful!</p>
-                  <p className="text-sm text-green-700">Total Amount Due: <span className="font-bold">{formatUGX(lastSubmission.totalDue)}</span> for {lastSubmission.customerName}</p>
-                </div>
-              </div>
-
-              <div className="flex gap-3 w-full md:w-auto">
-                <Button
-                  className="flex-1 md:flex-none h-14 px-8 text-lg bg-green-600 hover:bg-green-700 gap-2 shadow-xl border-b-4 border-green-800"
-                  onClick={() => window.print()}
-                >
-                  <Printer className="h-5 w-5" /> PRINT TICKET
-                </Button>
-                <Button
-                  variant="outline"
+      {/* SUCCESS & DELIVERY OPTIONS MODAL */}
+      <Dialog
+         open={!!lastSubmission}
+         onOpenChange={(open) => !open && setLastSubmission(null)}
+      >
+        <DialogContent className="max-w-4xl no-print p-0 overflow-hidden border-none bg-transparent shadow-none">
+          <div className="space-y-4 animate-in zoom-in-95 duration-500">
+            <div className="flex items-center justify-between bg-white p-4 rounded-xl shadow-sm border">
+               <div className="flex items-center gap-3">
+                  <div className="h-10 w-10 rounded-full bg-green-100 flex items-center justify-center text-green-600">
+                     <CheckCircle2 className="h-6 w-6" />
+                  </div>
+                  <h2 className="text-xl font-black text-foreground">Reading Captured Successfully</h2>
+               </div>
+               <Button
+                  variant="ghost"
                   size="icon"
-                  className="h-14 w-14 border-green-200 bg-white"
+                  className="h-10 w-10"
                   onClick={() => setLastSubmission(null)}
-                >
+               >
                   <XCircle className="h-5 w-5 text-muted-foreground" />
-                </Button>
-              </div>
+               </Button>
             </div>
-          </CardContent>
-        </Card>
-      )}
+
+            <div className="grid gap-4 md:grid-cols-2">
+               {/* PRINT CARD */}
+               <Card className="border-brand-blue/20 bg-white shadow-2xl">
+                  <CardHeader className="pb-3">
+                     <CardTitle className="text-base flex items-center gap-2">
+                        <Printer className="h-4 w-4 text-brand-blue" />
+                        Print Physical Ticket
+                     </CardTitle>
+                     <CardDescription>Generate a demand note for the customer.</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                     <div className="mb-4 p-4 bg-brand-blue/5 rounded-lg border border-brand-blue/10">
+                        <p className="text-[10px] uppercase font-bold text-muted-foreground mb-1">Amount Due</p>
+                        <p className="text-3xl font-black text-brand-blue">{lastSubmission ? formatUGX(lastSubmission.totalDue) : "—"}</p>
+                     </div>
+                     <Button
+                        className="w-full h-16 text-xl bg-brand-blue hover:bg-brand-blue/90 gap-3 shadow-lg border-b-4 border-brand-blue-dark"
+                        onClick={() => window.print()}
+                     >
+                        <Printer className="h-6 w-6" /> PRINT NOW
+                     </Button>
+                  </CardContent>
+               </Card>
+
+               {/* SMS CARD */}
+               <Card className={cn(
+                  "shadow-2xl transition-colors duration-500 bg-white",
+                  lastSubmission?.isSmsSent ? "border-green-200" : "border-emerald-200"
+               )}>
+                  <CardHeader className="pb-3">
+                     <CardTitle className="text-base flex items-center gap-2 text-emerald-700">
+                        <Smartphone className="h-4 w-4" />
+                        Send SMS Notification
+                     </CardTitle>
+                     <CardDescription>Instant mobile bill delivery.</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                     <div className="mb-4 p-4 bg-emerald-50/50 rounded-lg border border-emerald-100">
+                        <p className="text-[10px] uppercase font-bold text-muted-foreground mb-1">Recipient Phone</p>
+                        <p className="text-2xl font-bold text-emerald-900">{lastSubmission?.phone || "No phone provided"}</p>
+                     </div>
+                     <Button
+                        className={cn(
+                           "w-full h-16 text-xl gap-3 shadow-lg transition-all border-b-4",
+                           lastSubmission?.isSmsSent
+                              ? "bg-green-600 hover:bg-green-700 border-green-800"
+                              : "bg-emerald-600 hover:bg-emerald-700 border-emerald-800"
+                        )}
+                        onClick={() => lastSubmission && handleSendSms(lastSubmission.readingId)}
+                        disabled={isSendingSms || !lastSubmission?.phone}
+                     >
+                        {isSendingSms ? (
+                           <Loader2 className="h-6 w-6 animate-spin" />
+                        ) : lastSubmission?.isSmsSent ? (
+                           <><CheckCircle2 className="h-6 w-6" /> RESEND SMS</>
+                        ) : (
+                           <><Send className="h-6 w-6" /> SEND SMS BILL</>
+                        )}
+                     </Button>
+                  </CardContent>
+               </Card>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* PRINT-ONLY AREA (Hidden on screen) */}
       <div className="hidden print:block print-area">
@@ -345,7 +427,7 @@ export function ReadingEntryForm({
               />
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="phone">Customer Phone Number</Label>
                 <Input
@@ -357,22 +439,6 @@ export function ReadingEntryForm({
                   disabled={!selectedCustomer}
                   className="h-11"
                 />
-              </div>
-
-              <div className="flex flex-col justify-center space-y-2 pt-2 md:pt-6">
-                <label className="flex items-center gap-2 cursor-pointer group">
-                  <input
-                    type="checkbox"
-                    checked={shouldSendSms}
-                    onChange={(e) => setShouldSendSms(e.target.checked)}
-                    disabled={!selectedCustomer}
-                    className="size-5 rounded border-gray-300 text-primary focus:ring-primary"
-                  />
-                  <div className="flex flex-col">
-                    <span className="text-sm font-bold group-hover:text-primary transition-colors">Send Bill via SMS</span>
-                    <span className="text-[10px] text-muted-foreground uppercase">Instant Notification</span>
-                  </div>
-                </label>
               </div>
             </div>
 
@@ -388,10 +454,12 @@ export function ReadingEntryForm({
             </div>
 
             <Button type="submit" className="w-full h-12 text-base font-bold gap-2" disabled={isPending || !currentReading}>
-              {isPending ? "Processing..." : (
+              {isPending ? (
+                 <><Loader2 className="h-4 w-4 animate-spin" /> Processing...</>
+              ) : (
                 <>
-                  <Send className={cn("size-4", shouldSendSms && "animate-pulse")} />
-                  Confirm & {shouldSendSms ? "Send Bill via SMS" : "Save Reading"}
+                  <CheckCircle2 className="size-4" />
+                  Confirm & Save Reading
                 </>
               )}
             </Button>
@@ -440,9 +508,9 @@ export function ReadingEntryForm({
                 </div>
               </div>
 
-              <div className="mt-6 flex items-center gap-2 p-3 bg-emerald-50 text-emerald-700 rounded-lg text-xs border border-emerald-100">
-                <Send className="h-4 w-4" />
-                <span>Customer will be notified of this total via SMS instantly.</span>
+              <div className="mt-6 flex items-center gap-2 p-3 bg-blue-50 text-brand-blue rounded-lg text-xs border border-blue-100">
+                <CheckCircle2 className="h-4 w-4" />
+                <span>Save reading first, then choose to print a ticket or send SMS.</span>
               </div>
             </div>
           ) : (
@@ -502,6 +570,17 @@ export function ReadingEntryForm({
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-2">
+                        {!item.isNotified && (
+                           <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-8 gap-1.5 text-emerald-700 border-emerald-200 bg-emerald-50/50 hover:bg-emerald-50"
+                              onClick={() => handleSendSms(item.id)}
+                              disabled={isSendingSms}
+                           >
+                              <Smartphone className="h-3 w-3" /> SMS
+                           </Button>
+                        )}
                         <Button
                           variant="outline"
                           size="sm"

@@ -1,11 +1,4 @@
-- [x] Update `lib/import-engine.ts` to support aliases and positional (no-header) mapping
-- [x] Update `app/actions/billing.ts` to support no-header imports and arrears aliases
-- [x] Update `app/dashboard/customers/customer-search-bar.tsx` to add UI fields for balance range
-- [x] Update `app/actions/customers.ts` to support `minBalance` and `maxBalance` in `searchCustomers`
-- [x] Update `app/dashboard/customers/page.tsx` to pass balance filters to the action and search bar
-- [x] Verify pagination preserves balance filters in `app/dashboard/customers/page.tsx`
-- [x] Implement `exportCustomersExcel` server action in `app/actions/customers.ts`
-- [x] Add "Download Excel" button and logic to `app/dashboard/customers/customer-search-bar.tsx`
-- [x] Verify Excel export respects active filters
-- [x] Fix App Icon: Delete default Android vector icons (`ic_launcher_foreground.xml`, `ic_launcher_background.xml`)
-- [x] Fix App Icon: Update `public/manifest.json` to use available icon assets
+- [x] Update `ReadingEntryForm` to use a `Dialog` for post-save delivery options
+- [x] Add `no-print` to Dialog components to prevent them from appearing on tickets
+- [x] Ensure the Dialog automatically clears `lastSubmission` when closed
+- [x] Verify that the Modal provides exclusive focus on Print and SMS options

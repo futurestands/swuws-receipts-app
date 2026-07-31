@@ -1,35 +1,38 @@
-# Fix App Icon Not Updating
+# Focused Delivery Dialog for Meter Readings
 
-This plan addresses the issue where the Android app icon remains as the default logo even after custom icons were added to the project.
+Redesign the post-confirmation workflow to use a focused Modal (Dialog) instead of an inline section. This ensures that after confirming a reading, the agent is presented exclusively with the two delivery options (Print and SMS) without having to scroll or interact with the rest of the page.
 
-## Root Cause Analysis
+## User Review Required
 
-Modern Android devices use **Adaptive Icons**, which consist of separate foreground and background layers. I discovered that:
-1.  The project contains default Android vector drawables (the Android mascot) in `android/app/src/main/res/drawable-v24/ic_launcher_foreground.xml`.
-2.  In Android's resource system, these XML vectors take priority over the PNG images you added to the `mipmap` folders.
-3.  As a result, even though your new icons are in the project, the system continues to render the default Android robot icon.
+> [!IMPORTANT]
+> The "Confirm & Save Reading" button will now automatically open a centered pop-up window containing the Print and SMS choices. The rest of the page will be obscured until the dialog is closed.
 
 ## Proposed Changes
 
-### Android Native Assets
+### Frontend (Components)
 
-#### [DELETE] `android/app/src/main/res/drawable-v24/ic_launcher_foreground.xml`
-- Removing this file will force Android to use the PNG images you placed in the `mipmap-hdpi`, `mipmap-xhdpi`, etc., folders.
-
-#### [DELETE] `android/app/src/main/res/drawable/ic_launcher_background.xml`
-- Removing the default grid background vector ensures the system uses the solid color background defined in your configuration.
-
-### Web Assets (Optional but Recommended)
-
-#### [MODIFY] [manifest.json](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/public/manifest.json)
-- The current manifest refers to `icon-192.png` and `icon-512.png` which are missing from the `public` folder.
-- I will update this to point to the existing `icon.svg` or `apple-icon.png` to ensure the PWA/Web icon is also correct.
+#### [MODIFY] [reading-entry-form.tsx](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/components/billing/reading-entry-form.tsx)
+- **Import Dialog Components**: Add `Dialog`, `DialogContent`, `DialogHeader`, `DialogTitle`, `DialogDescription` from `@/components/ui/dialog`.
+- **Exclusive Modal View**:
+    - Wrap the current "Success & Delivery Options" cards in a `Dialog`.
+    - Set the `open` state of the dialog to `!!lastSubmission`.
+    - Use `onOpenChange={(open) => !open && setLastSubmission(null)}` to reset state when closed.
+- **Improved Separation**:
+    - The Dialog will prominently show the two cards (Print and SMS) as the ONLY available actions.
+    - Add `no-print` to the `DialogContent` and `DialogOverlay` to ensure they don't appear in the physical printout.
+- **Refine Layout**:
+    - Ensure the "Amount Due" is bold and central in the dialog.
+    - Keep the "Resend" and "History" synchronization intact.
 
 ---
 
 ## Verification Plan
 
 ### Manual Verification
-- After applying the changes, you will need to **clean and rebuild** the Android project in Android Studio.
-- Deploy the app to a physical device or emulator.
-- Verify that the launcher icon now shows your logo.
+1. Capture a meter reading and click "Confirm & Save".
+2. Verify that a Modal pops up immediately.
+3. Verify that the capture form and history list are hidden/obscured behind the modal.
+4. Click "Print Ticket" inside the modal and verify the print preview shows only the receipt.
+5. Click "Send SMS" inside the modal and verify the success toast appears and the button updates.
+6. Click "Close" or outside the modal and verify it returns to the empty capture form.
+7. Click "Reprint" in the history table and verify the same Modal opens for that historical record.

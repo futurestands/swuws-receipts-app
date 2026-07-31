@@ -1,25 +1,24 @@
-# Walkthrough: App Icon & Manifest Fix
+# Walkthrough: Exclusive Delivery Modal for Meter Readings
 
-I have resolved the issue where the app icon was not updating on Android and improved the PWA/Web manifest configuration.
+I have redesigned the delivery workflow to use an exclusive Modal (Dialog). This ensures that immediately after saving a reading, you are presented with only the two relevant choices: **Print** and **SMS**.
 
 ## Changes Made
 
-### 1. Android Native Fix
-- **Removed Default Vectors**: Deleted `ic_launcher_foreground.xml` and `ic_launcher_background.xml` from the Android resource folders.
-- **Reason**: In Android's build system, XML vector drawables take priority over PNG images. By removing these default "Android Mascot" vectors, the system is now forced to use the PNG logo assets you added to the `mipmap` folders.
+### 1. Focused Delivery Modal
+- **Automatic Pop-up**: As soon as you click "Confirm & Save Reading", a centered modal appears on the screen.
+- **Background Dimming**: The rest of the page (capture form and history) is obscured by an overlay, forcing focus onto the delivery choices.
+- **Simplified UI**: The modal contains two large, professional cards for "Print Physical Ticket" and "Send SMS Notification".
 
-### 2. Web/PWA Manifest Update
-- **Updated `manifest.json`**: Changed the `icons` configuration to point to available assets (`icon.svg` and `apple-icon.png`) instead of missing `icon-192.png` and `icon-512.png` files.
-- **Benefit**: This ensures that when the portal is accessed via a browser or installed as a PWA, the correct logo is displayed.
+### 2. Improved Layout & Separation
+- **Prominent Totals**: The "Amount Due" is displayed in a large, bold font in the center of the print card.
+- **Larger Buttons**: The "PRINT NOW" and "SEND SMS BILL" buttons are now larger and have strong visual cues (like `border-b-4` for a physical button look).
+- **No-Header Scroll**: Because this is a modal, you no longer need to scroll down to the bottom of the list to find your delivery options. They are right in front of you.
 
-## Verification & Next Steps
+### 3. Smart Reset Logic
+- When the modal is closed (via the "X" button or clicking outside), the system automatically resets the capture form so you are ready to enter the next customer's reading immediately.
 
-> [!IMPORTANT]
-> To see the changes on your device, you MUST perform a clean rebuild of the Android project.
-
-1.  **Clean Project**: In Android Studio, go to `Build` > `Clean Project`.
-2.  **Rebuild**: Go to `Build` > `Rebuild Project`.
-3.  **Deploy**: Run the app on your device or emulator. The launcher icon should now correctly display your logo.
-
-> [!TIP]
-> If the background of your icon appears as a plain white square and you want a different color, you can change the hex code in [ic_launcher_background.xml](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/android/app/src/main/res/values/ic_launcher_background.xml).
+## Verification Results
+- **Focus**: Verified that the modal is the only interactive element after saving.
+- **Printing**: Confirmed that clicking "PRINT NOW" triggers the browser's print dialog, and the modal itself is invisible on the paper ticket (`no-print` logic).
+- **SMS**: Confirmed that SMS can be sent and status updates within the modal.
+- **History Integration**: Clicking "Reprint" in the history table now correctly opens this same professional modal instead of just triggering a blind print.
