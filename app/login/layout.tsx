@@ -13,6 +13,9 @@ export default function LoginLayout({
           </p>
         </div>
         {children}
+        <p className="mt-8 text-center text-xs text-muted-foreground">
+          &copy; {new Date().getFullYear()} Developed by Mugarura Johnson IT
+        </p>
       </div>
     </div>
   )

@@ -186,6 +186,11 @@ export default async function ReceiptDetailPage({ params }: { params: Promise<{ 
               <img src={qrSrc} alt="Scan to verify this receipt" width={70} height={70} />
             </div>
           </div>
+          <div className="mt-8 pt-4 border-t border-dashed text-center">
+            <p className="text-[9px] text-muted-foreground uppercase tracking-widest font-medium">
+              &copy; {new Date().getFullYear()} Developed by Mugarura Johnson IT
+            </p>
+          </div>
         </CardContent>
       </Card>
 

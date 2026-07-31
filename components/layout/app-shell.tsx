@@ -84,6 +84,15 @@ export function AppShell({
         <div className="flex-1 overflow-y-auto">
           <SidebarNav sections={sections} collapsed={collapsed} />
         </div>
+        <div className={cn(
+          "shrink-0 border-t border-sidebar-border p-3 text-center transition-opacity duration-200",
+          collapsed ? "opacity-0" : "opacity-100"
+        )}>
+          <p className="text-[10px] font-medium text-sidebar-foreground/50">
+            &copy; {new Date().getFullYear()} Developed by<br />
+            Mugarura Johnson IT
+          </p>
+        </div>
       </aside>
 
       {/* Mobile drawer */}
