@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useTransition, useEffect } from "react"
+import { useState, useTransition } from "react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Button } from "@/components/ui/button"
@@ -36,16 +36,34 @@ export function TemplateManager({ initialTemplates }: { initialTemplates: any[] 
   const [isPending, startTransition] = useTransition()
   const [view, setView] = useState<"list" | "editor">("list")
 
-  useEffect(() => {
-    if (selectedTemplate) {
-      // Prioritize most recent history content for the editor (Draft or Published)
-      const latest = history[0]
-      if (latest && !editContent) {
-        // Only set if editor is currently empty to prevent overwrite during typing
-        // setEditContent(selectedTemplate.activeContent || "")
+  // Opens a template in the editor. This previously relied on a useEffect
+  // whose actual state update was commented out, so editContent never got
+  // (re)initialized when switching templates — the editor would show
+  // whatever content was already in state (stale, from whatever template
+  // was open before, or blank), and Save Draft would happily persist that
+  // stale content as a new version of the *wrong* template. Also, template
+  // version history was never actually fetched on open (nothing called
+  // getTemplateHistory), so the "unpublished draft" banner never triggered
+  // for a draft left over from an earlier session.
+  async function openTemplate(t: any) {
+    setSelectedTemplate(t)
+    setEditContent(t.activeContent || "")
+    setChangelog("")
+    setHistory([])
+    setView("editor")
+
+    try {
+      const h = await getTemplateHistory(t.id)
+      setHistory(h)
+      // If the latest version is an unpublished draft, load its content
+      // instead of the published one, so in-progress edits aren't lost.
+      if (h[0]?.status === "draft" && h[0]?.content) {
+        setEditContent(h[0].content)
       }
+    } catch (err: any) {
+      toast.error(err.message || "Failed to load template history")
     }
-  }, [selectedTemplate, history])
+  }
 
   async function handleSaveDraft() {
     if (!changelog) {
@@ -266,10 +284,7 @@ export function TemplateManager({ initialTemplates }: { initialTemplates: any[] 
                     </Badge>
                   </TableCell>
                   <TableCell className="text-right">
-                    <Button variant="ghost" size="icon-sm" onClick={() => {
-                      setSelectedTemplate(t)
-                      setView("editor")
-                    }}>
+                    <Button variant="ghost" size="icon-sm" onClick={() => openTemplate(t)}>
                       <ChevronRight className="h-4 w-4 group-hover:translate-x-0.5 transition-transform" />
                     </Button>
                   </TableCell>

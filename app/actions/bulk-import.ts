@@ -2,7 +2,7 @@
 
 import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
-import { user, cluster, branch, waterScheme, organization, managedTemplate, templateVersion } from "@/lib/db/schema"
+import { user, cluster, branch, waterScheme, organization } from "@/lib/db/schema"
 import { requireUser } from "@/lib/session"
 import { writeAudit } from "@/lib/audit"
 import { ROLES, ROLE_LABELS, type Role } from "@/lib/permissions/roles"
@@ -12,6 +12,28 @@ import { headers } from "next/headers"
 import * as XLSX from "xlsx"
 import { z } from "zod"
 import { randomUUID } from "crypto"
+import { getImportMapping } from "@/lib/import-engine"
+
+// Single source of truth for the fallback column mapping when no template
+// is configured in Template Management yet. Previously this same set of
+// defaults was duplicated independently in downloadBulkImportTemplate and
+// the (hardcoded, template-blind) parsing loop in validateBulkUsers, which
+// is exactly how they drifted apart: the download function correctly
+// pulled live headers from the active template, but the upload parser
+// below always read fixed English column names regardless of what the
+// template actually said — so renaming/reordering the template's columns
+// silently broke every import made with the file it generated.
+const DEFAULT_USER_IMPORT_MAPPING: Record<string, string> = {
+  name: "Name",
+  email: "Email",
+  password: "Password",
+  role: "Role",
+  cluster: "Cluster",
+  area: "Area",
+  scheme: "Scheme",
+  phone: "Phone",
+  status: "Status",
+}
 
 const userImportSchema = z.object({
   name: z.string().trim().min(1, "Name is required"),
@@ -76,6 +98,13 @@ export async function validateBulkUsers(formData: FormData): Promise<{ ok: true;
   const existingEmails = new Set(existingUsers.map((u) => u.email.toLowerCase()))
   const seenInUpload = new Set<string>()
 
+  // Resolve the column mapping from Template Management (import.users.bulk),
+  // falling back to the plain-English defaults if no template is configured.
+  // This must be the same mapping downloadBulkImportTemplate used to
+  // generate the headers the person is now uploading — see the comment on
+  // DEFAULT_USER_IMPORT_MAPPING above.
+  const mapping = (await getImportMapping("import.users.bulk")) || DEFAULT_USER_IMPORT_MAPPING
+
   const results: ValidationResult[] = []
   let validCount = 0
   let errorCount = 0
@@ -85,17 +114,17 @@ export async function validateBulkUsers(formData: FormData): Promise<{ ok: true;
     const errors: string[] = []
     const warnings: string[] = []
 
-    // Map Excel/CSV headers to schema keys if needed, but assuming template headers for now
+    // Map Excel/CSV headers to schema keys using the resolved template mapping.
     const mappedRow: UserImportRow = {
-      name: String(rawRow.Name || "").trim(),
-      email: String(rawRow.Email || "").trim().toLowerCase(),
-      password: rawRow.Password ? String(rawRow.Password).trim() : undefined,
-      role: String(rawRow.Role || "").trim(),
-      cluster: String(rawRow.Cluster || "").trim(),
-      area: String(rawRow.Area || "").trim(),
-      scheme: String(rawRow.Scheme || "").trim(),
-      phone: String(rawRow.Phone || "").trim(),
-      status: String(rawRow.Status || "Active").trim(),
+      name: String(rawRow[mapping.name] || "").trim(),
+      email: String(rawRow[mapping.email] || "").trim().toLowerCase(),
+      password: rawRow[mapping.password] ? String(rawRow[mapping.password]).trim() : undefined,
+      role: String(rawRow[mapping.role] || "").trim(),
+      cluster: String(rawRow[mapping.cluster] || "").trim(),
+      area: String(rawRow[mapping.area] || "").trim(),
+      scheme: String(rawRow[mapping.scheme] || "").trim(),
+      phone: String(rawRow[mapping.phone] || "").trim(),
+      status: String(rawRow[mapping.status] || "Active").trim(),
     }
 
     const parsed = userImportSchema.safeParse(mappedRow)
@@ -341,24 +370,10 @@ export async function importBulkUsers(summary: ImportSummary): Promise<{ ok: tru
 export async function downloadBulkImportTemplate(format: "xlsx" | "csv") {
   await requireUser()
 
-  // 1. Resolve Headers from Template Hub
-  const [template] = await db.select().from(managedTemplate).where(eq(managedTemplate.code, 'import.users.bulk')).limit(1)
-  let mapping = {
-    name: "Name",
-    email: "Email",
-    password: "Password",
-    role: "Role",
-    cluster: "Cluster",
-    area: "Area",
-    scheme: "Scheme",
-    phone: "Phone",
-    status: "Status"
-  }
-
-  if (template?.activeVersionId) {
-    const [version] = await db.select().from(templateVersion).where(eq(templateVersion.id, template.activeVersionId)).limit(1)
-    if (version) mapping = JSON.parse(version.content)
-  }
+  // Resolve headers from Template Hub — same resolution path validateBulkUsers
+  // now uses, so what this generates and what that parses can never drift
+  // apart again.
+  const mapping = (await getImportMapping("import.users.bulk")) || DEFAULT_USER_IMPORT_MAPPING
 
   const headers = Object.values(mapping)
   const sampleRow: any = {}

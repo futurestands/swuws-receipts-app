@@ -51,6 +51,7 @@ export async function getTemplateHistory(templateId: string) {
       versionNumber: templateVersion.versionNumber,
       status: templateVersion.status,
       changelog: templateVersion.changelog,
+      content: templateVersion.content,
       createdAt: templateVersion.createdAt,
       createdBy: userTable.name,
     })
