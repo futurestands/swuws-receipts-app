@@ -37,8 +37,10 @@ export default async function AdminPage() {
   const canConfigureSystemVal = current ? canConfigureSystem(current) : false
   const canManageIAMVal = current ? (current.permissions?.includes("roles.view") || current.permissions?.includes("permissions.view")) : false
 
-  const [agents, auditLogs, stats, collections, printingStats, clusters, branches, methods, schemes, settings, periods, iamRoles, allPermissions, tariffs, templates] = await Promise.all([
-    canManageUsersVal ? listAgents().catch(() => []) : Promise.resolve([]),
+  const [agentsResult, auditLogs, stats, collections, printingStats, clusters, branches, methods, schemes, settings, periods, iamRoles, allPermissions, tariffs, templates] = await Promise.all([
+    canManageUsersVal
+      ? listAgents({ page: 1, pageSize: 25 }).catch(() => ({ agents: [], total: 0, page: 1, pageSize: 25, totalPages: 1 }))
+      : Promise.resolve({ agents: [], total: 0, page: 1, pageSize: 25, totalPages: 1 }),
     canAuditVal ? getAuditLogs(200).catch(() => []) : Promise.resolve([]),
     canViewReportsVal ? getSystemStats().catch(() => ({ agentCount: 0, receiptCount: 0, receiptTotal: 0 })) : Promise.resolve({ agentCount: 0, receiptCount: 0, receiptTotal: 0 }),
     canViewReportsVal ? getCollectionsSummary().catch(() => ({ perAgent: [], totalCount: 0, totalAmount: 0 })) : Promise.resolve({ perAgent: [], totalCount: 0, totalAmount: 0 }),
@@ -73,7 +75,11 @@ export default async function AdminPage() {
         </p>
       </div>
       <AdminTabs
-        agents={agents}
+        agents={agentsResult.agents}
+        agentsTotal={agentsResult.total}
+        agentsPage={agentsResult.page}
+        agentsPageSize={agentsResult.pageSize}
+        agentsTotalPages={agentsResult.totalPages}
         auditLogs={auditLogs}
         stats={stats}
         collections={collections}

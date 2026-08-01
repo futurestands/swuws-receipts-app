@@ -7,6 +7,7 @@ import {
   setAgentRole,
   setAgentHierarchy,
   resetAgentPassword,
+  listAgents,
 } from "@/app/actions/admin"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -56,12 +57,20 @@ type Agent = {
 
 export function AgentsPanel({
   agents: initialAgents,
+  agentsTotal,
+  agentsPage,
+  agentsPageSize,
+  agentsTotalPages,
   clusters,
   branches,
   schemes,
   iamRoles = [],
 }: {
   agents: Agent[]
+  agentsTotal: number
+  agentsPage: number
+  agentsPageSize: number
+  agentsTotalPages: number
   clusters: Cluster[]
   branches: Branch[]
   schemes: WaterScheme[]
@@ -69,6 +78,30 @@ export function AgentsPanel({
 }) {
   const [agents, setAgents] = useState(initialAgents)
   const [pending, startTransition] = useTransition()
+
+  // Search + pagination state. Loaded from the server one page at a time
+  // (see listAgents in app/actions/admin.ts) rather than all at once, so
+  // this stays fast as the number of agents grows.
+  const [query, setQuery] = useState("")
+  const [page, setPage] = useState(agentsPage)
+  const [total, setTotal] = useState(agentsTotal)
+  const [totalPages, setTotalPages] = useState(agentsTotalPages)
+  const [searching, startSearch] = useTransition()
+
+  function loadPage(nextPage: number, nextQuery: string) {
+    startSearch(async () => {
+      const result = await listAgents({ query: nextQuery, page: nextPage, pageSize: agentsPageSize })
+      setAgents(result.agents)
+      setTotal(result.total)
+      setPage(result.page)
+      setTotalPages(result.totalPages)
+    })
+  }
+
+  function handleSearchSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    loadPage(1, query)
+  }
 
   // Create-agent form state
   const [name, setName] = useState("")
@@ -346,8 +379,22 @@ export function AgentsPanel({
       </Card>
 
       <Card>
-        <CardHeader>
-          <CardTitle>Agents &amp; admins</CardTitle>
+        <CardHeader className="gap-4">
+          <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+            <CardTitle>Agents &amp; admins</CardTitle>
+            <span className="text-sm text-muted-foreground">{total} total</span>
+          </div>
+          <form onSubmit={handleSearchSubmit} className="flex gap-2">
+            <Input
+              placeholder="Search by name, email, or phone…"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              className="max-w-sm"
+            />
+            <Button type="submit" variant="outline" disabled={searching}>
+              {searching ? "Searching…" : "Search"}
+            </Button>
+          </form>
         </CardHeader>
         <CardContent className="overflow-x-auto">
           <Table>
@@ -501,6 +548,29 @@ export function AgentsPanel({
               ))}
             </TableBody>
           </Table>
+          {totalPages > 1 && (
+            <div className="flex items-center justify-center gap-2 pt-4">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={page <= 1 || searching}
+                onClick={() => loadPage(page - 1, query)}
+              >
+                Previous
+              </Button>
+              <span className="text-sm text-muted-foreground">
+                Page {page} of {totalPages}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={page >= totalPages || searching}
+                onClick={() => loadPage(page + 1, query)}
+              >
+                Next
+              </Button>
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>

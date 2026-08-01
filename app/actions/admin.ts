@@ -24,7 +24,7 @@ import {
 } from "@/lib/db/schema"
 import { requireUser } from "@/lib/session"
 import { writeAudit } from "@/lib/audit"
-import { and, desc, eq, gte, lte, sql, ne, count } from "drizzle-orm"
+import { and, desc, eq, gte, lte, sql, ne, count, ilike, or } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { headers } from "next/headers"
 import { checkRateLimit } from "@/lib/rate-limit"
@@ -41,29 +41,65 @@ import {
 import { applyReceiptScope, applyUserScope, validateWriteScope } from "@/lib/scopes"
 import { canAssignIamRole } from "@/lib/iam"
 
-export async function listAgents() {
+export async function listAgents(params: { query?: string; page?: number; pageSize?: number } = {}) {
   const current = await requireUser()
   if (!canManageUsers(current)) throw new Error("Forbidden")
 
   const scope = applyUserScope(current)
+  const page = Math.max(1, params.page ?? 1)
+  const pageSize = Math.min(100, Math.max(1, params.pageSize ?? 25))
+  const offset = (page - 1) * pageSize
 
-  return db
-    .select({
-      id: user.id,
-      name: user.name,
-      email: user.email,
-      phone: user.phone,
-      role: user.role,
-      iamRoleId: user.iamRoleId,
-      active: user.active,
-      clusterId: user.clusterId,
-      branchId: user.branchId,
-      schemeId: user.schemeId,
-      createdAt: user.createdAt,
-    })
-    .from(user)
-    .where(scope)
-    .orderBy(desc(user.createdAt))
+  const conditions = [scope]
+  if (params.query?.trim()) {
+    const q = `%${params.query.trim().replace(/[%_]/g, (c) => `\\${c}`)}%`
+    conditions.push(
+      or(
+        ilike(user.name, q),
+        ilike(user.email, q),
+        sql`${user.phone}::text ilike ${q}`,
+      ) as any,
+    )
+  }
+  const where = and(...conditions)
+
+  // Previously this had no limit/offset at all — it loaded every agent in
+  // the org on every admin page load. Fine at test-data scale, but a large
+  // rollout with hundreds of field agents across many branches would make
+  // this tab progressively slower for everyone with no warning sign until
+  // it's already sluggish. Paginated + searchable now, same pattern as
+  // searchCustomers.
+  const [rows, totalRows] = await Promise.all([
+    db
+      .select({
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        phone: user.phone,
+        role: user.role,
+        iamRoleId: user.iamRoleId,
+        active: user.active,
+        clusterId: user.clusterId,
+        branchId: user.branchId,
+        schemeId: user.schemeId,
+        createdAt: user.createdAt,
+      })
+      .from(user)
+      .where(where)
+      .orderBy(desc(user.createdAt))
+      .limit(pageSize)
+      .offset(offset),
+    db.select({ total: count() }).from(user).where(where),
+  ])
+  const total = totalRows[0]?.total ?? 0
+
+  return {
+    agents: rows,
+    total,
+    page,
+    pageSize,
+    totalPages: Math.max(1, Math.ceil(total / pageSize)),
+  }
 }
 
 export async function createAgent(input: {

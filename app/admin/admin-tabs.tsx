@@ -26,6 +26,10 @@ type Agent = {
 
 export function AdminTabs({
   agents,
+  agentsTotal,
+  agentsPage,
+  agentsPageSize,
+  agentsTotalPages,
   auditLogs,
   stats,
   collections,
@@ -43,6 +47,10 @@ export function AdminTabs({
   templates,
 }: {
   agents: Agent[]
+  agentsTotal: number
+  agentsPage: number
+  agentsPageSize: number
+  agentsTotalPages: number
   auditLogs: AuditLog[]
   stats: { agentCount: number; receiptCount: number; receiptTotal: number }
   collections: {
@@ -124,7 +132,17 @@ export function AdminTabs({
 
       {permissions.canManageUsers && (
         <TabsContent value="agents" className="mt-4">
-          <AgentsPanel agents={agents} clusters={clusters} branches={branches} schemes={schemes} iamRoles={iamRoles} />
+          <AgentsPanel
+            agents={agents}
+            agentsTotal={agentsTotal}
+            agentsPage={agentsPage}
+            agentsPageSize={agentsPageSize}
+            agentsTotalPages={agentsTotalPages}
+            clusters={clusters}
+            branches={branches}
+            schemes={schemes}
+            iamRoles={iamRoles}
+          />
         </TabsContent>
       )}
 

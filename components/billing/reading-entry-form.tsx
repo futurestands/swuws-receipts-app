@@ -606,7 +606,9 @@ export function ReadingEntryForm({
                                 totalNewBill: item.billedAmount
                               },
                               previousBalance: item.previousBalance,
-                              totalDue: item.totalDue
+                              totalDue: item.totalDue,
+                              phone: item.phone || "",
+                              isSmsSent: item.isNotified ?? false
                             })
                             // Wait for state to update then print
                             setTimeout(() => window.print(), 100)
