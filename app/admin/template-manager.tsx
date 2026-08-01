@@ -24,7 +24,7 @@ import {
   ArrowLeft,
   Zap
 } from "lucide-react"
-import { listTemplates, getTemplateHistory, saveTemplateDraft, publishTemplateVersion } from "@/app/actions/template-actions"
+import { listTemplates, getTemplateHistory, saveTemplateDraft, publishTemplateVersion, saveAndPublishTemplate } from "@/app/actions/template-actions"
 import { renderTemplate, getPlaceholders } from "@/lib/templates/template-engine"
 
 export function TemplateManager({ initialTemplates }: { initialTemplates: any[] }) {
@@ -94,6 +94,37 @@ export function TemplateManager({ initialTemplates }: { initialTemplates: any[] 
     })
   }
 
+  async function handleSaveAndPublish() {
+    if (!changelog) {
+      toast.error("Please provide a reason for this update in the changelog.")
+      return
+    }
+
+    startTransition(async () => {
+      try {
+        const result = await saveAndPublishTemplate({
+          templateId: selectedTemplate.id,
+          content: editContent,
+          changelog
+        })
+        if (result.ok) {
+          toast.success("Template saved and published successfully!")
+          const updatedHistory = await getTemplateHistory(selectedTemplate.id)
+          setHistory(updatedHistory)
+          setChangelog("")
+
+          // Force a data refresh to update the list view
+          const updatedTemplates = await listTemplates()
+          setTemplates(updatedTemplates)
+          const current = updatedTemplates.find(t => t.id === selectedTemplate.id)
+          setSelectedTemplate(current)
+        }
+      } catch (err: any) {
+        toast.error(err.message || "Failed to save and publish")
+      }
+    })
+  }
+
   async function handlePublish(versionId: string) {
     if (!confirm("Are you sure you want to publish this version? It will become live immediately.")) return
 
@@ -132,6 +163,9 @@ export function TemplateManager({ initialTemplates }: { initialTemplates: any[] 
           <div className="flex gap-2">
              <Button variant="outline" size="sm" className="gap-2" onClick={handleSaveDraft} disabled={isPending}>
                <Save className="h-4 w-4" /> Save Draft
+             </Button>
+             <Button size="sm" className="gap-2 bg-green-600 hover:bg-green-700" onClick={handleSaveAndPublish} disabled={isPending}>
+               <Zap className="h-4 w-4" /> Save & Publish
              </Button>
              <Badge variant="outline" className="bg-primary/5 uppercase">{selectedTemplate.type}</Badge>
           </div>

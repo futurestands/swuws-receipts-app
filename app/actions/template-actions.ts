@@ -98,6 +98,69 @@ export async function saveTemplateDraft(data: {
 }
 
 /**
+ * Saves a new version AND publishes it immediately.
+ * Streamlines the "Save Draft -> Publish" workflow into a single click.
+ */
+export async function saveAndPublishTemplate(data: {
+  templateId: string
+  content: string
+  changelog: string
+}) {
+  const user = await getCurrentUser()
+  if (!user || !canConfigureSystem(user)) throw new Error("Unauthorized")
+
+  return db.transaction(async (tx) => {
+    // 1. Find latest version number
+    const [latest] = await tx
+      .select()
+      .from(templateVersion)
+      .where(eq(templateVersion.templateId, data.templateId))
+      .orderBy(desc(templateVersion.versionNumber))
+      .limit(1)
+
+    const newVersionNumber = (latest?.versionNumber || 0) + 1
+    const newVersionId = randomUUID()
+
+    // 2. Archive current active version if it exists
+    const [temp] = await tx.select().from(managedTemplate).where(eq(managedTemplate.id, data.templateId)).limit(1)
+    if (temp?.activeVersionId) {
+      await tx.update(templateVersion)
+        .set({ status: 'archived' })
+        .where(eq(templateVersion.id, temp.activeVersionId))
+    }
+
+    // 3. Create new published version
+    await tx.insert(templateVersion).values({
+      id: newVersionId,
+      templateId: data.templateId,
+      versionNumber: newVersionNumber,
+      content: data.content,
+      status: "published",
+      changelog: data.changelog,
+      createdById: user.id,
+      publishedAt: new Date()
+    })
+
+    // 4. Update template pointer
+    await tx.update(managedTemplate)
+      .set({ activeVersionId: newVersionId, updatedAt: new Date() })
+      .where(eq(managedTemplate.id, data.templateId))
+
+    // 5. Audit Log
+    await writeAudit({
+      user,
+      action: "template.save_and_publish",
+      entityType: "managed_template",
+      entityId: data.templateId,
+      details: { versionId: newVersionId, templateCode: temp?.code }
+    }, tx)
+
+    revalidatePath("/admin")
+    return { ok: true, versionId: newVersionId }
+  })
+}
+
+/**
  * Publishes a specific version of a template, making it the active one.
  */
 export async function publishTemplateVersion(templateId: string, versionId: string) {

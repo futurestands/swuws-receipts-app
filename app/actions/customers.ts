@@ -379,8 +379,7 @@ export async function exportCustomersExcel(params: {
   ]
   worksheet["!cols"] = wscols
 
-  const buffer = XLSX.write(workbook, { type: "buffer", bookType: "xlsx" })
-  return buffer.toString("base64")
+  return XLSX.write(workbook, { type: "base64", bookType: "xlsx" })
 }
 
 /** Lightweight lookup used by the receipt form's customer picker. */

@@ -589,7 +589,7 @@ export async function downloadBillingTemplate() {
   const worksheet = XLSX.utils.json_to_sheet(data, { header: headers })
   const workbook = XLSX.utils.book_new()
   XLSX.utils.book_append_sheet(workbook, worksheet, "BillingTemplate")
-  return XLSX.write(workbook, { type: "buffer", bookType: "xlsx" }).toString("base64")
+  return XLSX.write(workbook, { type: "base64", bookType: "xlsx" })
 }
 
 export async function getCollectionSummary() {
