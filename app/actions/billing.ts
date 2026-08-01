@@ -582,9 +582,27 @@ export async function importBilling(
 
 export async function downloadBillingTemplate() {
   await requireUser()
-  const headers = ["AccountNumber", "BillAmount", "Arrears", "CurrentCharges", "TotalDue", "DueDate"]
+
+  // 1. Resolve Headers from Template Hub
+  const mapping = (await getImportMapping("import.billing.monthly")) || {
+    accountNumber: "AccountNumber",
+    billAmount: "BillAmount",
+    arrears: "Arrears",
+    currentCharges: "CurrentCharges",
+    totalDue: "TotalDue",
+    dueDate: "DueDate",
+  }
+
+  const headers = Object.values(mapping) as string[]
   const data = [
-    { AccountNumber: "C-12345", BillAmount: 50000, Arrears: 10000, CurrentCharges: 40000, TotalDue: 50000, DueDate: new Date().toISOString().split("T")[0] },
+    {
+      [mapping.accountNumber as string]: "C-12345",
+      [mapping.billAmount as string]: 50000,
+      [mapping.arrears as string]: 10000,
+      [mapping.currentCharges as string]: 40000,
+      [mapping.totalDue as string]: 50000,
+      [mapping.dueDate as string]: new Date().toISOString().split("T")[0],
+    },
   ]
   const worksheet = XLSX.utils.json_to_sheet(data, { header: headers })
   const workbook = XLSX.utils.book_new()

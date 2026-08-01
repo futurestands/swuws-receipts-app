@@ -199,9 +199,8 @@ export async function importCustomers(summary: CustomerImportSummary): Promise<{
 export async function downloadCustomerTemplate() {
   await requireUser()
 
-  // 1. Resolve Headers from Template Hub
-  const [template] = await db.select().from(managedTemplate).where(eq(managedTemplate.code, 'import.customers.bulk')).limit(1)
-  let mapping = {
+  // 1. Resolve Headers from Template Hub (Unified resilient resolution)
+  const mapping = (await getImportMapping("import.customers.bulk")) || {
     name: "Name",
     customerAccount: "CustomerRef",
     phone: "Phone",
@@ -211,12 +210,7 @@ export async function downloadCustomerTemplate() {
     serialNo: "MeterSerial",
     openingArrears: "OpeningArrears",
     category: "Category",
-    notes: "Notes"
-  }
-
-  if (template?.activeVersionId) {
-    const [version] = await db.select().from(templateVersion).where(eq(templateVersion.id, template.activeVersionId)).limit(1)
-    if (version) mapping = JSON.parse(version.content)
+    notes: "Notes",
   }
 
   const headers = Object.values(mapping)

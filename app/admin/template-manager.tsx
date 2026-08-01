@@ -237,7 +237,6 @@ export function TemplateManager({ initialTemplates }: { initialTemplates: any[] 
               </CardContent>
             </Card>
 
-            <Card>
               <CardHeader>
                 <CardTitle className="text-sm flex items-center gap-2">
                   <HistoryIcon className="h-4 w-4" /> Version History
@@ -245,28 +244,35 @@ export function TemplateManager({ initialTemplates }: { initialTemplates: any[] 
               </CardHeader>
               <CardContent className="p-0">
                 <div className="max-h-64 overflow-y-auto">
-                  {history.map((v) => (
-                    <div key={v.id} className="p-3 border-b last:border-0 hover:bg-muted/30 transition-colors">
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="font-bold text-xs">v{v.versionNumber}</span>
-                        <Badge variant={v.status === 'published' ? 'default' : 'secondary'} className="text-[8px] h-4">
-                          {v.status}
-                        </Badge>
+                  {history
+                    .filter((v) => v.status === 'published' || v.status === 'draft')
+                    .slice(0, 5)
+                    .map((v) => (
+                      <div key={v.id} className="p-3 border-b last:border-0 hover:bg-muted/30 transition-colors">
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="font-bold text-xs">v{v.versionNumber}</span>
+                          <Badge variant={v.status === 'published' ? 'default' : 'secondary'} className="text-[8px] h-4">
+                            {v.status}
+                          </Badge>
+                        </div>
+                        <p className="text-[10px] text-muted-foreground line-clamp-1">{v.changelog}</p>
+                        <div className="flex items-center justify-between mt-2">
+                          <span className="text-[9px] text-muted-foreground/60">{new Date(v.createdAt).toLocaleDateString()}</span>
+                          {v.status !== 'published' && (
+                            <Button variant="link" className="h-auto p-0 text-[10px]" onClick={() => handlePublish(v.id)} disabled={isPending}>
+                              Publish
+                            </Button>
+                          )}
+                        </div>
                       </div>
-                      <p className="text-[10px] text-muted-foreground line-clamp-1">{v.changelog}</p>
-                      <div className="flex items-center justify-between mt-2">
-                        <span className="text-[9px] text-muted-foreground/60">{new Date(v.createdAt).toLocaleDateString()}</span>
-                        {v.status !== 'published' && (
-                          <Button variant="link" className="h-auto p-0 text-[10px]" onClick={() => handlePublish(v.id)} disabled={isPending}>
-                            Publish
-                          </Button>
-                        )}
-                      </div>
-                    </div>
-                  ))}
+                    ))}
+                  {history.length > 5 && (
+                    <p className="text-[10px] text-center text-muted-foreground py-2 italic border-t bg-muted/10">
+                      Older versions are archived.
+                    </p>
+                  )}
                 </div>
               </CardContent>
-            </Card>
           </div>
         </div>
       </div>

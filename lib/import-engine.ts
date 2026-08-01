@@ -38,7 +38,8 @@ export async function getImportMapping(code: string): Promise<Record<string, str
 
   try {
     return JSON.parse(versionRow.content)
-  } catch {
+  } catch (err) {
+    console.error(`Failed to parse import mapping for ${code}:`, err)
     return null
   }
 }

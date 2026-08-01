@@ -64,6 +64,7 @@ export async function getSettings() {
       currencyCode: "UGX",
       receiptPrefix: "SWUWS",
       developerCredit: "Developed by Mugarura Johnson IT",
+      latestAppVersion: "1.0.0",
       editableFields: DEFAULT_EDITABLE,
       updatedAt: new Date(),
     }

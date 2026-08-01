@@ -1,10 +1,7 @@
-- [x] Install `@capacitor/haptics`
-- [x] Create migration `0039_app_versioning.sql` for `org_settings` and `user` tables
-- [x] Update Drizzle schema in `lib/db/schema/auth.ts` and `lib/db/schema/system.ts`
-- [x] Update `lib/mobile-hardware.ts` to integrate haptics with user preference check
-- [x] Create `lib/version.ts` with `CURRENT_APP_VERSION = "1.0.0"`
-- [x] Update `components/ui/button.tsx` to include automatic haptics and visual "sink" effect
-- [x] Implement user preferences and update logic in `app/dashboard/account/account-client.tsx`
-- [x] Add `updateLatestAppVersion` and notification logic in `app/actions/settings.ts`
-- [x] Add Mobile App Maintenance UI to `app/admin/branding-panel.tsx`
-- [x] Verify haptics and update UI behavior
+- [x] Add `latestAppVersion` to `getSettings` fallback in `app/actions/settings.ts`
+- [x] Fix `onClick` event type mismatch in `components/ui/button.tsx`
+- [x] Add error handling to `getImportMapping` in `lib/import-engine.ts`
+- [x] Use `getImportMapping` in `downloadCustomerTemplate` in `app/actions/customer-import.ts`
+- [x] Implement template header loading in `downloadBillingTemplate` in `app/actions/billing.ts`
+- [x] Clean up version history UI in `app/admin/template-manager.tsx`
+- [x] Verify all fixes with `npm run typecheck`
