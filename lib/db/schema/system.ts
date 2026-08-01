@@ -42,6 +42,7 @@ export const orgSettings = pgTable("org_settings", {
   developerCredit: text("developerCredit")
     .notNull()
     .default("Developed by Mugarura Johnson IT"),
+  latestAppVersion: text("latestAppVersion").notNull().default("1.0.0"),
   editableFields: jsonb("editableFields").$type<EditableFields>().notNull(),
   updatedAt: timestamp("updatedAt").notNull().defaultNow(),
 })

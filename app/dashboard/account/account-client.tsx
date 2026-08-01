@@ -6,14 +6,29 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Switch } from "@/components/ui/switch"
 import { toast } from "sonner"
-import { ShieldCheck, Lock, User, Smartphone, Download } from "lucide-react"
+import { ShieldCheck, Lock, User, Smartphone, Download, Zap, RefreshCw } from "lucide-react"
+import { CURRENT_APP_VERSION } from "@/lib/version"
+import { setVibrationPreference, isNative } from "@/lib/mobile-hardware"
+import { updateUserPreferences } from "@/app/actions/account"
+import { useEffect } from "react"
+import { cn } from "@/lib/utils"
 
-export function AccountClient({ user }: { user: any }) {
+export function AccountClient({ user, settings }: { user: any, settings: any }) {
   const [currentPassword, setCurrentPassword] = useState("")
   const [newPassword, setNewPassword] = useState("")
   const [confirmPassword, setConfirmPassword] = useState("")
+  const [vibrationEnabled, setVibrationEnabled] = useState(user.preferences?.vibrationEnabled ?? true)
   const [loading, setLoading] = useState(false)
+  const [isUpdatingPrefs, setIsUpdatingPrefs] = useState(false)
+
+  // Initialize local haptic state on mount
+  useEffect(() => {
+    setVibrationPreference(vibrationEnabled)
+  }, [vibrationEnabled])
+
+  const isOutdated = settings.latestAppVersion !== CURRENT_APP_VERSION && isNative()
 
   async function handleChangePassword(e: React.FormEvent) {
     e.preventDefault()
@@ -37,6 +52,22 @@ export function AccountClient({ user }: { user: any }) {
       setCurrentPassword("")
       setNewPassword("")
       setConfirmPassword("")
+    }
+  }
+
+  async function handleToggleVibration(checked: boolean) {
+    setVibrationEnabled(checked)
+    setVibrationPreference(checked)
+
+    setIsUpdatingPrefs(true)
+    try {
+      await updateUserPreferences({ vibrationEnabled: checked })
+      toast.success(checked ? "Vibration feedback enabled" : "Vibration feedback disabled")
+    } catch (err) {
+      console.error(err)
+      toast.error("Failed to save preference")
+    } finally {
+      setIsUpdatingPrefs(false)
     }
   }
 
@@ -68,6 +99,32 @@ export function AccountClient({ user }: { user: any }) {
               </div>
             </div>
           </CardContent>
+        </Card>
+
+        {/* User Preferences */}
+        <Card className="border-emerald-200 bg-emerald-50/10">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-emerald-800">
+              <Zap className="h-5 w-5" /> App Experience
+            </CardTitle>
+            <CardDescription>Customize how the app responds to your touch.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+             <div className="flex items-center justify-between">
+                <div className="space-y-0.5">
+                   <Label className="text-sm font-bold">Tactile Feedback (Vibration)</Label>
+                   <p className="text-xs text-muted-foreground">The phone gives a short "tick" vibration when you tap buttons.</p>
+                </div>
+                <Switch
+                   checked={vibrationEnabled}
+                   onCheckedChange={handleToggleVibration}
+                   disabled={isUpdatingPrefs}
+                />
+             </div>
+          </CardContent>
+          <CardFooter className="pt-0">
+             <p className="text-[10px] text-muted-foreground italic">Note: Only works on Android devices.</p>
+          </CardFooter>
         </Card>
 
         {/* Change Password */}
@@ -130,7 +187,11 @@ export function AccountClient({ user }: { user: any }) {
              </div>
              <div>
                 <CardTitle>SWUWS Mobile App</CardTitle>
-                <CardDescription>Get the official Android application for field operations.</CardDescription>
+                <CardDescription>
+                   {isNative()
+                      ? `Running v${CURRENT_APP_VERSION}`
+                      : "Get the official Android application for field operations."}
+                </CardDescription>
              </div>
           </div>
         </CardHeader>
@@ -138,23 +199,41 @@ export function AccountClient({ user }: { user: any }) {
           <div className="grid gap-6 md:grid-cols-2 items-center">
              <div className="space-y-2">
                 <p className="text-sm text-muted-foreground leading-relaxed">
-                  The SWUWS Mobile App is optimized for field collection. It includes features not available in the web version:
+                  {isOutdated
+                    ? "A newer version of the SWUWS app is available. Please update now to get the latest features and fixes."
+                    : "The SWUWS Mobile App is optimized for field collection. It includes features not available in the web version:"}
                 </p>
-                <ul className="text-xs space-y-1 text-muted-foreground list-disc pl-4">
-                   <li>High-speed QR Code scanning for customer lookup</li>
-                   <li>Bluetooth Thermal Receipt printing</li>
-                   <li>Location-aware meter reading capture</li>
-                   <li>Optimized interface for one-handed use</li>
-                </ul>
+                {!isOutdated && (
+                   <ul className="text-xs space-y-1 text-muted-foreground list-disc pl-4">
+                      <li>High-speed QR Code scanning for customer lookup</li>
+                      <li>Bluetooth Thermal Receipt printing</li>
+                      <li>Location-aware meter reading capture</li>
+                      <li>Optimized interface for one-handed use</li>
+                   </ul>
+                )}
              </div>
              <div className="flex flex-col gap-3">
-                <Button asChild size="lg" className="w-full gap-2 font-bold shadow-md">
+                <Button
+                   asChild
+                   size="lg"
+                   variant={isOutdated ? "default" : "outline"}
+                   className={cn(
+                      "w-full gap-2 font-bold shadow-md h-14",
+                      isOutdated && "bg-brand-blue hover:bg-brand-blue/90 animate-pulse ring-4 ring-brand-blue/20"
+                   )}
+                >
                    <a href="/swuws-portal.apk" download>
-                      <Download className="h-5 w-5" /> Download for Android (APK)
+                      {isOutdated ? (
+                         <><RefreshCw className="h-6 w-6 animate-spin-slow" /> UPDATE TO v{settings.latestAppVersion}</>
+                      ) : (
+                         <><Download className="h-5 w-5" /> DOWNLOAD FOR ANDROID (APK)</>
+                      )}
                    </a>
                 </Button>
                 <p className="text-[10px] text-center text-muted-foreground italic">
-                   Note: You may need to enable "Install from Unknown Sources" in your phone settings.
+                   {isOutdated
+                      ? `Latest Version: ${settings.latestAppVersion} | Your Version: ${CURRENT_APP_VERSION}`
+                      : "Note: You may need to enable \"Install from Unknown Sources\" in your phone settings."}
                 </p>
              </div>
           </div>

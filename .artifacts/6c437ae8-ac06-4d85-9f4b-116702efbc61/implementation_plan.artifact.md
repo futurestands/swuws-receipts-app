@@ -1,40 +1,53 @@
-# Fix Delivery Modal Visibility for Mobile
+# Mobile Feedback & App Update System
 
-This plan fixes the visibility issues of the delivery modal (specifically the Print button) and optimizes the layout for mobile phone screens.
+This plan implements a high-performance "First Response" system for field agents, including tactile feedback (vibration) and a proactive app update mechanism.
 
 ## User Review Required
 
 > [!IMPORTANT]
-> I will be switching from custom "brand-blue" classes to standard Tailwind/Shadcn classes (like `primary`) to ensure consistent visibility and theme support. I will also unify the modal into a single professional card layout which works better on small mobile screens.
+> - Vibration feedback requires installing the `@capacitor/haptics` plugin.
+> - Users will be able to disable vibration in their "My Account" settings.
+> - The "Download APK" button will automatically change to "Update App" when a newer version is released by an administrator.
 
 ## Proposed Changes
 
-### Styling & Theme
+### 1. Database & Schema
 
-#### [MODIFY] [globals.css](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/app/globals.css)
-- Register `brand-blue`, `brand-green`, etc., in the `@theme` block so Tailwind can recognize them as utility classes (e.g., `bg-brand-blue`).
-- Add a `--brand-blue-dark` variant for the button shadows.
+#### [NEW MIGRATION] `0039_app_versioning.sql`
+- Add `latestAppVersion` to `org_settings` table.
+- Add `preferences` JSONB column to `user` table to store toggle states.
 
-### Frontend (Components)
+#### [MODIFY] [auth.ts](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/lib/db/schema/auth.ts) & [system.ts](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/lib/db/schema/system.ts)
+- Update Drizzle schema definitions to include the new columns.
 
-#### [MODIFY] [reading-entry-form.tsx](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/components/billing/reading-entry-form.tsx)
-- **Unify Modal UI**: Instead of transparent backgrounds and floating cards, use a single solid Card inside the `DialogContent`. This provides a cleaner look on mobile.
-- **Button Contrast**: Change the "PRINT NOW" button to use `bg-primary` (which is already configured as the brand blue) to ensure it is fully visible.
-- **Mobile Optimization**:
-    - Adjust `DialogContent` to fit full-width on very small screens.
-    - Ensure the "Amount Due" text doesn't overflow on small devices.
-    - Make sure the "Close" button is easy to tap.
-- **Fix "No phone provided"**: Ensure the text color is distinct enough to be readable even if no phone is present.
+### 2. Hardware & Core Logic
+
+#### [MODIFY] [mobile-hardware.ts](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/lib/mobile-hardware.ts)
+- Integrate `@capacitor/haptics`.
+- Update `hapticFeedback()` to check the user's `preferences.vibrationEnabled` before vibrating.
+
+#### [NEW] [version.ts](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/lib/version.ts)
+- Define the hardcoded `CURRENT_APP_VERSION` (e.g., "1.0.0").
+
+### 3. User Account & Preferences
+
+#### [MODIFY] [account-client.tsx](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/app/dashboard/account/account-client.tsx)
+- Add a **User Preferences** section with a toggle for "Tactile Feedback (Vibration)".
+- Implement logic to compare the local app version with the server version.
+- **Dynamic Update Button**: If a newer version is available, change the "Download APK" button to a high-contrast "UPDATE AVAILABLE" button.
+
+### 4. Admin & Notifications
+
+#### [MODIFY] [settings.ts](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/app/actions/settings.ts)
+- Add functions to update the `latestAppVersion` in the database.
+- Trigger a system-wide notification when a new app version is published.
 
 ---
 
 ## Verification Plan
 
 ### Manual Verification
-1. Open the portal on a device (or use browser dev tools mobile emulator).
-2. Capture a reading and observe the modal.
-3. Verify that:
-    - The modal has a solid white background.
-    - The "PRINT NOW" button is clearly blue with white text.
-    - The "SEND SMS" button is clearly green with white text.
-    - No content is cut off on a 375px wide screen (iPhone SE size).
+1. **Haptics**: Toggle vibration ON in settings. Tap a button on an Android device. Verify it vibrates. Toggle OFF and verify it stops.
+2. **Version Check**: Manually set `latestAppVersion` in the DB to "1.1.0". Refresh the app on a device with "1.0.0".
+3. **Update UI**: Verify the "Download APK" button now says "Update to v1.1.0 (New)".
+4. **Notifications**: Verify a notification appears in the notification center saying "A new app update is available."

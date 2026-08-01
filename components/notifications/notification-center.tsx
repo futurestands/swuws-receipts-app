@@ -146,6 +146,7 @@ function getLink(type: string, id: string | null) {
     case 'reconciliation_exception': return `/dashboard/reconciliation/exceptions/${id}`
     case 'daily_collection_import': return `/dashboard/billing/daily/${id}`
     case 'receipt': return `/dashboard/receipts/${id}`
+    case 'app_update': return `/dashboard/account`
     default: return "/dashboard"
   }
 }

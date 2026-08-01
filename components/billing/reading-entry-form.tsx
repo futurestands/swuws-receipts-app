@@ -251,12 +251,12 @@ export function ReadingEntryForm({
                   {/* PRINT OPTION */}
                   <div className="space-y-2">
                      <Button
-                        className="w-full h-16 text-lg bg-primary hover:bg-primary/90 text-white font-black gap-3 shadow-lg border-b-4 border-brand-blue-dark active:border-b-0 active:translate-y-1 transition-all"
+                        className="w-full h-16 text-lg bg-[#2c4a5e] hover:bg-[#1e3240] text-white font-black gap-3 shadow-lg border-b-4 border-[#142129] active:border-b-0 active:translate-y-1 transition-all"
                         onClick={() => window.print()}
                      >
                         <Printer className="h-6 w-6" /> PRINT PHYSICAL TICKET
                      </Button>
-                     <p className="text-[10px] text-center text-muted-foreground uppercase font-bold">Generate a paper demand note</p>
+                     <p className="text-[10px] text-center text-muted-foreground uppercase font-bold tracking-tighter">Generate a paper demand note</p>
                   </div>
 
                   <div className="relative py-2">

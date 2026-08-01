@@ -1,14 +1,15 @@
 "use client"
 
 import { useState, useTransition } from "react"
-import { updateBranding, uploadLogo } from "@/app/actions/settings"
+import { updateBranding, uploadLogo, updateLatestAppVersion } from "@/app/actions/settings"
 import type { OrgSettings } from "@/lib/db/schema"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card"
 import { toast } from "sonner"
+import { RefreshCw, Smartphone } from "lucide-react"
 
 export function BrandingPanel({ settings }: { settings: OrgSettings }) {
   const [orgName, setOrgName] = useState(settings.orgName)
@@ -18,6 +19,7 @@ export function BrandingPanel({ settings }: { settings: OrgSettings }) {
   const [receiptPrefix, setReceiptPrefix] = useState(settings.receiptPrefix)
   const [developerCredit, setDeveloperCredit] = useState(settings.developerCredit)
   const [logoUrl, setLogoUrl] = useState(settings.logoUrl)
+  const [appVersion, setAppVersion] = useState(settings.latestAppVersion)
   const [pending, startTransition] = useTransition()
 
   function handleSave(e: React.FormEvent) {
@@ -29,6 +31,18 @@ export function BrandingPanel({ settings }: { settings: OrgSettings }) {
         return
       }
       toast.success("Branding updated")
+    })
+  }
+
+  async function handleUpdateVersion() {
+    if (!appVersion) return
+    startTransition(async () => {
+      const result = await updateLatestAppVersion(appVersion)
+      if (result.ok) {
+        toast.success("App version updated. Agents have been notified.")
+      } else {
+        toast.error("Failed to update app version")
+      }
     })
   }
 
@@ -124,6 +138,45 @@ export function BrandingPanel({ settings }: { settings: OrgSettings }) {
             </Button>
           </form>
         </CardContent>
+      </Card>
+
+      <Card className="border-brand-blue/20">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Smartphone className="h-5 w-5 text-brand-blue" />
+            Mobile App Maintenance
+          </CardTitle>
+          <CardDescription>
+            Manage the official version of the SWUWS Android app.
+            Changing the version here triggers a notification for all field agents.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+           <div className="flex items-end gap-4 max-w-sm">
+              <div className="space-y-2 flex-1">
+                 <Label htmlFor="appVersion">Latest App Version (e.g. 1.1.0)</Label>
+                 <Input
+                   id="appVersion"
+                   value={appVersion}
+                   onChange={(e) => setAppVersion(e.target.value)}
+                   placeholder="1.0.0"
+                 />
+              </div>
+              <Button
+                onClick={handleUpdateVersion}
+                disabled={pending || appVersion === settings.latestAppVersion}
+                className="gap-2"
+              >
+                 <RefreshCw className={`h-4 w-4 ${pending ? 'animate-spin' : ''}`} />
+                 Publish Update
+              </Button>
+           </div>
+        </CardContent>
+        <CardFooter className="bg-brand-blue/5 py-3">
+           <p className="text-[10px] text-brand-blue font-medium">
+             Note: Ensure you have uploaded the corresponding APK file to the server's public folder before publishing.
+           </p>
+        </CardFooter>
       </Card>
 
       <Card>

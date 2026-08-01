@@ -3,6 +3,7 @@ import {
   text,
   timestamp,
   boolean,
+  jsonb,
 } from "drizzle-orm/pg-core"
 import { organization, cluster, branch, waterScheme } from "./hierarchy"
 import { iamRole } from "./iam"
@@ -31,6 +32,9 @@ export const user = pgTable("user", {
 
   // IAM Integration
   iamRoleId: text("iamRoleId").references(() => iamRole.id, { onDelete: "set null" }),
+
+  // User Preferences
+  preferences: jsonb("preferences").$type<{ vibrationEnabled: boolean }>().notNull().default({ vibrationEnabled: true }),
 
   createdAt: timestamp("createdAt").notNull().defaultNow(),
   updatedAt: timestamp("updatedAt").notNull().defaultNow(),

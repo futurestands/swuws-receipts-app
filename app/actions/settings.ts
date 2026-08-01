@@ -1,7 +1,7 @@
 "use server"
 
 import { db } from "@/lib/db"
-import { orgSettings, branch, paymentMethod, waterScheme, cluster, type EditableFields } from "@/lib/db/schema"
+import { orgSettings, branch, paymentMethod, waterScheme, cluster, notification, user, type EditableFields } from "@/lib/db/schema"
 import { getCurrentUser, requireUser } from "@/lib/session"
 import { writeAudit } from "@/lib/audit"
 import { eq } from "drizzle-orm"
@@ -413,5 +413,52 @@ export async function setWaterSchemeActive(id: string, active: boolean) {
     entityId: id,
   })
   revalidatePath("/admin")
+  return { ok: true as const }
+}
+
+/**
+ * Updates the organization-wide "latest" app version.
+ * Triggers a notification for all active agents.
+ */
+export async function updateLatestAppVersion(version: string) {
+  const current = await requireUser()
+  if (!canConfigureSystem(current)) throw new Error("Forbidden")
+
+  await db.transaction(async (tx) => {
+    // 1. Update global setting
+    await tx
+      .update(orgSettings)
+      .set({ latestAppVersion: version.trim(), updatedAt: new Date() })
+      .where(eq(orgSettings.id, 1))
+
+    // 2. Create notification for all active users
+    const agents = await tx.select({ id: user.id }).from(user).where(eq(user.active, true))
+
+    // We could use a batch insert here if there are many users
+    for (const agent of agents) {
+      await tx.insert(notification).values({
+        id: randomUUID(),
+        userId: agent.id,
+        type: "app_update",
+        title: "New App Update Available",
+        message: `Version v${version} of the SWUWS Mobile App is now available. Please update your device from the Account page.`,
+        priority: "high",
+        status: "unread",
+        relatedEntityType: "app_update",
+        relatedEntityId: version,
+      })
+    }
+
+    await writeAudit({
+      user: current,
+      action: "settings.app_version.update",
+      entityType: "org_settings",
+      entityId: "1",
+      details: { version },
+    }, tx)
+  })
+
+  revalidatePath("/admin")
+  revalidatePath("/dashboard")
   return { ok: true as const }
 }

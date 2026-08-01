@@ -1,4 +1,5 @@
 import { Capacitor } from '@capacitor/core';
+import { Haptics, ImpactStyle } from '@capacitor/haptics';
 
 /**
  * UNIFIED MOBILE HARDWARE BRIDGE
@@ -10,12 +11,25 @@ import { Capacitor } from '@capacitor/core';
 export const isNative = () => Capacitor.isNativePlatform();
 export const isAndroid = () => Capacitor.getPlatform() === 'android';
 
+let vibrationEnabled = true;
+
+/**
+ * Updates the local vibration preference.
+ */
+export function setVibrationPreference(enabled: boolean) {
+  vibrationEnabled = enabled;
+}
+
 /**
  * Device Vibration for feedback (e.g. successful scan)
  */
 export async function hapticFeedback() {
-  if (!isNative()) return;
-  // Note: Needs @capacitor/haptics if we want real vibration
+  if (!isNative() || !vibrationEnabled) return;
+  try {
+    await Haptics.impact({ style: ImpactStyle.Light });
+  } catch (err) {
+    console.warn('Haptics not available', err);
+  }
 }
 
 /**
