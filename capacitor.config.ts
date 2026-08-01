@@ -8,10 +8,11 @@ import 'dotenv/config';
 // and nothing would error if it was missed; the app would just keep
 // silently talking to the old URL forever.
 //
-// Now it reads CAPACITOR_SERVER_URL from the environment (.env, or
-// exported in the shell before running `npx cap sync android`). Falls
+// Reuses NEXT_PUBLIC_APP_URL, the same env var the web app already uses
+// for its own canonical URL (see lib/site-url.ts), rather than a second
+// one-off variable — one place to update when the domain changes. Falls
 // back to the current Vercel URL if unset, so nothing breaks today.
-const serverUrl = process.env.CAPACITOR_SERVER_URL || 'https://swuws-receipts-app-q2z9.vercel.app';
+const serverUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://swuws-receipts-app-q2z9.vercel.app';
 
 const config: CapacitorConfig = {
   appId: 'org.swuws.portal',

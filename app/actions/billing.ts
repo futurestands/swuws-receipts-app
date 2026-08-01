@@ -324,6 +324,7 @@ export async function validateBillingImport(
 
   const schemeId = formData.get("schemeId") as string
   const billingPeriodId = formData.get("billingPeriodId") as string
+  const noHeaders = formData.get("noHeaders") === "true"
   const file = formData.get("file") as File
 
   if (!schemeId || !billingPeriodId || !file) {
@@ -338,7 +339,7 @@ export async function validateBillingImport(
     .limit(1)
 
   if (!period) return { ok: false, error: "Selected billing period does not exist" }
-  if (period.status === 'closed' || period.status === 'archived') {
+  if (period.status === "closed" || period.status === "archived") {
     return { ok: false, error: `Imports are not allowed in ${period.status} status.` }
   }
 
@@ -349,7 +350,10 @@ export async function validateBillingImport(
     .where(eq(waterScheme.id, schemeId))
     .limit(1)
 
-  if (!scheme || !(await validateWriteScope(current, "billing.import", { branchId: scheme.branchId, schemeId }))) {
+  if (
+    !scheme ||
+    !(await validateWriteScope(current, "billing.import", { branchId: scheme.branchId, schemeId }))
+  ) {
     return { ok: false, error: "You are not authorized to upload for this scheme" }
   }
 
@@ -361,7 +365,10 @@ export async function validateBillingImport(
     .limit(1)
 
   if (existingRun) {
-    return { ok: false, error: "Monthly billing has already been imported for this scheme and period" }
+    return {
+      ok: false,
+      error: "Monthly billing has already been imported for this scheme and period",
+    }
   }
 
   const schemeCustomers = await db
@@ -372,20 +379,30 @@ export async function validateBillingImport(
   const customerMap = new Map(schemeCustomers.map((c) => [c.account?.toLowerCase(), c]))
   const seenInUpload = new Set<string>()
 
-  // Resolve dynamic mapping
-  const mapping = (await getImportMapping('import.billing.monthly')) as any || {
-    accountNumber: "AccountNumber",
-    billAmount: "BillAmount",
-    arrears: "Arrears",
-    currentCharges: "CurrentCharges",
-    totalDue: "TotalDue",
-    dueDate: "DueDate"
-  }
+  // Resolve dynamic mapping (with aliases support)
+  let mapping: Record<string, string | string[] | number> = noHeaders
+    ? {
+        accountNumber: 0,
+        billAmount: 1,
+        arrears: 2,
+        currentCharges: 3,
+        totalDue: 4,
+        dueDate: 5,
+      }
+    : ((await getImportMapping("import.billing.monthly")) as any) || {
+        accountNumber: "AccountNumber",
+        billAmount: "BillAmount",
+        arrears: ["Arrears", "Balance Brought Forward", "BalanceBroughtForward", "Brought Forward"],
+        currentCharges: "CurrentCharges",
+        totalDue: "TotalDue",
+        dueDate: "DueDate",
+      }
 
   const engineSummary = await processExcelImport({
     file,
     schema: billingImportSchema,
     mapping,
+    headerMode: noHeaders ? "none" : "headers",
     onValidateRow: (data) => {
       const errors: string[] = []
       const warnings: string[] = []
@@ -403,7 +420,7 @@ export async function validateBillingImport(
       seenInUpload.add(accLower)
 
       return { errors, warnings }
-    }
+    },
   })
 
   return {
@@ -572,7 +589,7 @@ export async function downloadBillingTemplate() {
   const worksheet = XLSX.utils.json_to_sheet(data, { header: headers })
   const workbook = XLSX.utils.book_new()
   XLSX.utils.book_append_sheet(workbook, worksheet, "BillingTemplate")
-  return XLSX.write(workbook, { type: "buffer", bookType: "xlsx" }).toString("base64")
+  return XLSX.write(workbook, { type: "base64", bookType: "xlsx" })
 }
 
 export async function getCollectionSummary() {

@@ -1,8 +1,16 @@
-# Tasks: Production Dashboard Stability
-
-- `[/]` Backend Data Guards
-    - `[ ]` Ensure `getDailyTotals` in `app/actions/receipts.ts` returns safe defaults
-- `[/]` Dashboard UI Resilience
-    - `[ ]` Add safety fallbacks to `app/dashboard/page.tsx`
-    - `[ ]` Harden `components/dashboard/collection-summary-card.tsx` against zero-division
-- `[ ]` Final Verification
+- [x] Update `lib/import-engine.ts` to support aliases and positional (no-header) mapping
+- [x] Update `app/actions/billing.ts` to support no-header imports and arrears aliases
+- [x] Update `app/dashboard/customers/customer-search-bar.tsx` to add UI fields for balance range
+- [x] Update `app/actions/customers.ts` to support `minBalance` and `maxBalance` in `searchCustomers`
+- [x] Update `app/dashboard/customers/page.tsx` to pass balance filters to the action and search bar
+- [x] Verify pagination preserves balance filters in `app/dashboard/customers/page.tsx`
+- [x] Implement `exportCustomersExcel` server action in `app/actions/customers.ts`
+- [x] Add "Download Excel" button and logic to `app/dashboard/customers/customer-search-bar.tsx`
+- [x] Verify Excel export respects active filters
+- [x] Fix App Icon: Delete default Android vector icons (`ic_launcher_foreground.xml`, `ic_launcher_background.xml`)
+- [x] Fix App Icon: Update `public/manifest.json` to use available icon assets
+- [x] Separate SMS and Print Options: Add `sendReadingSms` action in `billing-engine.ts`
+- [x] Separate SMS and Print Options: Redesign `ReadingEntryForm` success state with two choice cards
+- [x] Separate SMS and Print Options: Simplify main capture form (remove SMS checkbox)
+- [x] Fix Delivery Modal: Register brand colors in `globals.css`
+- [x] Fix Delivery Modal: Redesign modal UI for mobile visibility and high contrast

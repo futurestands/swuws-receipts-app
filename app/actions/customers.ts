@@ -4,9 +4,10 @@ import { db } from "@/lib/db"
 import { customer, receipt, waterScheme, branch } from "@/lib/db/schema"
 import { requireUser } from "@/lib/session"
 import { writeAudit } from "@/lib/audit"
-import { and, desc, eq, ilike, or, sql, getTableColumns } from "drizzle-orm"
+import { and, desc, eq, ilike, or, sql, getTableColumns, gte, lte } from "drizzle-orm"
 import { randomUUID } from "crypto"
 import { revalidatePath } from "next/cache"
+import * as XLSX from "xlsx"
 import { z } from "zod"
 import { isUniqueViolation } from "@/lib/db/errors"
 import {
@@ -208,6 +209,8 @@ export async function searchCustomers(params: {
   query?: string
   waterSchemeId?: string
   branchId?: string
+  minBalance?: number
+  maxBalance?: number
   page?: number
   pageSize?: number
   showInactive?: boolean
@@ -242,6 +245,12 @@ export async function searchCustomers(params: {
   if (params.branchId) {
     conditions.push(eq(waterScheme.branchId, params.branchId))
   }
+  if (params.minBalance !== undefined) {
+    conditions.push(gte(customer.accountBalance, params.minBalance))
+  }
+  if (params.maxBalance !== undefined) {
+    conditions.push(lte(customer.accountBalance, params.maxBalance))
+  }
   if (scope) {
     conditions.push(scope)
   }
@@ -274,6 +283,103 @@ export async function searchCustomers(params: {
     pageSize,
     totalPages: Math.max(1, Math.ceil(Number(count) / pageSize)),
   }
+}
+
+/**
+ * Exports matching customers to an Excel file (Module 6 Enhancement).
+ */
+export async function exportCustomersExcel(params: {
+  query?: string
+  waterSchemeId?: string
+  branchId?: string
+  minBalance?: number
+  maxBalance?: number
+  showInactive?: boolean
+}) {
+  const current = await requireUser()
+  if (!canViewReports(current)) throw new Error("Forbidden")
+
+  const scope = applyCustomerScope(current)
+  const conditions = []
+  if (!params.showInactive) {
+    conditions.push(eq(customer.active, true))
+  }
+  if (params.query?.trim()) {
+    const q = `%${escapeLike(params.query.trim())}%`
+    conditions.push(
+      or(
+        ilike(customer.name, q),
+        sql`${customer.customerAccount}::text ilike ${q}`,
+        sql`${customer.phone}::text ilike ${q}`
+      ),
+    )
+  }
+  if (params.waterSchemeId && params.waterSchemeId !== "all") {
+    conditions.push(eq(customer.waterSchemeId, params.waterSchemeId))
+  }
+  if (params.branchId && params.branchId !== "all") {
+    conditions.push(eq(waterScheme.branchId, params.branchId))
+  }
+  if (params.minBalance !== undefined) {
+    conditions.push(gte(customer.accountBalance, params.minBalance))
+  }
+  if (params.maxBalance !== undefined) {
+    conditions.push(lte(customer.accountBalance, params.maxBalance))
+  }
+  if (scope) {
+    conditions.push(scope)
+  }
+  const where = conditions.length > 0 ? and(...conditions) : undefined
+
+  const rows = await db
+    .select({
+      name: customer.name,
+      account: customer.customerAccount,
+      phone: customer.phone,
+      address: customer.address,
+      scheme: waterScheme.name,
+      branch: branch.name,
+      arrears: customer.accountBalance,
+      status: customer.active,
+      registered: customer.createdAt,
+    })
+    .from(customer)
+    .leftJoin(waterScheme, eq(customer.waterSchemeId, waterScheme.id))
+    .leftJoin(branch, eq(waterScheme.branchId, branch.id))
+    .where(where)
+    .orderBy(customer.name)
+
+  const data = rows.map((r) => ({
+    "Name": r.name,
+    "Account #": r.account || "—",
+    "Phone": r.phone || "—",
+    "Address": r.address || "—",
+    "Water Scheme": r.scheme || "—",
+    "Branch": r.branch || "—",
+    "Arrears (UGX)": r.arrears,
+    "Status": r.status ? "Active" : "Inactive",
+    "Registered On": r.registered?.toLocaleDateString("en-GB") || "—",
+  }))
+
+  const worksheet = XLSX.utils.json_to_sheet(data)
+  const workbook = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(workbook, worksheet, "Customers")
+
+  // Set column widths for better readability
+  const wscols = [
+    { wch: 25 }, // Name
+    { wch: 15 }, // Account #
+    { wch: 15 }, // Phone
+    { wch: 20 }, // Address
+    { wch: 20 }, // Water Scheme
+    { wch: 15 }, // Branch
+    { wch: 15 }, // Arrears
+    { wch: 10 }, // Status
+    { wch: 15 }, // Registered On
+  ]
+  worksheet["!cols"] = wscols
+
+  return XLSX.write(workbook, { type: "base64", bookType: "xlsx" })
 }
 
 /** Lightweight lookup used by the receipt form's customer picker. */

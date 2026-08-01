@@ -206,6 +206,5 @@ export async function downloadHierarchyTemplate() {
   const worksheet = XLSX.utils.json_to_sheet(data, { header: headers })
   const workbook = XLSX.utils.book_new()
   XLSX.utils.book_append_sheet(workbook, worksheet, "Hierarchy")
-  const buffer = XLSX.write(workbook, { type: "buffer", bookType: "xlsx" })
-  return buffer.toString("base64")
+  return XLSX.write(workbook, { type: "base64", bookType: "xlsx" })
 }

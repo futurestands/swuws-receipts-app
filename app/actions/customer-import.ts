@@ -52,7 +52,7 @@ export async function validateCustomerImport(formData: FormData): Promise<{ ok: 
   const existingAccounts = new Set(existingCustomers.map((c) => c.account?.toLowerCase()))
   const seenInUpload = new Set<string>()
 
-  const mapping = (await getImportMapping('import.customers.bulk')) as any || {
+  const mapping = (await getImportMapping("import.customers.bulk")) as any || {
     name: "Name",
     customerAccount: "CustomerRef",
     phone: "Phone",
@@ -60,9 +60,9 @@ export async function validateCustomerImport(formData: FormData): Promise<{ ok: 
     schemeName: "SchemeName",
     meterRef: "MeterRef",
     serialNo: "MeterSerial",
-    openingArrears: "OpeningArrears",
+    openingArrears: ["OpeningArrears", "Arrears", "Balance Brought Forward", "BalanceBroughtForward", "Brought Forward"],
     category: "Category",
-    notes: "Notes"
+    notes: "Notes",
   }
 
   const summary = await processExcelImport({
@@ -234,6 +234,5 @@ export async function downloadCustomerTemplate() {
   const worksheet = XLSX.utils.json_to_sheet([sampleRow], { header: headers })
   const workbook = XLSX.utils.book_new()
   XLSX.utils.book_append_sheet(workbook, worksheet, "Customers")
-  const buffer = XLSX.write(workbook, { type: "buffer", bookType: "xlsx" })
-  return buffer.toString("base64")
+  return XLSX.write(workbook, { type: "base64", bookType: "xlsx" })
 }

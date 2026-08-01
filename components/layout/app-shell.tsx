@@ -17,6 +17,9 @@ export function AppShell({
   sections,
   userName,
   userRoleLabel,
+  developerCredit,
+  orgName = "Southwestern Umbrella of Water and Sanitation",
+  receiptPrefix = "SWUWS",
   brand = "SWUWS Collection Portal",
   brandHref = "/dashboard",
   children,
@@ -24,6 +27,9 @@ export function AppShell({
   sections: NavSection[]
   userName: string
   userRoleLabel: string
+  developerCredit?: string
+  orgName?: string
+  receiptPrefix?: string
   brand?: string
   brandHref?: string
   children: React.ReactNode
@@ -59,7 +65,7 @@ export function AppShell({
             {!collapsed ? (
               <Link href={brandHref} className="flex flex-col group leading-tight">
                 <span className="text-[12px] font-black text-sidebar-foreground tracking-tight uppercase">
-                  SWUWS Collection
+                  {receiptPrefix} Collection
                 </span>
                 <span className="text-[12px] font-black text-sidebar-foreground tracking-tight uppercase">
                   Portal
@@ -84,6 +90,16 @@ export function AppShell({
         <div className="flex-1 overflow-y-auto">
           <SidebarNav sections={sections} collapsed={collapsed} />
         </div>
+        <div className={cn(
+          "shrink-0 border-t border-sidebar-border p-3 text-center transition-opacity duration-200",
+          collapsed || !developerCredit ? "opacity-0 h-0 p-0 overflow-hidden" : "opacity-100"
+        )}>
+          {developerCredit && (
+            <p className="text-[10px] font-medium text-sidebar-foreground/50 leading-tight">
+              &copy; {new Date().getFullYear()} {developerCredit}
+            </p>
+          )}
+        </div>
       </aside>
 
       {/* Mobile drawer */}
@@ -91,7 +107,7 @@ export function AppShell({
         <SheetContent side="left" className="w-72 max-w-[85vw] border-sidebar-border bg-sidebar p-0">
           <SheetHeader className="h-20 flex flex-col items-start justify-center border-b border-sidebar-border px-4">
             <SheetTitle className="text-sidebar-foreground text-left flex flex-col leading-tight">
-              <span className="text-sm font-black tracking-tight uppercase">SWUWS COLLECTION</span>
+              <span className="text-sm font-black tracking-tight uppercase">{receiptPrefix} COLLECTION</span>
               <span className="text-sm font-black tracking-tight uppercase">PORTAL</span>
             </SheetTitle>
           </SheetHeader>
@@ -115,14 +131,14 @@ export function AppShell({
           </Button>
           <div className="flex flex-col min-w-0 md:hidden leading-tight">
             <Link href={brandHref} className="flex flex-col">
-              <span className="text-[11px] font-black text-primary uppercase">SWUWS COLLECTION</span>
+              <span className="text-[11px] font-black text-primary uppercase">{receiptPrefix} COLLECTION</span>
               <span className="text-[11px] font-black text-primary uppercase">PORTAL</span>
             </Link>
           </div>
 
           <div className="hidden md:flex items-center flex-1 px-4 min-w-0 overflow-hidden">
-            <p className="w-full text-[10px] md:text-sm lg:text-base xl:text-lg font-black text-brand-blue tracking-[0.1em] text-center italic font-serif whitespace-nowrap overflow-hidden text-ellipsis">
-              SOUTHWESTERN UMBRELLA OF WATER AND SANITATION
+            <p className="w-full text-[10px] md:text-sm lg:text-base xl:text-lg font-black text-brand-blue tracking-[0.1em] text-center italic font-serif whitespace-nowrap overflow-hidden text-ellipsis uppercase">
+              {orgName}
             </p>
           </div>
 

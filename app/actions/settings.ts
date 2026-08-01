@@ -63,6 +63,7 @@ export async function getSettings() {
       billingGraceDays: 14,
       currencyCode: "UGX",
       receiptPrefix: "SWUWS",
+      developerCredit: "Developed by Mugarura Johnson IT",
       editableFields: DEFAULT_EDITABLE,
       updatedAt: new Date(),
     }
@@ -87,6 +88,7 @@ export async function updateBranding(input: {
   billingGraceDays?: number
   currencyCode?: string
   receiptPrefix?: string
+  developerCredit?: string
 }) {
   const current = await requireUser()
   if (!canConfigureSystem(current)) throw new Error("Forbidden")
@@ -101,6 +103,7 @@ export async function updateBranding(input: {
       billingGraceDays: input.billingGraceDays ?? undefined,
       currencyCode: input.currencyCode?.trim() || undefined,
       receiptPrefix: input.receiptPrefix?.trim() || undefined,
+      developerCredit: input.developerCredit?.trim() ?? undefined,
       updatedAt: new Date(),
     })
     .where(eq(orgSettings.id, 1))

@@ -2,7 +2,7 @@
 
 import { useState, useTransition, useMemo } from "react"
 import { useRouter } from "next/navigation"
-import { createCustomer } from "@/app/actions/customers"
+import { createCustomer, exportCustomersExcel } from "@/app/actions/customers"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -22,7 +22,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { toast } from "sonner"
-import { FileUp, Search, X, Camera, Loader2 } from "lucide-react"
+import { FileUp, Search, X, Camera, Loader2, Download } from "lucide-react"
 import Link from "next/link"
 import { FormField, FormActions } from "@/components/ui/form-layout"
 import type { Branch, WaterScheme } from "@/lib/db/schema"
@@ -33,6 +33,8 @@ export function CustomerSearchBar({
   initialQuery,
   initialBranchId,
   initialSchemeId,
+  initialMinBalance,
+  initialMaxBalance,
   branches,
   schemes,
   canImport,
@@ -40,6 +42,8 @@ export function CustomerSearchBar({
   initialQuery: string
   initialBranchId?: string
   initialSchemeId?: string
+  initialMinBalance?: string
+  initialMaxBalance?: string
   branches: Branch[]
   schemes: WaterScheme[]
   canImport: boolean
@@ -48,6 +52,8 @@ export function CustomerSearchBar({
   const [query, setQuery] = useState(initialQuery)
   const [branchId, setBranchId] = useState<string>(initialBranchId || "all")
   const [schemeId, setSchemeId] = useState<string>(initialSchemeId || "all")
+  const [minBalance, setMinBalance] = useState(initialMinBalance || "")
+  const [maxBalance, setMaxBalance] = useState(initialMaxBalance || "")
 
   const [open, setOpen] = useState(false)
   const [name, setName] = useState("")
@@ -57,6 +63,7 @@ export function CustomerSearchBar({
   const [error, setError] = useState<string | null>(null)
   const [pending, startTransition] = useTransition()
   const [isScanning, setIsScanning] = useState(false)
+  const [isExporting, setIsExporting] = useState(false)
 
   // Filter schemes based on selected branch
   const filteredSchemes = useMemo(() => {
@@ -70,6 +77,8 @@ export function CustomerSearchBar({
     if (query.trim()) params.set("q", query.trim())
     if (branchId !== "all") params.set("branchId", branchId)
     if (schemeId !== "all") params.set("schemeId", schemeId)
+    if (minBalance.trim()) params.set("minBalance", minBalance.trim())
+    if (maxBalance.trim()) params.set("maxBalance", maxBalance.trim())
 
     startTransition(() => {
       router.push(`/dashboard/customers?${params.toString()}`)
@@ -80,6 +89,8 @@ export function CustomerSearchBar({
     setQuery("")
     setBranchId("all")
     setSchemeId("all")
+    setMinBalance("")
+    setMaxBalance("")
     startTransition(() => {
       router.push(`/dashboard/customers`)
     })
@@ -140,6 +151,8 @@ export function CustomerSearchBar({
         params.set("q", result.ScanResult)
         if (branchId !== "all") params.set("branchId", branchId)
         if (schemeId !== "all") params.set("schemeId", schemeId)
+        if (minBalance.trim()) params.set("minBalance", minBalance.trim())
+        if (maxBalance.trim()) params.set("maxBalance", maxBalance.trim())
         startTransition(() => {
           router.push(`/dashboard/customers?${params.toString()}`)
         })
@@ -148,6 +161,42 @@ export function CustomerSearchBar({
       console.error(err)
       setIsScanning(false)
       toast.error("Scanning failed")
+    }
+  }
+
+  async function handleExport() {
+    try {
+      setIsExporting(true)
+      const base64 = await exportCustomersExcel({
+        query: query.trim() || undefined,
+        branchId,
+        waterSchemeId: schemeId,
+        minBalance: minBalance ? Number(minBalance) : undefined,
+        maxBalance: maxBalance ? Number(maxBalance) : undefined,
+      })
+
+      const byteCharacters = atob(base64)
+      const byteNumbers = new Array(byteCharacters.length)
+      for (let i = 0; i < byteCharacters.length; i++) {
+        byteNumbers[i] = byteCharacters.charCodeAt(i)
+      }
+      const byteArray = new Uint8Array(byteNumbers)
+      const blob = new Blob([byteArray], {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      })
+
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = `customers_export_${new Date().toISOString().split("T")[0]}.xlsx`
+      a.click()
+      window.URL.revokeObjectURL(url)
+      toast.success("Excel export downloaded")
+    } catch (err) {
+      console.error(err)
+      toast.error("Export failed")
+    } finally {
+      setIsExporting(false)
     }
   }
 
@@ -167,7 +216,7 @@ export function CustomerSearchBar({
       <div className="flex flex-col lg:flex-row items-end gap-3">
         <form
           onSubmit={handleSearch}
-          className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 w-full flex-1"
+          className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-3 w-full flex-1"
         >
           <div className="space-y-1">
             <Label className="text-[10px] uppercase font-bold text-muted-foreground ml-1">
@@ -220,6 +269,34 @@ export function CustomerSearchBar({
             </Select>
           </div>
 
+          <div className="space-y-1">
+            <Label className="text-[10px] uppercase font-bold text-muted-foreground ml-1">
+              Min Arrears
+            </Label>
+            <Input
+              type="number"
+              placeholder="0"
+              value={minBalance}
+              onChange={(e) => setMinBalance(e.target.value)}
+              disabled={pending}
+              className="h-11"
+            />
+          </div>
+
+          <div className="space-y-1">
+            <Label className="text-[10px] uppercase font-bold text-muted-foreground ml-1">
+              Max Arrears
+            </Label>
+            <Input
+              type="number"
+              placeholder="Max"
+              value={maxBalance}
+              onChange={(e) => setMaxBalance(e.target.value)}
+              disabled={pending}
+              className="h-11"
+            />
+          </div>
+
           <div className="flex gap-2 items-end">
             <Button type="submit" disabled={pending} className="h-11 flex-1">
               <Search className={`h-4 w-4 mr-2 ${pending ? "animate-pulse" : ""}`} />
@@ -239,7 +316,7 @@ export function CustomerSearchBar({
               </Button>
             )}
 
-            {(query || branchId !== "all" || schemeId !== "all") && (
+            {(query || branchId !== "all" || schemeId !== "all" || minBalance || maxBalance) && (
               <Button
                 type="button"
                 variant="ghost"
@@ -255,6 +332,20 @@ export function CustomerSearchBar({
         </form>
 
         <div className="flex items-center gap-2 w-full lg:w-auto pb-0.5">
+          <Button
+            variant="outline"
+            className="flex-1 lg:flex-initial h-11"
+            onClick={handleExport}
+            disabled={isExporting}
+          >
+            {isExporting ? (
+              <Loader2 className="h-4 w-4 animate-spin mr-2" />
+            ) : (
+              <Download className="h-4 w-4 mr-2" />
+            )}
+            Download Excel
+          </Button>
+
           {canImport && (
             <Button variant="outline" asChild className="flex-1 lg:flex-initial h-11 border-dashed">
               <Link href="/dashboard/customers/bulkimport">
