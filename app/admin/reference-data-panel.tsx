@@ -145,7 +145,7 @@ export function ReferenceDataPanel({
             <Globe className="h-5 w-5 text-brand-blue" />
             Water Schemes & Area Offices
           </CardTitle>
-          <CardDescription>Manage your organization's regions, area offices, and water schemes in one place.</CardDescription>
+          <CardDescription>Manage your organization&apos;s regions, area offices, and water schemes in one place.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
           <form onSubmit={handleAddScheme} className="grid gap-4 sm:grid-cols-5 items-end p-4 bg-muted/20 rounded-lg border border-dashed">

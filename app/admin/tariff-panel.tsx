@@ -223,7 +223,7 @@ export function TariffPanel({
               {tariffs.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={7} className="text-center py-8 text-muted-foreground italic">
-                    No tariffs configured yet. Click "Add Tariff" to begin.
+                    No tariffs configured yet. Click &quot;Add Tariff&quot; to begin.
                   </TableCell>
                 </TableRow>
               ) : (
@@ -264,7 +264,7 @@ export function TariffPanel({
 
       <div className="grid gap-4 md:grid-cols-2 text-xs text-muted-foreground p-4 bg-muted/20 rounded-lg border border-dashed">
         <p><strong>Note:</strong> Scheme-specific rates always take priority over Branch rates if both are configured for a customer.</p>
-        <p><strong>Impact:</strong> Changes here will immediately update the "Amount Due" shown to plumbers in the field when they capture readings.</p>
+        <p><strong>Impact:</strong> Changes here will immediately update the &quot;Amount Due&quot; shown to plumbers in the field when they capture readings.</p>
       </div>
     </div>
   )

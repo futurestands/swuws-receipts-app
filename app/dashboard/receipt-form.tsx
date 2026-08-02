@@ -98,27 +98,14 @@ export function ReceiptForm({
       getOpenBillsForCustomer(selectedCustomer.id).then((data) => {
         if (active) setBills(data)
       })
-    } else {
-      setBills([])
-      set("billingRecordId", "")
     }
     return () => {
       active = false
     }
-  }, [selectedCustomer, set])
-
-  useEffect(() => {
-    if (selectedCustomer) {
-      const currentBalance = Number(selectedCustomer.accountBalance || 0)
-      const amountPaid = Number(form.amount || 0)
-      const remaining = currentBalance - amountPaid
-      setForm(f => ({ ...f, outstandingBalance: String(remaining) }))
-    }
-  }, [form.amount, selectedCustomer])
+  }, [selectedCustomer])
 
   useEffect(() => {
     if (!customerQuery.trim() || selectedCustomer) {
-      setCustomerResults([])
       return
     }
 
@@ -235,16 +222,24 @@ export function ReceiptForm({
                 placeholder="Type name or account number to find customer..."
                 value={selectedCustomer ? selectedCustomer.name : customerQuery}
                 onChange={(e) => {
+                  const val = e.target.value
                   if (selectedCustomer) {
                     setSelectedCustomer(null)
+                    setBills([])
+                    setCustomerResults([])
                     setForm(prev => ({
                       ...prev,
                       customerAccount: "",
                       customerPhone: "",
                       customerAddress: "",
+                      billingRecordId: "",
+                      outstandingBalance: "",
                     }))
                   }
-                  setCustomerQuery(e.target.value)
+                  if (!val.trim()) {
+                    setCustomerResults([])
+                  }
+                  setCustomerQuery(val)
                 }}
                 className={cn("h-11 pl-9", selectedCustomer && "bg-primary/5 font-bold text-primary border-primary/20")}
               />
@@ -257,11 +252,15 @@ export function ReceiptForm({
                   onClick={() => {
                     setSelectedCustomer(null)
                     setCustomerQuery("")
+                    setBills([])
+                    setCustomerResults([])
                     setForm(prev => ({
                       ...prev,
                       customerAccount: "",
                       customerPhone: "",
                       customerAddress: "",
+                      billingRecordId: "",
+                      outstandingBalance: "",
                     }))
                   }}
                 >
@@ -270,7 +269,7 @@ export function ReceiptForm({
               )}
               {customerResults.length === 0 && customerQuery.trim() !== "" && !selectedCustomer && (
                 <div className="absolute z-10 mt-1 p-4 w-full rounded-lg border bg-popover shadow-md ring-1 ring-black/5 text-center">
-                   <p className="text-sm text-muted-foreground mb-2">No customer found for "{customerQuery}"</p>
+                   <p className="text-sm text-muted-foreground mb-2">No customer found for &quot;{customerQuery}&quot;</p>
                    <Button asChild variant="outline" size="sm" className="gap-2">
                       <Link href="/dashboard/customers">
                         <UserPlus className="h-4 w-4" /> Create New Profile
@@ -288,13 +287,16 @@ export function ReceiptForm({
                       onClick={() => {
                         setSelectedCustomer(c)
                         setCustomerResults([])
+                        const currentBalance = Number(c.accountBalance || 0)
+                        const amountPaid = Number(form.amount || 0)
                         setForm(prev => ({
                           ...prev,
                           customerAccount: c.customerAccount || "",
                           customerPhone: c.phone || "",
                           customerAddress: c.address || "",
                           schemeId: c.waterSchemeId || prev.schemeId,
-                          branchId: (schemes.find(s => s.id === c.waterSchemeId)?.branchId) || prev.branchId
+                          branchId: (schemes.find(s => s.id === c.waterSchemeId)?.branchId) || prev.branchId,
+                          outstandingBalance: String(currentBalance - amountPaid)
                         }))
                       }}
                     >
@@ -327,12 +329,16 @@ export function ReceiptForm({
                     onClick={() => {
                       setSelectedCustomer(null)
                       setCustomerQuery("")
+                      setBills([])
+                      setCustomerResults([])
                       setForm(prev => ({
                         ...prev,
                         customerName: "",
                         customerAccount: "",
                         customerPhone: "",
                         customerAddress: "",
+                        billingRecordId: "",
+                        outstandingBalance: "",
                       }))
                     }}
                   >
@@ -480,7 +486,15 @@ export function ReceiptForm({
                   step="1"
                   required
                   value={form.amount}
-                  onChange={(e) => set("amount", e.target.value)}
+                  onChange={(e) => {
+                    const val = e.target.value
+                    set("amount", val)
+                    if (selectedCustomer) {
+                       const currentBalance = Number(selectedCustomer.accountBalance || 0)
+                       const amountPaid = Number(val || 0)
+                       set("outstandingBalance", String(currentBalance - amountPaid))
+                    }
+                  }}
                   className="h-11"
                 />
               </FormField>

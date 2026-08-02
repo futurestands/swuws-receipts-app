@@ -34,16 +34,14 @@ export function AppShell({
   brandHref?: string
   children: React.ReactNode
 }) {
-  const [collapsed, setCollapsed] = useState(false) // Default to expanded for solid initial paint
-  const [mobileOpen, setMobileOpen] = useState(false)
-
-  // Restore the desktop collapse preference.
-  useEffect(() => {
-    const stored = window.localStorage.getItem(COLLAPSE_KEY)
-    if (stored !== null) {
-      setCollapsed(stored === "1")
+  const [collapsed, setCollapsed] = useState(() => {
+    if (typeof window !== "undefined") {
+      const stored = window.localStorage.getItem(COLLAPSE_KEY)
+      return stored === "1"
     }
-  }, [])
+    return false
+  })
+  const [mobileOpen, setMobileOpen] = useState(false)
 
   function toggleCollapsed() {
     setCollapsed((prev) => {

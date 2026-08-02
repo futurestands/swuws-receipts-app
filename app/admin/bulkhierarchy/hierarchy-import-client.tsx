@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useTransition } from "react"
+import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -255,7 +256,7 @@ export function HierarchyImportClient() {
           </CardContent>
           <CardFooter className="flex gap-2 justify-center">
             <Button variant="outline" onClick={handleDownloadReport}><Download className="h-4 w-4 mr-2" /> Download Report</Button>
-            <Button asChild><a href="/admin">Return to Admin</a></Button>
+            <Button asChild><Link href="/admin">Return to Admin</Link></Button>
           </CardFooter>
         </Card>
       )}

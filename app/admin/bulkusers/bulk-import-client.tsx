@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useTransition } from "react"
+import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -325,8 +326,8 @@ export function BulkImportClient() {
             <div className="space-y-2">
               <h4 className="text-sm font-semibold">Security Summary:</h4>
               <ul className="text-sm space-y-1 text-muted-foreground list-disc pl-5">
-                <li>All accounts will be initialized as "Active" where specified.</li>
-                <li>Individual 'agent.create' audit logs will be generated.</li>
+                <li>All accounts will be initialized as &quot;Active&quot; where specified.</li>
+                <li>Individual &apos;agent.create&apos; audit logs will be generated.</li>
                 <li>Better Auth credentials will be provisioned for each user.</li>
               </ul>
             </div>
@@ -393,7 +394,7 @@ export function BulkImportClient() {
               <RefreshCw className="h-4 w-4 mr-2" /> Import Another File
             </Button>
             <Button asChild className="w-full sm:w-auto">
-              <a href="/admin">Return to Users</a>
+              <Link href="/admin">Return to Users</Link>
             </Button>
           </CardFooter>
         </Card>

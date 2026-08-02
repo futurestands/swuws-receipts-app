@@ -167,7 +167,7 @@ export default async function ReportsPage({
          <Card className="border-blue-100">
            <CardHeader className="pb-2">
              <CardTitle className="text-sm font-bold text-blue-800">Current Month Performance</CardTitle>
-             <CardDescription>Efficiency in collecting this month's generated revenue.</CardDescription>
+             <CardDescription>Efficiency in collecting this month&apos;s generated revenue.</CardDescription>
            </CardHeader>
            <CardContent className="space-y-4">
              <div className="flex justify-between items-end">

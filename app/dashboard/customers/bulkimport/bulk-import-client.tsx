@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useTransition } from "react"
+import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -378,7 +379,7 @@ export function CustomerBulkImportClient() {
               <RefreshCw className="h-4 w-4 mr-2" /> Import Another File
             </Button>
             <Button asChild className="w-full sm:w-auto">
-              <a href="/dashboard/customers">Return to Customers</a>
+              <Link href="/dashboard/customers">Return to Customers</Link>
             </Button>
           </CardFooter>
         </Card>

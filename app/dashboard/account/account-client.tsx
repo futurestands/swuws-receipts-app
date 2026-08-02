@@ -113,7 +113,7 @@ export function AccountClient({ user, settings }: { user: any, settings: any }) 
              <div className="flex items-center justify-between">
                 <div className="space-y-0.5">
                    <Label className="text-sm font-bold">Tactile Feedback (Vibration)</Label>
-                   <p className="text-xs text-muted-foreground">The phone gives a short "tick" vibration when you tap buttons.</p>
+                   <p className="text-xs text-muted-foreground">The phone gives a short &quot;tick&quot; vibration when you tap buttons.</p>
                 </div>
                 <Switch
                    checked={vibrationEnabled}

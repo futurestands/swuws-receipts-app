@@ -174,7 +174,7 @@ export function BrandingPanel({ settings }: { settings: OrgSettings }) {
         </CardContent>
         <CardFooter className="bg-brand-blue/5 py-3">
            <p className="text-[10px] text-brand-blue font-medium">
-             Note: Ensure you have uploaded the corresponding APK file to the server's public folder before publishing.
+             Note: Ensure you have uploaded the corresponding APK file to the server&apos;s public folder before publishing.
            </p>
         </CardFooter>
       </Card>

@@ -73,7 +73,7 @@ export function VoidReceiptButton({
         <AlertDialogHeader>
           <AlertDialogTitle>Void Receipt?</AlertDialogTitle>
           <AlertDialogDescription>
-            This will permanently reverse the payment and restore the customer's balance.
+            This will permanently reverse the payment and restore the customer&apos;s balance.
             This action cannot be undone and will be recorded in the audit trail.
           </AlertDialogDescription>
         </AlertDialogHeader>

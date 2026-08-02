@@ -15,6 +15,12 @@ I have successfully unified the billing data and resolved the system errors (bot
 - **Hydration Fix:** Switched to a dynamic icon loading system to prevent the "Something went wrong" mismatch error.
 - **Customer Counting:** The "Customers" metric now counts unique individuals across both sources.
 
+## Unified Performance Dashboard
+I have also unified the **Performance Dashboard** (`/dashboard/reports`) to ensure consistency across the whole finance system:
+- **Unified Billing:** "Monthly Billed" and "Arrears Billed" now combine totals from both field capture and imports.
+- **Improved Cash Tracking:** "Operational Cash" now accurately filters by the selected billing period, so you only see the receipts issued for that specific month.
+- **Verified Collections:** The "Bank Verified" logic now accounts for payments against both imported bills and manual readings, ensuring your "Collection Rate" is always accurate.
+
 ### 3. Git Push Correction
 I analyzed your recent push and found that several critical files were missed (e.g., `finance.ts` and `receipts.ts`), which caused the "red cross" (build failure) on GitHub/Vercel.
 - **Staging Fix:** I have prepared all files, including the new migration script, to be committed together.

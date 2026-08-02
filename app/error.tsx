@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect } from "react"
+import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 
@@ -31,13 +32,13 @@ export default function GlobalErrorBoundary({
         <CardContent className="flex gap-3">
           {looksLikeAuthError ? (
             <Button asChild>
-              <a href="/login">Sign in again</a>
+              <Link href="/login">Sign in again</Link>
             </Button>
           ) : (
             <Button onClick={() => reset()}>Try again</Button>
           )}
           <Button variant="outline" asChild>
-            <a href="/dashboard">Back to dashboard</a>
+            <Link href="/dashboard">Back to dashboard</Link>
           </Button>
         </CardContent>
       </Card>
