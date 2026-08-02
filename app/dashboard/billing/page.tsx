@@ -8,7 +8,7 @@ import {
 import { getCollectionSummary } from "@/app/actions/billing"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Upload, FileText, History, AlertCircle, Calendar, Wallet, Users, TrendingUp } from "lucide-react"
+import { Upload, FileText, Activity, AlertCircle, Calendar, Wallet, Users, TrendingUp, HandCoins } from "lucide-react"
 import Link from "next/link"
 import { formatUGX, formatDateTime } from "@/lib/format"
 import { Badge } from "@/components/ui/badge"
@@ -21,6 +21,7 @@ import { PageHeader } from "@/components/ui/page-header"
 import { StatCard, StatCardGrid } from "@/components/ui/stat-card"
 import { ScrollableTableContainer } from "@/components/ui/responsive-table"
 import { EmptyState } from "@/components/ui/empty-state"
+import { DynamicIcon } from "@/components/layout/icons"
 
 export default async function CollectionManagementPage() {
   const current = await requireUser()
@@ -46,7 +47,7 @@ export default async function CollectionManagementPage() {
           <>
             <Button asChild variant="outline">
               <Link href="/dashboard/billing/history">
-                <History className="mr-2 h-4 w-4" /> View History
+                <DynamicIcon name="History" className="mr-2 h-4 w-4" /> View History
               </Link>
             </Button>
             {canManage && <CollectionPeriodWizard />}
@@ -82,9 +83,10 @@ export default async function CollectionManagementPage() {
               </div>
             </CardHeader>
             <CardContent className="space-y-6">
-              <StatCardGrid className="sm:grid-cols-4">
+              <StatCardGrid className="sm:grid-cols-5">
                 <StatCard icon={FileText} label="Billed" value={formatUGX(summary.totalBilled)} />
-                <StatCard icon={Wallet} label="Collected" value={formatUGX(summary.totalCollected)} />
+                <StatCard icon={HandCoins} label="Collected (Cash)" value={formatUGX(summary.cashInHand)} />
+                <StatCard icon={Wallet} label="Matched (EBS)" value={formatUGX(summary.totalCollected)} />
                 <StatCard icon={Users} label="Customers" value={summary.customersImported.toLocaleString()} />
                 <StatCard icon={TrendingUp} label="Progress" value={`${summary.progress.toFixed(1)}%`} />
               </StatCardGrid>

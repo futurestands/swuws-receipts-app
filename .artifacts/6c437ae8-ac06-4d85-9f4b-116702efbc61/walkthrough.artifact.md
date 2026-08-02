@@ -11,8 +11,9 @@ I have successfully unified the billing data and resolved the system errors (bot
 
 ### 2. Unified Dashboard Stats
 - **Financial Aggregation:** The dashboard now correctly sums "Billed" amounts from both manual field entries and bulk imports.
+- **Payment Categorization:** Added a new **"Collected (Cash)"** metric to the dashboard. This shows money that has been collected via receipts but not yet confirmed/matched by the external billing system (EBS).
+- **Hydration Fix:** Switched to a dynamic icon loading system to prevent the "Something went wrong" mismatch error.
 - **Customer Counting:** The "Customers" metric now counts unique individuals across both sources.
-- **Payment Tracking:** Updated `issueReceipt` to automatically tag payments with the current period ID.
 
 ### 3. Git Push Correction
 I analyzed your recent push and found that several critical files were missed (e.g., `finance.ts` and `receipts.ts`), which caused the "red cross" (build failure) on GitHub/Vercel.

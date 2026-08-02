@@ -14,6 +14,7 @@ import {
   auditLog,
   dailyCollectionRecord,
   reconciliationMatch,
+  meterReading,
 } from "@/lib/db/schema"
 import { requireUser } from "@/lib/session"
 import { applyReceiptScope, applyBillingScope, applyCustomerScope } from "@/lib/scopes"
@@ -190,58 +191,78 @@ export async function getDashboardStats(params: {
       const billingScopeFilter = applyBillingScope(current)
       if (billingScopeFilter) billingConditions.push(billingScopeFilter)
 
-      const baseQuery = db
-        .select({
-          totalBilled: sum(billingRecord.totalDue),
-          totalArrearsBilled: sum(billingRecord.arrears),
-          totalCurrentBilled: sum(billingRecord.currentCharges),
-          billedCount: count(billingRecord.id),
-          paidCount: sql<number>`count(case when ${billingRecord.status} = 'paid' then 1 end)::int`,
-          confirmedCount: sql<number>`count(case when ${billingRecord.status} = 'pending_bank_confirmation' then 1 end)::int`,
-          partialCount: sql<number>`count(case when ${billingRecord.status} = 'partially_paid' then 1 end)::int`,
-          unpaidCount: sql<number>`count(case when ${billingRecord.status} = 'pending' then 1 end)::int`,
-        })
-        .from(billingRecord)
-        .innerJoin(customer, eq(billingRecord.customerId, customer.id))
-        .innerJoin(waterScheme, eq(customer.waterSchemeId, waterScheme.id))
-        .innerJoin(branch, eq(waterScheme.branchId, branch.id))
-        .leftJoin(billingRun, eq(billingRecord.billingRunId, billingRun.id))
+      // 1. BILLING AGGREGATION (Unified: Imports + Field Readings)
+      const readingConditions = []
+      if (params.periodId) readingConditions.push(eq(meterReading.billingPeriodId, params.periodId))
+      if (params.schemeId) readingConditions.push(eq(customer.waterSchemeId, params.schemeId))
+      if (params.branchId) readingConditions.push(eq(waterScheme.branchId, params.branchId))
+      if (params.clusterId) readingConditions.push(eq(branch.clusterId, params.clusterId))
 
-      const [billingStats] = await baseQuery.where(and(...billingConditions))
+      const [importStats, fieldStats] = await Promise.all([
+        db
+          .select({
+            totalBilled: sum(billingRecord.totalDue),
+            totalArrearsBilled: sum(billingRecord.arrears),
+            totalCurrentBilled: sum(billingRecord.currentCharges),
+            billedCount: count(billingRecord.id),
+            paidCount: sql<number>`count(case when ${billingRecord.status} = 'paid' then 1 end)::int`,
+            confirmedCount: sql<number>`count(case when ${billingRecord.status} = 'pending_bank_confirmation' then 1 end)::int`,
+            partialCount: sql<number>`count(case when ${billingRecord.status} = 'partially_paid' then 1 end)::int`,
+            unpaidCount: sql<number>`count(case when ${billingRecord.status} = 'pending' then 1 end)::int`,
+          })
+          .from(billingRecord)
+          .innerJoin(customer, eq(billingRecord.customerId, customer.id))
+          .innerJoin(waterScheme, eq(customer.waterSchemeId, waterScheme.id))
+          .innerJoin(branch, eq(waterScheme.branchId, branch.id))
+          .where(and(...billingConditions))
+          .then(rows => rows[0]),
+        db
+          .select({
+            totalBilled: sum(meterReading.billedAmount),
+            totalArrearsBilled: sum(meterReading.previousBalanceSnapshot),
+            totalCurrentBilled: sum(meterReading.billedAmount),
+            billedCount: count(meterReading.id),
+          })
+          .from(meterReading)
+          .innerJoin(customer, eq(meterReading.customerId, customer.id))
+          .innerJoin(waterScheme, eq(customer.waterSchemeId, waterScheme.id))
+          .innerJoin(branch, eq(waterScheme.branchId, branch.id))
+          .where(and(...readingConditions))
+          .then(rows => rows[0]),
+      ])
 
-      // 1. BANK VERIFIED COLLECTIONS (Source: EBS Matched Records)
-      // Base conditions for verified collections
+      // 2. BANK VERIFIED COLLECTIONS (Source: EBS Matched Records)
       const verifiedConditions = [
         eq(dailyCollectionRecord.importStatus, 'matched')
       ]
       if (params.schemeId) verifiedConditions.push(eq(customer.waterSchemeId, params.schemeId))
       if (params.branchId) verifiedConditions.push(eq(waterScheme.branchId, params.branchId))
-      if (params.periodId) verifiedConditions.push(eq(billingRecord.billingPeriodId, params.periodId))
+      if (params.periodId) verifiedConditions.push(eq(receipt.billingPeriodId, params.periodId))
 
-      // We perform a waterfall calculation: Pay off Arrears first, then Current Charges.
       const waterfallQuery = db
         .select({
           totalPaid: sum(dailyCollectionRecord.amount),
-          // For each bill, we sum up matched payments and split them
-          // This subquery logic handles the waterfall at the aggregate level
-          arrearsCollected: sql<number>`sum(least(${dailyCollectionRecord.amount}, ${billingRecord.arrears}))`,
-          currentCollected: sql<number>`sum(greatest(0, ${dailyCollectionRecord.amount} - ${billingRecord.arrears}))`,
+          // Arrears split (Best effort: uses billingRecord arrears if available, else 0)
+          arrearsCollected: sql<number>`sum(least(${dailyCollectionRecord.amount}, coalesce(${billingRecord.arrears}, ${meterReading.previousBalanceSnapshot}, 0)))`,
+          currentCollected: sql<number>`sum(greatest(0, ${dailyCollectionRecord.amount} - coalesce(${billingRecord.arrears}, ${meterReading.previousBalanceSnapshot}, 0)))`,
         })
         .from(dailyCollectionRecord)
         .innerJoin(reconciliationMatch, eq(dailyCollectionRecord.id, reconciliationMatch.dailyCollectionRecordId))
         .innerJoin(receipt, eq(reconciliationMatch.receiptId, receipt.id))
-        .innerJoin(billingRecord, eq(receipt.billingRecordId, billingRecord.id))
+        .leftJoin(billingRecord, eq(receipt.billingRecordId, billingRecord.id))
+        .leftJoin(meterReading, and(eq(receipt.customerId, meterReading.customerId), eq(receipt.billingPeriodId, meterReading.billingPeriodId)))
         .innerJoin(customer, eq(receipt.customerId, customer.id))
         .leftJoin(waterScheme, eq(customer.waterSchemeId, waterScheme.id))
 
       const [collectionStats] = await waterfallQuery.where(and(...verifiedConditions))
 
-      // 2. OPERATIONAL CASH (Source: All Issued Receipts)
+      // 3. OPERATIONAL CASH (Source: All Issued Receipts)
       const receiptConditions = []
       if (receiptScope) receiptConditions.push(receiptScope)
       if (params.schemeId) receiptConditions.push(eq(customer.waterSchemeId, params.schemeId))
+      if (params.periodId) receiptConditions.push(eq(receipt.billingPeriodId, params.periodId))
 
-      // Exclude voided receipts by checking audit log
+      // Exclude voided receipts
       const voidedIdsSubquery = db
         .select({ id: auditLog.entityId })
         .from(auditLog)
@@ -259,9 +280,10 @@ export async function getDashboardStats(params: {
           sql`${receipt.id} NOT IN (${voidedIdsSubquery})`
         ))
 
-      const totalBilled = Number(billingStats?.totalBilled || 0)
-      const arrearsBilled = Number(billingStats?.totalArrearsBilled || 0)
-      const currentBilled = Number(billingStats?.totalCurrentBilled || 0)
+      const totalBilled = Number(importStats?.totalBilled || 0) + Number(fieldStats?.totalBilled || 0)
+      const arrearsBilled = Number(importStats?.totalArrearsBilled || 0) + Number(fieldStats?.totalArrearsBilled || 0)
+      const currentBilled = Number(importStats?.totalCurrentBilled || 0) + Number(fieldStats?.totalCurrentBilled || 0)
+      const billedCount = Number(importStats?.billedCount || 0) + Number(fieldStats?.billedCount || 0)
 
       const verifiedTotal = Number(collectionStats?.totalPaid || 0)
       const verifiedArrears = Number(collectionStats?.arrearsCollected || 0)
@@ -297,18 +319,16 @@ export async function getDashboardStats(params: {
       const totalArrears = Number(arrearsSnapshot?.totalDebt || 0)
       const totalUpfront = Number(arrearsSnapshot?.totalCredit || 0)
 
-      const rate = totalBilled > 0 ? (verifiedTotal / totalBilled) * 100 : 0
-
       return {
         billing: {
           totalBilled,
           arrearsBilled,
           currentBilled,
-          billedCount: Number(billingStats?.billedCount || 0),
-          paidCount: Number(billingStats?.paidCount || 0),
-          confirmedCount: Number(billingStats?.confirmedCount || 0),
-          partialCount: Number(billingStats?.partialCount || 0),
-          unpaidCount: Number(billingStats?.unpaidCount || 0),
+          billedCount,
+          paidCount: Number(importStats?.paidCount || 0),
+          confirmedCount: Number(importStats?.confirmedCount || 0),
+          partialCount: Number(importStats?.partialCount || 0),
+          unpaidCount: Number(importStats?.unpaidCount || 0),
         },
         collections: {
           verifiedTotal,
