@@ -7,14 +7,22 @@ const PUBLIC_PATHS = ["/login", "/verify"]
  * Global Middleware
  */
 
+// This CSP was moved here from next.config.mjs's headers() config (which
+// still handles the other security headers: X-Frame-Options, HSTS, etc).
+// It was briefly widened to allow 'unsafe-eval'/'unsafe-inline' plus
+// blanket https:/http: fallbacks on script-src, connect-src, img-src,
+// font-src, and media-src — those wildcards defeat most of what a CSP is
+// for, since they let a successful XSS load or call out to literally any
+// HTTPS endpoint. Restored to the original, narrower policy: 'unsafe-eval'
+// and 'unsafe-inline' are kept only where they were before (Next.js/
+// Tailwind need them for hydration and injected styles), with no https:/
+// http: wildcards.
 const CSP = [
   "default-src 'self'",
-  "script-src 'self' 'unsafe-eval' 'unsafe-inline' https: http:",
-  "style-src 'self' 'unsafe-inline' https: http:",
-  "img-src 'self' blob: data: https: http:",
-  "font-src 'self' https: http: data:",
-  "connect-src 'self' ws: wss: https: http:",
-  "media-src 'self' data: https: http:",
+  "script-src 'self' 'unsafe-eval' 'unsafe-inline'",
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' blob: data:",
+  "font-src 'self'",
   "object-src 'none'",
   "base-uri 'self'",
   "form-action 'self'",

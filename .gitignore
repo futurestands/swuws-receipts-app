@@ -14,3 +14,9 @@ __v0_jsx-dev-runtime.ts
 node_modules
 .next/
 .DS_Store
+
+# IDE project files (Android Studio) — machine-specific, shouldn't be tracked
+.idea/
+
+# TypeScript incremental build cache — regenerated locally/in CI, not source
+tsconfig.tsbuildinfo
