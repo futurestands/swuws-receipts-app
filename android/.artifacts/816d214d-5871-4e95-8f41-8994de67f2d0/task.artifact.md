@@ -1,7 +1,9 @@
-- [x] Downgrade Gradle Wrapper to 8.10.2
-- [x] Downgrade AGP to 8.7.3 in root `build.gradle`
-- [x] Downgrade SDK versions to 35 in `variables.gradle`
-- [x] Enforce stable dependency versions to fix "prolog" errors
-- [x] Increase minSdkVersion to 26 for plugin compatibility
-- [x] Sync Gradle and verify resolution
-- [x] Build project
+- [x] Patch Capacitor plugins in `node_modules`
+    - [x] `@capacitor/barcode-scanner`
+    - [x] `@capacitor/android`
+    - [x] `@capacitor-community-bluetooth-le`
+    - [x] `@capacitor/haptics`
+    - [x] `@capacitor/splash-screen`
+- [x] Perform Gradle Sync
+- [x] Verify Build (`:app:assembleDebug`)
+- [x] Update Walkthrough

@@ -16,10 +16,11 @@ The project build has been stabilized by addressing several critical issues rela
 ### 3. Dependency Resolution Fixes
 - **Repository Optimization**: Replaced generic `google()` shorthand with explicit `https://maven.google.com` to resolve `Content is not allowed in prolog` errors caused by invalid server responses for certain experimental artifacts.
 - **Enforced Stability**: Added a `resolutionStrategy` in the root `build.gradle` to force stable versions of critical libraries:
-  - `androidx.lifecycle` forced to `2.7.0`.
+  - `androidx.lifecycle` forced to `2.8.3` (resolving duplicate class issues).
   - `androidx.window` forced to `1.3.0`.
   - `com.google.firebase:firebase-annotations` forced to `16.2.0`.
-- **Plugin Patching**: Updated `node_modules` for Capacitor plugins (barcode-scanner, community-android) to align their buildscripts with the project's stable AGP and Kotlin (`2.0.21`) versions.
+- **Plugin Patching**: Updated `node_modules` for Capacitor plugins (barcode-scanner, android, haptics, splash-screen, community-bluetooth-le) to align their buildscripts with the project's stable AGP (`8.7.3`) and Kotlin (`2.0.21`) versions.
+- **Compose & CameraX Fixes**: For `@capacitor/barcode-scanner`, downgraded experimental Compose (1.8.1 -> 1.3.1) and CameraX (1.5.1 -> 1.4.0) dependencies to ensure they can be resolved from standard repositories.
 
 ### 4. Project Configuration Cleanup
 - Removed experimental and potentially conflicting flags from `gradle.properties` (e.g., `android.dependency.useConstraints`, `android.newDsl`).

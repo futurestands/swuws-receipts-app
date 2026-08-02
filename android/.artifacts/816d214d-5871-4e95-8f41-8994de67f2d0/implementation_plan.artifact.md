@@ -1,33 +1,32 @@
-# Project Stabilization Plan
+# Project Stabilization Plan - Phase 2 (Dependency Resolution)
 
-The previous Proguard/R8 issue was fixed, but the project is currently facing major dependency resolution errors (`Content is not allowed in prolog`). These errors are likely caused by the use of extremely experimental versions of the build tools and SDK, which may not be fully supported by the current repository configuration or Gradle environment.
-
-## Current Issues
-- **Dependency Resolution Failure**: Widespread errors when parsing POM files for standard libraries (androidx, firebase, compose).
-- **Experimental Versions**:
-  - Gradle: 9.5.0 (Current stable is 8.x)
-  - Android Gradle Plugin: 9.3.1
-  - Android SDK: 36 (Current stable is 35)
-  - Kotlin: 2.2.20
+The project is currently failing to build because Capacitor plugins in `node_modules` are using extremely experimental versions of the Android Gradle Plugin (8.13.0) and Jetpack Compose (1.8.1/1.4.0), which are not yet available or stable in public repositories.
 
 ## Proposed Changes
-I recommend downgrading to a known stable stack to resolve these resolution issues.
 
-### [Component Name] - Build Configuration
+### [Component Name] - Capacitor Plugins (node_modules)
 
-#### [MODIFY] [gradle-wrapper.properties](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/android/gradle/wrapper/gradle-wrapper.properties)
-- Downgrade `distributionUrl` to Gradle 8.10.2.
+I will patch the `build.gradle` files of the affected plugins to use stable versions that align with the root project.
 
-#### [MODIFY] [build.gradle](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/android/build.gradle)
-- Downgrade AGP to 8.7.3.
+#### [MODIFY] [barcode-scanner build.gradle](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/node_modules/@capacitor/barcode-scanner/android/build.gradle)
+- Downgrade AGP from `8.13.0` to `8.7.3`.
+- Downgrade Compose Material 3 from `1.4.0` to `1.3.1`.
+- Downgrade Activity Compose from `1.11.0` to `1.9.3`.
+- Downgrade CameraX from `1.5.1` to `1.4.0`.
 
-#### [MODIFY] [variables.gradle](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/android/variables.gradle)
-- Downgrade `compileSdkVersion` and `targetSdkVersion` to 35.
+#### [MODIFY] [capacitor-android build.gradle](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/node_modules/@capacitor/android/capacitor/build.gradle)
+- Downgrade AGP from `8.13.0` to `8.7.3`.
+- Ensure default library versions match the root project's stability targets.
 
-#### [MODIFY] [node_modules/@capacitor/barcode-scanner/android/build.gradle](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/node_modules/@capacitor/barcode-scanner/android/build.gradle)
-- Align AGP and Kotlin versions with the root project.
+#### [MODIFY] [community-bluetooth-le build.gradle](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/node_modules/@capacitor-community/bluetooth-le/android/build.gradle)
+- Downgrade AGP from `8.13.0` to `8.7.3`.
+
+#### [MODIFY] [haptics build.gradle](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/node_modules/@capacitor/haptics/android/build.gradle)
+- Downgrade AGP from `8.13.0` to `8.7.3`.
+
+#### [MODIFY] [splash-screen build.gradle](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/node_modules/@capacitor/splash-screen/android/build.gradle)
+- Downgrade AGP from `8.13.0` to `8.7.3`.
 
 ## Verification Plan
-1. **Sync**: Perform a Gradle Sync to ensure the new versions are accepted.
-2. **Build**: Run `./gradlew :app:assembleDebug` to verify that dependencies are resolved correctly and the project compiles.
-3. **Run**: (Optional) Deploy to a device/emulator if available.
+1. **Sync**: Perform a Gradle Sync.
+2. **Build**: Run `Build > Assemble 'app'` to verify that all dependencies are now resolving and the app compiles.
