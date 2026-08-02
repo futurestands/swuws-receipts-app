@@ -12,7 +12,7 @@ import { sql } from "drizzle-orm"
 import { customer } from "./crm"
 import { branch, waterScheme } from "./hierarchy"
 import { user } from "./auth"
-import { billingRecord } from "./billing"
+import { billingRecord, billingPeriod } from "./billing"
 
 // ---------------------------------------------------------------------------
 // Application tables
@@ -57,6 +57,9 @@ export const receipt = pgTable(
     billingRecordId: text("billingRecordId").references(() => billingRecord.id, {
       onDelete: "set null",
     }),
+    billingPeriodId: text("billingPeriodId").references(() => billingPeriod.id, {
+      onDelete: "set null",
+    }),
     previousAccountBalanceSnapshot: bigint("previousAccountBalanceSnapshot", { mode: "number" })
       .notNull()
       .default(0),
@@ -97,6 +100,7 @@ export const receipt = pgTable(
     amountIdx: index("receipt_amount_idx").on(table.amount),
     reconStatusIdx: index("receipt_recon_status_idx").on(table.reconciliationStatus),
     billingRecordIdx: index("receipt_billing_record_idx").on(table.billingRecordId),
+    billingPeriodIdx: index("receipt_billing_period_idx").on(table.billingPeriodId),
   }),
 )
 

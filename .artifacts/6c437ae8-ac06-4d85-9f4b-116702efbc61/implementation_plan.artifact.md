@@ -1,42 +1,42 @@
-# Implementation Plan: Fix Build Failure (Red Cross on Preview)
+# Implementation Plan: Unify Dashboard Stats (Field vs. Import)
 
-This plan addresses the CI/CD build failures that are preventing the "Preview" deployment from updating. This will resolve the "red cross" in the GitHub UI and ensure that updates are pushed to the mobile app (which loads from the deployment URL).
+This plan ensures that the "Billing Period Management" dashboard accurately reflects financial activity from BOTH manual field readings and bulk imports.
 
-## Analysis of Failure
-The build failed due to:
-1. **Type Error:** `AlertCircle` was not defined in the project's `IconName` union. (Fixed).
-2. **Lint Errors:** Unescaped characters and unused imports in the newly created `Billing Exceptions` page and updated components.
-3. **Lint Errors:** Use of `any` types in server actions which violate the strict TypeScript linting rules.
+## User Review Required
+
+> [!NOTE]
+> Currently, the dashboard only "sees" bills that were imported via Excel. Manual readings captured by agents on their phones are missing from the "Billed" and "Collected" totals. This fix will unify these two sources.
 
 ## Proposed Changes
 
-### System Configuration
+### Database Schema
 
-#### [MODIFY] [eslint.config.mjs](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/eslint.config.mjs)
-- Add `android/**` to the ignore list to prevent ESLint from scanning Capacitor build artifacts, which are currently causing numerous warnings/errors.
+#### [MODIFY] [finance.ts](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/lib/db/schema/finance.ts)
+- Add `billingPeriodId` (text) to the `receipt` table. This will allow us to accurately track which period a payment belongs to, even if it wasn't an imported bill.
 
-### Billing Module
+### Server Actions
 
-#### [MODIFY] [billing-engine.ts](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/app/actions/billing-engine.ts)
-- Fix lint errors (unused imports and `any` types).
+#### [MODIFY] [receipts.ts](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/app/actions/receipts.ts)
+- Update `issueReceipt` to save the `billingPeriodId` when a receipt is created (either from a billing record or a manual selection).
 
 #### [MODIFY] [billing.ts](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/app/actions/billing.ts)
-- Fix lint errors (unused imports and `any` types).
-
-#### [MODIFY] [page.tsx](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/app/dashboard/billing/exceptions/page.tsx)
-- Remove unused imports (`ShieldAlert`, `History`).
-- Escape single quotes in the text content to satisfy React linting rules.
-
-#### [MODIFY] [reading-entry-form.tsx](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/components/billing/reading-entry-form.tsx)
-- Remove unused imports and state variables.
-- Fix `any` types or use `@ts-expect-error` where appropriate to match the existing codebase style while satisfying the build check.
+- Update `getCollectionSummary` to:
+  - Sum `billedAmount` from `meter_reading` + `totalDue` from `billing_record`.
+  - Count distinct customers from both tables.
+  - Update the "Collected" and "Cash in Hand" logic to include receipts linked to the current period via the new `billingPeriodId` column.
 
 ## Verification Plan
 
-### Automated Tests
-- Run `npm run typecheck` to ensure all type errors are resolved.
-- Run `npm run lint` to ensure no build-blocking lint errors remain in the modified files.
-
 ### Manual Verification
-- Once pushed, verify that the GitHub Actions "Preview" job turns green (check for a green checkmark instead of a red cross).
-- Verify the mobile app loads the new version.
+1. **Field Test:**
+   - Open a new billing period.
+   - Capture a manual meter reading for a customer (e.g., 50,000 UGX).
+   - Go to the Billing dashboard.
+   - **Expectation:** "Billed" should now show 50,000 UGX.
+2. **Payment Test:**
+   - Issue a receipt for that manual reading (e.g., 20,000 UGX).
+   - Go to the Billing dashboard.
+   - **Expectation:** "Collected" (Operational) should show 20,000 UGX.
+3. **Bulk Test:**
+   - Import a monthly billing file.
+   - **Expectation:** The totals should correctly add up (Field Readings + Imported Bills).

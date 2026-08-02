@@ -258,6 +258,7 @@ export async function createReceipt(input: CreateReceiptInput) {
           paymentReference,
           receiptNumber: `${settings.receiptPrefix}-${new Date().getFullYear()}-${nextId.padStart(6, "0")}`,
           billingRecordId: data.billingRecordId || null,
+          billingPeriodId: data.billingPeriodId || activePeriod.id,
           billingPeriodSnapshot: periodName,
           amountDueSnapshot: amountDueSnapshot,
           schemeNameSnapshot: schemeName,

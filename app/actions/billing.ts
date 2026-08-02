@@ -717,15 +717,36 @@ export async function getCollectionSummary() {
    * - Over-Collection Reporting
    */
 
-  // Period Metrics
-  const [stats] = await db
-    .select({
-      totalBills: count(billingRecord.id),
-      customersImported: sql<number>`count(distinct ${billingRecord.customerId})::int`,
-      totalAmountBilled: sum(billingRecord.totalDue),
-    })
-    .from(billingRecord)
-    .where(eq(billingRecord.billingPeriodId, displayPeriod.id))
+  // Period Metrics (Unified: Imports + Field Readings)
+  const [importStats, readingStats] = await Promise.all([
+    db
+      .select({
+        totalBills: count(billingRecord.id),
+        totalAmount: sum(billingRecord.totalDue),
+      })
+      .from(billingRecord)
+      .where(eq(billingRecord.billingPeriodId, displayPeriod.id))
+      .then(rows => rows[0]),
+    db
+      .select({
+        totalReadings: count(meterReading.id),
+        totalAmount: sum(meterReading.billedAmount),
+      })
+      .from(meterReading)
+      .where(eq(meterReading.billingPeriodId, displayPeriod.id))
+      .then(rows => rows[0]),
+  ])
+
+  // Distinct Customers Across Both Sources
+  const customerStats = await db.execute(sql`
+    SELECT count(DISTINCT customer_id)::int as count
+    FROM (
+      SELECT "customerId" as customer_id FROM "billing_record" WHERE "billingPeriodId" = ${displayPeriod.id}
+      UNION
+      SELECT "customerId" as customer_id FROM "meter_reading" WHERE "billingPeriodId" = ${displayPeriod.id}
+    ) as combined_customers
+  `)
+  const customersImported = Number(customerStats.rows[0]?.count || 0)
 
   // OFFICIAL COLLECTIONS: Confirmed via External Billing System (EBS)
   // Sum of matched records for THIS billing period
@@ -736,9 +757,8 @@ export async function getCollectionSummary() {
     .from(dailyCollectionRecord)
     .innerJoin(reconciliationMatch, eq(dailyCollectionRecord.id, reconciliationMatch.dailyCollectionRecordId))
     .innerJoin(receipt, eq(reconciliationMatch.receiptId, receipt.id))
-    .innerJoin(billingRecord, eq(receipt.billingRecordId, billingRecord.id))
     .where(and(
-      eq(billingRecord.billingPeriodId, displayPeriod.id),
+      eq(receipt.billingPeriodId, displayPeriod.id),
       eq(dailyCollectionRecord.importStatus, 'matched')
     ))
 
@@ -756,9 +776,8 @@ export async function getCollectionSummary() {
       customersPaidToday: sql<number>`count(distinct case when date(${receipt.createdAt}) = current_date then ${receipt.customerId} end)::int`,
     })
     .from(receipt)
-    .leftJoin(billingRecord, eq(receipt.billingRecordId, billingRecord.id))
     .where(and(
-      eq(billingRecord.billingPeriodId, displayPeriod.id),
+      eq(receipt.billingPeriodId, displayPeriod.id),
       sql`${receipt.id} NOT IN (${voidedIdsSubquery})`
     ))
 
@@ -776,7 +795,7 @@ export async function getCollectionSummary() {
     .where(eq(billingRun.billingPeriodId, displayPeriod.id))
     .orderBy(desc(billingRun.uploadedAt)).limit(5)
 
-  const totalBilled = Number(stats?.totalAmountBilled || 0)
+  const totalBilled = Number(importStats?.totalAmount || 0) + Number(readingStats?.totalAmount || 0)
   const totalCollected = Number(ebsStats?.totalConfirmed || 0)
   const cashInHand = Number(cashStats?.totalCashInHand || 0)
   const outstanding = Math.max(0, totalBilled - totalCollected)
@@ -791,8 +810,8 @@ export async function getCollectionSummary() {
   return {
     displayPeriod,
     isActive: displayPeriod.status === 'active',
-    totalBills: Number(stats?.totalBills || 0),
-    customersImported: Number(stats?.customersImported || 0),
+    totalBills: Number(importStats?.totalBills || 0) + Number(readingStats?.totalReadings || 0),
+    customersImported,
     totalBilled,
     totalCollected, // This is now CONFIRMED EBS money
     cashInHand,    // This is OPERATIONAL cash from receipts
