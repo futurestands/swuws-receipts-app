@@ -1,7 +1,8 @@
-- [x] Add `latestAppVersion` to `getSettings` fallback in `app/actions/settings.ts`
-- [x] Fix `onClick` event type mismatch in `components/ui/button.tsx`
-- [x] Add error handling to `getImportMapping` in `lib/import-engine.ts`
-- [x] Use `getImportMapping` in `downloadCustomerTemplate` in `app/actions/customer-import.ts`
-- [x] Implement template header loading in `downloadBillingTemplate` in `app/actions/billing.ts`
-- [x] Clean up version history UI in `app/admin/template-manager.tsx`
-- [x] Verify all fixes with `npm run typecheck`
+# Task: Fix Build Failure (Red Cross on Preview)
+
+- `[x]` Fix Type Error in `nav-config.ts` and `icons.tsx`
+- `[ ]` Ignore `android/` directory in ESLint
+- `[ ]` Fix lint errors in `app/dashboard/billing/exceptions/page.tsx`
+- `[ ]` Fix lint errors in `billing-engine.ts` and `billing.ts`
+- `[ ]` Fix lint errors in `reading-entry-form.tsx`
+- `[ ]` Verify with `npm run typecheck` and `npm run lint`

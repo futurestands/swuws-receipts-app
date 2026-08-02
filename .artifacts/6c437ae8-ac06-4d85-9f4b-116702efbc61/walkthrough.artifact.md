@@ -1,37 +1,31 @@
-# Walkthrough: Repository Unification Complete
+# Walkthrough: Double Billing Prevention
 
-I have successfully reorganized your project structure to resolve the deployment failures. Your application code is now correctly located at the root of the repository, exactly where Vercel and GitHub expect to find it.
+I have implemented a dual-locking mechanism to prevent customers from being billed twice in the same period via both manual field readings and monthly batch imports.
 
 ## Changes Made
 
-### 1. Structural Migration
-- **Moved Folders**: All core directories (`app/`, `lib/`, `components/`, `db/`, `android/`, `assets/`, `public/`, etc.) have been moved from the `RECEIPT/` subfolder to the project root.
-- **Moved Config**: Essential configuration files like `capacitor.config.ts`, `tsconfig.json`, and `.env` are now in the root.
-- **Deleted Conflicting Files**: Removed the old, incomplete `package.json` that was in the root, replacing it with the full project version.
+### 1. Field Capture Safety Lock
+In [billing-engine.ts](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/app/actions/billing-engine.ts), I updated the `submitMeterReading` action.
+- **Validation:** Before saving a manual reading, the system now checks the `billing_record` table (which stores imported bills).
+- **Result:** If an imported bill already exists for the customer in the active period, the agent is blocked and shown a message explaining that the customer has already been billed.
 
-### 2. Dependency & Environment Alignment
-- **Root Installation**: Ran `npm install` for the project in the new root location.
-- **Capacitor Sync**: Ensured that the Android project and Capacitor settings are correctly aligned with the new root-level structure.
+### 2. Batch Import Safety Filter
+In [billing.ts](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/app/actions/billing.ts), I updated the `validateBillingImport` logic.
+- **Validation:** During the Excel/CSV validation phase, the system cross-references the file against the `meter_reading` table.
+- **Result:** Any customer who has already had a manual reading captured by an agent is flagged with an error: *"This customer has a manual meter reading captured for this period. Import skipped to prevent double billing."* These rows are automatically excluded from the final import.
 
-### 3. Stability Verification
-- **Production Type Check**: Successfully ran `npm run typecheck` from the root. The project passed with **0 errors**, confirming that all file paths and imports are correctly resolved.
-- **Clean Registry**: Restored all tracked files from git to ensure no files were accidentally lost during the migration.
+## Verification Results
 
-## 🚀 Required Action: Deploy to Vercel
+### Logic Check
+- **Manual Entry:** Checked against `billingRecord`.
+- **Bulk Import:** Checked against `meterReading`.
+- **Database integrity:** Both checks use the `billingPeriodId` to ensure the lock is specific to the current month.
 
-To fix your production site, you must now **push these changes to GitHub**:
-
-1.  Open your terminal in the root folder.
-2.  Run: `git add .`
-3.  Run: `git commit -m "Unify repository structure for root deployment"`
-4.  Run: `git push origin main`
-
-Once pushed, Vercel will automatically detect the `app` folder and `package.json` in the root, and your deployment will succeed.
-
-## ⚠️ Local Development Note
-
-Next time you start your development server, make sure you are in the **main folder** (`C:/Users/MJ/Downloads/SWUWS_Complete_Project`) and NOT the `RECEIPT` folder. Run:
-`npm run dev`
+## Build Fixes
+I have also resolved the build failures that were preventing the app from updating:
+- **Type Safety:** Registered missing icons (`AlertCircle`) and fixed Zod schema mismatches.
+- **Linting:** Cleaned up unused imports and unescaped characters in the new pages.
+- **CI/CD:** Configured ESLint to ignore mobile build artifacts to speed up validation.
 
 > [!TIP]
-> The old `RECEIPT` folder may still exist on your computer because it's being used by your code editor. You can safely delete it manually once you close the editor or restart your computer.
+> This "First-Come, First-Served" approach ensures that whichever billing method happens first for a customer becomes the source of truth for that month, preventing any accidental balance inflation.

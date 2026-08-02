@@ -15,10 +15,10 @@ import {
 } from "@/components/ui/dialog"
 import { toast } from "sonner"
 import { formatUGX } from "@/lib/format"
-import { AlertCircle, CheckCircle2, Calculator, Send, Search, User, Printer, XCircle, History, Trash2, Smartphone, Loader2 } from "lucide-react"
-import { getTariffForCustomer, submitMeterReading, searchCustomersForReading, cancelMeterReading, sendReadingSms } from "@/app/actions/billing-engine"
+import { CheckCircle2, Calculator, Send, Search, User, Printer, XCircle, History, Trash2, Smartphone, Loader2, ShieldAlert } from "lucide-react"
+import { getTariffForCustomer, submitMeterReading, searchCustomersForReading, cancelMeterReading, sendReadingSms, reportBillingDiscrepancy } from "@/app/actions/billing-engine"
 import { calculateBill, type BillingCalculation } from "@/lib/billing/math"
-import type { Customer, BillingPeriod } from "@/lib/db/schema"
+import type { Customer, BillingPeriod, TariffConfiguration } from "@/lib/db/schema"
 import { cn } from "@/lib/utils"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { formatDateTime } from "@/lib/format"
@@ -38,10 +38,17 @@ export function ReadingEntryForm({
 
   const [currentReading, setCurrentReading] = useState("")
   const [customerPhone, setCustomerPhone] = useState("")
-  const [shouldSendSms, setShouldSendSms] = useState(true)
   const [notes, setNotes] = useState("")
-  const [tariff, setTariff] = useState<any>(null)
+  const [tariff, setTariff] = useState<TariffConfiguration | null>(null)
   const [calculation, setCalculation] = useState<BillingCalculation | null>(null)
+
+  const [discrepancyData, setDiscrepancyData] = useState<{
+    open: boolean;
+    attemptedReading: number;
+    existingAmount: number;
+    reason: string;
+  } | null>(null)
+
   const [lastSubmission, setLastSubmission] = useState<{
     ok: boolean;
     readingId: string;
@@ -53,7 +60,7 @@ export function ReadingEntryForm({
     phone: string;
     isSmsSent: boolean;
   } | null>(null)
-  const [history, setHistory] = useState(initialHistory)
+  const [history, setHistory] = useState<any[]>(initialHistory)
   const [isPending, startTransition] = useTransition()
   const [isSendingSms, setIsSendingSms] = useState(false)
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -87,7 +94,6 @@ export function ReadingEntryForm({
       setCalculation(null)
       setCurrentReading("")
       setCustomerPhone(selectedCustomer.phone || "")
-      setShouldSendSms(true)
     } else {
       setTariff(null)
       setCustomerPhone("")
@@ -174,7 +180,43 @@ export function ReadingEntryForm({
           setNotes("")
         }
       } catch (err: any) {
-        toast.error(err.message || "Failed to submit reading")
+        if (err.message.includes("already been billed via the monthly import")) {
+          // Open discrepancy dialog
+          setDiscrepancyData({
+            open: true,
+            attemptedReading: readingValue,
+            existingAmount: selectedCustomer.accountBalance || 0,
+            reason: ""
+          })
+        } else {
+          toast.error(err.message || "Failed to submit reading")
+        }
+      }
+    })
+  }
+
+  async function handleReportDiscrepancy() {
+    if (!selectedCustomer || !discrepancyData || !discrepancyData.reason) {
+      toast.error("Please provide a reason for the discrepancy.")
+      return
+    }
+
+    startTransition(async () => {
+      try {
+        await reportBillingDiscrepancy({
+          customerId: selectedCustomer.id,
+          billingPeriodId: activePeriod.id,
+          attemptedReading: discrepancyData.attemptedReading,
+          existingAmount: discrepancyData.existingAmount,
+          reason: discrepancyData.reason
+        })
+        toast.success("Discrepancy reported to supervisor.")
+        setDiscrepancyData(null)
+        setSelectedCustomer(null)
+        setSearchQuery("")
+        setCurrentReading("")
+      } catch (err: any) {
+        toast.error(err.message || "Failed to report discrepancy")
       }
     })
   }
@@ -188,8 +230,9 @@ export function ReadingEntryForm({
         setLastSubmission(prev => prev ? { ...prev, isSmsSent: true } : null)
         setHistory(prev => prev.map(h => h.id === readingId ? { ...h, isNotified: true } : h))
       }
-    } catch (err: any) {
-      toast.error(err.message || "Failed to send SMS")
+    } catch (err: unknown) {
+      const error = err as Error
+      toast.error(error.message || "Failed to send SMS")
     } finally {
       setIsSendingSms(false)
     }
@@ -205,8 +248,9 @@ export function ReadingEntryForm({
         setHistory(prev => prev.filter(h => h.id !== id))
         if (lastSubmission?.readingId === id) setLastSubmission(null)
       }
-    } catch (err: any) {
-      toast.error(err.message || "Failed to cancel reading")
+    } catch (err: unknown) {
+      const error = err as Error
+      toast.error(error.message || "Failed to cancel reading")
     }
   }
 
@@ -302,6 +346,58 @@ export function ReadingEntryForm({
                   Tip: You can always reprint or resend from the history table below.
                </p>
             </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* DISCREPANCY REPORTING DIALOG */}
+      <Dialog
+        open={!!discrepancyData?.open}
+        onOpenChange={(open) => !open && setDiscrepancyData(null)}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-amber-600">
+              <ShieldAlert className="h-5 w-5" />
+              Report Data Discrepancy
+            </DialogTitle>
+            <DialogDescription>
+              This customer was already billed via an import. If you believe the imported data is wrong, you can report your reading for admin review.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            <div className="p-3 bg-amber-50 rounded-lg text-xs space-y-1.5 border border-amber-100">
+              <div className="flex justify-between text-amber-900">
+                <span>Imported Amount:</span>
+                <span className="font-bold">{formatUGX(discrepancyData?.existingAmount || 0)}</span>
+              </div>
+              <div className="flex justify-between text-amber-900">
+                <span>Your Reading:</span>
+                <span className="font-bold">{discrepancyData?.attemptedReading}</span>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Reason / Field Observation</Label>
+              <Textarea
+                placeholder="Explain why the imported data might be wrong (e.g. 'Meter was recently replaced', 'Reading matches physical meter but not import')..."
+                value={discrepancyData?.reason || ""}
+                onChange={(e) => setDiscrepancyData(prev => prev ? { ...prev, reason: e.target.value } : null)}
+              />
+            </div>
+          </div>
+
+          <div className="flex gap-3">
+            <Button variant="ghost" className="flex-1" onClick={() => setDiscrepancyData(null)}>Cancel</Button>
+            <Button
+              variant="default"
+              className="flex-1 bg-amber-600 hover:bg-amber-700 text-white"
+              onClick={handleReportDiscrepancy}
+              disabled={isPending || !discrepancyData?.reason}
+            >
+              {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Submit Report"}
+            </Button>
           </div>
         </DialogContent>
       </Dialog>

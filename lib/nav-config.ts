@@ -41,7 +41,8 @@ export function getNavSections(current: UserPermissionsContext): NavSection[] {
       { href: "/dashboard/billing", label: "Billing", icon: "Wallet", activeMatch: "/dashboard/billing" },
       { href: "/dashboard/billing/readings", label: "Meter Readings", icon: "Calculator", activeMatch: "/dashboard/billing/readings" },
       { href: "/dashboard/billing/daily", label: "Daily Collections", icon: "ListChecks", activeMatch: "/dashboard/billing/daily" },
-      { href: "/dashboard/reconciliation/exceptions", label: "Exceptions", icon: "AlertTriangle", activeMatch: "/dashboard/reconciliation/exceptions" },
+      { href: "/dashboard/billing/exceptions", label: "Billing Exceptions", icon: "AlertCircle", activeMatch: "/dashboard/billing/exceptions" },
+      { href: "/dashboard/reconciliation/exceptions", label: "Recon Exceptions", icon: "AlertTriangle", activeMatch: "/dashboard/reconciliation/exceptions" },
     ]
 
     if (canViewReports(current)) {

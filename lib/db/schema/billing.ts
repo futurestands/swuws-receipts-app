@@ -218,9 +218,45 @@ export const meterReading = pgTable(
   }),
 )
 
+/**
+ * Tracks contradictions between manual field readings and bulk imports.
+ */
+export const billingDiscrepancy = pgTable(
+  "billing_discrepancy",
+  {
+    id: text("id").primaryKey(),
+    customerId: text("customerId")
+      .notNull()
+      .references(() => customer.id, { onDelete: "cascade" }),
+    billingPeriodId: text("billingPeriodId")
+      .notNull()
+      .references(() => billingPeriod.id, { onDelete: "cascade" }),
+    sourceType: text("sourceType").notNull(), // 'field_reading' or 'bulk_import'
+    reportedById: text("reportedById").references(() => user.id),
+
+    // Values that caused the conflict
+    existingValue: bigint("existingValue", { mode: "number" }).notNull(),
+    attemptedValue: bigint("attemptedValue", { mode: "number" }).notNull(),
+
+    reason: text("reason").notNull(),
+    status: text("status").notNull().default("open"), // open, resolved, ignored
+    resolutionNotes: text("resolutionNotes"),
+    resolvedById: text("resolvedById").references(() => user.id),
+    resolvedAt: timestamp("resolvedAt"),
+
+    createdAt: timestamp("createdAt").notNull().defaultNow(),
+    updatedAt: timestamp("updatedAt").notNull().defaultNow(),
+  },
+  (table) => ({
+    customerPeriodIdx: index("billing_discrepancy_cust_per_idx").on(table.customerId, table.billingPeriodId),
+    statusIdx: index("billing_discrepancy_status_idx").on(table.status),
+  }),
+)
+
 export type BillingPeriod = typeof billingPeriod.$inferSelect
 export type BillingRun = typeof billingRun.$inferSelect
 export type BillingRecord = typeof billingRecord.$inferSelect
 export type BillingUpload = typeof billingUpload.$inferSelect
 export type TariffConfiguration = typeof tariffConfiguration.$inferSelect
 export type MeterReading = typeof meterReading.$inferSelect
+export type BillingDiscrepancy = typeof billingDiscrepancy.$inferSelect

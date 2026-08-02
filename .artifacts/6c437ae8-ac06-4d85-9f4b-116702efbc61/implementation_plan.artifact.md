@@ -1,49 +1,42 @@
-# Resilient Template Downloads & Deployment Fixes
+# Implementation Plan: Fix Build Failure (Red Cross on Preview)
 
-Fix the template download failure in production, streamline the template management workflow, and resolve build errors that are causing deployments to fail.
+This plan addresses the CI/CD build failures that are preventing the "Preview" deployment from updating. This will resolve the "red cross" in the GitHub UI and ensure that updates are pushed to the mobile app (which loads from the deployment URL).
 
-## User Review Required
-
-> [!IMPORTANT]
-> - I discovered two critical type-checking errors that are likely causing your recent deployment failures. I will fix these to ensure the project can build successfully for production.
-> - I will add error handling to the template resolution logic. If a template's content is corrupted (not valid JSON), the system will automatically fall back to the default internal mapping instead of crashing.
+## Analysis of Failure
+The build failed due to:
+1. **Type Error:** `AlertCircle` was not defined in the project's `IconName` union. (Fixed).
+2. **Lint Errors:** Unescaped characters and unused imports in the newly created `Billing Exceptions` page and updated components.
+3. **Lint Errors:** Use of `any` types in server actions which violate the strict TypeScript linting rules.
 
 ## Proposed Changes
 
-### 1. Fix Deployment-Breaking Errors
+### System Configuration
 
-#### [MODIFY] [settings.ts](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/app/actions/settings.ts)
-- Update the `getSettings` safety fallback object to include the `latestAppVersion` property. This resolves the type error in the Admin panel.
+#### [MODIFY] [eslint.config.mjs](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/eslint.config.mjs)
+- Add `android/**` to the ignore list to prevent ESLint from scanning Capacitor build artifacts, which are currently causing numerous warnings/errors.
 
-#### [MODIFY] [button.tsx](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/components/ui/button.tsx)
-- Fix the `onClick` event type mismatch. The Base UI library requires a specific event wrapper. I will adjust the button's click handler to satisfy the TypeScript requirement.
+### Billing Module
 
-### 2. Core Logic & Resiliency
+#### [MODIFY] [billing-engine.ts](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/app/actions/billing-engine.ts)
+- Fix lint errors (unused imports and `any` types).
 
-#### [MODIFY] [import-engine.ts](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/lib/import-engine.ts)
-- Add a `console.error` in `getImportMapping` when JSON parsing fails to help with debugging.
-- Ensure it always returns `null` instead of throwing on parse error.
+#### [MODIFY] [billing.ts](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/app/actions/billing.ts)
+- Fix lint errors (unused imports and `any` types).
 
-#### [MODIFY] [customer-import.ts](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/app/actions/customer-import.ts)
-- Use `getImportMapping` inside `downloadCustomerTemplate` instead of manual `JSON.parse` to benefit from the new resiliency.
+#### [MODIFY] [page.tsx](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/app/dashboard/billing/exceptions/page.tsx)
+- Remove unused imports (`ShieldAlert`, `History`).
+- Escape single quotes in the text content to satisfy React linting rules.
 
-#### [MODIFY] [billing.ts](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/app/actions/billing.ts)
-- Update `downloadBillingTemplate` to also attempt to load custom headers from the template system (it was using hardcoded ones).
-
-### 3. Template Manager UI
-
-#### [MODIFY] [template-manager.tsx](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/RECEIPT/app/admin/template-manager.tsx)
-- **UI Cleanup**: Filter the "Version History" list to only show the last 5 versions OR only 'Published' and 'Draft' versions. This keeps the panel clean and relevant.
-- **Workflow Optimization**: Ensure "Save & Publish" remains the primary and most accessible action.
-
----
+#### [MODIFY] [reading-entry-form.tsx](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/components/billing/reading-entry-form.tsx)
+- Remove unused imports and state variables.
+- Fix `any` types or use `@ts-expect-error` where appropriate to match the existing codebase style while satisfying the build check.
 
 ## Verification Plan
 
-### Automated Verification
-- I will run `npm run typecheck` after applying the changes to ensure all build-breaking errors are resolved.
+### Automated Tests
+- Run `npm run typecheck` to ensure all type errors are resolved.
+- Run `npm run lint` to ensure no build-blocking lint errors remain in the modified files.
 
 ### Manual Verification
-1.  **Corrupt Template Test**: Deliberately save a non-JSON string into a template. Verify that downloading the template still works by falling back to system defaults.
-2.  **Workflow Test**: Use the "Save & Publish" button. Verify the template is updated and live in one click.
-3.  **Admin Panel Test**: Verify the Admin dashboard loads correctly without crashing.
+- Once pushed, verify that the GitHub Actions "Preview" job turns green (check for a green checkmark instead of a red cross).
+- Verify the mobile app loads the new version.

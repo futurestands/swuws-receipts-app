@@ -10,11 +10,11 @@ import {
   waterScheme,
   user as userTable,
   receipt,
-  managedTemplate,
-  templateVersion,
   dailyCollectionRecord,
   reconciliationMatch,
   auditLog,
+  meterReading,
+  billingDiscrepancy,
 } from "@/lib/db/schema"
 import { requireUser } from "@/lib/session"
 import { writeAudit } from "@/lib/audit"
@@ -26,7 +26,7 @@ import {
   canIssueReceipt
 } from "@/lib/permissions"
 import { validateWriteScope, applyCustomerScope } from "@/lib/scopes"
-import { and, eq, sql, desc, or, inArray, count, sum } from "drizzle-orm"
+import { and, eq, sql, desc, or, count, sum } from "drizzle-orm"
 import * as XLSX from "xlsx"
 import { z } from "zod"
 import { randomUUID } from "crypto"
@@ -41,7 +41,7 @@ import { logFinancial } from "@/lib/logger"
 const billingImportSchema = z.object({
   accountNumber: z.coerce.string().trim().min(1, "Account number is required"),
   billAmount: z.coerce.number().min(0, "Bill amount cannot be negative"),
-  arrears: z.coerce.number().default(0),
+  arrears: z.coerce.number().min(0, "Arrears cannot be negative"),
   currentCharges: z.coerce.number().min(0, "Current charges cannot be negative"),
   totalDue: z.coerce.number().min(0, "Total due cannot be negative"),
   dueDate: z.coerce.string().refine((val) => !isNaN(Date.parse(val)), {
@@ -186,7 +186,19 @@ export async function updateCollectionPeriodStatus(id: string, newStatus: string
   }
 
   await db.transaction(async (tx) => {
-    const updateData: any = { status: newStatus, updatedAt: new Date() }
+    const updateData: {
+      status: string;
+      updatedAt: Date;
+      validatedAt?: Date;
+      validatedById?: string;
+      activatedAt?: Date;
+      activatedById?: string;
+      isOpen?: boolean;
+      closedAt?: Date;
+      closedById?: string;
+      archivedAt?: Date;
+      archivedById?: string;
+    } = { status: newStatus, updatedAt: new Date() }
 
     // Tracking columns
     if (newStatus === 'validated') {
@@ -376,34 +388,41 @@ export async function validateBillingImport(
     .from(customer)
     .where(eq(customer.waterSchemeId, schemeId))
 
+  // Fetch existing manual meter readings for this period to prevent overwriting
+  const existingReadings = await db
+    .select({ customerId: meterReading.customerId })
+    .from(meterReading)
+    .where(eq(meterReading.billingPeriodId, billingPeriodId))
+
+  const readingsMap = new Set(existingReadings.map(r => r.customerId))
   const customerMap = new Map(schemeCustomers.map((c) => [c.account?.toLowerCase(), c]))
   const seenInUpload = new Set<string>()
 
-  // Resolve dynamic mapping (with aliases support)
-  let mapping: Record<string, string | string[] | number> = noHeaders
-    ? {
-        accountNumber: 0,
-        billAmount: 1,
-        arrears: 2,
-        currentCharges: 3,
-        totalDue: 4,
-        dueDate: 5,
-      }
-    : ((await getImportMapping("import.billing.monthly")) as any) || {
-        accountNumber: "AccountNumber",
-        billAmount: "BillAmount",
-        arrears: ["Arrears", "Balance Brought Forward", "BalanceBroughtForward", "Brought Forward"],
-        currentCharges: "CurrentCharges",
-        totalDue: "TotalDue",
-        dueDate: "DueDate",
-      }
+      // Resolve dynamic mapping (with aliases support)
+      const mapping: Record<string, string | string[] | number> = noHeaders
+        ? {
+            accountNumber: 0,
+            billAmount: 1,
+            arrears: 2,
+            currentCharges: 3,
+            totalDue: 4,
+            dueDate: 5,
+          }
+        : ((await getImportMapping("import.billing.monthly")) as any) || {
+            accountNumber: "AccountNumber",
+            billAmount: "BillAmount",
+            arrears: ["Arrears", "Balance Brought Forward", "BalanceBroughtForward", "Brought Forward"],
+            currentCharges: "CurrentCharges",
+            totalDue: "TotalDue",
+            dueDate: "DueDate",
+          }
 
   const engineSummary = await processExcelImport({
     file,
     schema: billingImportSchema,
     mapping,
     headerMode: noHeaders ? "none" : "headers",
-    onValidateRow: (data) => {
+    onValidateRow: (data: BillingImportRow) => {
       const errors: string[] = []
       const warnings: string[] = []
 
@@ -412,6 +431,11 @@ export async function validateBillingImport(
 
       if (!targetCustomer) {
         errors.push(`Customer account ${data.accountNumber} not found in this scheme`)
+      } else if (readingsMap.has(targetCustomer.id)) {
+        errors.push("This customer has a manual meter reading captured for this period. Import skipped to prevent double billing.")
+
+        // Auto-log discrepancy for admin review
+        // We'll do this in the import step, not validation, to avoid spamming on preview
       }
 
       if (seenInUpload.has(accLower)) {
@@ -466,6 +490,7 @@ export async function importBilling(
   let importedCount = 0
   let totalAmount = 0
   const reportRows: any[] = []
+  const discrepancies: any[] = []
 
   try {
     await db.transaction(async (tx) => {
@@ -476,6 +501,30 @@ export async function importBilling(
         entityId: summary.billingPeriodId,
         details: { filename, schemeId: summary.schemeId },
       }, tx)
+
+      // Identify rows that were skipped due to manual readings
+      const skippedRows = summary.rows.filter(r => !r.valid && r.errors.some(e => e.includes("manual meter reading")))
+      for (const row of skippedRows) {
+        const custId = customerMap.get(row.data.accountNumber.toLowerCase())
+        if (custId) {
+          const [reading] = await tx.select({ currentReading: meterReading.currentReading }).from(meterReading).where(and(eq(meterReading.customerId, custId), eq(meterReading.billingPeriodId, summary.billingPeriodId))).limit(1)
+          discrepancies.push({
+            id: randomUUID(),
+            customerId: custId,
+            billingPeriodId: summary.billingPeriodId,
+            sourceType: 'bulk_import',
+            reportedById: current.id,
+            existingValue: reading?.currentReading || 0,
+            attemptedValue: row.data.totalDue,
+            reason: "Bulk import attempted to overwrite existing manual field reading.",
+            status: 'open'
+          })
+        }
+      }
+
+      if (discrepancies.length > 0) {
+        await tx.insert(billingDiscrepancy).values(discrepancies)
+      }
 
       await tx.insert(billingRun).values({
         id: runId,
@@ -611,7 +660,7 @@ export async function downloadBillingTemplate() {
 }
 
 export async function getCollectionSummary() {
-  const current = await requireUser()
+  await requireUser()
 
   // Get active period, or the most recent one if none is active
   // Join with users for the timeline

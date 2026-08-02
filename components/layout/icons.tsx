@@ -22,6 +22,7 @@ import {
   Calendar,
   TrendingUp,
   Calculator,
+  AlertCircle,
   type LucideIcon
 } from "lucide-react"
 
@@ -47,6 +48,7 @@ export const ICON_MAP = {
   Calendar,
   TrendingUp,
   Calculator,
+  AlertCircle,
 } as const
 
 export type IconName = keyof typeof ICON_MAP

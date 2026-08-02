@@ -1,16 +1,16 @@
 "use server"
 
 import { db } from "@/lib/db"
-import { customer, tariffConfiguration, meterReading, waterScheme, billingPeriod, managedTemplate, templateVersion, branch } from "@/lib/db/schema"
+import { customer, tariffConfiguration, meterReading, waterScheme, billingPeriod, managedTemplate, templateVersion, branch, billingRecord, billingDiscrepancy, user as userTable } from "@/lib/db/schema"
 import { eq, and, desc, or, ilike, sql } from "drizzle-orm"
 import { randomUUID } from "crypto"
-import { getCurrentUser, requireUser } from "@/lib/session"
+import { requireUser } from "@/lib/session"
 import { calculateBill } from "@/lib/billing/math"
 import { revalidatePath, revalidateTag } from "next/cache"
 import { canConfigureSystem, canIssueReceipt } from "@/lib/permissions"
 import { ROLES } from "@/lib/permissions/roles"
 import { writeAudit } from "@/lib/audit"
-import { applyCustomerScope, validateWriteScope } from "@/lib/scopes"
+import { applyCustomerScope } from "@/lib/scopes"
 import { renderTemplate } from "@/lib/templates/template-engine"
 import { sendSMS } from "@/lib/sms-service"
 import { createNotification } from "./notifications"
@@ -147,6 +147,20 @@ export async function submitMeterReading(data: {
     throw new Error(`A meter reading for ${cust.name} in this period has already been recorded. Search your history below if you need to reprint the ticket.`)
   }
 
+  // Check if a monthly bill has already been imported for this customer
+  const [existingBill] = await db
+    .select({ id: billingRecord.id })
+    .from(billingRecord)
+    .where(and(
+      eq(billingRecord.customerId, data.customerId),
+      eq(billingRecord.billingPeriodId, data.billingPeriodId)
+    ))
+    .limit(1)
+
+  if (existingBill) {
+    throw new Error(`This customer has already been billed via the monthly import for this period. Manual readings are disabled for this customer to prevent double billing. If you believe the imported data is incorrect, please report this to your supervisor.`)
+  }
+
   const tariff = await getTariffForCustomer(data.customerId)
   if (!tariff) throw new Error("No active tariff configured for this area. Contact Admin.")
 
@@ -223,14 +237,85 @@ export async function submitMeterReading(data: {
     }
   }
 
-  // @ts-ignore
+  // @ts-expect-error - External library types mismatch
   revalidateTag("dashboard-stats")
   return { ok: true, readingId }
 }
 
+/**
+ * Reports a discrepancy when a field agent finds that an imported bill is wrong.
+ */
+export async function reportBillingDiscrepancy(data: {
+  customerId: string
+  billingPeriodId: string
+  attemptedReading: number
+  existingAmount: number
+  reason: string
+}) {
+  const user = await requireUser()
+  if (!canIssueReceipt(user)) throw new Error("Forbidden")
+
+  const id = randomUUID()
+  await db.insert(billingDiscrepancy).values({
+    id,
+    customerId: data.customerId,
+    billingPeriodId: data.billingPeriodId,
+    sourceType: 'field_reading',
+    reportedById: user.id,
+    existingValue: data.existingAmount,
+    attemptedValue: data.attemptedReading,
+    reason: data.reason,
+    status: 'open',
+  })
+
+  // Notify Admins
+  const admins = await db.select({ id: userTable.id }).from(userTable).where(eq(userTable.role, 'admin'))
+  for (const admin of admins) {
+    await createNotification({
+      userId: admin.id,
+      type: "billing_discrepancy",
+      title: "Billing Discrepancy Reported",
+      message: `Agent ${user.name} reported a conflict for a customer in the ${data.billingPeriodId} period.`,
+      priority: "high",
+      relatedEntityType: "customer",
+      relatedEntityId: data.customerId
+    })
+  }
+
+  return { ok: true }
+}
+
+/**
+ * Fetches billing discrepancies for admin review.
+ */
+export async function getBillingDiscrepancies() {
+  const user = await requireUser()
+  if (user.role !== 'admin') throw new Error("Forbidden")
+
+  return db
+    .select({
+      id: billingDiscrepancy.id,
+      customerName: customer.name,
+      customerAccount: customer.customerAccount,
+      periodName: billingPeriod.periodName,
+      sourceType: billingDiscrepancy.sourceType,
+      existingValue: billingDiscrepancy.existingValue,
+      attemptedValue: billingDiscrepancy.attemptedValue,
+      reason: billingDiscrepancy.reason,
+      status: billingDiscrepancy.status,
+      reportedByName: userTable.name,
+      createdAt: billingDiscrepancy.createdAt,
+    })
+    .from(billingDiscrepancy)
+    .innerJoin(customer, eq(billingDiscrepancy.customerId, customer.id))
+    .innerJoin(billingPeriod, eq(billingDiscrepancy.billingPeriodId, billingPeriod.id))
+    .leftJoin(userTable, eq(billingDiscrepancy.reportedById, userTable.id))
+    .orderBy(desc(billingDiscrepancy.createdAt))
+}
+
 export async function listAllTariffs() {
-  const user = await getCurrentUser()
-  if (!user || !canConfigureSystem(user)) throw new Error("Unauthorized")
+  const user = await requireUser()
+  if (!canConfigureSystem(user)) throw new Error("Unauthorized")
 
   const tariffs = await db.select().from(tariffConfiguration).orderBy(desc(tariffConfiguration.createdAt))
   const branchList = await db.select().from(branch)
@@ -256,8 +341,8 @@ export async function upsertTariff(data: {
   serviceFee: number
   vatPercentage: number
 }) {
-  const user = await getCurrentUser()
-  if (!user || !canConfigureSystem(user)) throw new Error("Unauthorized")
+  const user = await requireUser()
+  if (!canConfigureSystem(user)) throw new Error("Unauthorized")
 
   const id = data.id || randomUUID()
   const category = data.customerCategory.toLowerCase().trim()
@@ -290,8 +375,8 @@ export async function upsertTariff(data: {
 }
 
 export async function deleteTariff(id: string) {
-  const user = await getCurrentUser()
-  if (!user || !canConfigureSystem(user)) throw new Error("Unauthorized")
+  const user = await requireUser()
+  if (!canConfigureSystem(user)) throw new Error("Unauthorized")
 
   await db.delete(tariffConfiguration).where(eq(tariffConfiguration.id, id))
 
@@ -409,7 +494,7 @@ export async function cancelMeterReading(readingId: string) {
   })
 
   revalidatePath("/dashboard/billing/readings")
-  // @ts-ignore
+  // @ts-expect-error - External library types mismatch
   revalidateTag("dashboard-stats")
   return { ok: true }
 }
