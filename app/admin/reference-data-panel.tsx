@@ -24,9 +24,11 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { toast } from "sonner"
-import { FileUp, Download, Globe, Home } from "lucide-react"
+import { FileUp, Download, Globe, Home, FileSpreadsheet } from "lucide-react"
 import Link from "next/link"
 import { downloadUnifiedHierarchyTemplate } from "@/app/actions/hierarchy-engine"
+import * as XLSX from "xlsx"
+import { saveAs } from "file-saver"
 
 export function ReferenceDataPanel({
   branches: initialBranches,
@@ -53,6 +55,38 @@ export function ReferenceDataPanel({
   const [schemeCode, setSchemeCode] = useState("")
   const [schemeBranchId, setSchemeBranchId] = useState("")
   const [schemeArea, setSchemeArea] = useState("")
+
+  function handleExportSchemes() {
+    try {
+      const data = schemes.map((s) => {
+        const area = branches.find((b) => b.id === s.branchId)
+        const region = area ? clusters.find((c) => c.id === area.clusterId) : null
+
+        return {
+          "Scheme Name": s.name,
+          "Code": s.code,
+          "Area Office": area?.name || "—",
+          "Region (Cluster)": region?.name || "—",
+          "Service Area": s.serviceArea || "—",
+          "Status": s.active ? "Active" : "Inactive",
+        }
+      })
+
+      const worksheet = XLSX.utils.json_to_sheet(data)
+      const workbook = XLSX.utils.book_new()
+      XLSX.utils.book_append_sheet(workbook, worksheet, "Water Schemes")
+
+      const excelBuffer = XLSX.write(workbook, { bookType: "xlsx", type: "array" })
+      const blob = new Blob([excelBuffer], {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      })
+      saveAs(blob, `water-schemes-export-${new Date().toISOString().split("T")[0]}.xlsx`)
+      toast.success("Scheme list exported successfully")
+    } catch (err) {
+      console.error("Export failed", err)
+      toast.error("Failed to export scheme list")
+    }
+  }
 
   function handleAddBranch(e: React.FormEvent) {
     e.preventDefault()
@@ -108,6 +142,9 @@ export function ReferenceDataPanel({
       <div className="flex flex-wrap items-center justify-between gap-4">
         <h2 className="text-lg font-medium">Hierarchy & Data Management</h2>
         <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={handleExportSchemes}>
+            <FileSpreadsheet className="h-4 w-4 mr-2" /> Download List
+          </Button>
           <Button variant="outline" size="sm" asChild>
             <Link href="/admin/bulkhierarchy">
               <FileUp className="h-4 w-4 mr-2" /> Bulk Import
