@@ -1,6 +1,6 @@
-# Technical Handoff: Unified Billing & Conflict Management
+# Technical Handoff: Unified Billing & Conflict Management (Updated)
 
-This report summarizes the architectural changes and fixes implemented to unify manual field readings with bulk imports and resolve system stability issues.
+This report summarizes the architectural changes, fixes, and current deployment status of the SWUWS platform.
 
 ## 1. Feature: Double Billing Prevention
 Implemented a "First-Come, First-Served" locking mechanism between the manual Field Capture and Bulk Monthly Import modules.
@@ -16,7 +16,7 @@ Conflicts are no longer silently ignored; they are now promoted to a manual inve
 - **UI:** Added **Finance > Billing Exceptions** page (`/dashboard/billing/exceptions`) for admin resolution of these conflicts.
 
 ## 3. Feature: Unified Financial Dashboard
-The "Billing Period Management" dashboard now provides a true "Single Pane of Glass" view of monthly activity.
+The "Billing Period Management" and "Performance Dashboard" now provide a true "Single Pane of Glass" view of monthly activity.
 
 - **Aggregation:** Totals for "Billed" and "Customers" are now calculated by summing data from both the `meter_reading` (manual) and `billing_record` (imported) tables.
 - **Payment Linking:** Added `billingPeriodId` to the `receipt` table. Every payment is now tagged with its period, ensuring that "Collected" stats reflect activity from both billing sources in real-time.
@@ -24,27 +24,20 @@ The "Billing Period Management" dashboard now provides a true "Single Pane of Gl
 ## 4. Stability & Build Fixes
 Resolved several issues that were preventing local execution and cloud deployment (GitHub/Vercel).
 
-- **Schema Sync:** Created and applied migration `0040_unified_stats_and_discrepancies.sql` to add the `billingPeriodId` column and the discrepancy table.
+- **Schema Sync:** Created migration `0040_unified_stats_and_discrepancies.sql`.
+  - **IMPORTANT:** This migration must be run on the production database to prevent 500 errors on the Admin and Reports pages.
 - **Type Safety:** Fixed a project-wide Type Error in `IconName` (missing `AlertCircle` definition).
-- **Build Quality:**
-    - Cleaned up lint errors (unescaped characters and unused imports) in the new pages.
-    - Updated `eslint.config.mjs` to ignore the `android/` directory, preventing mobile build artifacts from blocking the web build.
-- **Git Correction:** Staged and committed missing core files (`finance.ts`, `receipts.ts`) that were omitted in the previous push, causing the Vercel "Red Cross" failure.
+- **Deployment:** Upgraded Next.js to **v16.2.12** to resolve a critical security vulnerability and fix caching issues with Turbopack.
+
+## 5. Mobile App (Android)
+- **Asset Sync:** Ran `npx cap sync android` to bundle the latest web fixes into the mobile project.
+- **Icon Update:** The new branding icons are in `android/app/src/main/res/mipmap-*`. Note that these require a fresh APK build in Android Studio to take effect on devices.
+- **UX Fix:** The "Download App" button on the Account page now correctly shows "App Up to Date" when running inside the native Android application.
 
 ## Files Modified
 - `lib/db/schema/finance.ts` & `billing.ts` (Database definitions)
-- `app/actions/billing.ts` & `billing-engine.ts` (Core logic & stats)
+- `app/actions/billing.ts` & `reports.ts` (Core logic & stats)
 - `app/actions/receipts.ts` (Receipt period tagging)
-- `components/billing/reading-entry-form.tsx` (Conflict reporting UI)
+- `app/dashboard/account/account-client.tsx` (Mobile button logic)
 - `app/dashboard/billing/exceptions/page.tsx` (New management workspace)
-- `lib/nav-config.ts` & `icons.tsx` (UI/Navigation fixes)
-
-## 5. Code Health & Security Cleanup
-Performed a comprehensive audit to ensure production readiness.
-
-- **Security:** Upgraded `next` to **v16.2.12** to resolve a critical high-severity middleware/proxy bypass vulnerability (GHSA-6gpp-xcg3-4w24).
-- **Quality Assurance:**
-    - Replaced raw `<a>` tags with Next.js `<Link>` components in all error and import pages to ensure proper client-side routing.
-    - Fixed unescaped HTML entities (quotes, apostrophes) in several components to satisfy React linting rules.
-    - Verified that `npm test` passes for core billing math and permission logic.
-    - Verified that `npm run build` completes successfully with no blocking type errors.
+- `lib/version.ts` (Version tracking)

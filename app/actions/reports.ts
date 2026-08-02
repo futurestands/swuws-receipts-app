@@ -350,30 +350,22 @@ export async function getCollectionTrends(days = 30) {
   const current = await requireUser()
   const scope = applyReceiptScope(current)
 
-  const cacheKey = `collection-trends-${current.id}-${days}`
+  const startDate = new Date()
+  startDate.setDate(startDate.getDate() - days)
 
-  return unstable_cache(
-    async () => {
-      const startDate = new Date()
-      startDate.setDate(startDate.getDate() - days)
+  const conditions = [gte(receipt.paymentDate, startDate)]
+  if (scope) conditions.push(scope)
 
-      const conditions = [gte(receipt.paymentDate, startDate)]
-      if (scope) conditions.push(scope)
-
-      return db
-        .select({
-          date: sql<string>`DATE(${receipt.paymentDate})`,
-          amount: sum(receipt.amount),
-          count: count(receipt.id),
-        })
-        .from(receipt)
-        .where(and(...conditions))
-        .groupBy(sql`DATE(${receipt.paymentDate})`)
-        .orderBy(desc(sql`DATE(${receipt.paymentDate})`))
-    },
-    [cacheKey],
-    { tags: ['collections'] }
-  )()
+  return db
+    .select({
+      date: sql<string>`DATE(${receipt.paymentDate})`,
+      amount: sum(receipt.amount),
+      count: count(receipt.id),
+    })
+    .from(receipt)
+    .where(and(...conditions))
+    .groupBy(sql`DATE(${receipt.paymentDate})`)
+    .orderBy(desc(sql`DATE(${receipt.paymentDate})`))
 }
 
 /**
