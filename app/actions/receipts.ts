@@ -123,6 +123,26 @@ export async function createReceipt(input: CreateReceiptInput) {
         if (!c) throw new Error("Selected customer profile was not found")
         previousAccountBalance = Number(c.accountBalance || 0)
         if (!targetSchemeId) targetSchemeId = c.waterSchemeId
+
+        // Double-submission guard: a rapid double-click/double-tap on
+        // "Issue receipt" (network lag, a slow re-render before the
+        // button visually disables, or a retried request after a dropped
+        // response) could otherwise create two real receipts for the
+        // same payment. Because this check runs after the FOR UPDATE
+        // lock above, two near-simultaneous requests for the same
+        // customer genuinely serialize here — the second one only runs
+        // this check after the first has committed, so it will actually
+        // see the first one's receipt rather than racing past it.
+        const dup = await tx.execute<{ id: string }>(
+          data.billingRecordId
+            ? sql`SELECT id FROM receipt WHERE "customerId" = ${data.customerId} AND "agentId" = ${current.id} AND amount = ${amount} AND "billingRecordId" = ${data.billingRecordId} AND "createdAt" > NOW() - INTERVAL '15 seconds' ORDER BY "createdAt" DESC LIMIT 1`
+            : sql`SELECT id FROM receipt WHERE "customerId" = ${data.customerId} AND "agentId" = ${current.id} AND amount = ${amount} AND "billingRecordId" IS NULL AND "createdAt" > NOW() - INTERVAL '15 seconds' ORDER BY "createdAt" DESC LIMIT 1`
+        )
+        if (dup.rows[0]) {
+          const err: any = new Error("DUPLICATE_RECEIPT")
+          err.duplicateReceiptId = dup.rows[0].id
+          throw err
+        }
       }
 
       const totalAvailable = previousAccountBalance + amount
@@ -337,6 +357,17 @@ export async function createReceipt(input: CreateReceiptInput) {
     revalidateTag("collections")
     return { ok: true as const, receipt: row }
   } catch (e: any) {
+    if (e.duplicateReceiptId) {
+      // Not a real failure — a near-identical receipt was already created
+      // moments ago (double-click, retry after a dropped response, etc).
+      // Return the existing receipt so the UI shows the same success
+      // state instead of a confusing error, without creating a second
+      // real financial record.
+      const [existing] = await db.select().from(receipt).where(eq(receipt.id, e.duplicateReceiptId)).limit(1)
+      if (existing) {
+        return { ok: true as const, receipt: existing, duplicate: true as const }
+      }
+    }
     console.error("createReceipt failed", e)
     return {
       ok: false as const,

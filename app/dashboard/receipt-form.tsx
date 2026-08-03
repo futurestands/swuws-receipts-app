@@ -122,6 +122,14 @@ export function ReceiptForm({
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
+
+    // Guards against a fast double-click/double-tap firing a second
+    // submit before the disabled state on the button has visually
+    // committed. The disabled attribute below is the primary defense for
+    // normal use; this closes the race window. Real protection against a
+    // genuine duplicate receipt still lives server-side in createReceipt.
+    if (pending) return
+
     setError(null)
 
     const amount = Number(form.amount)
@@ -172,7 +180,11 @@ export function ReceiptForm({
         return
       }
 
-      toast.success(`Receipt ${result.receipt.receiptNumber} created`)
+      toast.success(
+        result.duplicate
+          ? `Receipt ${result.receipt.receiptNumber} was already recorded a moment ago — showing that one, no duplicate was created.`
+          : `Receipt ${result.receipt.receiptNumber} created`
+      )
       setForm(getEmptyForm())
       setSelectedCustomer(null)
       setCustomerQuery("")

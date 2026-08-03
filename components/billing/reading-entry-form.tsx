@@ -115,6 +115,7 @@ export function ReadingEntryForm({
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
+    if (isPending) return
     if (!selectedCustomer || !currentReading) return
 
     const readingValue = Number(currentReading)
