@@ -16,6 +16,26 @@ import { randomUUID } from "crypto"
 import { revalidatePath } from "next/cache"
 import { processExcelImport, getImportMapping, type ImportSummary, type ValidationResult } from "@/lib/import-engine"
 
+// Single source of truth for the fallback column mapping when no
+// import.hierarchy.master template is configured in Template Management.
+// Previously downloadHierarchyTemplate() generated a file with its own
+// completely separate, hardcoded set of headers (Type/Name/Code/Parent/
+// ServiceArea/Status), while validateHierarchyImport's actual parser
+// resolved headers dynamically via getImportMapping and a *different*
+// fallback (SchemeName/SchemeCode/AreaOffice/...). Those two never
+// matched unless someone had manually configured a template whose
+// content happened to equal the download function's hardcoded names —
+// which is exactly why this could work in one environment (if that
+// environment's database has such a template saved) and fail completely
+// in another (if it doesn't) using the literal same file.
+const DEFAULT_HIERARCHY_IMPORT_MAPPING = {
+  clusterName: "Region",
+  branchName: "AreaOffice",
+  schemeName: "SchemeName",
+  schemeCode: "SchemeCode",
+  serviceArea: "ServiceArea",
+}
+
 const hierarchyImportSchema = z.object({
   type: z.enum(["Cluster", "Branch", "Scheme"]),
   name: z.string().trim().min(1, "Name is required"),
@@ -56,13 +76,7 @@ export async function validateHierarchy(formData: FormData): Promise<{ ok: true;
   const existence = await getExistenceMaps()
   const seenCodes = new Set<string>()
 
-  const mapping = (await getImportMapping('import.hierarchy.master')) as any || {
-    clusterName: "Region",
-    branchName: "AreaOffice",
-    schemeName: "SchemeName",
-    schemeCode: "SchemeCode",
-    serviceArea: "ServiceArea"
-  }
+  const mapping = (await getImportMapping('import.hierarchy.master')) as any || DEFAULT_HIERARCHY_IMPORT_MAPPING
 
   const summary = await processExcelImport({
     file,
@@ -196,11 +210,21 @@ export async function importHierarchy(summary: HierarchyImportSummary): Promise<
 
 export async function downloadHierarchyTemplate() {
   await requireUser()
-  const headers = ["Type", "Name", "Code", "Parent", "ServiceArea", "Status"]
+
+  // Resolve headers the same way validateHierarchyImport resolves them for
+  // parsing, so what this generates and what that reads can never drift
+  // apart again.
+  const mapping = (await getImportMapping('import.hierarchy.master')) as any || DEFAULT_HIERARCHY_IMPORT_MAPPING
+  const nameCol = mapping.schemeName
+  const codeCol = mapping.schemeCode
+  const parentCol = mapping.branchName
+  const serviceAreaCol = mapping.serviceArea
+
+  const headers = ["Type", nameCol, codeCol, parentCol, serviceAreaCol, "Status"]
   const data = [
-    { Type: "Cluster", Name: "Central Cluster", Code: "central", Parent: "", ServiceArea: "", Status: "Active" },
-    { Type: "Branch", Name: "Mbarara Branch", Code: "mbarara", Parent: "Central Cluster", ServiceArea: "", Status: "Active" },
-    { Type: "Scheme", Name: "Kabere Scheme", Code: "kabere", Parent: "Mbarara Branch", ServiceArea: "South Sector", Status: "Active" },
+    { Type: "Cluster", [nameCol]: "Central Cluster", [codeCol]: "central", [parentCol]: "", [serviceAreaCol]: "", Status: "Active" },
+    { Type: "Branch", [nameCol]: "Mbarara Branch", [codeCol]: "mbarara", [parentCol]: "Central Cluster", [serviceAreaCol]: "", Status: "Active" },
+    { Type: "Scheme", [nameCol]: "Kabere Scheme", [codeCol]: "kabere", [parentCol]: "Mbarara Branch", [serviceAreaCol]: "South Sector", Status: "Active" },
   ]
 
   const worksheet = XLSX.utils.json_to_sheet(data, { header: headers })
