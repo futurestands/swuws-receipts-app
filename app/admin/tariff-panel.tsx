@@ -126,7 +126,11 @@ export function TariffPanel({
                     <Label>Apply To</Label>
                     <Select
                       value={formData.targetType}
-                      onValueChange={(v: "branch" | "scheme") => setFormData(f => ({ ...f, targetType: v, targetId: "" }))}
+                      onValueChange={(v) => {
+                        if (v === "branch" || v === "scheme") {
+                          setFormData(f => ({ ...f, targetType: v, targetId: "" }))
+                        }
+                      }}
                     >
                       <SelectTrigger><SelectValue /></SelectTrigger>
                       <SelectContent>

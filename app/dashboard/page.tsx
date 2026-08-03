@@ -73,7 +73,7 @@ export default async function DashboardPage() {
                 branches={branches}
                 paymentMethods={methods}
                 billingPeriods={periods}
-                schemes={schemes}
+                schemes={schemes as any}
                 activePeriodId={collectionSummary.displayPeriod.id}
               />
             </div>

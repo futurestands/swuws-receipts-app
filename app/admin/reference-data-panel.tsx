@@ -9,7 +9,7 @@ import {
   createWaterScheme,
   setWaterSchemeActive,
 } from "@/app/actions/settings"
-import type { Branch, PaymentMethod, WaterScheme } from "@/lib/db/schema"
+import type { Branch, PaymentMethod, WaterScheme, Cluster } from "@/lib/db/schema"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"

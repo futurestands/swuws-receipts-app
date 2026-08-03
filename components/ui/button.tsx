@@ -57,7 +57,7 @@ function Button({
       nativeButton={asChild ? false : undefined}
       render={asChild ? (children as React.ReactElement) : undefined}
       className={cn(buttonVariants({ variant, size, className }))}
-      onClick={(e: React.MouseEvent<HTMLButtonElement>) => {
+      onClick={(e: any) => {
         hapticFeedback()
         if (onClick) onClick(e)
       }}

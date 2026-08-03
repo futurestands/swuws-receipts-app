@@ -32,7 +32,7 @@ export default async function ReportsPage({
   }
 
   const params = await searchParams
-  const [stats, periods, branches, schemes, debtors] = await Promise.all([
+  const [stats, periods, branches, schemesData, debtors] = await Promise.all([
     getDashboardStats(params),
     getCollectionPeriods(),
     listActiveBranches(),
@@ -40,7 +40,22 @@ export default async function ReportsPage({
     getTopDebtors(100),
   ])
 
+  // Explicit type matching for ReportFilters
+  const schemes = schemesData.map(s => ({
+    ...s,
+    code: s.id, // Fallback code
+    active: true,
+    createdAt: new Date(),
+    serviceArea: null
+  }))
+
   const { billing, collections, arrears } = stats
+
+  // Safety guard against NaN/Zero for progress bars
+  const safeProgress = (num: number, den: number) => {
+    if (!den || isNaN(num / den)) return 0
+    return (num / den) * 100
+  }
 
   return (
     <div className="space-y-6">
@@ -203,28 +218,28 @@ export default async function ReportsPage({
                 <span className="font-bold text-green-600">Bank Verified</span>
                 <span className="font-medium">{billing.paidCount}</span>
               </div>
-              <Progress value={(billing.paidCount / (billing.billedCount || 1)) * 100} className="h-2 bg-green-100" />
+              <Progress value={safeProgress(billing.paidCount, billing.billedCount)} className="h-2 bg-green-100" />
             </div>
             <div className="space-y-2">
               <div className="flex items-center justify-between text-sm">
                 <span className="text-amber-600">Pending Bank Confirmation</span>
                 <span className="font-medium">{billing.confirmedCount}</span>
               </div>
-              <Progress value={(billing.confirmedCount / (billing.billedCount || 1)) * 100} className="h-2 bg-amber-100" />
+              <Progress value={safeProgress(billing.confirmedCount, billing.billedCount)} className="h-2 bg-amber-100" />
             </div>
             <div className="space-y-2">
               <div className="flex items-center justify-between text-sm">
                 <span>Partially Paid</span>
                 <span className="font-medium">{billing.partialCount}</span>
               </div>
-              <Progress value={(billing.partialCount / (billing.billedCount || 1)) * 100} className="h-2 bg-secondary" />
+              <Progress value={safeProgress(billing.partialCount, billing.billedCount)} className="h-2 bg-secondary" />
             </div>
             <div className="space-y-2">
               <div className="flex items-center justify-between text-sm">
                 <span>Unpaid / Pending</span>
                 <span className="font-medium">{billing.unpaidCount}</span>
               </div>
-              <Progress value={(billing.unpaidCount / (billing.billedCount || 1)) * 100} className="h-2 bg-destructive/10" />
+              <Progress value={safeProgress(billing.unpaidCount, billing.billedCount)} className="h-2 bg-destructive/10" />
             </div>
           </CardContent>
         </Card>

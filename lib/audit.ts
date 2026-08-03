@@ -19,7 +19,7 @@ type LogInput = {
  * Accepts an optional transaction client (tx) to ensure audit logging
  * happens within the same atomic boundary as the main action.
  */
-export async function writeAudit(input: LogInput, tx?: PgTransaction<PostgresJsQueryResultHKT, Record<string, unknown>, Record<string, unknown>>) {
+export async function writeAudit(input: LogInput, tx?: any) {
   let ip: string | null = null
   let userAgent: string | null = null
   try {

@@ -674,7 +674,7 @@ export function ReadingEntryForm({
                       <div className="font-bold">{item.customerName as string}</div>
                       <div className="flex items-center gap-2">
                         <span className="text-[10px] text-muted-foreground uppercase">{(item.meterRef as string) || 'No Meter #'}</span>
-                        {item.isNotified && (
+                        {!!item.isNotified && (
                           <span className="text-[9px] bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded-full font-bold uppercase tracking-tighter">SMS Sent</span>
                         )}
                       </div>

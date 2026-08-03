@@ -78,11 +78,13 @@ export async function createRole(data: z.infer<typeof roleSchema>) {
   }
 
   try {
-    const [row] = await db.insert(iamRole).values({
+    const rows = await db.insert(iamRole).values({
       id,
       ...parsed,
       isSystem: false,
-    }).returning()
+    }).returning() as any[]
+    const row = rows[0]
+    if (!row) throw new Error("Failed to create role")
 
     await writeAudit({
       user: current,

@@ -86,7 +86,7 @@ export function ApprovalActions({ batchId, currentStage, approvalData }: Props) 
               <CheckCircle2 className="h-4 w-4" /> Final Sign-off Complete
            </div>
            <p className="text-[10px] text-green-600 italic">
-             Approved by {approvalData?.approvedByName} on {new Date(approvalData?.approvedAt).toLocaleDateString()}
+             Approved by {approvalData?.approvedByName} on {approvalData?.approvedAt ? new Date(approvalData.approvedAt).toLocaleDateString() : 'N/A'}
            </p>
            <Button
              variant="ghost"

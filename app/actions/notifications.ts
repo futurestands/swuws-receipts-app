@@ -75,7 +75,7 @@ export async function createNotification(data: {
   priority?: "critical" | "high" | "normal" | "low"
   relatedEntityType?: string
   relatedEntityId?: string
-}, tx: PgTransaction<PostgresJsQueryResultHKT, Record<string, unknown>, Record<string, unknown>> | typeof db = db) {
+}, tx: any = db) {
   const current = await requireUser()
   const authorized =
     (await hasPermission(current, "reconciliation.run")) ||

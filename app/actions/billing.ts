@@ -8,6 +8,7 @@ import {
   billingUpload,
   customer,
   waterScheme,
+  branch,
   user as userTable,
   receipt,
   dailyCollectionRecord,
@@ -61,7 +62,7 @@ export type BillingImportSummary = ImportSummary<BillingImportRow> & {
  */
 export async function getAuthorizedSchemes() {
   const current = await requireUser()
-  const schemes = await db
+  const allSchemes = await db
     .select({
       id: waterScheme.id,
       name: waterScheme.name,
@@ -71,10 +72,34 @@ export async function getAuthorizedSchemes() {
     .where(eq(waterScheme.active, true))
     .orderBy(waterScheme.name)
 
-  const authorized = await Promise.all(
-    schemes.map((s) => validateWriteScope(current, "system.settings.manage", { branchId: s.branchId, schemeId: s.id }))
-  )
-  return schemes.filter((_, i) => authorized[i])
+  // Optimization: Filter in-memory to avoid N database queries in validateWriteScope
+  const grants = current.grants || []
+  const grant = grants.find(g => g.code === "system.settings.manage")
+  const scope = grant?.scope
+
+  if (!scope) return []
+  if (scope === "global") return allSchemes
+
+  if (scope === "scheme") {
+    return allSchemes.filter(s => s.id === current.schemeId)
+  }
+
+  if (scope === "area") {
+    return allSchemes.filter(s => s.branchId === current.branchId)
+  }
+
+  if (scope === "cluster") {
+    // For cluster scope, we still need to know which branches belong to the user's cluster
+    const clusterBranches = await db
+      .select({ id: branch.id })
+      .from(branch)
+      .where(eq(branch.clusterId, current.clusterId || "none"))
+
+    const branchIds = new Set(clusterBranches.map(b => b.id))
+    return allSchemes.filter(s => s.branchId && branchIds.has(s.branchId))
+  }
+
+  return []
 }
 
 /**

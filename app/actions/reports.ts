@@ -17,7 +17,6 @@ import { requireUser } from "@/lib/session"
 import { applyReceiptScope, applyCustomerScope } from "@/lib/scopes"
 import { and, eq, sql, desc, sum, count, gte, inArray } from "drizzle-orm"
 import { canViewReports, canUploadBilling } from "@/lib/permissions"
-import { unstable_cache } from "next/cache"
 
 /**
  * CUSTOMER STATEMENT (Phase 2, Objective 3)
@@ -162,11 +161,6 @@ export async function getDashboardStats(params: {
 }) {
   const current = await requireUser()
   if (!canViewReports(current)) throw new Error("Forbidden")
-
-  // 0. Fetch Period Data if filtered
-  if (params.periodId) {
-    await db.select().from(billingPeriod).where(eq(billingPeriod.id, params.periodId)).limit(1)
-  }
 
   // Apply Scopes
   const receiptScope = applyReceiptScope(current)

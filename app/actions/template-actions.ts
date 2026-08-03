@@ -419,7 +419,7 @@ export async function seedSystemTemplates() {
 
       if (activeVersion && activeVersion.versionNumber === 1 && activeVersion.content !== item.content) {
         await db.update(templateVersion)
-          .set({ content: item.content, updatedAt: new Date() })
+          .set({ content: item.content })
           .where(eq(templateVersion.id, activeVersion.id))
       }
     }
