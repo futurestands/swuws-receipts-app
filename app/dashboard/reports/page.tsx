@@ -5,6 +5,7 @@ import { getDashboardStats, getCollectionTrends, getTopDebtors } from "@/app/act
 import { getCollectionPeriods, getAuthorizedSchemes } from "@/app/actions/billing"
 import { listActiveBranches } from "@/app/actions/receipts"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
 import { formatUGX, formatPercent } from "@/lib/format"
 import { AlertCircle, TrendingUp, Users, FileText, Landmark } from "lucide-react"
 import { ReportFilters } from "./report-filters"
@@ -32,16 +33,37 @@ export default async function ReportsPage({
   }
 
   const params = await searchParams
-  const [stats, periods, branches, schemesData, debtors] = await Promise.all([
-    getDashboardStats(params),
-    getCollectionPeriods(),
-    listActiveBranches(),
-    getAuthorizedSchemes(),
-    getTopDebtors(100),
-  ])
+
+  let stats, periods, branches, schemesData, debtors
+  try {
+    const results = await Promise.all([
+      getDashboardStats(params),
+      getCollectionPeriods().catch(() => []),
+      listActiveBranches().catch(() => []),
+      getAuthorizedSchemes().catch(() => []),
+      getTopDebtors(100).catch(() => []),
+    ])
+    stats = results[0]
+    periods = results[1]
+    branches = results[2]
+    schemesData = results[3]
+    debtors = results[4]
+  } catch (err) {
+    console.error("Dashboard data fetch failed:", err)
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[400px] space-y-4">
+        <AlertCircle className="h-12 w-12 text-destructive" />
+        <h1 className="text-xl font-bold">Data Unavailable</h1>
+        <p className="text-muted-foreground">We couldn&apos;t load the reporting data. This might be due to a temporary database issue.</p>
+        <Button asChild variant="outline">
+          <Link href="/dashboard/reports">Reload Dashboard</Link>
+        </Button>
+      </div>
+    )
+  }
 
   // Explicit type matching for ReportFilters
-  const schemes = schemesData.map(s => ({
+  const schemes = schemesData.map((s: any) => ({
     ...s,
     code: s.id, // Fallback code
     active: true,
@@ -54,7 +76,7 @@ export default async function ReportsPage({
   // Safety guard against NaN/Zero for progress bars
   const safeProgress = (num: number, den: number) => {
     if (!den || isNaN(num / den)) return 0
-    return (num / den) * 100
+    return Math.min(100, Math.max(0, (num / den) * 100))
   }
 
   return (

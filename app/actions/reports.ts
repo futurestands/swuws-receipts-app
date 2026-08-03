@@ -166,9 +166,20 @@ export async function getDashboardStats(params: {
   const receiptScope = applyReceiptScope(current)
   const customerScope = applyCustomerScope(current)
 
+  // 0. Auto-focus on active period if none selected (Optimization for production stability)
+  let activePeriodId = params.periodId
+  if (!activePeriodId) {
+    const [active] = await db
+      .select({ id: billingPeriod.id })
+      .from(billingPeriod)
+      .where(eq(billingPeriod.status, 'active'))
+      .limit(1)
+    if (active) activePeriodId = active.id
+  }
+
   // Build filters based on selection AND scope
   const billingConditions = []
-  if (params.periodId) billingConditions.push(eq(billingRecord.billingPeriodId, params.periodId))
+  if (activePeriodId) billingConditions.push(eq(billingRecord.billingPeriodId, activePeriodId))
   if (params.schemeId) billingConditions.push(eq(customer.waterSchemeId, params.schemeId))
   if (params.branchId) billingConditions.push(eq(waterScheme.branchId, params.branchId))
   if (params.clusterId) billingConditions.push(eq(branch.clusterId, params.clusterId))
@@ -177,7 +188,7 @@ export async function getDashboardStats(params: {
 
   // 1. BILLING AGGREGATION (Unified: Imports + Field Readings)
   const readingConditions = []
-  if (params.periodId) readingConditions.push(eq(meterReading.billingPeriodId, params.periodId))
+  if (activePeriodId) readingConditions.push(eq(meterReading.billingPeriodId, activePeriodId))
   if (params.schemeId) readingConditions.push(eq(customer.waterSchemeId, params.schemeId))
   if (params.branchId) readingConditions.push(eq(waterScheme.branchId, params.branchId))
   if (params.clusterId) readingConditions.push(eq(branch.clusterId, params.clusterId))
@@ -223,7 +234,7 @@ export async function getDashboardStats(params: {
   ]
   if (params.schemeId) verifiedConditions.push(eq(customer.waterSchemeId, params.schemeId))
   if (params.branchId) verifiedConditions.push(eq(waterScheme.branchId, params.branchId))
-  if (params.periodId) verifiedConditions.push(eq(receipt.billingPeriodId, params.periodId))
+  if (activePeriodId) verifiedConditions.push(eq(receipt.billingPeriodId, activePeriodId))
   if (customerScope) verifiedConditions.push(customerScope)
 
   const waterfallQuery = db
@@ -247,13 +258,7 @@ export async function getDashboardStats(params: {
   const receiptConditions = []
   if (receiptScope) receiptConditions.push(receiptScope)
   if (params.schemeId) receiptConditions.push(eq(customer.waterSchemeId, params.schemeId))
-  if (params.periodId) receiptConditions.push(eq(receipt.billingPeriodId, params.periodId))
-
-  // Exclude voided receipts
-  const voidedIdsSubquery = db
-    .select({ id: auditLog.entityId })
-    .from(auditLog)
-    .where(eq(auditLog.action, 'receipt.void'))
+  if (activePeriodId) receiptConditions.push(eq(receipt.billingPeriodId, activePeriodId))
 
   const [receiptStats] = await db
     .select({
@@ -262,9 +267,11 @@ export async function getDashboardStats(params: {
     })
     .from(receipt)
     .innerJoin(customer, eq(receipt.customerId, customer.id))
+    // Optimization: Exclude voided receipts using LEFT JOIN + NULL check instead of NOT IN
+    .leftJoin(auditLog, and(eq(receipt.id, auditLog.entityId), eq(auditLog.action, 'receipt.void')))
     .where(and(
       ...receiptConditions,
-      sql`${receipt.id} NOT IN (${voidedIdsSubquery})`
+      sql`${auditLog.id} IS NULL`
     ))
 
   const totalBilled = Number(importStats?.totalBilled || 0) + Number(fieldStats?.totalBilled || 0)
