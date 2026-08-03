@@ -7,6 +7,8 @@ import { hasPermission } from "@/lib/iam"
 import { eq, and, desc, sql, count } from "drizzle-orm"
 import { randomUUID } from "crypto"
 import { revalidatePath } from "next/cache"
+import type { PgTransaction } from "drizzle-orm/pg-core"
+import type { PostgresJsQueryResultHKT } from "drizzle-orm/postgres-js"
 
 /**
  * OPERATIONAL NOTIFICATIONS (Phase 5B)
@@ -73,7 +75,7 @@ export async function createNotification(data: {
   priority?: "critical" | "high" | "normal" | "low"
   relatedEntityType?: string
   relatedEntityId?: string
-}, tx: any = db) {
+}, tx: PgTransaction<PostgresJsQueryResultHKT, Record<string, unknown>, Record<string, unknown>> | typeof db = db) {
   const current = await requireUser()
   const authorized =
     (await hasPermission(current, "reconciliation.run")) ||

@@ -23,11 +23,12 @@ import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
 import { FormField, FormActions } from "@/components/ui/form-layout"
+import type { getBatchApprovalStatus } from "@/app/actions/approval"
 
 interface Props {
   batchId: string
   currentStage: string
-  approvalData: any
+  approvalData: Awaited<ReturnType<typeof getBatchApprovalStatus>>
 }
 
 export function ApprovalActions({ batchId, currentStage, approvalData }: Props) {

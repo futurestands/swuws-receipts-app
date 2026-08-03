@@ -15,7 +15,7 @@ export interface LogEvent {
   message: string
   severity: LogSeverity
   category: LogCategory
-  details?: Record<string, any>
+  details?: Record<string, unknown>
   user?: SessionUser
   error?: Error | unknown
 }
@@ -42,7 +42,7 @@ export function logEvent(event: LogEvent) {
 }
 
 /** Specialized logger for critical financial events */
-export function logFinancial(message: string, details: Record<string, any>, user?: SessionUser) {
+export function logFinancial(message: string, details: Record<string, unknown>, user?: SessionUser) {
   logEvent({
     message,
     severity: "info",
@@ -53,7 +53,7 @@ export function logFinancial(message: string, details: Record<string, any>, user
 }
 
 /** Specialized logger for security events */
-export function logSecurity(message: string, severity: LogSeverity = "warn", details: Record<string, any> = {}, user?: SessionUser) {
+export function logSecurity(message: string, severity: LogSeverity = "warn", details: Record<string, unknown> = {}, user?: SessionUser) {
   logEvent({
     message,
     severity,

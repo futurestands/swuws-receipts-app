@@ -7,7 +7,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Switch } from "@/components/ui/switch"
-import { Shield, Plus, Key, Users, Copy, Edit2, Lock, Loader2, ChevronRight } from "lucide-react"
+import { Shield, Plus, Key, Users, Edit2, Loader2, ChevronRight } from "lucide-react"
 import { toast } from "sonner"
 import type { IamRole, IamPermission } from "@/lib/db/schema"
 import { listRoles, listAllPermissions, createRole, updateRole, setRoleActive, getRolePermissions, updateRolePermissions } from "@/app/actions/iam"
@@ -95,7 +95,11 @@ export function IamPanel({
 
   async function saveRole() {
     startTransition(async () => {
-      const action = isCreating ? createRole(roleForm as any) : updateRole(editingRole!.id, roleForm as any)
+      const data = {
+        ...roleForm,
+        level: Number(roleForm.level),
+      }
+      const action = isCreating ? createRole(data) : updateRole(editingRole!.id, data)
       const result = await action
       if (result.ok) {
         toast.success(isCreating ? "Role created" : "Role updated")
@@ -131,8 +135,9 @@ export function IamPanel({
         if (result.ok) {
           toast.success("Permissions updated")
         }
-      } catch (err: any) {
-        toast.error(err.message || "Failed to save permissions")
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : "Failed to save permissions"
+        toast.error(message)
       }
     })
   }

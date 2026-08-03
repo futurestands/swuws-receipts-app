@@ -43,9 +43,8 @@ export async function importUnifiedHierarchy(formData: FormData) {
   }
 
   let importedCount = 0
-  const reportRows: any[] = []
 
-  for (const rawRow of rawData as any[]) {
+  for (const rawRow of rawData as Array<Record<string, unknown>>) {
     try {
       const regionName = String(rawRow[mapping.clusterName] || "").trim()
       const areaName = String(rawRow[mapping.branchName] || "").trim()
@@ -92,7 +91,7 @@ export async function importUnifiedHierarchy(formData: FormData) {
       })
 
       importedCount++
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.error("Hierarchy row import failed", e)
     }
   }

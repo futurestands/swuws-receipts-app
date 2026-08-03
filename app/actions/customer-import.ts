@@ -52,7 +52,7 @@ export async function validateCustomerImport(formData: FormData): Promise<{ ok: 
   const existingAccounts = new Set(existingCustomers.map((c) => c.account?.toLowerCase()))
   const seenInUpload = new Set<string>()
 
-  const mapping = (await getImportMapping("import.customers.bulk")) as any || {
+  const mapping = (await getImportMapping("import.customers.bulk")) || {
     name: "Name",
     customerAccount: "CustomerRef",
     phone: "Phone",
@@ -63,7 +63,7 @@ export async function validateCustomerImport(formData: FormData): Promise<{ ok: 
     openingArrears: ["OpeningArrears", "Arrears", "Balance Brought Forward", "BalanceBroughtForward", "Brought Forward"],
     category: "Category",
     notes: "Notes",
-  }
+  } as Record<string, string | string[] | number>
 
   const summary = await processExcelImport({
     file,
@@ -112,7 +112,7 @@ export async function importCustomers(summary: CustomerImportSummary): Promise<{
   let importedCount = 0
   let updatedCount = 0
   let failedCount = 0
-  const reportRows: any[] = []
+  const reportRows: Array<Record<string, unknown>> = []
 
   // Finding 4 Fix: Process in batches but handle individual row failures
   for (const row of validRows) {
@@ -164,9 +164,10 @@ export async function importCustomers(summary: CustomerImportSummary): Promise<{
         importedCount++
         reportRows.push({ ...data, Result: "Created", Details: "New record added" })
       }
-    } catch (e: any) {
+    } catch (e: unknown) {
       failedCount++
-      reportRows.push({ ...data, Result: "Failed", Details: e.message || "Database error" })
+      const message = e instanceof Error ? e.message : "Database error"
+      reportRows.push({ ...data, Result: "Failed", Details: message })
     }
   }
 
@@ -214,15 +215,15 @@ export async function downloadCustomerTemplate() {
   }
 
   const headers = Object.values(mapping)
-  const sampleRow: any = {}
+  const sampleRow: Record<string, string | number> = {}
   Object.entries(mapping).forEach(([key, col]) => {
     // Basic defaults for samples
-    if (key === 'openingArrears') sampleRow[col] = 50000
-    else if (key === 'name') sampleRow[col] = "Jane Doe"
-    else if (key === 'customerAccount') sampleRow[col] = "C-98765"
-    else if (key === 'schemeName') sampleRow[col] = "Mbarara Central"
-    else if (key === 'category') sampleRow[col] = "domestic"
-    else sampleRow[col] = "Sample Value"
+    if (key === 'openingArrears') sampleRow[col as string] = 50000
+    else if (key === 'name') sampleRow[col as string] = "Jane Doe"
+    else if (key === 'customerAccount') sampleRow[col as string] = "C-98765"
+    else if (key === 'schemeName') sampleRow[col as string] = "Mbarara Central"
+    else if (key === 'category') sampleRow[col as string] = "domestic"
+    else sampleRow[col as string] = "Sample Value"
   })
 
   const worksheet = XLSX.utils.json_to_sheet([sampleRow], { header: headers })

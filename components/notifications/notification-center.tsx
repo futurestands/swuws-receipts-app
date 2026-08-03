@@ -1,12 +1,11 @@
 "use client"
 
-import { useState, useEffect, useTransition } from "react"
-import { Bell, BellRing, Check, Archive, ExternalLink, Clock } from "lucide-react"
+import { useState, useEffect } from "react"
+import { Bell, BellRing, Check, ExternalLink, Clock } from "lucide-react"
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuGroup,
-  DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
@@ -17,9 +16,10 @@ import { getNotifications, markAsRead, markAllAsRead, getUnreadCount } from "@/a
 import { formatDateTime } from "@/lib/format"
 import Link from "next/link"
 import { cn } from "@/lib/utils"
+import type { Notification } from "@/lib/db/schema"
 
 export function NotificationCenter() {
-  const [notifications, setNotifications] = useState<any[]>([])
+  const [notifications, setNotifications] = useState<Notification[]>([])
   const [unreadCount, setUnreadCount] = useState(0)
 
   async function refresh() {
@@ -28,7 +28,7 @@ export function NotificationCenter() {
         getNotifications(),
         getUnreadCount()
       ])
-      setNotifications(list)
+      setNotifications(list as Notification[])
       setUnreadCount(count)
     } catch (err) {
       console.error("Failed to refresh notifications", err)
@@ -36,11 +36,15 @@ export function NotificationCenter() {
   }
 
   useEffect(() => {
-    refresh()
+    const timer = setTimeout(() => {
+      refresh()
+    }, 0)
     // Poll every 60 seconds for production simplicity
-    const timer = setInterval(refresh, 60000)
-    return () => clearInterval(timer)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    const interval = setInterval(refresh, 60000)
+    return () => {
+      clearTimeout(timer)
+      clearInterval(interval)
+    }
   }, [])
 
   async function handleMarkRead(id: string) {

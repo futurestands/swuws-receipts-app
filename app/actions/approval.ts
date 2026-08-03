@@ -2,7 +2,6 @@
 
 import { db } from "@/lib/db"
 import {
-  dailyCollectionImport,
   dailyCollectionRecord,
   reconciliationApproval,
   reconciliationException,
@@ -12,7 +11,7 @@ import { requireUser } from "@/lib/session"
 import { hasPermission } from "@/lib/iam"
 import { ROLES } from "@/lib/permissions/roles"
 import { writeAudit } from "@/lib/audit"
-import { and, eq, gte, lte, sql, count, desc, sum, ne, or } from "drizzle-orm"
+import { and, eq, sql, count, or, ne } from "drizzle-orm"
 import { randomUUID } from "crypto"
 import { createNotification } from "./notifications"
 import { revalidatePath } from "next/cache"
@@ -26,7 +25,7 @@ export async function submitForReview(batchId: string, comments?: string) {
   if (!await hasPermission(current, "reconciliation.run")) throw new Error("Forbidden")
 
   // Check if approval record exists
-  let [approval] = await db
+  const [approval] = await db
     .select()
     .from(reconciliationApproval)
     .where(eq(reconciliationApproval.batchId, batchId))

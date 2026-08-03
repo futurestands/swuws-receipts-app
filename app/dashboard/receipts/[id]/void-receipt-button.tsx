@@ -52,8 +52,9 @@ export function VoidReceiptButton({
         } else {
           toast.error(result.error)
         }
-      } catch (e: any) {
-        toast.error(e.message || "An error occurred while voiding the receipt.")
+      } catch (e: unknown) {
+        const message = e instanceof Error ? e.message : "An error occurred"
+        toast.error(message)
       }
     })
   }

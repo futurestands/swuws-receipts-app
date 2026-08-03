@@ -319,9 +319,10 @@ export async function archiveCollectionPeriod(id: string) {
 
     revalidatePath("/dashboard/billing")
     return { ok: true }
-  } catch (e: any) {
+  } catch (e: unknown) {
     console.error("archiveCollectionPeriod failed", e)
-    return { ok: false, error: e.message || "Failed to archive period" }
+    const message = e instanceof Error ? e.message : "Failed to archive period"
+    return { ok: false, error: message }
   }
 }
 
@@ -399,23 +400,14 @@ export async function validateBillingImport(
   const seenInUpload = new Set<string>()
 
       // Resolve dynamic mapping (with aliases support)
-      const mapping: Record<string, string | string[] | number> = noHeaders
-        ? {
-            accountNumber: 0,
-            billAmount: 1,
-            arrears: 2,
-            currentCharges: 3,
-            totalDue: 4,
-            dueDate: 5,
-          }
-        : ((await getImportMapping("import.billing.monthly")) as any) || {
+      const mapping = (await getImportMapping("import.billing.monthly")) || {
             accountNumber: "AccountNumber",
             billAmount: "BillAmount",
             arrears: ["Arrears", "Balance Brought Forward", "BalanceBroughtForward", "Brought Forward"],
             currentCharges: "CurrentCharges",
             totalDue: "TotalDue",
             dueDate: "DueDate",
-          }
+          } as Record<string, string | string[] | number>
 
   const engineSummary = await processExcelImport({
     file,
@@ -453,7 +445,7 @@ export async function validateBillingImport(
       ...engineSummary,
       schemeId,
       billingPeriodId,
-    } as any,
+    } as BillingImportSummary,
   }
 }
 
@@ -489,8 +481,8 @@ export async function importBilling(
   const runId = randomUUID()
   let importedCount = 0
   let totalAmount = 0
-  const reportRows: any[] = []
-  const discrepancies: any[] = []
+  const reportRows: Array<Record<string, unknown>> = []
+  const discrepancies: Array<typeof billingDiscrepancy.$inferInsert> = []
 
   try {
     await db.transaction(async (tx) => {
@@ -616,16 +608,17 @@ export async function importBilling(
       failed: summary.errorRows,
       report: XLSX.utils.sheet_to_csv(worksheet)
     }
-  } catch (e: any) {
+  } catch (e: unknown) {
     console.error("Billing import failed", e)
+    const message = e instanceof Error ? e.message : "A database error occurred during import"
     await writeAudit({
       user: current,
       action: "billing.import.failed",
       entityType: "billing_period",
       entityId: summary.billingPeriodId,
-      details: { error: e.message },
+      details: { error: message },
     })
-    return { ok: false, error: e.message || "A database error occurred during import" }
+    return { ok: false, error: message }
   }
 }
 

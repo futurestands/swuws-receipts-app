@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation"
 import { createReceipt, type CreateReceiptInput } from "@/app/actions/receipts"
 import { quickSearchCustomers } from "@/app/actions/customers"
 import { getOpenBillsForCustomer } from "@/app/actions/billing"
-import type { EditableFields, Branch, PaymentMethod, Customer } from "@/lib/db/schema"
+import type { EditableFields, Branch, PaymentMethod, Customer, BillingPeriod, WaterScheme } from "@/lib/db/schema"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
@@ -23,6 +23,14 @@ import { cn } from "@/lib/utils"
 import { ResponsiveFormLayout, FormField, FormActions } from "@/components/ui/form-layout"
 import Link from "next/link"
 import { AlertCircle, Search, UserPlus } from "lucide-react"
+
+type Bill = {
+  id: string
+  totalDue: number
+  status: string
+  periodName: string
+  dueDate: Date
+}
 
 const emptyFormBase = {
   billingRecordId: "",
@@ -60,8 +68,8 @@ export function ReceiptForm({
   editableFields: EditableFields
   branches: Branch[]
   paymentMethods: PaymentMethod[]
-  billingPeriods?: any[]
-  schemes?: any[]
+  billingPeriods?: BillingPeriod[]
+  schemes?: WaterScheme[]
   activePeriodId?: string
 }) {
   const router = useRouter()
@@ -80,7 +88,7 @@ export function ReceiptForm({
   const [customerQuery, setCustomerQuery] = useState("")
   const [customerResults, setCustomerResults] = useState<Customer[]>([])
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null)
-  const [bills, setBills] = useState<any[]>([])
+  const [bills, setBills] = useState<Bill[]>([])
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   // Stability fix: without this, a slower earlier request that resolves
   // after a faster later one could overwrite fresher results with stale

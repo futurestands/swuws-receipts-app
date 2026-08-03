@@ -15,7 +15,7 @@ import {
 import { requireUser, SessionUser } from "@/lib/session"
 import { hasPermission } from "@/lib/iam"
 import { applyReceiptScope } from "@/lib/scopes"
-import { and, eq, gte, lte, sql, count, desc, ilike } from "drizzle-orm"
+import { and, eq, gte, lte, sql, desc, ilike } from "drizzle-orm"
 import { writeAudit } from "@/lib/audit"
 
 /**

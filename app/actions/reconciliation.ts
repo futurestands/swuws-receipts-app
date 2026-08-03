@@ -301,9 +301,10 @@ export async function runReconciliation(batchId: string) {
       unmatched: records.length - matches.length,
       duration: Date.now() - startTime
     }
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error("Reconciliation run failed", err)
-    return { ok: false, error: err.message || "A database error occurred during reconciliation." }
+    const message = err instanceof Error ? err.message : "A database error occurred during reconciliation."
+    return { ok: false, error: message }
   }
 }
 
@@ -463,9 +464,10 @@ export async function resolveException(id: string, data: {
     revalidatePath("/dashboard/reconciliation/exceptions")
     revalidatePath(`/dashboard/reconciliation/exceptions/${id}`)
     return { ok: true }
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error("Manual resolution failed", err)
-    return { ok: false, error: err.message || "Failed to resolve exception" }
+    const message = err instanceof Error ? err.message : "Failed to resolve exception"
+    return { ok: false, error: message }
   }
 }
 

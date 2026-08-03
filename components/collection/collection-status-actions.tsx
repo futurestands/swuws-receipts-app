@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useTransition } from "react"
+import { useTransition } from "react"
 import { useRouter } from "next/navigation"
 import { updateCollectionPeriodStatus } from "@/app/actions/billing"
 import { Button } from "@/components/ui/button"
@@ -44,8 +44,9 @@ export function CollectionStatusActions({ periodId, currentStatus, canActivate, 
           toast.success(`Period status updated to ${newStatus}`)
           router.refresh()
         }
-      } catch (err: any) {
-        toast.error(err.message || "Failed to update status")
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : "Failed to update status"
+        toast.error(message)
       }
     })
   }

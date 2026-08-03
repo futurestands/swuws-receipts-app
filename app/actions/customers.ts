@@ -11,7 +11,6 @@ import * as XLSX from "xlsx"
 import { z } from "zod"
 import { isUniqueViolation } from "@/lib/db/errors"
 import {
-  canViewAllData,
   canCreateCustomer,
   canEditCustomer,
   canViewReports,

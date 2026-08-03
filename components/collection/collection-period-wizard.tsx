@@ -23,7 +23,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { Calendar, Plus, Loader2 } from "lucide-react"
+import { Plus, Loader2 } from "lucide-react"
 import { toast } from "sonner"
 
 const MONTHS = [
@@ -66,8 +66,9 @@ export function CollectionPeriodWizard() {
           setOpen(false)
           router.refresh()
         }
-      } catch (err: any) {
-        toast.error(err.message || "Failed to create period")
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : "Failed to create period"
+        toast.error(message)
       }
     })
   }

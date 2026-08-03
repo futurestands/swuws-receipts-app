@@ -4,7 +4,7 @@ import { NextResponse } from "next/server"
 
 export async function GET() {
   const startTime = Date.now()
-  const checks: Record<string, any> = {
+  const checks: Record<string, unknown> = {
     timestamp: new Date().toISOString(),
     status: "healthy",
   }
@@ -13,9 +13,10 @@ export async function GET() {
     // 1. Database Connectivity Check
     await db.execute(sql`SELECT 1`)
     checks.database = { status: "connected", latency: `${Date.now() - startTime}ms` }
-  } catch (err: any) {
+  } catch (err: unknown) {
     checks.status = "critical"
-    checks.database = { status: "disconnected", error: err.message }
+    const message = err instanceof Error ? err.message : "Unknown error"
+    checks.database = { status: "disconnected", error: message }
   }
 
   // 2. Storage / Environment check

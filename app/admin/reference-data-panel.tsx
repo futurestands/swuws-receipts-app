@@ -39,7 +39,7 @@ export function ReferenceDataPanel({
   branches: Branch[]
   methods: PaymentMethod[]
   schemes: WaterScheme[]
-  clusters: any[]
+  clusters: Cluster[]
 }) {
   const [branches, setBranches] = useState(initialBranches)
   const [methods, setMethods] = useState(initialMethods)
@@ -249,7 +249,7 @@ export function ReferenceDataPanel({
               {schemes.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={6} className="text-center py-12 text-muted-foreground italic">
-                    No schemes found. Use the "One-Row Template" above for bulk onboarding.
+                    No schemes found. Use the &quot;One-Row Template&quot; above for bulk onboarding.
                   </TableCell>
                 </TableRow>
               ) : (

@@ -4,7 +4,6 @@ import { db } from "@/lib/db"
 import {
   receipt,
   dailyCollectionImport,
-  dailyCollectionRecord,
   reconciliationMatch,
   reconciliationException,
   reconciliationApproval,
@@ -13,8 +12,8 @@ import {
 } from "@/lib/db/schema"
 import { requireUser } from "@/lib/session"
 import { hasPermission } from "@/lib/iam"
-import { applyReceiptScope, applyBillingScope } from "@/lib/scopes"
-import { and, eq, gte, lte, sql, count, desc, sum, ne } from "drizzle-orm"
+import { applyReceiptScope } from "@/lib/scopes"
+import { and, eq, sql, count, sum } from "drizzle-orm"
 
 /**
  * FINANCIAL OPERATIONS ANALYTICS (Phase 4A)
@@ -28,7 +27,6 @@ export async function getFinancialOpsDashboard() {
   if (!await hasPermission(current, "reconciliation.view")) throw new Error("Forbidden")
 
   const receiptScope = applyReceiptScope(current)
-  const billingScope = applyBillingScope(current)
 
   // Subquery to exclude voided receipts
   const voidedIds = db

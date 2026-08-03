@@ -76,19 +76,19 @@ export async function validateHierarchy(formData: FormData): Promise<{ ok: true;
   const existence = await getExistenceMaps()
   const seenCodes = new Set<string>()
 
-  const mapping = (await getImportMapping('import.hierarchy.master')) as any || DEFAULT_HIERARCHY_IMPORT_MAPPING
+  const mapping = (await getImportMapping('import.hierarchy.master')) || (DEFAULT_HIERARCHY_IMPORT_MAPPING as Record<string, string>)
 
   const summary = await processExcelImport({
     file,
     schema: hierarchyImportSchema,
     mapping: {
       type: "Type",
-      name: mapping.schemeName,
-      code: mapping.schemeCode,
-      parentName: mapping.branchName,
-      serviceArea: mapping.serviceArea,
+      name: mapping.schemeName as string,
+      code: mapping.schemeCode as string,
+      parentName: mapping.branchName as string,
+      serviceArea: mapping.serviceArea as string,
       status: "Status"
-    } as any,
+    },
     onValidateRow: (data) => {
       const errors: string[] = []
       const warnings: string[] = []
@@ -143,7 +143,7 @@ export async function importHierarchy(summary: HierarchyImportSummary): Promise<
   const existence = await getExistenceMaps()
   let importedCount = 0
   let failedCount = 0
-  const reportRows: any[] = []
+  const reportRows: Array<Record<string, unknown>> = []
 
   for (const row of validRows) {
     const { data } = row
@@ -178,9 +178,10 @@ export async function importHierarchy(summary: HierarchyImportSummary): Promise<
 
       importedCount++
       reportRows.push({ ...data, Result: "Success", Details: "Created" })
-    } catch (e: any) {
+    } catch (e: unknown) {
       failedCount++
-      reportRows.push({ ...data, Result: "Failed", Details: e.message || "Unknown error" })
+      const message = e instanceof Error ? e.message : "Unknown error"
+      reportRows.push({ ...data, Result: "Failed", Details: message })
     }
   }
 
@@ -214,11 +215,11 @@ export async function downloadHierarchyTemplate() {
   // Resolve headers the same way validateHierarchyImport resolves them for
   // parsing, so what this generates and what that reads can never drift
   // apart again.
-  const mapping = (await getImportMapping('import.hierarchy.master')) as any || DEFAULT_HIERARCHY_IMPORT_MAPPING
-  const nameCol = mapping.schemeName
-  const codeCol = mapping.schemeCode
-  const parentCol = mapping.branchName
-  const serviceAreaCol = mapping.serviceArea
+  const mapping = (await getImportMapping('import.hierarchy.master')) || (DEFAULT_HIERARCHY_IMPORT_MAPPING as Record<string, string>)
+  const nameCol = mapping.schemeName as string
+  const codeCol = mapping.schemeCode as string
+  const parentCol = mapping.branchName as string
+  const serviceAreaCol = mapping.serviceArea as string
 
   const headers = ["Type", nameCol, codeCol, parentCol, serviceAreaCol, "Status"]
   const data = [

@@ -24,7 +24,7 @@ import {
 } from "@/lib/db/schema"
 import { requireUser } from "@/lib/session"
 import { writeAudit } from "@/lib/audit"
-import { and, desc, eq, gte, lte, sql, ne, count, ilike, or } from "drizzle-orm"
+import { and, desc, eq, gte, lte, sql, ne, count, ilike, or, type SQL } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { headers } from "next/headers"
 import { checkRateLimit } from "@/lib/rate-limit"
@@ -58,7 +58,7 @@ export async function listAgents(params: { query?: string; page?: number; pageSi
         ilike(user.name, q),
         ilike(user.email, q),
         sql`${user.phone}::text ilike ${q}`,
-      ) as any,
+      ) as SQL,
     )
   }
   const where = and(...conditions)
@@ -639,8 +639,9 @@ export async function wipeOperationalData(confirmText: string) {
     revalidatePath("/dashboard")
     revalidatePath("/admin")
     return { ok: true }
-  } catch (e: any) {
+  } catch (e: unknown) {
     console.error("wipeOperationalData failed", e)
-    return { ok: false, error: e.message || "A database error occurred during reset" }
+    const message = e instanceof Error ? e.message : "A database error occurred during reset"
+    return { ok: false, error: message }
   }
 }

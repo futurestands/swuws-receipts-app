@@ -90,7 +90,7 @@ export default async function CustomersPage({
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {customers.map((c: any) => (
+                  {customers.map((c) => (
                     <TableRow key={c.id}>
                       <TableCell>
                         <Link

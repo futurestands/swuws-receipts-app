@@ -41,7 +41,7 @@ export interface DailyValidationSummary {
   validRecords: number
   failedRecords: number
   totalAmount: number
-  rows: { valid: boolean; errors: string[]; data: any }[]
+  rows: { valid: boolean; errors: string[]; data: DailyImportRow }[]
   isDuplicateFile: boolean
   isDuplicateDate: boolean
 }
@@ -119,14 +119,14 @@ export async function validateDailyCollectionImport(formData: FormData): Promise
 
   if (rawData.length === 0) return { ok: false, error: "The file is empty" }
 
-  const results: { valid: boolean; errors: string[]; data: any }[] = []
+  const results: { valid: boolean; errors: string[]; data: DailyImportRow }[] = []
   let totalAmount = 0
   let validCount = 0
   let errorCount = 0
   let businessDate: string | null = null
 
   // Check columns
-  const firstRow = rawData[0] as any
+  const firstRow = rawData[0] as Record<string, unknown>
   const missingColumns = REQUIRED_COLUMNS.filter(col => !(col in firstRow))
   if (missingColumns.length > 0) {
     return { ok: false, error: `Missing required columns: ${missingColumns.join(", ")}` }
@@ -134,18 +134,18 @@ export async function validateDailyCollectionImport(formData: FormData): Promise
 
   const seenRefs = new Set<string>()
 
-  for (const rawRow of rawData as any[]) {
+  for (const rawRow of rawData as Array<Record<string, unknown>>) {
     const errors: string[] = []
 
-    const mappedRow = {
+    const mappedRow: DailyImportRow = {
       accountNumber: String(rawRow["Account Number"] || "").trim(),
       customerName: String(rawRow["Customer Name"] || "").trim(),
       amountPaid: Number(rawRow["Amount Paid"] || 0),
       paymentDate: String(rawRow["Payment Date"] || ""),
       externalReference: String(rawRow["External Reference"] || "").trim(),
       paymentChannel: String(rawRow["Payment Channel"] || "").trim(),
-      scheme: rawRow["Scheme"],
-      area: rawRow["Area"],
+      scheme: rawRow["Scheme"] as string | undefined,
+      area: rawRow["Area"] as string | undefined,
     }
 
     const parsed = dailyRowSchema.safeParse(mappedRow)
@@ -275,9 +275,10 @@ export async function commitDailyCollectionImport(summary: DailyValidationSummar
 
     revalidatePath("/dashboard/billing/daily")
     return { ok: true, id: importId }
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error("Daily import failed", err)
-    return { ok: false, error: err.message || "Failed to commit import" }
+    const message = err instanceof Error ? err.message : "Failed to commit import"
+    return { ok: false, error: message }
   }
 }
 

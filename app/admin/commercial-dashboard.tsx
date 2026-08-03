@@ -19,7 +19,7 @@ export function CommercialDashboard({
   periods: BillingPeriod[]
 }) {
   const [loading, setLoading] = useState(true)
-  const [stats, setStats] = useState<any>(null)
+  const [stats, setStats] = useState<Awaited<ReturnType<typeof getDashboardStats>> | null>(null)
   const [filters, setFilters] = useState({
     periodId: periods[0]?.id || "",
     clusterId: "all",
@@ -29,18 +29,28 @@ export function CommercialDashboard({
 
   useEffect(() => {
     let active = true
-    setLoading(true)
-    getDashboardStats({
-      periodId: filters.periodId === "all" ? undefined : filters.periodId,
-      clusterId: filters.clusterId === "all" ? undefined : filters.clusterId,
-      branchId: filters.branchId === "all" ? undefined : filters.branchId,
-      schemeId: filters.schemeId === "all" ? undefined : filters.schemeId,
-    }).then((res) => {
-      if (active) {
-        setStats(res)
-        setLoading(false)
+
+    async function loadStats() {
+      setLoading(true)
+      try {
+        const res = await getDashboardStats({
+          periodId: filters.periodId === "all" ? undefined : filters.periodId,
+          clusterId: filters.clusterId === "all" ? undefined : filters.clusterId,
+          branchId: filters.branchId === "all" ? undefined : filters.branchId,
+          schemeId: filters.schemeId === "all" ? undefined : filters.schemeId,
+        })
+        if (active) {
+          setStats(res)
+        }
+      } finally {
+        if (active) {
+          setLoading(false)
+        }
       }
-    })
+    }
+
+    loadStats()
+
     return () => {
       active = false
     }

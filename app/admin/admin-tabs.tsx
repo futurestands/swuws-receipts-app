@@ -75,8 +75,8 @@ export function AdminTabs({
   periods: BillingPeriod[]
   iamRoles: IamRole[]
   allPermissions: IamPermission[]
-  tariffs: any[]
-  templates: any[]
+  tariffs: unknown[]
+  templates: unknown[]
 }) {
   const defaultTab = permissions.canViewReports ? "overview" : "agents"
 

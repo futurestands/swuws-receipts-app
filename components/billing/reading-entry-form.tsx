@@ -29,7 +29,7 @@ export function ReadingEntryForm({
   currentUser
 }: {
   activePeriod: BillingPeriod
-  initialHistory?: any[]
+  initialHistory?: Array<Record<string, unknown>>
   currentUser: { id: string; role: string }
 }) {
   const [searchQuery, setSearchQuery] = useState("")
@@ -60,7 +60,7 @@ export function ReadingEntryForm({
     phone: string;
     isSmsSent: boolean;
   } | null>(null)
-  const [history, setHistory] = useState<any[]>(initialHistory)
+  const [history, setHistory] = useState<Array<Record<string, unknown>>>(initialHistory)
   const [isPending, startTransition] = useTransition()
   const [isSendingSms, setIsSendingSms] = useState(false)
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -69,8 +69,10 @@ export function ReadingEntryForm({
   useEffect(() => {
     if (searchTimer.current) clearTimeout(searchTimer.current)
     if (!searchQuery.trim() || selectedCustomer) {
-      setSearchResults([])
-      return
+      const timer = setTimeout(() => {
+        setSearchResults([])
+      }, 0)
+      return () => clearTimeout(timer)
     }
 
     searchTimer.current = setTimeout(async () => {
@@ -91,12 +93,18 @@ export function ReadingEntryForm({
   useEffect(() => {
     if (selectedCustomer) {
       getTariffForCustomer(selectedCustomer.id).then(setTariff)
-      setCalculation(null)
-      setCurrentReading("")
-      setCustomerPhone(selectedCustomer.phone || "")
+      const timer = setTimeout(() => {
+        setCalculation(null)
+        setCurrentReading("")
+        setCustomerPhone(selectedCustomer.phone || "")
+      }, 0)
+      return () => clearTimeout(timer)
     } else {
-      setTariff(null)
-      setCustomerPhone("")
+      const timer = setTimeout(() => {
+        setTariff(null)
+        setCustomerPhone("")
+      }, 0)
+      return () => clearTimeout(timer)
     }
   }, [selectedCustomer])
 
@@ -106,10 +114,16 @@ export function ReadingEntryForm({
       const current = Number(currentReading)
       if (!isNaN(current)) {
         const calc = calculateBill(selectedCustomer.lastReading, current, tariff)
-        setCalculation(calc)
+        const timer = setTimeout(() => {
+          setCalculation(calc)
+        }, 0)
+        return () => clearTimeout(timer)
       }
     } else {
-      setCalculation(null)
+      const timer = setTimeout(() => {
+        setCalculation(null)
+      }, 0)
+      return () => clearTimeout(timer)
     }
   }, [currentReading, selectedCustomer, tariff])
 
@@ -171,7 +185,7 @@ export function ReadingEntryForm({
               createdAt: new Date(),
               periodName: activePeriod.periodName,
               isNotified: false
-            }, ...prev.slice(0, 19)])
+            } as Record<string, unknown>, ...prev.slice(0, 19)])
           }
 
           // Reset form (keeping lastSubmission visible for printing)
@@ -180,8 +194,8 @@ export function ReadingEntryForm({
           setCurrentReading("")
           setNotes("")
         }
-      } catch (err: any) {
-        if (err.message.includes("already been billed via the monthly import")) {
+      } catch (err: unknown) {
+        if (err instanceof Error && err.message.includes("already been billed via the monthly import")) {
           // Open discrepancy dialog
           setDiscrepancyData({
             open: true,
@@ -190,7 +204,8 @@ export function ReadingEntryForm({
             reason: ""
           })
         } else {
-          toast.error(err.message || "Failed to submit reading")
+          const message = err instanceof Error ? err.message : "Failed to submit reading"
+          toast.error(message)
         }
       }
     })
@@ -216,8 +231,9 @@ export function ReadingEntryForm({
         setSelectedCustomer(null)
         setSearchQuery("")
         setCurrentReading("")
-      } catch (err: any) {
-        toast.error(err.message || "Failed to report discrepancy")
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : "Failed to report discrepancy"
+        toast.error(message)
       }
     })
   }
@@ -651,23 +667,23 @@ export function ReadingEntryForm({
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {history.map((item: any) => (
-                  <TableRow key={item.id}>
-                    <TableCell className="text-xs">{formatDateTime(item.createdAt)}</TableCell>
+                {history.map((item) => (
+                  <TableRow key={String(item.id)}>
+                    <TableCell className="text-xs">{formatDateTime(item.createdAt as Date)}</TableCell>
                     <TableCell>
-                      <div className="font-bold">{item.customerName}</div>
+                      <div className="font-bold">{item.customerName as string}</div>
                       <div className="flex items-center gap-2">
-                        <span className="text-[10px] text-muted-foreground uppercase">{item.meterRef || 'No Meter #'}</span>
+                        <span className="text-[10px] text-muted-foreground uppercase">{(item.meterRef as string) || 'No Meter #'}</span>
                         {item.isNotified && (
                           <span className="text-[9px] bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded-full font-bold uppercase tracking-tighter">SMS Sent</span>
                         )}
                       </div>
                     </TableCell>
                     <TableCell className="text-xs">
-                      {item.previousReading} → {item.currentReading} ({item.consumption} m³)
+                      {item.previousReading as number} → {item.currentReading as number} ({item.consumption as number} m³)
                     </TableCell>
                     <TableCell className="text-right font-bold">
-                      {formatUGX(item.totalDue)}
+                      {formatUGX(item.totalDue as number)}
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-2">
@@ -676,7 +692,7 @@ export function ReadingEntryForm({
                               variant="outline"
                               size="sm"
                               className="h-8 gap-1.5 text-emerald-700 border-emerald-200 bg-emerald-50/50 hover:bg-emerald-50"
-                              onClick={() => handleSendSms(item.id)}
+                              onClick={() => handleSendSms(item.id as string)}
                               disabled={isSendingSms}
                            >
                               <Smartphone className="h-3 w-3" /> SMS
@@ -689,23 +705,23 @@ export function ReadingEntryForm({
                           onClick={() => {
                             setLastSubmission({
                               ok: true,
-                              readingId: item.id,
-                              customerName: item.customerName,
-                              meterRef: item.meterRef,
+                              readingId: item.id as string,
+                              customerName: item.customerName as string,
+                              meterRef: item.meterRef as string,
                               calc: {
-                                previousReading: item.previousReading,
-                                currentReading: item.currentReading,
-                                consumption: item.consumption,
+                                previousReading: item.previousReading as number,
+                                currentReading: item.currentReading as number,
+                                consumption: item.consumption as number,
                                 waterCharge: 0, // Not needed for ticket print
                                 serviceFee: 0,
                                 vatAmount: 0,
                                 unitPrice: 0,
-                                totalNewBill: item.billedAmount
+                                totalNewBill: item.billedAmount as number
                               },
-                              previousBalance: item.previousBalance,
-                              totalDue: item.totalDue,
-                              phone: item.phone || "",
-                              isSmsSent: item.isNotified ?? false
+                              previousBalance: item.previousBalance as number,
+                              totalDue: item.totalDue as number,
+                              phone: (item.phone as string) || "",
+                              isSmsSent: (item.isNotified as boolean) ?? false
                             })
                             // Wait for state to update then print
                             setTimeout(() => window.print(), 100)
@@ -719,7 +735,7 @@ export function ReadingEntryForm({
                             variant="ghost"
                             size="sm"
                             className="h-8 w-8 p-0 text-destructive hover:bg-destructive/10"
-                            onClick={() => handleCancel(item.id)}
+                            onClick={() => handleCancel(item.id as string)}
                             title="Cancel Reading"
                           >
                             <Trash2 className="h-4 w-4" />

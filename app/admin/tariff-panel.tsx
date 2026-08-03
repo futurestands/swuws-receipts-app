@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { toast } from "sonner"
 import { formatUGX } from "@/lib/format"
-import { Settings2, Plus, Trash2, Globe, Home, FileUp } from "lucide-react"
+import { Settings2, Plus, Trash2, Globe, Home } from "lucide-react"
 import { upsertTariff, deleteTariff } from "@/app/actions/billing-engine"
 import { TariffImportWizard } from "./tariff-import-wizard"
 import type { Branch, WaterScheme } from "@/lib/db/schema"
@@ -76,8 +76,9 @@ export function TariffPanel({
             vatPercentage: "18"
           })
         }
-      } catch (err: any) {
-        toast.error(err.message || "Failed to save tariff")
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : "Failed to save tariff"
+        toast.error(message)
       }
     })
   }
@@ -89,8 +90,9 @@ export function TariffPanel({
       try {
         await deleteTariff(id)
         toast.success("Tariff removed")
-      } catch (err: any) {
-        toast.error(err.message || "Failed to delete")
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : "Failed to delete"
+        toast.error(message)
       }
     })
   }
@@ -124,7 +126,7 @@ export function TariffPanel({
                     <Label>Apply To</Label>
                     <Select
                       value={formData.targetType}
-                      onValueChange={(v: any) => setFormData(f => ({ ...f, targetType: v, targetId: "" }))}
+                      onValueChange={(v: "branch" | "scheme") => setFormData(f => ({ ...f, targetType: v, targetId: "" }))}
                     >
                       <SelectTrigger><SelectValue /></SelectTrigger>
                       <SelectContent>

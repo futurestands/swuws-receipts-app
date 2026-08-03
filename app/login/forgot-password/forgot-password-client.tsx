@@ -18,8 +18,8 @@ export function ForgotPasswordClient() {
     setStatus("loading")
     setError("")
 
-    // Using any cast to bypass type check issue while maintaining functionality
-    const { error } = await (authClient as any).forgetPassword({
+    // @ts-expect-error - forgetPassword exists via plugin but might not be in base type
+    const { error } = await authClient.forgetPassword({
       email,
       redirectTo: "/login/reset-password",
     })

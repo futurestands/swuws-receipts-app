@@ -66,13 +66,13 @@ export async function verifyReceipt(receiptNumberInput: string) {
   }
 
   // Calculate print metadata from history (since receipt table is immutable)
-  const [historyRes] = (await db
+  const [historyRes] = await db
     .select({
       count: count(),
-      last: sql<Date>`max(${receiptPrintHistory.printedAt})`,
+      last: sql<Date | null>`max(${receiptPrintHistory.printedAt})`,
     })
     .from(receiptPrintHistory)
-    .where(eq(receiptPrintHistory.receiptId, row.id))) as any[]
+    .where(eq(receiptPrintHistory.receiptId, row.id))
 
   const result: VerifyResult = {
     receiptNumber: row.receiptNumber,

@@ -48,7 +48,7 @@ export async function getImportMapping(code: string): Promise<Record<string, str
  * Core engine to process an Excel file into validated typed objects.
  * Supports both Header-based mapping (with aliases) and Positional mapping.
  */
-export async function processExcelImport<T extends Record<string, any>>(params: {
+export async function processExcelImport<T extends Record<string, unknown>>(params: {
   file: File
   schema: z.ZodSchema<T>
   mapping: Record<keyof T, string | string[] | number>
@@ -74,9 +74,9 @@ export async function processExcelImport<T extends Record<string, any>>(params: 
   }
 
   // Header Discovery (for header mode)
-  let actualHeaderMap: Record<string, string> = {}
+  const actualHeaderMap: Record<string, string> = {}
   if (!isNoHeaders && rawData.length > 0) {
-    const firstRow = rawData[0] as any
+    const firstRow = rawData[0] as Record<string, unknown>
     const fileHeaders = Object.keys(firstRow)
 
     for (const [field, aliasOrList] of Object.entries(params.mapping)) {
@@ -103,16 +103,16 @@ export async function processExcelImport<T extends Record<string, any>>(params: 
   let errorCount = 0
   let warningCount = 0
 
-  for (const rawRow of rawData as any[]) {
+  for (const rawRow of rawData as Array<Record<string, unknown>>) {
     const errors: string[] = []
     const warnings: string[] = []
 
     // 1. Dynamic Mapping
-    const mappedRow: any = {}
+    const mappedRow: Record<string, unknown> = {}
     for (const [field, aliasOrIndex] of Object.entries(params.mapping)) {
       if (isNoHeaders && typeof aliasOrIndex === "number") {
         // Positional Mapping (Array index)
-        mappedRow[field] = rawRow[aliasOrIndex]
+        mappedRow[field] = (rawRow as unknown as unknown[])[aliasOrIndex]
       } else if (!isNoHeaders) {
         // Header Mapping (using discovered actual header or direct name)
         const headerName = actualHeaderMap[field] || (typeof aliasOrIndex === "string" ? aliasOrIndex : null)

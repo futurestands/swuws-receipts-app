@@ -14,8 +14,19 @@ import { setVibrationPreference, isNative } from "@/lib/mobile-hardware"
 import { updateUserPreferences } from "@/app/actions/account"
 import { useEffect } from "react"
 import { cn } from "@/lib/utils"
+import type { OrgSettings } from "@/lib/db/schema"
 
-export function AccountClient({ user, settings }: { user: any, settings: any }) {
+type UserProfile = {
+  id: string
+  name: string
+  email: string
+  role: string
+  preferences?: {
+    vibrationEnabled?: boolean
+  }
+}
+
+export function AccountClient({ user, settings }: { user: UserProfile, settings: OrgSettings }) {
   const [currentPassword, setCurrentPassword] = useState("")
   const [newPassword, setNewPassword] = useState("")
   const [confirmPassword, setConfirmPassword] = useState("")

@@ -32,7 +32,10 @@ export function VerifyForm({ initialReceiptNumber }: { initialReceiptNumber?: st
     // A QR code encodes /verify?number=..., so a scan should show the
     // result immediately without an extra tap.
     if (initialReceiptNumber) {
-      runVerify(initialReceiptNumber)
+      const timer = setTimeout(() => {
+        runVerify(initialReceiptNumber)
+      }, 0)
+      return () => clearTimeout(timer)
     }
   }, [initialReceiptNumber, runVerify])
 

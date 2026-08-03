@@ -7,30 +7,32 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
 import { toast } from "sonner"
 import {
   FileText,
   History as HistoryIcon,
-  CheckCircle2,
-  Play,
   Save,
   ChevronRight,
   Braces,
   MessageSquare,
   Code,
-  ArrowLeft,
   Zap
 } from "lucide-react"
 import { listTemplates, getTemplateHistory, saveTemplateDraft, publishTemplateVersion, saveAndPublishTemplate } from "@/app/actions/template-actions"
-import { renderTemplate, getPlaceholders } from "@/lib/templates/template-engine"
+import { getPlaceholders } from "@/lib/templates/template-engine"
+import type { ManagedTemplate } from "@/lib/db/schema"
 
-export function TemplateManager({ initialTemplates }: { initialTemplates: any[] }) {
+type TemplateWithMetadata = ManagedTemplate & {
+  activeContent: string | null
+  versionNumber: number
+}
+
+export function TemplateManager({ initialTemplates }: { initialTemplates: TemplateWithMetadata[] }) {
   const [templates, setTemplates] = useState(initialTemplates)
-  const [selectedTemplate, setSelectedTemplate] = useState<any>(null)
-  const [history, setHistory] = useState<any[]>([])
+  const [selectedTemplate, setSelectedTemplate] = useState<TemplateWithMetadata | null>(null)
+  const [history, setHistory] = useState<Awaited<ReturnType<typeof getTemplateHistory>>>([])
   const [editContent, setEditContent] = useState("")
   const [changelog, setChangelog] = useState("")
   const [isPending, startTransition] = useTransition()
@@ -45,7 +47,7 @@ export function TemplateManager({ initialTemplates }: { initialTemplates: any[] 
   // version history was never actually fetched on open (nothing called
   // getTemplateHistory), so the "unpublished draft" banner never triggered
   // for a draft left over from an earlier session.
-  async function openTemplate(t: any) {
+  async function openTemplate(t: TemplateWithMetadata) {
     setSelectedTemplate(t)
     setEditContent(t.activeContent || "")
     setChangelog("")
@@ -60,12 +62,14 @@ export function TemplateManager({ initialTemplates }: { initialTemplates: any[] 
       if (h[0]?.status === "draft" && h[0]?.content) {
         setEditContent(h[0].content)
       }
-    } catch (err: any) {
-      toast.error(err.message || "Failed to load template history")
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Failed to load template history"
+      toast.error(message)
     }
   }
 
   async function handleSaveDraft() {
+    if (!selectedTemplate) return
     if (!changelog) {
       toast.error("Please provide a reason for this update in the changelog.")
       return
@@ -86,15 +90,17 @@ export function TemplateManager({ initialTemplates }: { initialTemplates: any[] 
 
           // Force a data refresh to update the list view
           const updatedTemplates = await listTemplates()
-          setTemplates(updatedTemplates)
+          setTemplates(updatedTemplates as TemplateWithMetadata[])
         }
-      } catch (err: any) {
-        toast.error(err.message || "Failed to save draft")
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : "Failed to save draft"
+        toast.error(message)
       }
     })
   }
 
   async function handleSaveAndPublish() {
+    if (!selectedTemplate) return
     if (!changelog) {
       toast.error("Please provide a reason for this update in the changelog.")
       return
@@ -115,17 +121,19 @@ export function TemplateManager({ initialTemplates }: { initialTemplates: any[] 
 
           // Force a data refresh to update the list view
           const updatedTemplates = await listTemplates()
-          setTemplates(updatedTemplates)
-          const current = updatedTemplates.find(t => t.id === selectedTemplate.id)
-          setSelectedTemplate(current)
+          setTemplates(updatedTemplates as TemplateWithMetadata[])
+          const current = (updatedTemplates as TemplateWithMetadata[]).find(t => t.id === selectedTemplate.id)
+          if (current) setSelectedTemplate(current)
         }
-      } catch (err: any) {
-        toast.error(err.message || "Failed to save and publish")
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : "Failed to save and publish"
+        toast.error(message)
       }
     })
   }
 
   async function handlePublish(versionId: string) {
+    if (!selectedTemplate) return
     if (!confirm("Are you sure you want to publish this version? It will become live immediately.")) return
 
     startTransition(async () => {
@@ -135,12 +143,13 @@ export function TemplateManager({ initialTemplates }: { initialTemplates: any[] 
           toast.success("Template published successfully")
           // Refresh data
           const updatedTemplates = await listTemplates()
-          setTemplates(updatedTemplates)
-          const current = updatedTemplates.find(t => t.id === selectedTemplate.id)
-          setSelectedTemplate(current)
+          setTemplates(updatedTemplates as TemplateWithMetadata[])
+          const current = (updatedTemplates as TemplateWithMetadata[]).find(t => t.id === selectedTemplate.id)
+          if (current) setSelectedTemplate(current)
         }
-      } catch (err: any) {
-        toast.error(err.message || "Failed to publish")
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : "Failed to publish"
+        toast.error(message)
       }
     })
   }
@@ -338,7 +347,7 @@ export function TemplateManager({ initialTemplates }: { initialTemplates: any[] 
   )
 }
 
-function LucideArrowLeft(props: any) {
+function LucideArrowLeft(props: React.SVGProps<SVGSVGElement>) {
   return (
     <svg
       {...props}

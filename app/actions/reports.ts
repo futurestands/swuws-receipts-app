@@ -163,9 +163,6 @@ export async function getDashboardStats(params: {
   const current = await requireUser()
   if (!canViewReports(current)) throw new Error("Forbidden")
 
-  // Cache key includes user ID (for scope) and filter params
-  const cacheKey = `dashboard-stats-${current.id}-${params.periodId || 'all'}-${params.clusterId || 'all'}-${params.branchId || 'all'}-${params.schemeId || 'all'}`
-
   // 0. Fetch Period Data if filtered
   if (params.periodId) {
     await db.select().from(billingPeriod).where(eq(billingPeriod.id, params.periodId)).limit(1)

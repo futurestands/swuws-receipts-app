@@ -3,6 +3,8 @@ import { db } from "@/lib/db"
 import { auditLog } from "@/lib/db/schema"
 import { headers } from "next/headers"
 import { randomUUID } from "crypto"
+import type { PgTransaction } from "drizzle-orm/pg-core"
+import type { PostgresJsQueryResultHKT } from "drizzle-orm/postgres-js"
 
 type LogInput = {
   user?: { id: string; name: string; email: string } | null
@@ -17,7 +19,7 @@ type LogInput = {
  * Accepts an optional transaction client (tx) to ensure audit logging
  * happens within the same atomic boundary as the main action.
  */
-export async function writeAudit(input: LogInput, tx?: any) {
+export async function writeAudit(input: LogInput, tx?: PgTransaction<PostgresJsQueryResultHKT, Record<string, unknown>, Record<string, unknown>>) {
   let ip: string | null = null
   let userAgent: string | null = null
   try {

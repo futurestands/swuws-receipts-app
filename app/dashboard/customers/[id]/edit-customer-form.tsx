@@ -27,7 +27,8 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
 import { toast } from "sonner"
-import { UserMinus, UserCheck, AlertTriangle } from "lucide-react"
+import { UserMinus, UserCheck } from "lucide-react"
+import { cn } from "@/lib/utils"
 
 export function EditCustomerForm({
   customer,
@@ -55,8 +56,9 @@ export function EditCustomerForm({
         } else {
           toast.error("Failed to update customer status")
         }
-      } catch (err: any) {
-        toast.error(err.message || "An error occurred")
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : "An error occurred"
+        toast.error(message)
       }
     })
   }
@@ -179,8 +181,4 @@ export function EditCustomerForm({
       </CardContent>
     </Card>
   )
-}
-
-function cn(...inputs: any[]) {
-  return inputs.filter(Boolean).join(" ")
 }

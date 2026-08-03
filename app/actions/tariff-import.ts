@@ -41,7 +41,7 @@ export async function validateTariffImport(formData: FormData): Promise<{ ok: tr
   const branchMap = new Map(branches.map(b => [b.name.toLowerCase(), b.id]))
   const schemeMap = new Map(schemes.map(s => [s.name.toLowerCase(), s.id]))
 
-  const mapping = (await getImportMapping('import.tariffs.bulk')) as any || {
+  const mapping = (await getImportMapping('import.tariffs.bulk')) || {
     targetType: "Type", // "branch" or "scheme"
     targetName: "AreaName",
     customerCategory: "Category",
@@ -49,7 +49,7 @@ export async function validateTariffImport(formData: FormData): Promise<{ ok: tr
     serviceFee: "ServiceFee",
     vatPercentage: "VAT",
     active: "Status"
-  }
+  } as Record<string, string>
 
   const summary = await processExcelImport({
     file,
@@ -100,7 +100,7 @@ export async function executeTariffImport(summary: TariffImportSummary): Promise
   const branchMap = new Map(branches.map(b => [b.name.toLowerCase(), b.id]))
   const schemeMap = new Map(schemes.map(s => [s.name.toLowerCase(), s.id]))
 
-  const reportRows: any[] = []
+  const reportRows: Array<Record<string, unknown>> = []
   let count = 0
 
   try {
@@ -170,9 +170,10 @@ export async function executeTariffImport(summary: TariffImportSummary): Promise
     revalidatePath("/admin")
     const worksheet = XLSX.utils.json_to_sheet(reportRows)
     return { ok: true, count, report: XLSX.utils.sheet_to_csv(worksheet) }
-  } catch (e: any) {
+  } catch (e: unknown) {
     console.error("Tariff import failed", e)
-    return { ok: false, error: e.message || "Failed to execute bulk import" }
+    const message = e instanceof Error ? e.message : "Failed to execute bulk import"
+    return { ok: false, error: message }
   }
 }
 

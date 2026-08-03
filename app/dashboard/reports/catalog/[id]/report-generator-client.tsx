@@ -18,9 +18,7 @@ import {
   Loader2,
   FileDown,
   Printer,
-  ArrowLeft,
-  Table as TableIcon,
-  CheckCircle2
+  Table as TableIcon
 } from "lucide-react"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { formatUGX, formatDate, formatDateTime } from "@/lib/format"
@@ -28,7 +26,7 @@ import * as XLSX from "xlsx"
 
 export function ReportGeneratorClient({ reportId, title }: { reportId: string, title: string }) {
   const [pending, startTransition] = useTransition()
-  const [data, setData] = useState<any[] | null>(null)
+  const [data, setData] = useState<Array<Record<string, unknown>> | null>(null)
 
   // Filters
   const [startDate, setStartDate] = useState("")
@@ -39,10 +37,11 @@ export function ReportGeneratorClient({ reportId, title }: { reportId: string, t
     startTransition(async () => {
       try {
         const result = await getReportData(reportId, { startDate, endDate, status })
-        setData(result as any[])
+        setData(result as Array<Record<string, unknown>>)
         toast.success("Report data retrieved")
-      } catch (err: any) {
-        toast.error(err.message || "Failed to generate report")
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : "Failed to generate report"
+        toast.error(message)
       }
     })
   }
@@ -126,7 +125,7 @@ export function ReportGeneratorClient({ reportId, title }: { reportId: string, t
                  <TableBody>
                     {data.slice(0, 100).map((row, i) => (
                       <TableRow key={i}>
-                         {Object.values(row).map((val: any, j) => (
+                         {Object.values(row).map((val, j) => (
                            <TableCell key={j} className="text-[10px]">
                               {val instanceof Date ? formatDate(val) : typeof val === 'number' && val > 1000 ? formatUGX(val) : String(val ?? '')}
                            </TableCell>

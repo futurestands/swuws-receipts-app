@@ -110,7 +110,7 @@ export async function validateBulkUsers(formData: FormData): Promise<{ ok: true;
   let errorCount = 0
   let warningCount = 0
 
-  for (const rawRow of rawData as any[]) {
+  for (const rawRow of rawData as Array<Record<string, unknown>>) {
     const errors: string[] = []
     const warnings: string[] = []
 
@@ -231,7 +231,7 @@ export async function importBulkUsers(summary: ImportSummary): Promise<{ ok: tru
 
   let importedCount = 0
   let failedCount = 0
-  const reportRows: any[] = []
+  const reportRows: Array<Record<string, unknown>> = []
 
   for (const row of validRows) {
     const { data } = row
@@ -302,9 +302,9 @@ export async function importBulkUsers(summary: ImportSummary): Promise<{ ok: tru
         Result: "Success",
         Details: "Account created successfully",
       })
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.error(`Import failed for ${data.email}`, e)
-      let errorDetails = e.message || "Unknown error"
+      let errorDetails = e instanceof Error ? e.message : "Unknown error"
 
       // Zombie Account Protection: Cleanup if DB update or audit failed after auth creation
       if (createdUserId) {
@@ -314,9 +314,10 @@ export async function importBulkUsers(summary: ImportSummary): Promise<{ ok: tru
             headers: await headers(),
           })
           errorDetails += " (Zombie account cleaned up)"
-        } catch (cleanupError: any) {
+        } catch (cleanupError: unknown) {
           console.error(`Cleanup failed for ${data.email}`, cleanupError)
-          errorDetails += ` (CRITICAL: Zombie account remains. Cleanup failed: ${cleanupError.message})`
+          const cleanupMsg = cleanupError instanceof Error ? cleanupError.message : "Unknown error"
+          errorDetails += ` (CRITICAL: Zombie account remains. Cleanup failed: ${cleanupMsg})`
         }
       }
 
@@ -376,7 +377,7 @@ export async function downloadBulkImportTemplate(format: "xlsx" | "csv") {
   const mapping = (await getImportMapping("import.users.bulk")) || DEFAULT_USER_IMPORT_MAPPING
 
   const headers = Object.values(mapping)
-  const sampleRow: any = {}
+  const sampleRow: Record<string, string> = {}
   Object.entries(mapping).forEach(([key, col]) => {
     if (key === 'email') sampleRow[col] = "john.doe@example.com"
     else if (key === 'name') sampleRow[col] = "John Doe"

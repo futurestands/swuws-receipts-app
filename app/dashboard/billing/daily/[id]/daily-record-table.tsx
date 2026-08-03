@@ -18,11 +18,12 @@ import {
 import { cn } from "@/lib/utils"
 import { ResponsiveFilterBar } from "@/components/ui/filter-bar"
 import { ResponsiveDataTable } from "@/components/ui/responsive-table"
+import type { DailyCollectionRecord } from "@/lib/db/schema"
 
 interface DailyRecordTableProps {
   batchId: string
   initialData: {
-    records: any[]
+    records: DailyCollectionRecord[]
     total: number
     page: number
     totalPages: number

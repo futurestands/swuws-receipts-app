@@ -11,6 +11,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { X } from "lucide-react"
+import type { BillingPeriod, Branch, WaterScheme } from "@/lib/db/schema"
 
 export function ReportFilters({
   periods,
@@ -18,9 +19,9 @@ export function ReportFilters({
   schemes,
   initialFilters,
 }: {
-  periods: any[]
-  branches: any[]
-  schemes: any[]
+  periods: BillingPeriod[]
+  branches: Branch[]
+  schemes: WaterScheme[]
   initialFilters: {
     periodId?: string
     branchId?: string

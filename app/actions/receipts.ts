@@ -139,7 +139,8 @@ export async function createReceipt(input: CreateReceiptInput) {
             : sql`SELECT id FROM receipt WHERE "customerId" = ${data.customerId} AND "agentId" = ${current.id} AND amount = ${amount} AND "billingRecordId" IS NULL AND "createdAt" > NOW() - INTERVAL '15 seconds' ORDER BY "createdAt" DESC LIMIT 1`
         )
         if (dup.rows[0]) {
-          const err: any = new Error("DUPLICATE_RECEIPT")
+          const err = new Error("DUPLICATE_RECEIPT")
+          // @ts-expect-error - Custom property for error handling
           err.duplicateReceiptId = dup.rows[0].id
           throw err
         }
@@ -351,27 +352,25 @@ export async function createReceipt(input: CreateReceiptInput) {
 
     revalidatePath("/dashboard")
     revalidatePath("/admin")
-    // @ts-ignore - Next.js 16 signature variation
-    revalidateTag("dashboard-stats")
-    // @ts-ignore
-    revalidateTag("collections")
     return { ok: true as const, receipt: row }
-  } catch (e: any) {
-    if (e.duplicateReceiptId) {
+  } catch (e: unknown) {
+    if (typeof e === 'object' && e !== null && 'duplicateReceiptId' in e) {
+      const duplicateReceiptId = (e as { duplicateReceiptId: string }).duplicateReceiptId
       // Not a real failure — a near-identical receipt was already created
       // moments ago (double-click, retry after a dropped response, etc).
       // Return the existing receipt so the UI shows the same success
       // state instead of a confusing error, without creating a second
       // real financial record.
-      const [existing] = await db.select().from(receipt).where(eq(receipt.id, e.duplicateReceiptId)).limit(1)
+      const [existing] = await db.select().from(receipt).where(eq(receipt.id, duplicateReceiptId)).limit(1)
       if (existing) {
         return { ok: true as const, receipt: existing, duplicate: true as const }
       }
     }
     console.error("createReceipt failed", e)
+    const message = e instanceof Error ? e.message : "Could not save the receipt. Nothing was charged or recorded — please try again."
     return {
       ok: false as const,
-      error: e.message || "Could not save the receipt. Nothing was charged or recorded — please try again.",
+      error: message,
     }
   }
 }
@@ -417,7 +416,7 @@ export async function getReceiptById(id: string) {
     .groupBy(receiptPrintHistory.receiptId)
     .as("print_meta")
 
-  const [row] = (await db
+  const [row] = await db
     .select({
       ...getTableColumns(receipt),
       printCount: sql<number>`coalesce(${printMeta.count}, 0)`.as("printCount"),
@@ -427,7 +426,7 @@ export async function getReceiptById(id: string) {
     .from(receipt)
     .leftJoin(printMeta, eq(receipt.id, printMeta.receiptId))
     .where(and(eq(receipt.id, id), scope))
-    .limit(1)) as any[]
+    .limit(1)
 
   if (!row) return null
 
@@ -448,10 +447,11 @@ export async function getReceiptById(id: string) {
       .limit(1)
   ])
 
-  row.lastPrintedBy = last[0]?.name || null
-  row.isVoided = voidEvent.length > 0
-
-  return row
+  return {
+    ...row,
+    lastPrintedBy: last[0]?.name || null,
+    isVoided: voidEvent.length > 0
+  }
 }
 
 export async function getReceiptAttachments(receiptId: string) {
@@ -625,11 +625,11 @@ export async function recordReceiptPrint(receiptId: string) {
 
   // Scope Check
   const scope = applyReceiptScope(current)
-  const [target] = (await db
+  const [target] = await db
     .select({ id: receipt.id, receiptNumber: receipt.receiptNumber })
     .from(receipt)
     .where(and(eq(receipt.id, receiptId), scope))
-    .limit(1)) as any[]
+    .limit(1)
 
   if (!target) {
     throw new Error("Receipt not found or you don't have access to it.")
@@ -823,8 +823,9 @@ export async function requestReceiptVoid(receiptId: string, reason: string) {
     revalidatePath("/dashboard")
     revalidatePath(`/dashboard/receipts/${receiptId}`)
     return { ok: true as const }
-  } catch (e: any) {
+  } catch (e: unknown) {
     console.error("voidReceipt failed", e)
-    return { ok: false as const, error: e.message || "Failed to void receipt" }
+    const message = e instanceof Error ? e.message : "Failed to void receipt"
+    return { ok: false as const, error: message }
   }
 }

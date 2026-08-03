@@ -1,5 +1,6 @@
-const { Client } = require("pg");
-require("dotenv").config();
+import pkg from "pg"
+const { Client } = pkg
+import "dotenv/config"
 
 const client = new Client({
   connectionString: process.env.DATABASE_URL,

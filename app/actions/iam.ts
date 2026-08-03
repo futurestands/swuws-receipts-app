@@ -9,6 +9,7 @@ import { eq, and, sql, desc, asc, not } from "drizzle-orm"
 import { randomUUID } from "crypto"
 import { revalidatePath } from "next/cache"
 import { z } from "zod"
+import type { Scope } from "@/lib/iam"
 
 const roleSchema = z.object({
   name: z.string().trim().min(2, "Name must be at least 2 characters"),
@@ -93,8 +94,10 @@ export async function createRole(data: z.infer<typeof roleSchema>) {
 
     revalidatePath("/admin")
     return { ok: true as const, role: row }
-  } catch (e: any) {
-    if (e.code === "23505") return { ok: false as const, error: "A role with this code already exists" }
+  } catch (e: unknown) {
+    if (typeof e === 'object' && e !== null && 'code' in e && e.code === "23505") {
+      return { ok: false as const, error: "A role with this code already exists" }
+    }
     throw e
   }
 }
@@ -200,7 +203,7 @@ export async function updateRolePermissions(roleId: string, grants: { permission
         id: randomUUID(),
         roleId,
         permissionId: g.permissionId,
-        scope: g.scope as any,
+        scope: g.scope as Scope,
       })))
     }
 

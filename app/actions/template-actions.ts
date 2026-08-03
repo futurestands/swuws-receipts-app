@@ -2,7 +2,7 @@
 
 import { db } from "@/lib/db"
 import { managedTemplate, templateVersion, user as userTable } from "@/lib/db/schema"
-import { eq, and, desc } from "drizzle-orm"
+import { eq, desc } from "drizzle-orm"
 import { randomUUID } from "crypto"
 import { getCurrentUser } from "@/lib/session"
 import { revalidatePath } from "next/cache"
@@ -419,7 +419,7 @@ export async function seedSystemTemplates() {
 
       if (activeVersion && activeVersion.versionNumber === 1 && activeVersion.content !== item.content) {
         await db.update(templateVersion)
-          .set({ content: item.content, updatedAt: new Date() } as any)
+          .set({ content: item.content, updatedAt: new Date() })
           .where(eq(templateVersion.id, activeVersion.id))
       }
     }
