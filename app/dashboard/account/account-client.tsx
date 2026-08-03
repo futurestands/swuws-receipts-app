@@ -213,28 +213,46 @@ export function AccountClient({ user, settings }: { user: any, settings: any }) 
                 )}
              </div>
              <div className="flex flex-col gap-3">
-                <Button
-                   asChild
-                   size="lg"
-                   variant={isOutdated ? "default" : "outline"}
-                   className={cn(
-                      "w-full gap-2 font-bold shadow-md h-14",
-                      isOutdated && "bg-brand-blue hover:bg-brand-blue/90 animate-pulse ring-4 ring-brand-blue/20"
-                   )}
-                >
-                   <a href="/swuws-portal.apk" download>
-                      {isOutdated ? (
-                         <><RefreshCw className="h-6 w-6 animate-spin-slow" /> UPDATE TO v{settings.latestAppVersion}</>
-                      ) : (
-                         <><Download className="h-5 w-5" /> DOWNLOAD FOR ANDROID (APK)</>
+                {isNative() && !isOutdated ? (
+                   <div className="flex flex-col items-center justify-center p-6 border-2 border-dashed rounded-xl bg-emerald-500/5 text-emerald-700">
+                      <ShieldCheck className="h-10 w-10 mb-2 opacity-50" />
+                      <p className="font-bold text-sm">App is Up to Date</p>
+                      <p className="text-[10px] opacity-70 uppercase tracking-widest mt-1">v{CURRENT_APP_VERSION}</p>
+                   </div>
+                ) : (
+                   <Button
+                      asChild
+                      size="lg"
+                      variant={isOutdated ? "default" : "outline"}
+                      className={cn(
+                         "w-full gap-2 font-bold shadow-md h-14",
+                         isOutdated && "bg-brand-blue hover:bg-brand-blue/90 animate-pulse ring-4 ring-brand-blue/20"
                       )}
-                   </a>
-                </Button>
-                <p className="text-[10px] text-center text-muted-foreground italic">
-                   {isOutdated
-                      ? `Latest Version: ${settings.latestAppVersion} | Your Version: ${CURRENT_APP_VERSION}`
-                      : "Note: You may need to enable \"Install from Unknown Sources\" in your phone settings."}
-                </p>
+                   >
+                      <a href="/swuws-portal.apk" download>
+                         {isOutdated ? (
+                            <><RefreshCw className="h-6 w-6 animate-spin-slow" /> UPDATE TO v{settings.latestAppVersion}</>
+                         ) : (
+                            <><Download className="h-5 w-5" /> DOWNLOAD FOR ANDROID (APK)</>
+                         )}
+                      </a>
+                   </Button>
+                )}
+                {!isNative() && (
+                   <p className="text-[10px] text-center text-muted-foreground italic">
+                      Recommended for Field Agents and Plumbers.
+                   </p>
+                )}
+                {isOutdated && (
+                   <p className="text-[10px] text-center text-muted-foreground italic">
+                      Latest Version: {settings.latestAppVersion} | Your Version: {CURRENT_APP_VERSION}
+                   </p>
+                )}
+                {!isOutdated && isNative() && (
+                   <p className="text-[10px] text-center text-muted-foreground italic">
+                      You are using the latest version of the SWUWS Mobile App.
+                   </p>
+                )}
              </div>
           </div>
         </CardContent>
