@@ -574,3 +574,64 @@ export async function sendReadingSms(readingId: string) {
 
   throw new Error("SMS template not configured")
 }
+
+/**
+ * Fetches data for a customer invoice (demand note).
+ * Combines profile info, arrears, and latest monthly bill.
+ */
+export async function getCustomerInvoiceData(customerId: string) {
+  const user = await requireUser()
+  if (!canIssueReceipt(user)) throw new Error("Forbidden")
+
+  // 1. Get Customer Profile
+  const [cust] = await db
+    .select()
+    .from(customer)
+    .where(and(eq(customer.id, customerId), applyCustomerScope(user)))
+    .limit(1)
+
+  if (!cust) return null
+
+  // 2. Get latest manual reading for this period
+  const [reading] = await db
+    .select()
+    .from(meterReading)
+    .innerJoin(billingPeriod, eq(meterReading.billingPeriodId, billingPeriod.id))
+    .where(and(eq(meterReading.customerId, customerId), eq(billingPeriod.status, 'active')))
+    .orderBy(desc(meterReading.createdAt))
+    .limit(1)
+
+  // 3. Get latest imported bill if no reading
+  const [importBill] = await db
+    .select({
+      id: billingRecord.id,
+      totalDue: billingRecord.totalDue,
+      arrears: billingRecord.arrears,
+      currentCharges: billingRecord.currentCharges,
+      dueDate: billingRecord.dueDate,
+      periodName: billingPeriod.periodName,
+    })
+    .from(billingRecord)
+    .innerJoin(billingPeriod, eq(billingRecord.billingPeriodId, billingPeriod.id))
+    .where(and(eq(billingRecord.customerId, customerId), eq(billingPeriod.status, 'active')))
+    .limit(1)
+
+  // 4. Get Scheme info
+  const [scheme] = await db
+     .select({ name: waterScheme.name })
+     .from(waterScheme)
+     .where(eq(waterScheme.id, cust.waterSchemeId || 'none'))
+     .limit(1)
+
+  return {
+    customer: cust,
+    reading: reading ? {
+      ...reading.meter_reading,
+      periodName: reading.billing_period.periodName,
+      endDate: reading.billing_period.endDate
+    } : null,
+    importBill,
+    schemeName: scheme?.name || "Unknown Scheme",
+  }
+}
+
