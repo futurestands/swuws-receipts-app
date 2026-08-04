@@ -278,102 +278,131 @@ export function AgentsPanel({
           <CardTitle>Add agent or admin</CardTitle>
           <CardDescription>Creates a new account with an initial password.</CardDescription>
         </CardHeader>
-        <CardContent>
-          <form onSubmit={handleCreate} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            <div className="space-y-2">
-              <Label htmlFor="agent-name">Name</Label>
-              <Input id="agent-name" required value={name} onChange={(e) => setName(e.target.value)} />
+        <CardContent className="pt-6">
+          <form onSubmit={handleCreate} className="space-y-6">
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              <div className="space-y-2">
+                <Label htmlFor="agent-name">Full Name</Label>
+                <Input
+                  id="agent-name"
+                  required
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="e.g. John Doe"
+                  autoComplete="off"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="agent-email">Email Address</Label>
+                <Input
+                  id="agent-email"
+                  type="email"
+                  required
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="john@example.com"
+                  autoComplete="off"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="agent-phone">Phone (Optional)</Label>
+                <Input
+                  id="agent-phone"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  placeholder="256..."
+                  autoComplete="off"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="agent-password">Initial Password</Label>
+                <Input
+                  id="agent-password"
+                  type="password"
+                  required
+                  minLength={8}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="Min 8 characters"
+                  autoComplete="new-password"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>System Role</Label>
+                <Select value={selectedIamRoleId || "none"} onValueChange={(v) => setSelectedIamRoleId(v === "none" ? null : v)}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Select Role" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">No Role</SelectItem>
+                    {iamRoles.map((r) => (
+                      <SelectItem key={r.id} value={r.id}>
+                        {r.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="agent-email">Email</Label>
-              <Input
-                id="agent-email"
-                type="email"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-              />
+
+            <div className="p-4 rounded-lg bg-muted/30 border border-muted-foreground/10 space-y-4">
+              <p className="text-xs font-bold uppercase text-muted-foreground tracking-widest">Organizational Assignment</p>
+              <div className="grid gap-4 sm:grid-cols-3">
+                <div className="space-y-2">
+                  <Label className="text-[10px] uppercase text-muted-foreground">Cluster</Label>
+                  <Select value={selectedClusterId || "none"} onValueChange={(v) => {
+                    const id = v === "none" ? null : v
+                    setSelectedClusterId(id)
+                    setSelectedBranchId(null)
+                    setSelectedSchemeId(null)
+                  }}>
+                    <SelectTrigger className="bg-background"><SelectValue placeholder="No Cluster" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">No Cluster</SelectItem>
+                      {clusters.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-[10px] uppercase text-muted-foreground">Area (Branch)</Label>
+                  <Select value={selectedBranchId || "none"} onValueChange={(v) => {
+                    const id = v === "none" ? null : v
+                    setSelectedBranchId(id)
+                    setSelectedSchemeId(null)
+                  }}>
+                    <SelectTrigger className="bg-background"><SelectValue placeholder="No Area" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">No Area</SelectItem>
+                      {availableBranches.map(b => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-[10px] uppercase text-muted-foreground">Scheme</Label>
+                  <Select value={selectedSchemeId || "none"} onValueChange={(v) => setSelectedSchemeId(v === "none" ? null : v)}>
+                    <SelectTrigger className="bg-background"><SelectValue placeholder="No Scheme" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">No Scheme</SelectItem>
+                      {availableSchemes.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="agent-phone">Phone (Optional)</Label>
-              <Input
-                id="agent-phone"
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="agent-password">Initial password</Label>
-              <Input
-                id="agent-password"
-                type="password"
-                required
-                minLength={8}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Role</Label>
-              <Select value={selectedIamRoleId || "none"} onValueChange={(v) => setSelectedIamRoleId(v === "none" ? null : v)}>
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Select Role" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">No Role</SelectItem>
-                  {iamRoles.map((r) => (
-                    <SelectItem key={r.id} value={r.id}>
-                      {r.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Cluster</Label>
-              <Select value={selectedClusterId || "none"} onValueChange={(v) => {
-                const id = v === "none" ? null : v
-                setSelectedClusterId(id)
-                setSelectedBranchId(null)
-                setSelectedSchemeId(null)
-              }}>
-                <SelectTrigger><SelectValue placeholder="No Cluster" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">No Cluster</SelectItem>
-                  {clusters.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Area (Branch)</Label>
-              <Select value={selectedBranchId || "none"} onValueChange={(v) => {
-                const id = v === "none" ? null : v
-                setSelectedBranchId(id)
-                setSelectedSchemeId(null)
-              }}>
-                <SelectTrigger><SelectValue placeholder="No Area" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">No Area</SelectItem>
-                  {availableBranches.map(b => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Scheme</Label>
-              <Select value={selectedSchemeId || "none"} onValueChange={(v) => setSelectedSchemeId(v === "none" ? null : v)}>
-                <SelectTrigger><SelectValue placeholder="No Scheme" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">No Scheme</SelectItem>
-                  {availableSchemes.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
+
             {createError && (
-              <p className="text-sm text-destructive sm:col-span-2 lg:col-span-3">{createError}</p>
+              <p className="text-sm text-destructive font-medium">{createError}</p>
             )}
-            <Button type="submit" disabled={pending} className="sm:col-span-2 lg:col-span-3">
-              {pending ? "Creating…" : "Create account"}
-            </Button>
+            <div className="flex justify-end">
+              <Button type="submit" disabled={pending} className="min-w-[200px] h-11 font-bold">
+                {pending ? (
+                  <div className="flex items-center gap-2">
+                    <div className="size-4 rounded-full border-2 border-white/30 border-t-white animate-spin" />
+                    Creating...
+                  </div>
+                ) : "Create Agent Account"}
+              </Button>
+            </div>
           </form>
         </CardContent>
       </Card>
@@ -396,26 +425,32 @@ export function AgentsPanel({
             </Button>
           </form>
         </CardHeader>
-        <CardContent className="overflow-x-auto">
+        <CardContent className="p-0">
           <Table>
-            <TableHeader>
+            <TableHeader className="bg-muted/50">
               <TableRow>
-                <TableHead>User</TableHead>
-                <TableHead>Role</TableHead>
-                <TableHead>Hierarchy</TableHead>
-                <TableHead>Status</TableHead>
+                <TableHead className="pl-6">Agent Details</TableHead>
+                <TableHead>System Role</TableHead>
+                <TableHead>Hierarchy Access</TableHead>
+                <TableHead className="text-center">Active</TableHead>
                 <TableHead>Joined</TableHead>
-                <TableHead>Actions</TableHead>
+                <TableHead className="pr-6 text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {agents.map((agent) => (
-                <TableRow key={agent.id}>
-                  <TableCell>
+                <TableRow key={agent.id} className="group hover:bg-muted/30 transition-colors">
+                  <TableCell className="pl-6 py-4">
                     <div className="flex flex-col">
-                      <span className="font-medium text-sm">{agent.name}</span>
+                      <span className="font-bold text-sm text-foreground">{agent.name}</span>
                       <span className="text-xs text-muted-foreground">{agent.email}</span>
-                      {agent.phone && <span className="text-[10px] text-muted-foreground">{agent.phone}</span>}
+                      {agent.phone && (
+                        <div className="flex items-center gap-1 mt-1">
+                          <span className="text-[10px] bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded border">
+                            {agent.phone}
+                          </span>
+                        </div>
+                      )}
                     </div>
                   </TableCell>
                   <TableCell>
@@ -423,11 +458,11 @@ export function AgentsPanel({
                       value={agent.iamRoleId || "none"}
                       onValueChange={(v) => v !== "none" && changeRole(agent, v)}
                     >
-                      <SelectTrigger className="w-48 h-8">
+                      <SelectTrigger className="w-[180px] h-9 bg-background shadow-none border-transparent group-hover:border-input transition-all">
                         <SelectValue placeholder="Assign Role" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="none">No Role</SelectItem>
+                        <SelectItem value="none">No Role Assigned</SelectItem>
                         {iamRoles.map((r) => (
                           <SelectItem key={r.id} value={r.id}>
                             {r.name}
@@ -437,69 +472,81 @@ export function AgentsPanel({
                     </Select>
                   </TableCell>
                   <TableCell>
-                    <div className="flex flex-col gap-1 min-w-[150px]">
-                      <Select
-                        value={agent.clusterId ?? "none"}
-                        onValueChange={(v) => updateHierarchy(agent, "cluster", v)}
-                      >
-                        <SelectTrigger className="h-7 text-xs">
-                          <SelectValue placeholder="Cluster" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="none">No Cluster</SelectItem>
-                          {clusters.map((c) => (
-                            <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <Select
-                        value={agent.branchId ?? "none"}
-                        onValueChange={(v) => updateHierarchy(agent, "branch", v)}
-                      >
-                        <SelectTrigger className="h-7 text-xs">
-                          <SelectValue placeholder="Area" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="none">No Area</SelectItem>
-                          {(agent.clusterId
-                            ? branches.filter(b => b.clusterId === agent.clusterId)
-                            : branches
-                          ).map((b) => (
-                            <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <Select
-                        value={agent.schemeId ?? "none"}
-                        onValueChange={(v) => updateHierarchy(agent, "scheme", v)}
-                      >
-                        <SelectTrigger className="h-7 text-xs">
-                          <SelectValue placeholder="Scheme" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="none">No Scheme</SelectItem>
-                          {(agent.branchId
-                            ? schemes.filter(s => s.branchId === agent.branchId)
-                            : []
-                          ).map((s) => (
-                            <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                    <div className="flex flex-col gap-1.5 w-[220px]">
+                      <div className="grid grid-cols-[70px_1fr] items-center">
+                        <span className="text-[9px] uppercase font-bold text-muted-foreground">Cluster</span>
+                        <Select
+                          value={agent.clusterId ?? "none"}
+                          onValueChange={(v) => updateHierarchy(agent, "cluster", v)}
+                        >
+                          <SelectTrigger className="h-7 text-[11px] py-0 bg-transparent border-transparent group-hover:bg-background group-hover:border-input shadow-none transition-all">
+                            <SelectValue placeholder="None" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="none">None</SelectItem>
+                            {clusters.map((c) => (
+                              <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="grid grid-cols-[70px_1fr] items-center">
+                        <span className="text-[9px] uppercase font-bold text-muted-foreground">Branch</span>
+                        <Select
+                          value={agent.branchId ?? "none"}
+                          onValueChange={(v) => updateHierarchy(agent, "branch", v)}
+                        >
+                          <SelectTrigger className="h-7 text-[11px] py-0 bg-transparent border-transparent group-hover:bg-background group-hover:border-input shadow-none transition-all">
+                            <SelectValue placeholder="None" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="none">None</SelectItem>
+                            {(agent.clusterId
+                              ? branches.filter(b => b.clusterId === agent.clusterId)
+                              : branches
+                            ).map((b) => (
+                              <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="grid grid-cols-[70px_1fr] items-center">
+                        <span className="text-[9px] uppercase font-bold text-muted-foreground">Scheme</span>
+                        <Select
+                          value={agent.schemeId ?? "none"}
+                          onValueChange={(v) => updateHierarchy(agent, "scheme", v)}
+                        >
+                          <SelectTrigger className="h-7 text-[11px] py-0 bg-transparent border-transparent group-hover:bg-background group-hover:border-input shadow-none transition-all">
+                            <SelectValue placeholder="None" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="none">None</SelectItem>
+                            {(agent.branchId
+                              ? schemes.filter(s => s.branchId === agent.branchId)
+                              : []
+                            ).map((s) => (
+                              <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
                     </div>
                   </TableCell>
                   <TableCell>
-                    <div className="flex items-center gap-2">
-                      <Switch checked={agent.active} onCheckedChange={() => toggleActive(agent)} />
-                      <Badge variant={agent.active ? "default" : "secondary"}>
-                        {agent.active ? "Active" : "Disabled"}
-                      </Badge>
+                    <div className="flex justify-center">
+                      <Switch
+                        checked={agent.active}
+                        onCheckedChange={() => toggleActive(agent)}
+                        className="data-[state=checked]:bg-brand-blue"
+                      />
                     </div>
                   </TableCell>
-                  <TableCell className="text-muted-foreground text-[10px]">
+                  <TableCell className="text-muted-foreground text-xs whitespace-nowrap">
                     {formatDate(agent.createdAt)}
                   </TableCell>
-                  <TableCell>
+                  <TableCell className="pr-6 text-right">
                     <Dialog
                       open={resetTarget?.id === agent.id}
                       onOpenChange={(open) => {
@@ -511,8 +558,13 @@ export function AgentsPanel({
                       }}
                     >
                       <DialogTrigger asChild>
-                        <Button size="sm" variant="outline" onClick={() => setResetTarget(agent)}>
-                          Reset
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-8 text-xs font-bold"
+                          onClick={() => setResetTarget(agent)}
+                        >
+                          Reset Pass
                         </Button>
                       </DialogTrigger>
                       <DialogContent>
@@ -522,7 +574,7 @@ export function AgentsPanel({
                             Sets a new password immediately. Share it with them securely.
                           </DialogDescription>
                         </DialogHeader>
-                        <form onSubmit={handleResetPassword} className="space-y-3">
+                        <form onSubmit={handleResetPassword} className="space-y-4 pt-2">
                           <div className="space-y-2">
                             <Label htmlFor="new-password">New password</Label>
                             <Input
@@ -532,12 +584,13 @@ export function AgentsPanel({
                               required
                               value={newPassword}
                               onChange={(e) => setNewPassword(e.target.value)}
+                              autoComplete="new-password"
                             />
                           </div>
-                          {resetError && <p className="text-sm text-destructive">{resetError}</p>}
+                          {resetError && <p className="text-sm text-destructive font-medium">{resetError}</p>}
                           <DialogFooter>
-                            <Button type="submit" disabled={pending}>
-                              {pending ? "Saving…" : "Set new password"}
+                            <Button type="submit" disabled={pending} className="w-full font-bold">
+                              {pending ? "Saving…" : "Confirm Password Reset"}
                             </Button>
                           </DialogFooter>
                         </form>
