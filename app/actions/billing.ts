@@ -34,6 +34,7 @@ import { randomUUID } from "crypto"
 import { revalidatePath } from "next/cache"
 import { createNotification } from "./notifications"
 import { processExcelImport, getImportMapping, type ImportSummary } from "@/lib/import-engine"
+import { DEFAULT_BILLING_IMPORT_MAPPING } from "@/lib/import-mappings"
 import { logFinancial } from "@/lib/logger"
 
 /**
@@ -425,14 +426,7 @@ export async function validateBillingImport(
   const seenInUpload = new Set<string>()
 
       // Resolve dynamic mapping (with aliases support)
-      const mapping = (await getImportMapping("import.billing.monthly")) || {
-            accountNumber: "AccountNumber",
-            billAmount: "BillAmount",
-            arrears: ["Arrears", "Balance Brought Forward", "BalanceBroughtForward", "Brought Forward"],
-            currentCharges: "CurrentCharges",
-            totalDue: "TotalDue",
-            dueDate: "DueDate",
-          } as Record<string, string | string[] | number>
+      const mapping = (await getImportMapping("import.billing.monthly")) || (DEFAULT_BILLING_IMPORT_MAPPING as Record<string, string | string[] | number>)
 
   const engineSummary = await processExcelImport({
     file,
@@ -651,14 +645,7 @@ export async function downloadBillingTemplate() {
   await requireUser()
 
   // 1. Resolve Headers from Template Hub
-  const mapping = (await getImportMapping("import.billing.monthly")) || {
-    accountNumber: "AccountNumber",
-    billAmount: "BillAmount",
-    arrears: "Arrears",
-    currentCharges: "CurrentCharges",
-    totalDue: "TotalDue",
-    dueDate: "DueDate",
-  } as Record<string, string | string[] | number>
+  const mapping = (await getImportMapping("import.billing.monthly")) || (DEFAULT_BILLING_IMPORT_MAPPING as Record<string, string | string[] | number>)
 
   const headers = Object.values(mapping).map(v => Array.isArray(v) ? v[0] : v) as string[]
   const data = [

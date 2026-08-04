@@ -16,6 +16,7 @@ import { z } from "zod"
 import { randomUUID } from "crypto"
 import { revalidatePath } from "next/cache"
 import { processExcelImport, getImportMapping, type ImportSummary } from "@/lib/import-engine"
+import { DEFAULT_CUSTOMER_IMPORT_MAPPING } from "@/lib/import-mappings"
 
 const customerImportSchema = z.object({
   name: z.string().trim().min(1, "Name is required"),
@@ -52,18 +53,7 @@ export async function validateCustomerImport(formData: FormData): Promise<{ ok: 
   const existingAccounts = new Set(existingCustomers.map((c) => c.account?.toLowerCase()))
   const seenInUpload = new Set<string>()
 
-  const mapping = (await getImportMapping("import.customers.bulk")) || {
-    name: "Name",
-    customerAccount: "CustomerRef",
-    phone: "Phone",
-    address: "VillageName",
-    schemeName: "SchemeName",
-    meterRef: "MeterRef",
-    serialNo: "MeterSerial",
-    openingArrears: ["OpeningArrears", "Arrears", "Balance Brought Forward", "BalanceBroughtForward", "Brought Forward"],
-    category: "Category",
-    notes: "Notes",
-  } as Record<string, string | string[] | number>
+  const mapping = (await getImportMapping("import.customers.bulk")) || (DEFAULT_CUSTOMER_IMPORT_MAPPING as Record<string, string | string[] | number>)
 
   const summary = await processExcelImport({
     file,
@@ -201,18 +191,7 @@ export async function downloadCustomerTemplate() {
   await requireUser()
 
   // 1. Resolve Headers from Template Hub (Unified resilient resolution)
-  const mapping = (await getImportMapping("import.customers.bulk")) || {
-    name: "Name",
-    customerAccount: "CustomerRef",
-    phone: "Phone",
-    address: "VillageName",
-    schemeName: "SchemeName",
-    meterRef: "MeterRef",
-    serialNo: "MeterSerial",
-    openingArrears: "OpeningArrears",
-    category: "Category",
-    notes: "Notes",
-  } as Record<string, string | string[] | number>
+  const mapping = (await getImportMapping("import.customers.bulk")) || (DEFAULT_CUSTOMER_IMPORT_MAPPING as Record<string, string | string[] | number>)
 
   const headers = Object.values(mapping).map(v => Array.isArray(v) ? v[0] : v) as string[]
   const sampleRow: Record<string, string | number> = {}

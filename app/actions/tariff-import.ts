@@ -12,6 +12,7 @@ import { z } from "zod"
 import { randomUUID } from "crypto"
 import { revalidatePath } from "next/cache"
 import { processExcelImport, getImportMapping, type ImportSummary } from "@/lib/import-engine"
+import { DEFAULT_TARIFF_IMPORT_MAPPING } from "@/lib/import-mappings"
 
 const tariffImportSchema = z.object({
   targetType: z.enum(["branch", "scheme"]),
@@ -41,15 +42,7 @@ export async function validateTariffImport(formData: FormData): Promise<{ ok: tr
   const branchMap = new Map(branches.map(b => [b.name.toLowerCase(), b.id]))
   const schemeMap = new Map(schemes.map(s => [s.name.toLowerCase(), s.id]))
 
-  const mapping = (await getImportMapping('import.tariffs.bulk')) || {
-    targetType: "Type", // "branch" or "scheme"
-    targetName: "AreaName",
-    customerCategory: "Category",
-    unitPrice: "UnitPrice",
-    serviceFee: "ServiceFee",
-    vatPercentage: "VAT",
-    active: "Status"
-  } as Record<string, string>
+  const mapping = (await getImportMapping('import.tariffs.bulk')) || (DEFAULT_TARIFF_IMPORT_MAPPING as Record<string, string>)
 
   const summary = await processExcelImport({
     file,
@@ -181,15 +174,7 @@ export async function downloadTariffTemplate() {
   await requireUser()
 
   // 1. Resolve Mapping from Template Hub (Dynamic headers)
-  const mapping = (await getImportMapping('import.tariffs.bulk')) || {
-    targetType: "Type",
-    targetName: "AreaName",
-    customerCategory: "Category",
-    unitPrice: "UnitPrice",
-    serviceFee: "ServiceFee",
-    vatPercentage: "VAT",
-    active: "Status"
-  } as Record<string, string>
+  const mapping = (await getImportMapping('import.tariffs.bulk')) || (DEFAULT_TARIFF_IMPORT_MAPPING as Record<string, string>)
 
   const headers = [
     mapping.targetType,

@@ -13,27 +13,7 @@ import * as XLSX from "xlsx"
 import { z } from "zod"
 import { randomUUID } from "crypto"
 import { getImportMapping } from "@/lib/import-engine"
-
-// Single source of truth for the fallback column mapping when no template
-// is configured in Template Management yet. Previously this same set of
-// defaults was duplicated independently in downloadBulkImportTemplate and
-// the (hardcoded, template-blind) parsing loop in validateBulkUsers, which
-// is exactly how they drifted apart: the download function correctly
-// pulled live headers from the active template, but the upload parser
-// below always read fixed English column names regardless of what the
-// template actually said — so renaming/reordering the template's columns
-// silently broke every import made with the file it generated.
-const DEFAULT_USER_IMPORT_MAPPING: Record<string, string> = {
-  name: "Name",
-  email: "Email",
-  password: "Password",
-  role: "Role",
-  cluster: "Cluster",
-  area: "Area",
-  scheme: "Scheme",
-  phone: "Phone",
-  status: "Status",
-}
+import { DEFAULT_USER_IMPORT_MAPPING } from "@/lib/import-mappings"
 
 const userImportSchema = z.object({
   name: z.string().trim().min(1, "Name is required"),

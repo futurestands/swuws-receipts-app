@@ -10,7 +10,7 @@ import * as XLSX from "xlsx"
 import { randomUUID } from "crypto"
 import { revalidatePath } from "next/cache"
 import { getImportMapping } from "@/lib/import-engine"
-import { DEFAULT_HIERARCHY_IMPORT_MAPPING } from "./hierarchy-import"
+import { DEFAULT_HIERARCHY_IMPORT_MAPPING } from "@/lib/import-mappings"
 
 /**
  * Unified Hierarchy Import Logic

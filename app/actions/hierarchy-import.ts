@@ -15,27 +15,7 @@ import { z } from "zod"
 import { randomUUID } from "crypto"
 import { revalidatePath } from "next/cache"
 import { processExcelImport, getImportMapping, type ImportSummary, type ValidationResult } from "@/lib/import-engine"
-
-// Single source of truth for the fallback column mapping when no
-// import.hierarchy.master template is configured in Template Management.
-// Previously downloadHierarchyTemplate() generated a file with its own
-// completely separate, hardcoded set of headers (Type/Name/Code/Parent/
-// ServiceArea/Status), while validateHierarchyImport's actual parser
-// resolved headers dynamically via getImportMapping and a *different*
-// fallback (SchemeName/SchemeCode/AreaOffice/...). Those two never
-// matched unless someone had manually configured a template whose
-// content happened to equal the download function's hardcoded names —
-// which is exactly why this could work in one environment (if that
-// environment's database has such a template saved) and fail completely
-// in another (if it doesn't) using the literal same file.
-export const DEFAULT_HIERARCHY_IMPORT_MAPPING = {
-  clusterName: "Region",
-  branchName: "AreaOffice",
-  schemeName: "SchemeName",
-  // Support both versions of the header to prevent the "undefined" mapping bug
-  schemeCode: ["SchemeCode", "SchemeCode (Optional)", "Code"],
-  serviceArea: "ServiceArea",
-}
+import { DEFAULT_HIERARCHY_IMPORT_MAPPING } from "@/lib/import-mappings"
 
 const hierarchyImportSchema = z.object({
   // Defaults to "Scheme" when the file has no Type column at all - a
