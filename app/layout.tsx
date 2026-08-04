@@ -2,11 +2,21 @@ import { Analytics } from '@vercel/analytics/next'
 import type { Metadata, Viewport } from 'next'
 import { Toaster } from '@/components/ui/sonner'
 import './globals.css'
+import { getSettings } from './actions/settings'
 
-export const metadata: Metadata = {
-  title: 'SWUWS Collection Portal',
-  description: 'Revenue Assurance and Payment Tracking System — Southwestern Umbrella of Water and Sanitation',
-  manifest: '/manifest.json',
+export async function generateMetadata(): Promise<Metadata> {
+  const settings = await getSettings()
+  const iconUrl = settings.logoUrl || '/icon.svg'
+
+  return {
+    title: 'SWUWS Collection Portal',
+    description: 'Revenue Assurance and Payment Tracking System — Southwestern Umbrella of Water and Sanitation',
+    manifest: '/manifest.json',
+    icons: {
+      icon: iconUrl,
+      apple: iconUrl,
+    }
+  }
 }
 
 export const viewport: Viewport = {

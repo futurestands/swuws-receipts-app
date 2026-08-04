@@ -19,6 +19,7 @@ export function AppShell({
   userRoleLabel,
   developerCredit,
   orgName = "Southwestern Umbrella of Water and Sanitation",
+  logoUrl,
   receiptPrefix = "SWUWS",
   brand = "SWUWS Collection Portal",
   brandHref = "/dashboard",
@@ -29,6 +30,7 @@ export function AppShell({
   userRoleLabel: string
   developerCredit?: string
   orgName?: string
+  logoUrl?: string | null
   receiptPrefix?: string
   brand?: string
   brandHref?: string
@@ -61,17 +63,32 @@ export function AppShell({
         <div className="flex h-14 shrink-0 items-center justify-between border-b border-sidebar-border px-3">
           <div className="flex flex-col min-w-0">
             {!collapsed ? (
-              <Link href={brandHref} className="flex flex-col group leading-tight">
-                <span className="text-[12px] font-black text-sidebar-foreground tracking-tight uppercase">
-                  {receiptPrefix} Collection
-                </span>
-                <span className="text-[12px] font-black text-sidebar-foreground tracking-tight uppercase">
-                  Portal
-                </span>
+              <Link href={brandHref} className="flex items-center gap-2 group leading-tight overflow-hidden">
+                {logoUrl ? (
+                  <img src={logoUrl} alt="Logo" className="size-8 object-contain shrink-0" />
+                ) : (
+                  <div className="size-8 rounded bg-primary/10 flex items-center justify-center shrink-0">
+                    <span className="text-[10px] font-black text-primary">{receiptPrefix[0]}</span>
+                  </div>
+                )}
+                <div className="flex flex-col min-w-0">
+                  <span className="text-[11px] font-black text-sidebar-foreground tracking-tight uppercase truncate">
+                    {receiptPrefix} Portal
+                  </span>
+                  <span className="text-[9px] font-bold text-sidebar-foreground/50 uppercase tracking-tighter">
+                    Management
+                  </span>
+                </div>
               </Link>
             ) : (
-              <Link href={brandHref} className="sr-only">
-                {brand}
+              <Link href={brandHref} className="flex justify-center">
+                {logoUrl ? (
+                  <img src={logoUrl} alt="Logo" className="size-6 object-contain" />
+                ) : (
+                  <div className="size-6 rounded bg-primary/10 flex items-center justify-center">
+                    <span className="text-[8px] font-black text-primary">{receiptPrefix[0]}</span>
+                  </div>
+                )}
               </Link>
             )}
           </div>

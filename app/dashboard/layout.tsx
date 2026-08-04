@@ -22,6 +22,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
       userRoleLabel={ROLE_LABELS[current.role as Role] || current.role}
       developerCredit={settings.developerCredit}
       orgName={settings.orgName}
+      logoUrl={settings.logoUrl}
       receiptPrefix={settings.receiptPrefix}
     >
       {children}

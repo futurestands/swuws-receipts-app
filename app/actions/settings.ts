@@ -180,7 +180,7 @@ export async function uploadLogo(formData: FormData) {
   } else {
     // Goal Alignment: Physically block local filesystem writes in production.
     // This prevents data loss on serverless/ephemeral platforms.
-    return { ok: false as const, error: "Cloud storage (Vercel Blob) is not configured. Please contact the system administrator." }
+    return { ok: false as const, error: "Icon persistence is disabled because BLOB_READ_WRITE_TOKEN is missing. Please add this token to your Vercel Environment Variables to save icons permanently." }
   }
 
   await db

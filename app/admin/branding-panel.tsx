@@ -115,23 +115,37 @@ export function BrandingPanel({ settings }: { settings: OrgSettings }) {
               </p>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="logo">Logo</Label>
-              <div className="flex items-center gap-3">
-                {logoUrl && (
+              <Label htmlFor="logo">System Logo & Icon</Label>
+              <div className="flex items-center gap-3 p-3 border rounded-lg bg-muted/20">
+                {logoUrl ? (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={logoUrl} alt="" className="h-10 w-10 object-contain border rounded" />
+                  <img src={logoUrl} alt="Logo" className="size-12 object-contain border rounded bg-white p-1" />
+                ) : (
+                  <div className="size-12 border-2 border-dashed rounded flex items-center justify-center text-muted-foreground text-[10px]">
+                    No Logo
+                  </div>
                 )}
-                <input
-                  id="logo"
-                  type="file"
-                  accept="image/*"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0]
-                    if (file) handleLogo(file)
-                  }}
-                  className="text-sm"
-                />
+                <div className="flex-1 space-y-1">
+                  <input
+                    id="logo"
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0]
+                      if (file) handleLogo(file)
+                    }}
+                    className="text-xs file:mr-4 file:py-1 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20 cursor-pointer"
+                  />
+                  <p className="text-[9px] text-muted-foreground leading-none">
+                    Updates sidebar, browser tab icon, and receipts.
+                  </p>
+                </div>
               </div>
+              {!logoUrl?.startsWith('https') && process.env.NODE_ENV === 'production' && (
+                <p className="text-[10px] text-destructive font-medium italic">
+                  ⚠️ Your logo is using temporary storage and will disappear soon. Please configure Vercel Blob Storage.
+                </p>
+              )}
             </div>
             <Button type="submit" disabled={pending}>
               {pending ? "Saving…" : "Save changes"}

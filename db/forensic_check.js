@@ -65,8 +65,15 @@ async function runCheck() {
     const schemeHealth = await client.query(`SELECT count(*) FROM water_scheme WHERE "branchId" IS NULL`);
     console.log(`Schemes without Parent Branch: ${schemeHealth.rows[0].count}`);
 
-    // 5. Recent System State
-    console.log("\n[5] Latest System Errors (from Audit):");
+    // 5. Branding & Assets
+    console.log("\n[5] Branding & Assets:");
+    const branding = await client.query(`SELECT "logoUrl", "orgName", "latestAppVersion" FROM org_settings WHERE id = 1`);
+    console.log(`Current Logo URL: ${branding.rows[0]?.logoUrl || 'NOT SET'}`);
+    console.log(`Organization Name: ${branding.rows[0]?.orgName}`);
+    console.log(`Latest App Version: ${branding.rows[0]?.latestAppVersion}`);
+
+    // 6. Recent System State
+    console.log("\n[6] Latest System Errors (from Audit):");
     const errors = await client.query(`SELECT details->>'error' as err, count(*) FROM audit_log WHERE details->>'error' IS NOT NULL GROUP BY err LIMIT 5`);
     if (errors.rows.length === 0) console.log("No logged errors in audit trails.");
     errors.rows.forEach(e => console.log(`- ${e.err} (${e.count} occurrences)`));
