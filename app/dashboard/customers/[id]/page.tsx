@@ -17,7 +17,7 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
     listActiveWaterSchemesForPicker(),
   ])
 
-  const { customer, bills, receipts, ledger, summary } = statement
+  const { customer, bills, receipts, ledger, summary, lastReading } = statement
 
   return (
     <div className="space-y-6">
@@ -26,6 +26,28 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
           ← Back to customers
         </Link>
         <div className="flex gap-4">
+          {lastReading && (
+            <div className="flex gap-2">
+              <Card className="px-4 py-2 bg-slate-50 border-slate-200">
+                <p className="text-[10px] uppercase font-bold text-slate-700 leading-none mb-1">Previous Rdg</p>
+                <p className="text-lg font-mono font-bold text-slate-900 leading-none">
+                  {lastReading.previousReading}
+                </p>
+              </Card>
+              <Card className="px-4 py-2 bg-blue-50 border-blue-200">
+                <p className="text-[10px] uppercase font-bold text-blue-700 leading-none mb-1">Current Rdg</p>
+                <p className="text-lg font-mono font-bold text-blue-900 leading-none">
+                  {lastReading.currentReading}
+                </p>
+              </Card>
+              <Card className="px-4 py-2 bg-emerald-50 border-emerald-200">
+                <p className="text-[10px] uppercase font-bold text-emerald-700 leading-none mb-1">Consumption</p>
+                <p className="text-lg font-mono font-bold text-emerald-900 leading-none">
+                  {lastReading.consumption} m³
+                </p>
+              </Card>
+            </div>
+          )}
           <Card className="px-4 py-2 bg-primary/5 border-primary/20">
             <p className="text-[10px] uppercase font-bold text-muted-foreground leading-none mb-1">Account Balance</p>
             <p className="text-lg font-mono font-bold text-primary leading-none">
@@ -162,6 +184,7 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
                       <TableHeader>
                         <TableRow>
                           <TableHead>Period</TableHead>
+                          <TableHead>Consumption</TableHead>
                           <TableHead>Amount</TableHead>
                           <TableHead>Due Date</TableHead>
                           <TableHead>Status</TableHead>
@@ -171,6 +194,9 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
                         {bills.map((b) => (
                           <TableRow key={b.id}>
                             <TableCell className="font-medium">{b.periodName}</TableCell>
+                            <TableCell className="text-sm">
+                               {b.consumption !== null ? `${b.consumption} m³` : "Imported"}
+                            </TableCell>
                             <TableCell>{formatUGX(b.totalDue)}</TableCell>
                             <TableCell className="text-sm">{formatDate(b.dueDate)}</TableCell>
                             <TableCell>

@@ -45,9 +45,11 @@ export async function getCustomerStatement(customerId: string) {
       totalDue: billingRecord.totalDue,
       dueDate: billingRecord.dueDate,
       createdAt: billingRecord.createdAt,
+      consumption: meterReading.consumption,
     })
     .from(billingRecord)
     .innerJoin(billingPeriod, eq(billingRecord.billingPeriodId, billingPeriod.id))
+    .leftJoin(meterReading, and(eq(billingRecord.customerId, meterReading.customerId), eq(billingRecord.billingPeriodId, meterReading.billingPeriodId)))
     .where(eq(billingRecord.customerId, customerId))
     .orderBy(desc(billingPeriod.year), desc(billingPeriod.month))
 
@@ -131,7 +133,15 @@ export async function getCustomerStatement(customerId: string) {
     }
   }
 
-  // 5. Calculate Running Totals
+  // 5. Fetch latest meter reading for consumption display
+  const [lastReading] = await db
+    .select()
+    .from(meterReading)
+    .where(eq(meterReading.customerId, customerId))
+    .orderBy(desc(meterReading.createdAt))
+    .limit(1)
+
+  // 6. Calculate Running Totals
   const totalBilled = bills.reduce((sum, b) => sum + b.totalDue, 0)
   const totalPaid = receipts.filter(r => !r.isVoided).reduce((sum, r) => sum + r.amount, 0)
   const currentBalance = totalBilled - totalPaid
@@ -141,6 +151,7 @@ export async function getCustomerStatement(customerId: string) {
     bills,
     receipts,
     ledger: ledger.reverse(), // Newest first
+    lastReading,
     summary: {
       totalBilled,
       totalPaid,
