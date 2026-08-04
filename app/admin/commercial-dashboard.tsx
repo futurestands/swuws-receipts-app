@@ -42,6 +42,8 @@ export function CommercialDashboard({
         if (active) {
           setStats(res)
         }
+      } catch (err) {
+        console.error("Failed to load dashboard stats:", err)
       } finally {
         if (active) {
           setLoading(false)

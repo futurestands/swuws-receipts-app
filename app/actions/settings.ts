@@ -31,10 +31,8 @@ const DEFAULT_EDITABLE: EditableFields = {
 }
 
 export async function getSettings() {
-  // Readable by any authenticated user (agents need branding + field config).
-  const current = await getCurrentUser()
-  if (!current) throw new Error("Unauthorized")
-
+  // Removed strict auth check here because settings (branding) are needed
+  // on the public login page. Actions that modify settings still check auth.
   try {
     const [row] = await db.select().from(orgSettings).where(eq(orgSettings.id, 1)).limit(1)
     if (row) return row
