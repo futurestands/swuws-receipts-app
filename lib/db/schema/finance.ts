@@ -5,6 +5,7 @@ import {
   boolean,
   bigint,
   integer,
+  numeric,
   index,
   uniqueIndex,
 } from "drizzle-orm/pg-core"
@@ -40,8 +41,8 @@ export const receipt = pgTable(
     customerAccount: text("customerAccount"),
     customerPhone: text("customerPhone"),
     customerAddress: text("customerAddress"),
-    amount: bigint("amount", { mode: "number" }).notNull(),
-    outstandingBalance: bigint("outstandingBalance", { mode: "number" }),
+    amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
+    outstandingBalance: numeric("outstandingBalance", { precision: 12, scale: 2 }),
     currency: text("currency").notNull().default("UGX"),
     paymentMethod: text("paymentMethod").notNull().default("cash"),
     notes: text("notes"),
@@ -60,14 +61,14 @@ export const receipt = pgTable(
     billingPeriodId: text("billingPeriodId").references(() => billingPeriod.id, {
       onDelete: "set null",
     }),
-    previousAccountBalanceSnapshot: bigint("previousAccountBalanceSnapshot", { mode: "number" })
+    previousAccountBalanceSnapshot: numeric("previousAccountBalanceSnapshot", { precision: 12, scale: 2 })
       .notNull()
-      .default(0),
-    newAccountBalanceSnapshot: bigint("newAccountBalanceSnapshot", { mode: "number" })
+      .default("0"),
+    newAccountBalanceSnapshot: numeric("newAccountBalanceSnapshot", { precision: 12, scale: 2 })
       .notNull()
-      .default(0),
+      .default("0"),
     billingPeriodSnapshot: text("billingPeriodSnapshot"),
-    amountDueSnapshot: bigint("amountDueSnapshot", { mode: "number" }),
+    amountDueSnapshot: numeric("amountDueSnapshot", { precision: 12, scale: 2 }),
     schemeNameSnapshot: text("schemeNameSnapshot"),
     reconciliationStatus: text("reconciliationStatus").notNull().default("pending"), // pending, matched, exception, manual
     orgNameSnapshot: text("orgNameSnapshot").notNull(),

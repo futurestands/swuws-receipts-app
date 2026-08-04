@@ -164,10 +164,13 @@ export async function submitMeterReading(data: {
   const tariff = await getTariffForCustomer(data.customerId)
   if (!tariff) throw new Error("No active tariff configured for this area. Contact Admin.")
 
-  const calc = calculateBill(cust.lastReading, data.currentReading, tariff)
+  // Handle numeric strings from DB
+  const unitPrice = Number(tariff.unitPrice)
+  const serviceFee = Number(tariff.serviceFee)
+  const calc = calculateBill(cust.lastReading, data.currentReading, { ...tariff, unitPrice, serviceFee })
 
   // Finding 8 Fix: Calculate Grand Total (New Bill + Existing Arrears)
-  const totalArrears = cust.accountBalance || 0
+  const totalArrears = Number(cust.accountBalance) || 0
   const grandTotalDue = calc.totalNewBill + totalArrears
 
   const readingId = randomUUID()
@@ -181,9 +184,9 @@ export async function submitMeterReading(data: {
       previousReading: cust.lastReading,
       currentReading: data.currentReading,
       consumption: calc.consumption,
-      billedAmount: calc.totalNewBill,
-      previousBalanceSnapshot: totalArrears,
-      totalDueSnapshot: grandTotalDue,
+      billedAmount: String(calc.totalNewBill),
+      previousBalanceSnapshot: String(totalArrears),
+      totalDueSnapshot: String(grandTotalDue),
       customerNameSnapshot: cust.name,
       customerAccountSnapshot: cust.customerAccount,
       phoneSnapshot: finalPhone,
@@ -197,7 +200,7 @@ export async function submitMeterReading(data: {
       .set({
         lastReading: data.currentReading,
         lastReadingDate: new Date(),
-        accountBalance: grandTotalDue, // Update live balance with new bill
+        accountBalance: String(grandTotalDue), // Update live balance with new bill
         phone: finalPhone, // Update phone if changed
         updatedAt: new Date(),
       })
@@ -388,7 +391,7 @@ export async function getRecentMeterReadings(limit = 20) {
   const user = await requireUser()
   if (!canIssueReceipt(user)) throw new Error("Forbidden")
 
-  return db
+  const rows = await db
     .select({
       id: meterReading.id,
       customerName: meterReading.customerNameSnapshot,
@@ -410,6 +413,13 @@ export async function getRecentMeterReadings(limit = 20) {
     .where(eq(meterReading.recordedById, user.id))
     .orderBy(desc(meterReading.createdAt))
     .limit(limit)
+
+  return rows.map(r => ({
+    ...r,
+    billedAmount: Number(r.billedAmount),
+    previousBalance: Number(r.previousBalance),
+    totalDue: Number(r.totalDue)
+  }))
 }
 
 export async function cancelMeterReading(readingId: string) {
@@ -446,17 +456,20 @@ export async function cancelMeterReading(readingId: string) {
 
   await db.transaction(async (tx) => {
     // 1. Lock customer for update
-    const lockResult = await tx.execute<{ accountBalance: number }>(
+    const lockResult = await tx.execute<{ accountBalance: string }>(
       sql`SELECT "accountBalance" FROM "customer" WHERE id = ${reading.customerId} FOR UPDATE`
     )
     const cust = lockResult.rows[0]
     if (!cust) throw new Error("Customer profile not found")
 
     // 2. Reverse Financials
-    const newBalance = Math.max(0, Number(cust.accountBalance) - reading.billedAmount)
+    const currentBalance = Number(cust.accountBalance)
+    const readingAmount = Number(reading.billedAmount)
+    const newBalance = Math.max(0, currentBalance - readingAmount)
+
     await tx.update(customer)
       .set({
-        accountBalance: newBalance,
+        accountBalance: String(newBalance),
         lastReading: reading.previousReading, // Restore previous reading state
         updatedAt: new Date(),
       })
@@ -550,7 +563,7 @@ export async function sendReadingSms(readingId: string) {
         version.content,
         {
           customer_name: reading.customerName,
-          amount: reading.billedAmount.toLocaleString(),
+          amount: Number(reading.billedAmount).toLocaleString(),
           period: period?.periodName || "Current",
           due_date: dueDate.toLocaleDateString("en-GB", {
             day: "numeric",
@@ -624,13 +637,24 @@ export async function getCustomerInvoiceData(customerId: string) {
      .limit(1)
 
   return {
-    customer: cust,
+    customer: {
+       ...cust,
+       accountBalance: Number(cust.accountBalance)
+    },
     reading: reading ? {
       ...reading.meter_reading,
+      billedAmount: Number(reading.meter_reading.billedAmount),
+      previousBalanceSnapshot: Number(reading.meter_reading.previousBalanceSnapshot),
+      totalDueSnapshot: Number(reading.meter_reading.totalDueSnapshot),
       periodName: reading.billing_period.periodName,
       endDate: reading.billing_period.endDate
     } : null,
-    importBill,
+    importBill: importBill ? {
+      ...importBill,
+      totalDue: Number(importBill.totalDue),
+      arrears: Number(importBill.arrears),
+      currentCharges: Number(importBill.currentCharges)
+    } : null,
     schemeName: scheme?.name || "Unknown Scheme",
   }
 }

@@ -104,10 +104,10 @@ export const billingRecord = pgTable(
       .notNull()
       .references(() => customer.id, { onDelete: "restrict" }),
     accountNumber: text("accountNumber").notNull(),
-    billAmount: bigint("billAmount", { mode: "number" }).notNull().default(0),
-    arrears: bigint("arrears", { mode: "number" }).notNull().default(0),
-    currentCharges: bigint("currentCharges", { mode: "number" }).notNull().default(0),
-    totalDue: bigint("totalDue", { mode: "number" }).notNull().default(0),
+    billAmount: numeric("billAmount", { precision: 12, scale: 2 }).notNull().default("0"),
+    arrears: numeric("arrears", { precision: 12, scale: 2 }).notNull().default("0"),
+    currentCharges: numeric("currentCharges", { precision: 12, scale: 2 }).notNull().default("0"),
+    totalDue: numeric("totalDue", { precision: 12, scale: 2 }).notNull().default("0"),
     dueDate: timestamp("dueDate").notNull(),
     status: text("status").notNull().default("pending"), // pending, partially_paid, paid, cancelled, written_off
     createdAt: timestamp("createdAt").notNull().defaultNow(),
@@ -193,9 +193,9 @@ export const meterReading = pgTable(
     previousReading: bigint("previousReading", { mode: "number" }).notNull().default(0),
     currentReading: bigint("currentReading", { mode: "number" }).notNull().default(0),
     consumption: bigint("consumption", { mode: "number" }).notNull().default(0), // current - previous
-    billedAmount: bigint("billedAmount", { mode: "number" }).notNull().default(0), // Calculated total
-    previousBalanceSnapshot: bigint("previousBalanceSnapshot", { mode: "number" }).notNull().default(0),
-    totalDueSnapshot: bigint("totalDueSnapshot", { mode: "number" }).notNull().default(0),
+    billedAmount: numeric("billedAmount", { precision: 12, scale: 2 }).notNull().default("0"), // Calculated total
+    previousBalanceSnapshot: numeric("previousBalanceSnapshot", { precision: 12, scale: 2 }).notNull().default("0"),
+    totalDueSnapshot: numeric("totalDueSnapshot", { precision: 12, scale: 2 }).notNull().default("0"),
     customerNameSnapshot: text("customerNameSnapshot"),
     customerAccountSnapshot: text("customerAccountSnapshot"),
     phoneSnapshot: text("phoneSnapshot"),

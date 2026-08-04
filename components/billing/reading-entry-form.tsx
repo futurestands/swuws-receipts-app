@@ -113,7 +113,13 @@ export function ReadingEntryForm({
     if (selectedCustomer && tariff && currentReading) {
       const current = Number(currentReading)
       if (!isNaN(current)) {
-        const calc = calculateBill(selectedCustomer.lastReading, current, tariff)
+        // Convert numeric strings from DB to numbers for calculation
+        const numericTariff = {
+          ...tariff,
+          unitPrice: Number(tariff.unitPrice),
+          serviceFee: Number(tariff.serviceFee)
+        }
+        const calc = calculateBill(selectedCustomer.lastReading, current, numericTariff)
         const timer = setTimeout(() => {
           setCalculation(calc)
         }, 0)
