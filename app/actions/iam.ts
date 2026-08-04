@@ -1,7 +1,7 @@
 "use server"
 
 import { db } from "@/lib/db"
-import { iamRole, iamPermission, iamRolePermission, user as userTable } from "@/lib/db/schema"
+import { iamRole, iamPermission, iamRolePermission, user as userTable, type IamRole } from "@/lib/db/schema"
 import { requireUser } from "@/lib/session"
 import { writeAudit } from "@/lib/audit"
 import { hasPermission } from "@/lib/iam"
@@ -84,7 +84,6 @@ export async function createRole(data: z.infer<typeof roleSchema>) {
       isSystem: false,
     }).returning()) as IamRole[]
     const row = rows[0]
-    if (!row) throw new Error("Failed to create role")
     if (!row) throw new Error("Failed to create role")
 
     await writeAudit({

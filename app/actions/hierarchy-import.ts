@@ -37,7 +37,16 @@ const DEFAULT_HIERARCHY_IMPORT_MAPPING = {
 }
 
 const hierarchyImportSchema = z.object({
-  type: z.enum(["Cluster", "Branch", "Scheme"]),
+  // Defaults to "Scheme" when the file has no Type column at all - a
+  // common, valid case (e.g. an all-Schemes import). Previously this had
+  // no default, so Zod rejected every row with a bare "Required" error
+  // before onValidateRow's own "if (!data.type) data.type = 'Scheme'"
+  // fallback ever got a chance to run - that logic only executes AFTER
+  // schema validation, so it could never rescue a row Zod had already
+  // failed. Name/Code/Parent could all be correctly populated and
+  // displayed and the row would still show as an error, which is exactly
+  // what was happening: the file was valid, the schema was wrong.
+  type: z.enum(["Cluster", "Branch", "Scheme"]).default("Scheme"),
   name: z.string().trim().min(1, "Name is required"),
   code: z.coerce.string().trim().min(1, "Code is required"),
   parentName: z.string().trim().optional(), // Cluster -> none, Branch -> Cluster Name, Scheme -> Branch Name
