@@ -94,73 +94,141 @@ export async function importCustomers(summary: CustomerImportSummary): Promise<{
   let failedCount = 0
   const reportRows: Array<Record<string, unknown>> = []
 
-  // Finding 4 Fix: Process in batches but handle individual row failures
-  for (const row of validRows) {
-    const { data } = row
-    const schemeId = schemeMap.get(data.schemeName.toLowerCase())
+  const startTime = Date.now()
+
+  // PERFORMANCE UPGRADE: Use Bulk Chunking (Batch size 400 for balance of speed and reliability)
+  const CHUNK_SIZE = 400
+  for (let i = 0; i < validRows.length; i += CHUNK_SIZE) {
+    const chunk = validRows.slice(i, i + CHUNK_SIZE)
 
     try {
-      // Step 1: Check if customer exists
-      const [existing] = await db
-        .select()
-        .from(customer)
-        .where(eq(customer.customerAccount, data.customerAccount))
-        .limit(1)
-
-      if (existing) {
-        // Step 2: UPDATE (Upsert)
-        await db.update(customer).set({
-          name: data.name,
-          phone: data.phone || existing.phone,
-          address: data.address || existing.address,
-          waterSchemeId: schemeId || existing.waterSchemeId,
-          meterRef: data.meterRef || existing.meterRef,
-          serialNo: data.serialNo || existing.serialNo,
-          category: data.category || existing.category,
-          openingArrears: data.openingArrears, // Arrears update is explicit
-          accountBalance: data.openingArrears, // Reset balance to new arrears snapshot
-          updatedAt: new Date(),
-        }).where(eq(customer.id, existing.id))
-
-        updatedCount++
-        reportRows.push({ ...data, Result: "Updated", Details: "Existing record merged" })
-      } else {
-        // Step 3: INSERT (New)
-        await db.insert(customer).values({
-          id: randomUUID(),
-          name: data.name,
-          customerAccount: data.customerAccount,
-          phone: data.phone || null,
-          address: data.address || null,
-          waterSchemeId: schemeId || null,
-          meterRef: data.meterRef || null,
-          serialNo: data.serialNo || null,
-          category: data.category || "domestic",
-          openingArrears: data.openingArrears,
-          accountBalance: data.openingArrears,
-          notes: data.notes || null,
-          createdById: current.id,
+      await db.transaction(async (tx) => {
+        // Pre-map the data for Drizzle
+        const batchValues = chunk.map(row => {
+          const { data } = row
+          const schemeId = schemeMap.get(data.schemeName.toLowerCase()) || null
+          return {
+            id: randomUUID(),
+            name: data.name,
+            customerAccount: data.customerAccount,
+            phone: data.phone || null,
+            address: data.address || null,
+            waterSchemeId: schemeId,
+            meterRef: data.meterRef || null,
+            serialNo: data.serialNo || null,
+            category: data.category || "domestic",
+            openingArrears: data.openingArrears,
+            accountBalance: data.openingArrears,
+            notes: data.notes || null,
+            createdById: current.id,
+            updatedAt: new Date(),
+          }
         })
-        importedCount++
-        reportRows.push({ ...data, Result: "Created", Details: "New record added" })
-      }
+
+        // Execute "Upsert" (Update on Conflict)
+        // If the customerAccount already exists, we update the existing record
+        // instead of failing the batch.
+        await tx
+          .insert(customer)
+          .values(batchValues)
+          .onConflictDoUpdate({
+            target: customer.customerAccount,
+            set: {
+              name: sql`EXCLUDED.name`,
+              phone: sql`COALESCE(EXCLUDED.phone, customer.phone)`,
+              address: sql`COALESCE(EXCLUDED.address, customer.address)`,
+              waterSchemeId: sql`COALESCE(EXCLUDED."waterSchemeId", customer."waterSchemeId")`,
+              meterRef: sql`COALESCE(EXCLUDED."meterRef", customer."meterRef")`,
+              serialNo: sql`COALESCE(EXCLUDED."serialNo", customer."serialNo")`,
+              category: sql`COALESCE(EXCLUDED.category, customer.category)`,
+              openingArrears: sql`EXCLUDED."openingArrears"`,
+              accountBalance: sql`EXCLUDED."openingArrears"`,
+              updatedAt: new Date(),
+            }
+          })
+      })
+
+      // Since we are in a high-performance path, we assume success for the batch
+      // if no error was thrown. We count them all as 'processed'.
+      importedCount += chunk.length
+      chunk.forEach(row => {
+        reportRows.push({ ...row.data, Result: "Success", Details: "Processed via Bulk Engine" })
+      })
     } catch (e: unknown) {
-      failedCount++
-      const message = e instanceof Error ? e.message : "Database error"
-      reportRows.push({ ...data, Result: "Failed", Details: message })
+      // If a bulk chunk fails (rare with pre-validation), fall back to row-by-row
+      // for this specific chunk to preserve accuracy and identify errors.
+      console.warn(`Chunk starting at ${i} failed. Falling back to individual processing...`)
+
+      for (const row of chunk) {
+        const { data } = row
+        const schemeId = schemeMap.get(data.schemeName.toLowerCase())
+
+        try {
+          const [existing] = await db
+            .select()
+            .from(customer)
+            .where(eq(customer.customerAccount, data.customerAccount))
+            .limit(1)
+
+          if (existing) {
+            await db.update(customer).set({
+              name: data.name,
+              phone: data.phone || existing.phone,
+              address: data.address || existing.address,
+              waterSchemeId: schemeId || existing.waterSchemeId,
+              meterRef: data.meterRef || existing.meterRef,
+              serialNo: data.serialNo || existing.serialNo,
+              category: data.category || existing.category,
+              openingArrears: data.openingArrears,
+              accountBalance: data.openingArrears,
+              updatedAt: new Date(),
+            }).where(eq(customer.id, existing.id))
+            updatedCount++
+            reportRows.push({ ...data, Result: "Updated", Details: "Merged via Recovery Path" })
+          } else {
+            await db.insert(customer).values({
+              id: randomUUID(),
+              name: data.name,
+              customerAccount: data.customerAccount,
+              phone: data.phone || null,
+              address: data.address || null,
+              waterSchemeId: schemeId || null,
+              meterRef: data.meterRef || null,
+              serialNo: data.serialNo || null,
+              category: data.category || "domestic",
+              openingArrears: data.openingArrears,
+              accountBalance: data.openingArrears,
+              notes: data.notes || null,
+              createdById: current.id,
+            })
+            importedCount++
+            reportRows.push({ ...data, Result: "Created", Details: "Added via Recovery Path" })
+          }
+        } catch (rowError: unknown) {
+          failedCount++
+          const msg = rowError instanceof Error ? rowError.message : "Database error"
+          reportRows.push({ ...data, Result: "Failed", Details: msg })
+        }
+      }
     }
   }
 
   // Include rows that failed the initial validation in the final report
   summary.rows.filter(r => !r.valid).forEach(r => {
     reportRows.push({ ...r.data, Result: "Validation Failed", Details: r.errors.join("; ") })
+    failedCount++
   })
 
   await writeAudit({
     user: current,
     action: "customer.bulk_import_upsert",
     entityType: "customer",
-    details: { imported: importedCount, updated: updatedCount, failed: failedCount },
+    details: {
+      total: summary.totalRows,
+      processed: importedCount + updatedCount,
+      failed: failedCount,
+      durationMs: Date.now() - startTime
+    },
   })
 
   revalidatePath("/dashboard/customers")
