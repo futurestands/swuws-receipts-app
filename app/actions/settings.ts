@@ -144,60 +144,68 @@ export async function uploadLogo(formData: FormData) {
   const current = await requireUser()
   if (!canConfigureSystem(current)) throw new Error("Forbidden")
 
-  const file = formData.get("logo") as File | null
-  if (!file || file.size === 0) {
-    return { ok: false as const, error: "No file provided" }
-  }
-  if (!file.type.startsWith("image/")) {
-    return { ok: false as const, error: "File must be an image" }
-  }
-  if (file.size > 2 * 1024 * 1024) {
-    return { ok: false as const, error: "Logo must be under 2MB" }
-  }
+  try {
+    const file = formData.get("logo") as File | null
+    if (!file || file.size === 0) {
+      return { ok: false as const, error: "No file provided" }
+    }
+    if (!file.type.startsWith("image/")) {
+      return { ok: false as const, error: "File must be an image" }
+    }
+    if (file.size > 5 * 1024 * 1024) { // Increased to 5MB for convenience
+      return { ok: false as const, error: "Logo must be under 5MB" }
+    }
 
-  let logoUrl: string
+    let logoUrl: string
 
-  const isProduction = process.env.NODE_ENV === "production"
-  const hasBlobToken = process.env.BLOB_READ_WRITE_TOKEN &&
-    process.env.BLOB_READ_WRITE_TOKEN !== "replace-with-a-real-vercel-blob-token"
+    const isProduction = process.env.NODE_ENV === "production"
+    const hasBlobToken = process.env.BLOB_READ_WRITE_TOKEN &&
+      process.env.BLOB_READ_WRITE_TOKEN !== "replace-with-a-real-vercel-blob-token"
 
-  if (hasBlobToken) {
-    const blob = await put(`logos/${Date.now()}-${file.name}`, file, {
-      access: "public",
-      addRandomSuffix: true,
+    if (hasBlobToken) {
+      // Vercel Blob permanent storage
+      const blob = await put(`logos/${Date.now()}-${file.name.replace(/\s+/g, "-")}`, file, {
+        access: "public",
+        addRandomSuffix: true,
+      })
+      logoUrl = blob.url
+    } else if (!isProduction) {
+      // Local fallback for development only
+      const bytes = await file.arrayBuffer()
+      const buffer = Buffer.from(bytes)
+      const filename = `${Date.now()}-${file.name.replace(/\s+/g, "-")}`
+      const uploadDir = path.join(process.cwd(), "public", "uploads")
+
+      await fs.mkdir(uploadDir, { recursive: true })
+      await fs.writeFile(path.join(uploadDir, filename), buffer)
+      logoUrl = `/uploads/${filename}`
+    } else {
+      return { ok: false as const, error: "Cloud storage is not configured on Vercel. Please ensure BLOB_READ_WRITE_TOKEN is set in your project settings." }
+    }
+
+    await db
+      .update(orgSettings)
+      .set({ logoUrl: logoUrl, updatedAt: new Date() })
+      .where(eq(orgSettings.id, 1))
+
+    await writeAudit({
+      user: current,
+      action: "settings.logo.update",
+      entityType: "org_settings",
+      entityId: "1",
+      details: { logoUrl: logoUrl },
     })
-    logoUrl = blob.url
-  } else if (!isProduction) {
-    // Local fallback for development/no-token environments only
-    const bytes = await file.arrayBuffer()
-    const buffer = Buffer.from(bytes)
-    const filename = `${Date.now()}-${file.name.replace(/\s+/g, "-")}`
-    const uploadDir = path.join(process.cwd(), "public", "uploads")
 
-    await fs.mkdir(uploadDir, { recursive: true })
-    await fs.writeFile(path.join(uploadDir, filename), buffer)
-    logoUrl = `/uploads/${filename}`
-  } else {
-    // Goal Alignment: Physically block local filesystem writes in production.
-    // This prevents data loss on serverless/ephemeral platforms.
-    return { ok: false as const, error: "Icon persistence is disabled because BLOB_READ_WRITE_TOKEN is missing. Please add this token to your Vercel Environment Variables to save icons permanently." }
+    revalidatePath("/admin")
+    revalidatePath("/dashboard")
+    revalidatePath("/login") // Force metadata refresh
+
+    return { ok: true as const, url: logoUrl }
+  } catch (err: unknown) {
+    console.error("Logo upload failed:", err)
+    const message = err instanceof Error ? err.message : "An unexpected error occurred during upload."
+    return { ok: false as const, error: message }
   }
-
-  await db
-    .update(orgSettings)
-    .set({ logoUrl: logoUrl, updatedAt: new Date() })
-    .where(eq(orgSettings.id, 1))
-
-  await writeAudit({
-    user: current,
-    action: "settings.logo.update",
-    entityType: "org_settings",
-    entityId: "1",
-    details: { logoUrl: logoUrl },
-  })
-  revalidatePath("/admin")
-  revalidatePath("/dashboard")
-  return { ok: true as const, url: logoUrl }
 }
 
 // ---------------------------------------------------------------------------
