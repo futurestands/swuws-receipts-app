@@ -212,18 +212,21 @@ export async function downloadCustomerTemplate() {
     openingArrears: "OpeningArrears",
     category: "Category",
     notes: "Notes",
-  }
+  } as Record<string, string | string[] | number>
 
-  const headers = Object.values(mapping)
+  const headers = Object.values(mapping).map(v => Array.isArray(v) ? v[0] : v) as string[]
   const sampleRow: Record<string, string | number> = {}
-  Object.entries(mapping).forEach(([key, col]) => {
+  Object.entries(mapping).forEach(([key, colOrList]) => {
+    const col = Array.isArray(colOrList) ? colOrList[0] : colOrList
+    if (typeof col !== 'string') return
+
     // Basic defaults for samples
-    if (key === 'openingArrears') sampleRow[col as string] = 50000
-    else if (key === 'name') sampleRow[col as string] = "Jane Doe"
-    else if (key === 'customerAccount') sampleRow[col as string] = "C-98765"
-    else if (key === 'schemeName') sampleRow[col as string] = "Mbarara Central"
-    else if (key === 'category') sampleRow[col as string] = "domestic"
-    else sampleRow[col as string] = "Sample Value"
+    if (key === 'openingArrears') sampleRow[col] = 50000
+    else if (key === 'name') sampleRow[col] = "Jane Doe"
+    else if (key === 'customerAccount') sampleRow[col] = "C-98765"
+    else if (key === 'schemeName') sampleRow[col] = "Mbarara Central"
+    else if (key === 'category') sampleRow[col] = "domestic"
+    else sampleRow[col] = "Sample Value"
   })
 
   const worksheet = XLSX.utils.json_to_sheet([sampleRow], { header: headers })

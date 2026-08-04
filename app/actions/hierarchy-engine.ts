@@ -7,9 +7,10 @@ import { writeAudit } from "@/lib/audit"
 import { canManageAreas, canManageSchemes } from "@/lib/permissions"
 import { eq } from "drizzle-orm"
 import * as XLSX from "xlsx"
-import { z } from "zod"
 import { randomUUID } from "crypto"
 import { revalidatePath } from "next/cache"
+import { getImportMapping } from "@/lib/import-engine"
+import { DEFAULT_HIERARCHY_IMPORT_MAPPING } from "./hierarchy-import"
 
 /**
  * Unified Hierarchy Import Logic
@@ -27,32 +28,26 @@ export async function importUnifiedHierarchy(formData: FormData) {
   const firstSheet = workbook.Sheets[workbook.SheetNames[0]]
   const rawData = XLSX.utils.sheet_to_json(firstSheet)
 
-  // 1. Resolve Mapping from Template Hub
-  const [template] = await db.select().from(managedTemplate).where(eq(managedTemplate.code, 'import.hierarchy.master')).limit(1)
-  let mapping = {
-    clusterName: "Region",
-    branchName: "AreaOffice",
-    schemeName: "SchemeName",
-    schemeCode: "SchemeCode",
-    serviceArea: "ServiceArea"
-  }
-
-  if (template?.activeVersionId) {
-    const [version] = await db.select().from(templateVersion).where(eq(templateVersion.id, template.activeVersionId)).limit(1)
-    if (version) mapping = JSON.parse(version.content)
-  }
+  // 1. Resolve Mapping from Template Hub (Using consolidated logic)
+  const mapping = (await getImportMapping('import.hierarchy.master')) || (DEFAULT_HIERARCHY_IMPORT_MAPPING as unknown as Record<string, string | string[]>)
 
   let importedCount = 0
 
   for (const rawRow of rawData as Array<Record<string, unknown>>) {
     try {
-      const regionName = String(rawRow[mapping.clusterName] || "").trim()
-      const areaName = String(rawRow[mapping.branchName] || "").trim()
-      const schemeName = String(rawRow[mapping.schemeName] || "").trim()
+      const regionName = String(rawRow[mapping.clusterName as string] || "").trim()
+      const areaName = String(rawRow[mapping.branchName as string] || "").trim()
+      const schemeName = String(rawRow[mapping.schemeName as string] || "").trim()
+
+      // Smart header resolution for Code (since it's often optional in master files)
+      const codeHeader = Array.isArray(mapping.schemeCode) ?
+        (Object.keys(rawRow).find(h => (mapping.schemeCode as string[]).includes(h)) || "SchemeCode") :
+        (mapping.schemeCode as string)
+
       // Making code optional: fallback to name-slug if empty
-      const rawCode = String(rawRow[mapping.schemeCode] || "").trim()
+      const rawCode = String(rawRow[codeHeader] || "").trim()
       const schemeCode = (rawCode || schemeName).toLowerCase().replace(/\s+/g, "_")
-      const serviceArea = String(rawRow[mapping.serviceArea] || "").trim()
+      const serviceArea = String(rawRow[mapping.serviceArea as string] || "").trim()
 
       if (!regionName || !areaName || !schemeName) continue
 
@@ -108,14 +103,25 @@ export async function importUnifiedHierarchy(formData: FormData) {
 
 export async function downloadUnifiedHierarchyTemplate() {
   await requireUser()
-  const headers = ["Region", "AreaOffice", "SchemeName", "SchemeCode (Optional)", "ServiceArea"]
+
+  // 1. Resolve Mapping from Template Hub (Dynamic headers)
+  const mapping = (await getImportMapping('import.hierarchy.master')) || (DEFAULT_HIERARCHY_IMPORT_MAPPING as unknown as Record<string, string | string[]>)
+
+  const headers = [
+    mapping.clusterName as string,
+    mapping.branchName as string,
+    mapping.schemeName as string,
+    (Array.isArray(mapping.schemeCode) ? mapping.schemeCode[0] : mapping.schemeCode) as string,
+    mapping.serviceArea as string
+  ]
+
   const data = [
     {
-      Region: "Southwestern",
-      AreaOffice: "Mbarara Area",
-      SchemeName: "Kabere Scheme",
-      "SchemeCode (Optional)": "kab_01",
-      ServiceArea: "South Sector"
+      [mapping.clusterName as string]: "Southwestern",
+      [mapping.branchName as string]: "Mbarara Area",
+      [mapping.schemeName as string]: "Kabere Scheme",
+      [Array.isArray(mapping.schemeCode) ? mapping.schemeCode[0] : mapping.schemeCode]: "kab_01",
+      [mapping.serviceArea as string]: "South Sector"
     },
   ]
 

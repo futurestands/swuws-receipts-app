@@ -658,17 +658,17 @@ export async function downloadBillingTemplate() {
     currentCharges: "CurrentCharges",
     totalDue: "TotalDue",
     dueDate: "DueDate",
-  }
+  } as Record<string, string | string[] | number>
 
-  const headers = Object.values(mapping) as string[]
+  const headers = Object.values(mapping).map(v => Array.isArray(v) ? v[0] : v) as string[]
   const data = [
     {
-      [mapping.accountNumber as string]: "C-12345",
-      [mapping.billAmount as string]: 50000,
-      [mapping.arrears as string]: 10000,
-      [mapping.currentCharges as string]: 40000,
-      [mapping.totalDue as string]: 50000,
-      [mapping.dueDate as string]: new Date().toISOString().split("T")[0],
+      [(Array.isArray(mapping.accountNumber) ? mapping.accountNumber[0] : mapping.accountNumber) as string]: "C-12345",
+      [(Array.isArray(mapping.billAmount) ? mapping.billAmount[0] : mapping.billAmount) as string]: 50000,
+      [(Array.isArray(mapping.arrears) ? mapping.arrears[0] : mapping.arrears) as string]: 10000,
+      [(Array.isArray(mapping.currentCharges) ? mapping.currentCharges[0] : mapping.currentCharges) as string]: 40000,
+      [(Array.isArray(mapping.totalDue) ? mapping.totalDue[0] : mapping.totalDue) as string]: 50000,
+      [(Array.isArray(mapping.dueDate) ? mapping.dueDate[0] : mapping.dueDate) as string]: new Date().toISOString().split("T")[0],
     },
   ]
   const worksheet = XLSX.utils.json_to_sheet(data, { header: headers })

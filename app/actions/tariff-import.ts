@@ -179,11 +179,38 @@ export async function executeTariffImport(summary: TariffImportSummary): Promise
 
 export async function downloadTariffTemplate() {
   await requireUser()
-  const headers = ["Type", "AreaName", "Category", "UnitPrice", "ServiceFee", "VAT", "Status"]
+
+  // 1. Resolve Mapping from Template Hub (Dynamic headers)
+  const mapping = (await getImportMapping('import.tariffs.bulk')) || {
+    targetType: "Type",
+    targetName: "AreaName",
+    customerCategory: "Category",
+    unitPrice: "UnitPrice",
+    serviceFee: "ServiceFee",
+    vatPercentage: "VAT",
+    active: "Status"
+  } as Record<string, string>
+
+  const headers = [
+    mapping.targetType,
+    mapping.targetName,
+    mapping.customerCategory,
+    mapping.unitPrice,
+    mapping.serviceFee,
+    mapping.vatPercentage,
+    mapping.active
+  ]
+
   const data = [
-    { Type: "scheme", AreaName: "MASTYORO", Category: "domestic", UnitPrice: 3000, ServiceFee: 123, VAT: 18, Status: "true" },
-    { Type: "scheme", AreaName: "MASTYORO", Category: "commercial", UnitPrice: 5000, ServiceFee: 5000, VAT: 18, Status: "true" },
-    { Type: "branch", AreaName: "BUSHENYI", Category: "domestic", UnitPrice: 2000, ServiceFee: 2000, VAT: 18, Status: "true" },
+    {
+      [mapping.targetType as string]: "scheme",
+      [mapping.targetName as string]: "MASTYORO",
+      [mapping.customerCategory as string]: "domestic",
+      [mapping.unitPrice as string]: 3000,
+      [mapping.serviceFee as string]: 123,
+      [mapping.vatPercentage as string]: 18,
+      [mapping.active as string]: "true"
+    },
   ]
   const worksheet = XLSX.utils.json_to_sheet(data, { header: headers })
   const workbook = XLSX.utils.book_new()

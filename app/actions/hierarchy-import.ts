@@ -28,19 +28,12 @@ import { processExcelImport, getImportMapping, type ImportSummary, type Validati
 // which is exactly why this could work in one environment (if that
 // environment's database has such a template saved) and fail completely
 // in another (if it doesn't) using the literal same file.
-const DEFAULT_HIERARCHY_IMPORT_MAPPING = {
+export const DEFAULT_HIERARCHY_IMPORT_MAPPING = {
   clusterName: "Region",
   branchName: "AreaOffice",
   schemeName: "SchemeName",
-  // Matches the real header used in this organization's established
-  // hierarchy import file ("SchemeCode (Optional)"), not just "SchemeCode".
-  // The previous value silently failed to match, and because the schema
-  // used z.coerce.string() on the resulting undefined value, JavaScript's
-  // String(undefined) produced the literal text "undefined" as if it were
-  // real data - passing validation instead of failing it, and showing up
-  // as bogus "Duplicate code in file: undefined" errors on every row
-  // after the first instead of a clear "Code is required".
-  schemeCode: "SchemeCode (Optional)",
+  // Support both versions of the header to prevent the "undefined" mapping bug
+  schemeCode: ["SchemeCode", "SchemeCode (Optional)", "Code"],
   serviceArea: "ServiceArea",
 }
 
@@ -107,7 +100,7 @@ export async function validateHierarchy(formData: FormData): Promise<{ ok: true;
   const existence = await getExistenceMaps()
   const seenCodes = new Set<string>()
 
-  const mapping = (await getImportMapping('import.hierarchy.master')) || (DEFAULT_HIERARCHY_IMPORT_MAPPING as Record<string, string>)
+  const mapping = (await getImportMapping('import.hierarchy.master')) || (DEFAULT_HIERARCHY_IMPORT_MAPPING as unknown as Record<string, string | string[]>)
 
   const summary = await processExcelImport({
     file,
@@ -115,7 +108,7 @@ export async function validateHierarchy(formData: FormData): Promise<{ ok: true;
     mapping: {
       type: "Type",
       name: mapping.schemeName as string,
-      code: mapping.schemeCode as string,
+      code: mapping.schemeCode as string | string[],
       parentName: mapping.branchName as string,
       serviceArea: mapping.serviceArea as string,
       status: "Status"
@@ -246,9 +239,9 @@ export async function downloadHierarchyTemplate() {
   // Resolve headers the same way validateHierarchyImport resolves them for
   // parsing, so what this generates and what that reads can never drift
   // apart again.
-  const mapping = (await getImportMapping('import.hierarchy.master')) || (DEFAULT_HIERARCHY_IMPORT_MAPPING as Record<string, string>)
+  const mapping = (await getImportMapping('import.hierarchy.master')) || (DEFAULT_HIERARCHY_IMPORT_MAPPING as unknown as Record<string, string | string[]>)
   const nameCol = mapping.schemeName as string
-  const codeCol = mapping.schemeCode as string
+  const codeCol = (Array.isArray(mapping.schemeCode) ? mapping.schemeCode[0] : mapping.schemeCode) as string
   const parentCol = mapping.branchName as string
   const serviceAreaCol = mapping.serviceArea as string
 
