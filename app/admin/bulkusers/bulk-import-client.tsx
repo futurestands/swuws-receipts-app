@@ -26,8 +26,8 @@ import {
   validateBulkUsers,
   importBulkUsers,
   downloadBulkImportTemplate,
-  ImportSummary,
 } from "@/app/actions/bulk-import"
+import { type ImportSummary } from "@/lib/import-engine"
 import { cn } from "@/lib/utils"
 
 type Step = "setup" | "preview" | "confirm" | "complete"

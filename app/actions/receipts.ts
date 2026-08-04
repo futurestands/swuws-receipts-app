@@ -19,7 +19,6 @@ import { and, desc, eq, gte, lte, sql, sum, inArray, getTableColumns, count } fr
 import { randomUUID } from "crypto"
 import { revalidatePath, revalidateTag } from "next/cache"
 import { put } from "@vercel/blob"
-import { z } from "zod"
 import { checkRateLimit } from "@/lib/rate-limit"
 import { canViewAllData, canIssueReceipt, canPrintReceipt, canReprintReceipt } from "@/lib/permissions"
 import { applyReceiptScope, validateWriteScope } from "@/lib/scopes"
@@ -27,30 +26,7 @@ import { hasPermission } from "@/lib/iam"
 import { receiptPrintHistory, user as userTable } from "@/lib/db/schema"
 import { headers } from "next/headers"
 import { logFinancial, logSecurity } from "@/lib/logger"
-
-const createReceiptSchema = z.object({
-  billingRecordId: z.string().trim().optional(),
-  billingPeriodId: z.string().trim().optional(),
-  schemeId: z.string().trim().optional(),
-  customerId: z.string().trim().min(1, "Customer ID is required"),
-  customerName: z.string().trim().min(1, "Customer name is required").max(200),
-  customerAccount: z.string().trim().max(100).optional(),
-  customerPhone: z.string().trim().max(30).optional(),
-  customerAddress: z.string().trim().max(300).optional(),
-  amount: z
-    .number()
-    .finite()
-    .positive("Amount must be greater than zero")
-    .refine((v) => Math.round(v) > 0, "Amount is too small to record as a receipt"),
-  outstandingBalance: z.number().finite().min(0).optional(),
-  paymentMethod: z.string().trim().min(1, "Payment method is required"),
-  paymentReference: z.string().trim().max(100).optional(),
-  notes: z.string().trim().max(1000).optional(),
-  paymentDate: z.string().optional(),
-  branchId: z.string().trim().optional(),
-})
-
-export type CreateReceiptInput = z.infer<typeof createReceiptSchema>
+import { createReceiptSchema, type CreateReceiptInput } from "@/lib/finance-schemas"
 
 function generatePaymentReference(): string {
   return `PAY-${Date.now().toString(36).toUpperCase()}-${Math.floor(

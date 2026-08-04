@@ -26,9 +26,9 @@ import {
   validateHierarchy,
   importHierarchy,
   downloadHierarchyTemplate,
-  HierarchyImportSummary,
 } from "@/app/actions/hierarchy-import"
 import { importUnifiedHierarchy, downloadUnifiedHierarchyTemplate } from "@/app/actions/hierarchy-engine"
+import { type HierarchyImportSummary } from "@/lib/import-schemas"
 import { cn } from "@/lib/utils"
 
 type Step = "setup" | "preview" | "confirm" | "complete"

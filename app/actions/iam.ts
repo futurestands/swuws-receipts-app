@@ -9,16 +9,8 @@ import { eq, and, sql, desc, asc, not } from "drizzle-orm"
 import { randomUUID } from "crypto"
 import { revalidatePath } from "next/cache"
 import { z } from "zod"
+import { roleSchema } from "@/lib/iam-schemas"
 import type { Scope } from "@/lib/iam"
-
-const roleSchema = z.object({
-  name: z.string().trim().min(2, "Name must be at least 2 characters"),
-  code: z.string().trim().min(2, "Code must be at least 2 characters").transform(val => val.toLowerCase().replace(/\s+/g, "_")),
-  description: z.string().trim().optional(),
-  level: z.number().int().min(0).max(100),
-  parentId: z.string().nullable().optional(),
-  active: z.boolean().default(true),
-})
 
 /**
  * List all roles, ordered by level and name.

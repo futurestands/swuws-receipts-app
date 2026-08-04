@@ -7,11 +7,12 @@ export default function BulkImportHierarchyPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-4">
-        <Button variant="ghost" size="icon" asChild>
-          <Link href="/admin">
-            <ChevronLeft className="h-4 w-4" />
-          </Link>
-        </Button>
+        <Link
+          href="/admin"
+          className="inline-flex items-center justify-center rounded-lg h-8 w-8 hover:bg-muted transition-colors text-muted-foreground"
+        >
+          <ChevronLeft className="h-4 w-4" />
+        </Link>
         <div>
           <h1 className="text-xl font-semibold">Bulk Hierarchy Import</h1>
           <p className="text-sm text-muted-foreground">

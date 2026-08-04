@@ -13,18 +13,8 @@ import { randomUUID } from "crypto"
 import { revalidatePath } from "next/cache"
 import { processExcelImport, getImportMapping, type ImportSummary } from "@/lib/import-engine"
 import { DEFAULT_TARIFF_IMPORT_MAPPING } from "@/lib/import-mappings"
+import { tariffImportSchema, type TariffImportRow } from "@/lib/import-schemas"
 
-const tariffImportSchema = z.object({
-  targetType: z.enum(["branch", "scheme"]),
-  targetName: z.coerce.string().trim().min(1, "Area name is required"),
-  customerCategory: z.string().trim().toLowerCase().default("domestic"),
-  unitPrice: z.coerce.number().min(0, "Unit price cannot be negative"),
-  serviceFee: z.coerce.number().min(0, "Service fee cannot be negative"),
-  vatPercentage: z.coerce.number().min(0).max(100).default(18),
-  active: z.coerce.boolean().default(true),
-})
-
-export type TariffImportRow = z.infer<typeof tariffImportSchema>
 export type TariffImportSummary = ImportSummary<TariffImportRow>
 
 export async function validateTariffImport(formData: FormData): Promise<{ ok: true; summary: TariffImportSummary } | { ok: false; error: string }> {

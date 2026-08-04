@@ -14,20 +14,7 @@ import { z } from "zod"
 import { randomUUID } from "crypto"
 import { getImportMapping } from "@/lib/import-engine"
 import { DEFAULT_USER_IMPORT_MAPPING } from "@/lib/import-mappings"
-
-const userImportSchema = z.object({
-  name: z.string().trim().min(1, "Name is required"),
-  email: z.string().trim().email("Invalid email format").toLowerCase(),
-  password: z.string().trim().min(8, "Password must be at least 8 characters").optional(),
-  role: z.string().trim(),
-  cluster: z.string().trim().optional(),
-  area: z.string().trim().optional(),
-  scheme: z.string().trim().optional(),
-  phone: z.string().trim().optional(),
-  status: z.string().trim().default("Active"),
-})
-
-export type UserImportRow = z.infer<typeof userImportSchema>
+import { userImportSchema, type UserImportRow } from "@/lib/import-schemas"
 
 export type ValidationResult = {
   valid: boolean

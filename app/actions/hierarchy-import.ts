@@ -16,42 +16,7 @@ import { randomUUID } from "crypto"
 import { revalidatePath } from "next/cache"
 import { processExcelImport, getImportMapping, type ImportSummary, type ValidationResult } from "@/lib/import-engine"
 import { DEFAULT_HIERARCHY_IMPORT_MAPPING } from "@/lib/import-mappings"
-
-const hierarchyImportSchema = z.object({
-  // Defaults to "Scheme" when the file has no Type column at all - a
-  // common, valid case (e.g. an all-Schemes import). Previously this had
-  // no default, so Zod rejected every row with a bare "Required" error
-  // before onValidateRow's own "if (!data.type) data.type = 'Scheme'"
-  // fallback ever got a chance to run - that logic only executes AFTER
-  // schema validation, so it could never rescue a row Zod had already
-  // failed. Name/Code/Parent could all be correctly populated and
-  // displayed and the row would still show as an error, which is exactly
-  // what was happening: the file was valid, the schema was wrong.
-  type: z.enum(["Cluster", "Branch", "Scheme"]).default("Scheme"),
-  name: z.string().trim().min(1, "Name is required"),
-  // z.coerce.string() on a value that's actually undefined (e.g. a
-  // mapping mismatch, like the one that caused this exact bug) calls
-  // JavaScript's String(undefined), which produces the literal text
-  // "undefined" - four real characters, so .min(1) happily passes it as
-  // valid data. That's how a missing column silently became visible
-  // "undefined" text in the results table with a bogus "Duplicate code"
-  // error, instead of the "Code is required" message that should have
-  // pointed straight at the actual problem. Preprocessing null/undefined
-  // to an empty string first means a genuinely missing code now fails
-  // validation honestly, while real numeric or string codes still coerce
-  // to string correctly.
-  code: z.preprocess(
-    (val) => (val === undefined || val === null ? "" : val),
-    z.coerce.string().trim().min(1, "Code is required"),
-  ),
-  parentName: z.string().trim().optional(), // Cluster -> none, Branch -> Cluster Name, Scheme -> Branch Name
-  serviceArea: z.string().trim().optional(), // Only for Schemes
-  status: z.string().trim().default("Active"),
-})
-
-export type HierarchyImportRow = z.infer<typeof hierarchyImportSchema>
-
-export type HierarchyImportSummary = ImportSummary<HierarchyImportRow>
+import { hierarchyImportSchema, type HierarchyImportRow, type HierarchyImportSummary } from "@/lib/import-schemas"
 
 async function getExistenceMaps() {
   const [clusters, areas, schemes] = await Promise.all([

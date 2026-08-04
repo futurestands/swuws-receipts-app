@@ -17,21 +17,7 @@ import { randomUUID } from "crypto"
 import { revalidatePath } from "next/cache"
 import { processExcelImport, getImportMapping, type ImportSummary } from "@/lib/import-engine"
 import { DEFAULT_CUSTOMER_IMPORT_MAPPING } from "@/lib/import-mappings"
-
-const customerImportSchema = z.object({
-  name: z.string().trim().min(1, "Name is required"),
-  customerAccount: z.coerce.string().trim().min(1, "Account number is required"),
-  phone: z.coerce.string().trim().optional(),
-  address: z.string().trim().optional(),
-  schemeName: z.coerce.string().trim().min(1, "Water Scheme is required"),
-  meterRef: z.coerce.string().trim().optional(),
-  serialNo: z.coerce.string().trim().optional(),
-  openingArrears: z.coerce.number().default(0),
-  category: z.string().trim().toLowerCase().default("domestic"), // domestic, institutional, psp, commercial
-  notes: z.string().trim().optional(),
-})
-
-export type CustomerImportRow = z.infer<typeof customerImportSchema>
+import { customerImportSchema, type CustomerImportRow } from "@/lib/import-schemas"
 
 export type CustomerImportSummary = ImportSummary<CustomerImportRow>
 

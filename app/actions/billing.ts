@@ -35,23 +35,8 @@ import { revalidatePath } from "next/cache"
 import { createNotification } from "./notifications"
 import { processExcelImport, getImportMapping, type ImportSummary } from "@/lib/import-engine"
 import { DEFAULT_BILLING_IMPORT_MAPPING } from "@/lib/import-mappings"
+import { billingImportSchema, type BillingImportRow } from "@/lib/import-schemas"
 import { logFinancial } from "@/lib/logger"
-
-/**
- * Validation Schema for a single billing row.
- */
-const billingImportSchema = z.object({
-  accountNumber: z.coerce.string().trim().min(1, "Account number is required"),
-  billAmount: z.coerce.number().min(0, "Bill amount cannot be negative"),
-  arrears: z.coerce.number().min(0, "Arrears cannot be negative"),
-  currentCharges: z.coerce.number().min(0, "Current charges cannot be negative"),
-  totalDue: z.coerce.number().min(0, "Total due cannot be negative"),
-  dueDate: z.coerce.string().refine((val) => !isNaN(Date.parse(val)), {
-    message: "Invalid due date format",
-  }),
-})
-
-export type BillingImportRow = z.infer<typeof billingImportSchema>
 
 export type BillingImportSummary = ImportSummary<BillingImportRow> & {
   schemeId: string
@@ -115,7 +100,9 @@ export async function getCollectionPeriods() {
 }
 
 /** Legacy alias for getCollectionPeriods */
-export const getBillingPeriods = getCollectionPeriods
+export async function getBillingPeriods() {
+  return getCollectionPeriods()
+}
 
 /**
  * Create a new collection period (internal billing_period).
