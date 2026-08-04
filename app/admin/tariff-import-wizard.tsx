@@ -123,8 +123,8 @@ export function TariffImportWizard() {
           )}
 
           {step === "review" && summary && (
-            <div className="flex flex-col h-full">
-              <div className="p-4 bg-muted/30 border-b grid grid-cols-3 gap-4">
+            <div className="flex flex-col h-full min-h-0">
+              <div className="p-4 bg-muted/30 border-b grid grid-cols-3 gap-4 shrink-0">
                 <div className="p-3 rounded-md border bg-background text-center">
                   <p className="text-xs text-muted-foreground uppercase font-bold">Total Rows</p>
                   <p className="text-2xl font-black">{summary.totalRows}</p>
@@ -142,59 +142,87 @@ export function TariffImportWizard() {
               <div className="flex-1 overflow-y-auto">
                 <Table>
                   <TableHeader>
-                    <TableRow className="bg-muted/50">
-                      <TableHead>Level</TableHead>
+                    <TableRow className="bg-muted/50 sticky top-0 z-10 bg-background shadow-sm">
+                      <TableHead className="w-[80px]">Level</TableHead>
                       <TableHead>Area Name</TableHead>
+                      <TableHead>Category</TableHead>
                       <TableHead className="text-right">Unit Price</TableHead>
                       <TableHead className="text-right">Service Fee</TableHead>
+                      <TableHead>Action</TableHead>
                       <TableHead>Status</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {summary.rows.map((row, i) => (
-                      <TableRow key={i} className={!row.valid ? "bg-destructive/5" : undefined}>
-                        <TableCell>
-                          <Badge variant="outline" className="uppercase text-[10px]">
-                            {row.data.targetType}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          <div className="font-medium">{row.data.targetName}</div>
-                          {row.errors.map((err, ei) => (
-                            <p key={ei} className="text-[10px] text-destructive flex items-center gap-1">
-                              <XCircle className="size-3" /> {err}
-                            </p>
-                          ))}
-                        </TableCell>
-                        <TableCell className="text-right font-mono text-xs">
-                          {row.data.unitPrice.toLocaleString()}
-                        </TableCell>
-                        <TableCell className="text-right font-mono text-xs">
-                          {row.data.serviceFee.toLocaleString()}
-                        </TableCell>
-                        <TableCell>
-                          {row.valid ? (
-                            <Badge className="bg-green-100 text-green-700 hover:bg-green-100 shadow-none border-transparent">Ready</Badge>
-                          ) : (
-                            <Badge variant="destructive">Error</Badge>
-                          )}
-                        </TableCell>
-                      </TableRow>
-                    ))}
+                    {summary.rows.map((row, i) => {
+                      const isUpdate = row.warnings.some(w => w.startsWith("Update:"))
+                      return (
+                        <TableRow key={i} className={!row.valid ? "bg-destructive/5" : undefined}>
+                          <TableCell>
+                            <Badge variant="outline" className="uppercase text-[10px]">
+                              {row.data.targetType}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            <div className="font-medium">{row.data.targetName}</div>
+                            {row.errors.map((err, ei) => (
+                              <p key={ei} className="text-[10px] text-destructive flex items-center gap-1">
+                                <XCircle className="size-3" /> {err}
+                              </p>
+                            ))}
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant="secondary" className="capitalize text-[10px]">
+                              {row.data.customerCategory}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-right font-mono text-xs">
+                            {row.data.unitPrice.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 2 })}
+                          </TableCell>
+                          <TableCell className="text-right font-mono text-xs">
+                            {row.data.serviceFee.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 2 })}
+                          </TableCell>
+                          <TableCell>
+                            {row.valid && (
+                              <Badge
+                                variant="outline"
+                                className={isUpdate
+                                  ? "border-blue-200 bg-blue-50 text-blue-700"
+                                  : "border-green-200 bg-green-50 text-green-700"
+                                }
+                              >
+                                {isUpdate ? "Update Existing" : "Create New"}
+                              </Badge>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            {row.valid ? (
+                              <Badge className="bg-green-100 text-green-700 hover:bg-green-100 shadow-none border-transparent">Ready</Badge>
+                            ) : (
+                              <Badge variant="destructive">Error</Badge>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      )
+                    })}
                   </TableBody>
                 </Table>
               </div>
 
-              <div className="p-4 border-t flex justify-between items-center bg-background">
-                <Button variant="ghost" onClick={() => setStep("upload")}>Back</Button>
-                <Button
-                  onClick={handleConfirm}
-                  disabled={pending || summary.validRows === 0}
-                  className="gap-2"
-                >
-                  {pending && <Loader2 className="size-4 animate-spin" />}
-                  Finalize {summary.validRows} Updates
-                </Button>
+              <div className="p-4 border-t flex justify-between items-center bg-background shrink-0">
+                <Button variant="ghost" onClick={() => setStep("upload")}>Back to Upload</Button>
+                <div className="flex items-center gap-4">
+                  <p className="text-xs text-muted-foreground">
+                    {summary.validRows} rows will be processed.
+                  </p>
+                  <Button
+                    onClick={handleConfirm}
+                    disabled={pending || summary.validRows === 0}
+                    className="gap-2 bg-brand-blue hover:bg-brand-blue/90"
+                  >
+                    {pending && <Loader2 className="size-4 animate-spin" />}
+                    Save & Apply {summary.validRows} Changes
+                  </Button>
+                </div>
               </div>
             </div>
           )}

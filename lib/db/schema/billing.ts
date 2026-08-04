@@ -5,6 +5,7 @@ import {
   boolean,
   bigint,
   integer,
+  numeric,
   index,
   uniqueIndex,
 } from "drizzle-orm/pg-core"
@@ -164,8 +165,8 @@ export const tariffConfiguration = pgTable(
     targetType: text("targetType").notNull(), // 'branch' or 'scheme'
     targetId: text("targetId").notNull(), // branchId or schemeId
     customerCategory: text("customerCategory").notNull().default("domestic"), // domestic, institutional, psp, commercial
-    unitPrice: bigint("unitPrice", { mode: "number" }).notNull().default(0), // UGX per m3
-    serviceFee: bigint("serviceFee", { mode: "number" }).notNull().default(0), // Fixed monthly
+    unitPrice: numeric("unitPrice", { precision: 12, scale: 2 }).notNull().default("0"), // UGX per m3
+    serviceFee: numeric("serviceFee", { precision: 12, scale: 2 }).notNull().default("0"), // Fixed monthly
     vatPercentage: integer("vatPercentage").notNull().default(18), // Default 18%
     active: boolean("active").notNull().default(true),
     createdAt: timestamp("createdAt").notNull().defaultNow(),

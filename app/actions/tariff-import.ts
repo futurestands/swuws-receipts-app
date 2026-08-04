@@ -25,12 +25,18 @@ export async function validateTariffImport(formData: FormData): Promise<{ ok: tr
   if (!file) return { ok: false, error: "No file provided" }
 
   // Existence check maps
-  const [branches, schemes] = await Promise.all([
+  const [branches, schemes, existingTariffs] = await Promise.all([
     db.select().from(branch),
     db.select().from(waterScheme),
+    db.select().from(tariffConfiguration),
   ])
   const branchMap = new Map(branches.map(b => [b.name.toLowerCase(), b.id]))
   const schemeMap = new Map(schemes.map(s => [s.name.toLowerCase(), s.id]))
+
+  // Map to quickly check for existing tariffs: "type:id:category" -> true
+  const existingSet = new Set(existingTariffs.map(t =>
+    `${t.targetType}:${t.targetId}:${t.customerCategory?.toLowerCase()}`
+  ))
 
   const dbMapping = await getImportMapping('import.tariffs.bulk')
   const mapping = { ...DEFAULT_TARIFF_IMPORT_MAPPING, ...(dbMapping as any) } as Record<string, string>
@@ -60,7 +66,17 @@ export async function validateTariffImport(formData: FormData): Promise<{ ok: tr
           branchId: data.targetType === "branch" ? targetId : undefined,
           schemeId: data.targetType === "scheme" ? targetId : undefined
         })
-        if (!isAuthorized) errors.push("Access Denied: You are not authorized to manage tariffs for this area.")
+        if (!isAuthorized) {
+          errors.push("Access Denied: You are not authorized to manage tariffs for this area.")
+        } else {
+          // Check for existing to show "Update" vs "New"
+          const key = `${data.targetType}:${targetId}:${data.customerCategory.toLowerCase()}`
+          if (existingSet.has(key)) {
+            warnings.push("Update: This will override an existing tariff.")
+          } else {
+            warnings.push("New: This will create a new tariff entry.")
+          }
+        }
       }
 
       return { errors, warnings }
@@ -120,8 +136,8 @@ export async function executeTariffImport(summary: TariffImportSummary): Promise
         if (existing) {
           await tx.update(tariffConfiguration)
             .set({
-              unitPrice: data.unitPrice,
-              serviceFee: data.serviceFee,
+              unitPrice: String(data.unitPrice),
+              serviceFee: String(data.serviceFee),
               vatPercentage: data.vatPercentage,
               active: data.active,
               updatedAt: new Date(),
@@ -134,8 +150,8 @@ export async function executeTariffImport(summary: TariffImportSummary): Promise
             targetType: data.targetType,
             targetId: targetId,
             customerCategory: data.customerCategory,
-            unitPrice: data.unitPrice,
-            serviceFee: data.serviceFee,
+            unitPrice: String(data.unitPrice),
+            serviceFee: String(data.serviceFee),
             vatPercentage: data.vatPercentage,
             active: data.active,
           })
