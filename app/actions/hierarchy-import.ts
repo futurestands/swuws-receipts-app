@@ -32,7 +32,15 @@ const DEFAULT_HIERARCHY_IMPORT_MAPPING = {
   clusterName: "Region",
   branchName: "AreaOffice",
   schemeName: "SchemeName",
-  schemeCode: "SchemeCode",
+  // Matches the real header used in this organization's established
+  // hierarchy import file ("SchemeCode (Optional)"), not just "SchemeCode".
+  // The previous value silently failed to match, and because the schema
+  // used z.coerce.string() on the resulting undefined value, JavaScript's
+  // String(undefined) produced the literal text "undefined" as if it were
+  // real data - passing validation instead of failing it, and showing up
+  // as bogus "Duplicate code in file: undefined" errors on every row
+  // after the first instead of a clear "Code is required".
+  schemeCode: "SchemeCode (Optional)",
   serviceArea: "ServiceArea",
 }
 
@@ -48,7 +56,21 @@ const hierarchyImportSchema = z.object({
   // what was happening: the file was valid, the schema was wrong.
   type: z.enum(["Cluster", "Branch", "Scheme"]).default("Scheme"),
   name: z.string().trim().min(1, "Name is required"),
-  code: z.coerce.string().trim().min(1, "Code is required"),
+  // z.coerce.string() on a value that's actually undefined (e.g. a
+  // mapping mismatch, like the one that caused this exact bug) calls
+  // JavaScript's String(undefined), which produces the literal text
+  // "undefined" - four real characters, so .min(1) happily passes it as
+  // valid data. That's how a missing column silently became visible
+  // "undefined" text in the results table with a bogus "Duplicate code"
+  // error, instead of the "Code is required" message that should have
+  // pointed straight at the actual problem. Preprocessing null/undefined
+  // to an empty string first means a genuinely missing code now fails
+  // validation honestly, while real numeric or string codes still coerce
+  // to string correctly.
+  code: z.preprocess(
+    (val) => (val === undefined || val === null ? "" : val),
+    z.coerce.string().trim().min(1, "Code is required"),
+  ),
   parentName: z.string().trim().optional(), // Cluster -> none, Branch -> Cluster Name, Scheme -> Branch Name
   serviceArea: z.string().trim().optional(), // Only for Schemes
   status: z.string().trim().default("Active"),
