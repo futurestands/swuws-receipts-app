@@ -459,7 +459,11 @@ export function AgentsPanel({
                       onValueChange={(v) => v !== "none" && changeRole(agent, v)}
                     >
                       <SelectTrigger className="w-[180px] h-9 bg-background shadow-none border-transparent group-hover:border-input transition-all">
-                        <SelectValue placeholder="Assign Role" />
+                        <SelectValue>
+                          {agent.iamRoleId
+                            ? iamRoles.find(r => r.id === agent.iamRoleId)?.name || agent.iamRoleId
+                            : "No Role Assigned"}
+                        </SelectValue>
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="none">No Role Assigned</SelectItem>
