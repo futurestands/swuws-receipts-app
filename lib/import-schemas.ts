@@ -38,6 +38,7 @@ export const customerImportSchema = z.object({
   schemeName: z.coerce.string().trim().min(1, "Water Scheme is required"),
   meterRef: z.coerce.string().trim().optional(),
   serialNo: z.coerce.string().trim().optional(),
+  lastReading: z.coerce.number().default(0),
   openingArrears: z.coerce.number().default(0),
   category: z.string().trim().toLowerCase().default("domestic"),
   notes: z.string().trim().optional(),

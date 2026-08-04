@@ -36,6 +36,7 @@ export const DEFAULT_CUSTOMER_IMPORT_MAPPING = {
   schemeName: "SchemeName",
   meterRef: "MeterRef",
   serialNo: "MeterSerial",
+  lastReading: ["InitialReading", "BaselineReading", "OpeningReading", "StartReading", "LastReading"],
   openingArrears: ["OpeningArrears", "Arrears", "Balance Brought Forward", "BalanceBroughtForward", "Brought Forward"],
   category: "Category",
   notes: "Notes",

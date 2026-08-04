@@ -27,6 +27,7 @@ const customerSchema = z.object({
   waterSchemeId: z.string().trim().optional(),
   notes: z.string().trim().max(1000).optional(),
   active: z.boolean().optional(),
+  lastReading: z.number().min(0).optional(),
 })
 export type CustomerInput = z.infer<typeof customerSchema>
 
@@ -118,6 +119,7 @@ export async function updateCustomer(id: string, input: CustomerInput) {
         waterSchemeId: data.waterSchemeId || null,
         notes: data.notes || null,
         active: data.active,
+        lastReading: data.lastReading !== undefined ? data.lastReading : undefined,
         updatedAt: new Date(),
       })
       .where(eq(customer.id, id))

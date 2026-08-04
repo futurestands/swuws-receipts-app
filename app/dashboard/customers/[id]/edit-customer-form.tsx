@@ -42,6 +42,7 @@ export function EditCustomerForm({
   const [phone, setPhone] = useState(customer.phone ?? "")
   const [address, setAddress] = useState(customer.address ?? "")
   const [waterSchemeId, setWaterSchemeId] = useState(customer.waterSchemeId ?? "")
+  const [lastReading, setLastReading] = useState(String(customer.lastReading))
   const [notes, setNotes] = useState(customer.notes ?? "")
   const [error, setError] = useState<string | null>(null)
   const [pending, startTransition] = useTransition()
@@ -74,6 +75,7 @@ export function EditCustomerForm({
         address: address || undefined,
         waterSchemeId: waterSchemeId || undefined,
         notes: notes || undefined,
+        lastReading: Number(lastReading) || 0,
       })
       if (!result.ok) {
         setError(result.error)
@@ -106,6 +108,19 @@ export function EditCustomerForm({
           <div className="space-y-2">
             <Label htmlFor="address">Address</Label>
             <Input id="address" value={address} onChange={(e) => setAddress(e.target.value)} />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="lastReading">Baseline Meter Reading</Label>
+            <Input
+              id="lastReading"
+              type="number"
+              value={lastReading}
+              onChange={(e) => setLastReading(e.target.value)}
+              placeholder="0"
+            />
+            <p className="text-[10px] text-muted-foreground italic">
+              The starting meter value. Consumption will be calculated as (Current - Baseline).
+            </p>
           </div>
           {schemes.length > 0 && (
             <div className="space-y-2">
