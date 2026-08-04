@@ -32,7 +32,8 @@ export async function validateTariffImport(formData: FormData): Promise<{ ok: tr
   const branchMap = new Map(branches.map(b => [b.name.toLowerCase(), b.id]))
   const schemeMap = new Map(schemes.map(s => [s.name.toLowerCase(), s.id]))
 
-  const mapping = (await getImportMapping('import.tariffs.bulk')) || (DEFAULT_TARIFF_IMPORT_MAPPING as Record<string, string>)
+  const dbMapping = await getImportMapping('import.tariffs.bulk')
+  const mapping = { ...DEFAULT_TARIFF_IMPORT_MAPPING, ...(dbMapping as any) } as Record<string, string>
 
   const summary = await processExcelImport({
     file,
@@ -164,7 +165,8 @@ export async function downloadTariffTemplate() {
   await requireUser()
 
   // 1. Resolve Mapping from Template Hub (Dynamic headers)
-  const mapping = (await getImportMapping('import.tariffs.bulk')) || (DEFAULT_TARIFF_IMPORT_MAPPING as Record<string, string>)
+  const dbMapping = await getImportMapping('import.tariffs.bulk')
+  const mapping = { ...DEFAULT_TARIFF_IMPORT_MAPPING, ...(dbMapping as any) } as Record<string, string>
 
   const headers = [
     mapping.targetType,

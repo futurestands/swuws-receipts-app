@@ -28,8 +28,12 @@ export async function importUnifiedHierarchy(formData: FormData) {
   const firstSheet = workbook.Sheets[workbook.SheetNames[0]]
   const rawData = XLSX.utils.sheet_to_json(firstSheet)
 
-  // 1. Resolve Mapping from Template Hub (Using consolidated logic)
-  const mapping = (await getImportMapping('import.hierarchy.master')) || (DEFAULT_HIERARCHY_IMPORT_MAPPING as unknown as Record<string, string | string[]>)
+  // 1. Resolve Mapping from Template Hub (Resilient merge with defaults)
+  const dbMapping = await getImportMapping('import.hierarchy.master')
+  const mapping = {
+    ...DEFAULT_HIERARCHY_IMPORT_MAPPING,
+    ...(dbMapping as any)
+  } as Record<string, string | string[]>
 
   let importedCount = 0
 
@@ -104,8 +108,12 @@ export async function importUnifiedHierarchy(formData: FormData) {
 export async function downloadUnifiedHierarchyTemplate() {
   await requireUser()
 
-  // 1. Resolve Mapping from Template Hub (Dynamic headers)
-  const mapping = (await getImportMapping('import.hierarchy.master')) || (DEFAULT_HIERARCHY_IMPORT_MAPPING as unknown as Record<string, string | string[]>)
+  // 1. Resolve Mapping from Template Hub (Resilient merge with defaults)
+  const dbMapping = await getImportMapping('import.hierarchy.master')
+  const mapping = {
+    ...DEFAULT_HIERARCHY_IMPORT_MAPPING,
+    ...(dbMapping as any)
+  } as Record<string, string | string[]>
 
   const headers = [
     mapping.clusterName as string,
@@ -120,7 +128,7 @@ export async function downloadUnifiedHierarchyTemplate() {
       [mapping.clusterName as string]: "Southwestern",
       [mapping.branchName as string]: "Mbarara Area",
       [mapping.schemeName as string]: "Kabere Scheme",
-      [Array.isArray(mapping.schemeCode) ? mapping.schemeCode[0] : mapping.schemeCode]: "kab_01",
+      [(Array.isArray(mapping.schemeCode) ? mapping.schemeCode[0] : mapping.schemeCode) as string]: "kab_01",
       [mapping.serviceArea as string]: "South Sector"
     },
   ]

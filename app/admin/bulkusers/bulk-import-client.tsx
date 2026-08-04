@@ -27,6 +27,7 @@ import {
   importBulkUsers,
   downloadBulkImportTemplate,
 } from "@/app/actions/bulk-import"
+import { type UserImportRow } from "@/lib/import-schemas"
 import { type ImportSummary } from "@/lib/import-engine"
 import { cn } from "@/lib/utils"
 
@@ -35,7 +36,7 @@ type Step = "setup" | "preview" | "confirm" | "complete"
 export function BulkImportClient() {
   const [step, setStep] = useState<Step>("setup")
   const [file, setFile] = useState<File | null>(null)
-  const [summary, setSummary] = useState<ImportSummary | null>(null)
+  const [summary, setSummary] = useState<ImportSummary<UserImportRow> | null>(null)
   const [isValidating, startValidating] = useTransition()
   const [isImporting, startImporting] = useTransition()
   const [result, setResult] = useState<{ imported: number; failed: number; report: string } | null>(null)

@@ -45,7 +45,11 @@ export async function validateHierarchy(formData: FormData): Promise<{ ok: true;
   const existence = await getExistenceMaps()
   const seenCodes = new Set<string>()
 
-  const mapping = (await getImportMapping('import.hierarchy.master')) || (DEFAULT_HIERARCHY_IMPORT_MAPPING as unknown as Record<string, string | string[]>)
+  const dbMapping = await getImportMapping('import.hierarchy.master')
+  const mapping = {
+    ...DEFAULT_HIERARCHY_IMPORT_MAPPING,
+    ...(dbMapping as any)
+  } as Record<string, string | string[]>
 
   const summary = await processExcelImport({
     file,
@@ -184,7 +188,12 @@ export async function downloadHierarchyTemplate() {
   // Resolve headers the same way validateHierarchyImport resolves them for
   // parsing, so what this generates and what that reads can never drift
   // apart again.
-  const mapping = (await getImportMapping('import.hierarchy.master')) || (DEFAULT_HIERARCHY_IMPORT_MAPPING as unknown as Record<string, string | string[]>)
+  const dbMapping = await getImportMapping('import.hierarchy.master')
+  const mapping = {
+    ...DEFAULT_HIERARCHY_IMPORT_MAPPING,
+    ...(dbMapping as any)
+  } as Record<string, string | string[]>
+
   const nameCol = mapping.schemeName as string
   const codeCol = (Array.isArray(mapping.schemeCode) ? mapping.schemeCode[0] : mapping.schemeCode) as string
   const parentCol = mapping.branchName as string

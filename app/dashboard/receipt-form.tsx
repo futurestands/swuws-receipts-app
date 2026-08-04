@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
-import { createReceipt, type CreateReceiptInput } from "@/app/actions/receipts"
+import { createReceipt } from "@/app/actions/receipts"
+import { type CreateReceiptInput } from "@/lib/finance-schemas"
 import { quickSearchCustomers } from "@/app/actions/customers"
 import { getOpenBillsForCustomer } from "@/app/actions/billing"
 import type { EditableFields, Branch, PaymentMethod, Customer, BillingPeriod, WaterScheme } from "@/lib/db/schema"

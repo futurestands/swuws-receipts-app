@@ -70,7 +70,8 @@ export async function validateBulkUsers(formData: FormData): Promise<{ ok: true;
   // This must be the same mapping downloadBulkImportTemplate used to
   // generate the headers the person is now uploading — see the comment on
   // DEFAULT_USER_IMPORT_MAPPING above.
-  const mapping = (await getImportMapping("import.users.bulk")) || DEFAULT_USER_IMPORT_MAPPING
+  const dbMapping = await getImportMapping("import.users.bulk")
+  const mapping = { ...DEFAULT_USER_IMPORT_MAPPING, ...(dbMapping as any) } as Record<string, string>
 
   const results: ValidationResult[] = []
   let validCount = 0
@@ -341,7 +342,8 @@ export async function downloadBulkImportTemplate(format: "xlsx" | "csv") {
   // Resolve headers from Template Hub — same resolution path validateBulkUsers
   // now uses, so what this generates and what that parses can never drift
   // apart again.
-  const mapping = (await getImportMapping("import.users.bulk")) || DEFAULT_USER_IMPORT_MAPPING
+  const dbMapping = await getImportMapping("import.users.bulk")
+  const mapping = { ...DEFAULT_USER_IMPORT_MAPPING, ...(dbMapping as any) } as Record<string, string>
 
   const headers = Object.values(mapping)
   const sampleRow: Record<string, string> = {}

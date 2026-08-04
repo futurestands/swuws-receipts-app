@@ -39,7 +39,11 @@ export async function validateCustomerImport(formData: FormData): Promise<{ ok: 
   const existingAccounts = new Set(existingCustomers.map((c) => c.account?.toLowerCase()))
   const seenInUpload = new Set<string>()
 
-  const mapping = (await getImportMapping("import.customers.bulk")) || (DEFAULT_CUSTOMER_IMPORT_MAPPING as Record<string, string | string[] | number>)
+  const dbMapping = await getImportMapping("import.customers.bulk")
+  const mapping = {
+    ...DEFAULT_CUSTOMER_IMPORT_MAPPING,
+    ...(dbMapping as any)
+  } as Record<string, string | string[] | number>
 
   const summary = await processExcelImport({
     file,
@@ -177,7 +181,11 @@ export async function downloadCustomerTemplate() {
   await requireUser()
 
   // 1. Resolve Headers from Template Hub (Unified resilient resolution)
-  const mapping = (await getImportMapping("import.customers.bulk")) || (DEFAULT_CUSTOMER_IMPORT_MAPPING as Record<string, string | string[] | number>)
+  const dbMapping = await getImportMapping("import.customers.bulk")
+  const mapping = {
+    ...DEFAULT_CUSTOMER_IMPORT_MAPPING,
+    ...(dbMapping as any)
+  } as Record<string, string | string[] | number>
 
   const headers = Object.values(mapping).map(v => Array.isArray(v) ? v[0] : v) as string[]
   const sampleRow: Record<string, string | number> = {}

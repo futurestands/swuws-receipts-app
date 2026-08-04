@@ -413,7 +413,8 @@ export async function validateBillingImport(
   const seenInUpload = new Set<string>()
 
       // Resolve dynamic mapping (with aliases support)
-      const mapping = (await getImportMapping("import.billing.monthly")) || (DEFAULT_BILLING_IMPORT_MAPPING as Record<string, string | string[] | number>)
+      const dbMapping = await getImportMapping("import.billing.monthly")
+      const mapping = { ...DEFAULT_BILLING_IMPORT_MAPPING, ...(dbMapping as any) } as Record<string, string | string[] | number>
 
   const engineSummary = await processExcelImport({
     file,
@@ -632,7 +633,8 @@ export async function downloadBillingTemplate() {
   await requireUser()
 
   // 1. Resolve Headers from Template Hub
-  const mapping = (await getImportMapping("import.billing.monthly")) || (DEFAULT_BILLING_IMPORT_MAPPING as Record<string, string | string[] | number>)
+  const dbMapping = await getImportMapping("import.billing.monthly")
+  const mapping = { ...DEFAULT_BILLING_IMPORT_MAPPING, ...(dbMapping as any) } as Record<string, string | string[] | number>
 
   const headers = Object.values(mapping).map(v => Array.isArray(v) ? v[0] : v) as string[]
   const data = [
