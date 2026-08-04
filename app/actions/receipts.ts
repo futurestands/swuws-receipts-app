@@ -149,7 +149,7 @@ export async function createReceipt(input: CreateReceiptInput) {
         periodName = rowWithHierarchy.periodName
         schemeName = rowWithHierarchy.schemeName
         targetSchemeId = rowWithHierarchy.schemeId
-        amountDueSnapshot = bill.totalDue
+        amountDueSnapshot = Number(bill.totalDue)
 
         if (bill.status === "paid") throw new Error("This bill is already fully paid")
 
@@ -165,7 +165,7 @@ export async function createReceipt(input: CreateReceiptInput) {
           .where(eq(receipt.billingRecordId, data.billingRecordId))
 
         const previouslyPaid = Number(agg?.totalPaid || 0)
-        remainingBefore = bill.totalDue - previouslyPaid
+        remainingBefore = Number(bill.totalDue) - previouslyPaid
 
         if (remainingBefore <= 0) {
           await tx.update(billingRecord).set({ status: "paid" }).where(eq(billingRecord.id, bill.id))
@@ -257,17 +257,17 @@ export async function createReceipt(input: CreateReceiptInput) {
           billingRecordId: data.billingRecordId || null,
           billingPeriodId: data.billingPeriodId || activePeriod.id,
           billingPeriodSnapshot: periodName,
-          amountDueSnapshot: amountDueSnapshot,
+          amountDueSnapshot: String(amountDueSnapshot || 0),
           schemeNameSnapshot: schemeName,
           customerId: data.customerId || null,
           customerName,
           customerAccount,
           customerPhone,
           customerAddress,
-          amount, // The actual money collected from the customer
-          outstandingBalance: outstandingBalanceSnapshot,
-          previousAccountBalanceSnapshot: previousAccountBalance,
-          newAccountBalanceSnapshot: newAccountBalance,
+          amount: String(amount), // The actual money collected from the customer
+          outstandingBalance: String(outstandingBalanceSnapshot || 0),
+          previousAccountBalanceSnapshot: String(previousAccountBalance),
+          newAccountBalanceSnapshot: String(newAccountBalance),
           currency: settings.currencyCode,
           paymentMethod: data.paymentMethod,
           notes: data.notes || null,
@@ -291,7 +291,7 @@ export async function createReceipt(input: CreateReceiptInput) {
       if (data.customerId) {
         await tx
           .update(customerTable)
-          .set({ accountBalance: newAccountBalance, updatedAt: new Date() })
+          .set({ accountBalance: String(newAccountBalance), updatedAt: new Date() })
           .where(eq(customerTable.id, data.customerId))
       }
 
@@ -754,17 +754,17 @@ export async function requestReceiptVoid(receiptId: string, reason: string) {
 
       // 2. Lock customer for update
       if (target.customerId) {
-        const lockResult = await tx.execute<{ accountBalance: number }>(
+        const lockResult = await tx.execute<{ accountBalance: string }>(
           sql`SELECT "accountBalance" FROM "customer" WHERE id = ${target.customerId} FOR UPDATE`,
         )
         const cust = lockResult.rows[0]
         if (!cust) throw new Error("Customer profile not found")
 
         // 2. Reverse Financials: Increase balance (add back the amount taken)
-        const newBalance = Number(cust.accountBalance) + target.amount
+        const newBalance = Number(cust.accountBalance) + Number(target.amount)
         await tx
           .update(customerTable)
-          .set({ accountBalance: newBalance, updatedAt: new Date() })
+          .set({ accountBalance: String(newBalance), updatedAt: new Date() })
           .where(eq(customerTable.id, target.customerId))
       }
 

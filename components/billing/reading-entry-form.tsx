@@ -160,7 +160,7 @@ export function ReadingEntryForm({
 
           // Store last submission for printing before clearing form
           if (calculation) {
-            const previousBalance = selectedCustomer.accountBalance || 0
+            const previousBalance = Number(selectedCustomer.accountBalance || 0)
             const totalDue = calculation.totalNewBill + previousBalance
 
             const newSubmission = {
@@ -206,7 +206,7 @@ export function ReadingEntryForm({
           setDiscrepancyData({
             open: true,
             attemptedReading: readingValue,
-            existingAmount: selectedCustomer.accountBalance || 0,
+            existingAmount: Number(selectedCustomer.accountBalance) || 0,
             reason: ""
           })
         } else {
@@ -393,7 +393,7 @@ export function ReadingEntryForm({
             <div className="p-3 bg-amber-50 rounded-lg text-xs space-y-1.5 border border-amber-100">
               <div className="flex justify-between text-amber-900">
                 <span>Imported Amount:</span>
-                <span className="font-bold">{formatUGX(discrepancyData?.existingAmount || 0)}</span>
+                <span className="font-bold">{formatUGX(Number(discrepancyData?.existingAmount || 0))}</span>
               </div>
               <div className="flex justify-between text-amber-900">
                 <span>Your Reading:</span>

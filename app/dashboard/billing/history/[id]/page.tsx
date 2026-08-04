@@ -74,7 +74,7 @@ export default async function BillingRunDetailPage({ params }: { params: Promise
                     <TableRow key={record.id}>
                       <TableCell className="font-medium">{record.customerName}</TableCell>
                       <TableCell className="text-sm font-mono">{record.accountNumber}</TableCell>
-                      <TableCell>{formatUGX(record.totalDue)}</TableCell>
+                      <TableCell>{formatUGX(Number(record.totalDue))}</TableCell>
                       <TableCell>
                         <Badge variant={record.status === "paid" ? "default" : record.status === "partially_paid" ? "secondary" : "outline"}>
                           {record.status.replace("_", " ")}

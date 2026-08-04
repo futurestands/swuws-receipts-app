@@ -245,10 +245,10 @@ export async function searchCustomers(params: {
     conditions.push(eq(waterScheme.branchId, params.branchId))
   }
   if (params.minBalance !== undefined) {
-    conditions.push(gte(customer.accountBalance, params.minBalance))
+    conditions.push(gte(customer.accountBalance, String(params.minBalance)))
   }
   if (params.maxBalance !== undefined) {
-    conditions.push(lte(customer.accountBalance, params.maxBalance))
+    conditions.push(lte(customer.accountBalance, String(params.maxBalance)))
   }
   if (scope) {
     conditions.push(scope)
@@ -320,10 +320,10 @@ export async function exportCustomersExcel(params: {
     conditions.push(eq(waterScheme.branchId, params.branchId))
   }
   if (params.minBalance !== undefined) {
-    conditions.push(gte(customer.accountBalance, params.minBalance))
+    conditions.push(gte(customer.accountBalance, String(params.minBalance)))
   }
   if (params.maxBalance !== undefined) {
-    conditions.push(lte(customer.accountBalance, params.maxBalance))
+    conditions.push(lte(customer.accountBalance, String(params.maxBalance)))
   }
   if (scope) {
     conditions.push(scope)
@@ -355,7 +355,7 @@ export async function exportCustomersExcel(params: {
     "Address": r.address || "—",
     "Water Scheme": r.scheme || "—",
     "Branch": r.branch || "—",
-    "Arrears (UGX)": r.arrears,
+    "Arrears (UGX)": Number(r.arrears),
     "Status": r.status ? "Active" : "Inactive",
     "Registered On": r.registered?.toLocaleDateString("en-GB") || "—",
   }))

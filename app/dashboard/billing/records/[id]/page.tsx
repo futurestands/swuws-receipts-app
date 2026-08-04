@@ -48,7 +48,7 @@ export default async function BillingRecordDetailPage({ params }: { params: Prom
             </div>
             <div className="flex justify-between text-sm">
               <span className="text-muted-foreground">Total Billed</span>
-              <span className="font-semibold">{formatUGX(bill.totalDue)}</span>
+              <span className="font-semibold">{formatUGX(Number(bill.totalDue))}</span>
             </div>
             <div className="flex justify-between text-sm">
               <span className="text-muted-foreground">Status</span>
@@ -68,7 +68,7 @@ export default async function BillingRecordDetailPage({ params }: { params: Prom
             </div>
             <div className="flex justify-between text-sm">
               <span className="text-muted-foreground">Remaining Balance</span>
-              <span className="font-bold text-destructive">{formatUGX(Math.max(0, bill.totalDue - totalPaid))}</span>
+              <span className="font-bold text-destructive">{formatUGX(Math.max(0, Number(bill.totalDue) - totalPaid))}</span>
             </div>
             <div className="flex justify-between text-sm">
               <span className="text-muted-foreground">Payment Count</span>
@@ -113,7 +113,7 @@ export default async function BillingRecordDetailPage({ params }: { params: Prom
                       <TableCell className="text-sm">{formatDateTime(p.paymentDate)}</TableCell>
                       <TableCell className="text-sm capitalize">{p.paymentMethod}</TableCell>
                       <TableCell className="text-sm">{p.agentName}</TableCell>
-                      <TableCell className="text-right font-semibold">{formatUGX(p.amount)}</TableCell>
+                      <TableCell className="text-right font-semibold">{formatUGX(Number(p.amount))}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>

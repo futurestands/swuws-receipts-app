@@ -101,7 +101,7 @@ export function ReceiptsTable({ receipts, isAdmin }: { receipts: Receipt[]; isAd
                     <TableCell className="text-xs">
                       {r.billingPeriodSnapshot || "—"}
                     </TableCell>
-                    <TableCell>{formatUGX(r.amount)}</TableCell>
+                    <TableCell>{formatUGX(Number(r.amount))}</TableCell>
                     <TableCell>
                        <Badge variant="outline" className={`text-[10px] px-1.5 py-0 capitalize ${r.reconciliationStatus === 'matched' ? 'bg-green-50 text-green-600 border-green-200' : ''}`}>
                           {r.reconciliationStatus}

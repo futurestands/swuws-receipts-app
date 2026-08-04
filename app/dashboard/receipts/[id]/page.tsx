@@ -60,9 +60,9 @@ export default async function ReceiptDetailPage({ params }: { params: Promise<{ 
   const prevBalance = receipt.previousAccountBalanceSnapshot
   const newBalance = receipt.newAccountBalanceSnapshot
 
-  const isCredit = newBalance < 0
-  const absBalance = Math.abs(newBalance)
-  const remainingOutstanding = receipt.outstandingBalance ?? 0
+  const isCredit = Number(newBalance) < 0
+  const absBalance = Math.abs(Number(newBalance))
+  const remainingOutstanding = Number(receipt.outstandingBalance ?? 0)
 
   return (
     <div className="space-y-4 print-page">
@@ -152,12 +152,12 @@ export default async function ReceiptDetailPage({ params }: { params: Promise<{ 
 
             <div className="flex items-center justify-between text-sm">
               <span className="text-muted-foreground">Previous Arrears</span>
-              <span className="font-mono">{formatUGX(prevBalance)}</span>
+              <span className="font-mono">{formatUGX(Number(prevBalance))}</span>
             </div>
 
             <div className="flex items-center justify-between text-sm font-semibold border-t pt-2">
               <span className="">Amount Collected</span>
-              <span className="font-mono text-primary">{formatUGX(amountCollected)}</span>
+              <span className="font-mono text-primary">{formatUGX(Number(amountCollected))}</span>
             </div>
 
             <div className="flex items-center justify-between text-base font-bold text-primary mt-4 pt-2 border-t border-double">

@@ -109,8 +109,8 @@ export default async function CustomersPage({
                       <TableCell className="text-muted-foreground">
                         {c.schemeName || "—"}
                       </TableCell>
-                      <TableCell className={`text-right font-mono font-bold ${c.accountBalance > 0 ? 'text-destructive' : 'text-primary'}`}>
-                        {formatUGX(c.accountBalance)}
+                      <TableCell className={`text-right font-mono font-bold ${Number(c.accountBalance) > 0 ? 'text-destructive' : 'text-primary'}`}>
+                        {formatUGX(Number(c.accountBalance))}
                       </TableCell>
                       <TableCell className="text-muted-foreground">{c.phone || "—"}</TableCell>
                       <TableCell className="text-muted-foreground text-sm">

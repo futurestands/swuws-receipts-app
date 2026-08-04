@@ -545,10 +545,10 @@ export async function importBilling(
           billingPeriodId: summary.billingPeriodId,
           customerId: custId,
           accountNumber: row.data.accountNumber,
-          billAmount: row.data.billAmount,
-          arrears: row.data.arrears,
-          currentCharges: row.data.currentCharges,
-          totalDue: row.data.totalDue,
+          billAmount: String(row.data.billAmount),
+          arrears: String(row.data.arrears),
+          currentCharges: String(row.data.currentCharges),
+          totalDue: String(row.data.totalDue),
           dueDate: new Date(row.data.dueDate),
           status: "pending",
         }
@@ -586,7 +586,7 @@ export async function importBilling(
         const chunk = recordsToInsert.slice(i, i + BAL_CHUNK_SIZE)
 
         // Build a Bulk Update query using a VALUES list
-        const valuesList = chunk.map(r => sql`(${r.customerId}, ${r.totalDue}::bigint)`).reduce((acc, curr) => sql`${acc}, ${curr}`)
+        const valuesList = chunk.map(r => sql`(${r.customerId}, ${r.totalDue}::numeric)`).reduce((acc, curr) => sql`${acc}, ${curr}`)
 
         await tx.execute(sql`
           UPDATE customer AS c

@@ -27,7 +27,7 @@ import { AlertCircle, Search, UserPlus } from "lucide-react"
 
 type Bill = {
   id: string
-  totalDue: number
+  totalDue: string
   status: string
   periodName: string
   dueDate: Date
@@ -371,7 +371,7 @@ export function ReceiptForm({
                <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1">
                     <p className="text-[10px] font-bold uppercase text-muted-foreground">Current Arrears</p>
-                    <p className="text-lg font-black">{formatUGX(selectedCustomer.accountBalance)}</p>
+                    <p className="text-lg font-black">{formatUGX(Number(selectedCustomer.accountBalance))}</p>
                   </div>
                   <div className="space-y-1 text-right">
                     <p className="text-[10px] font-bold uppercase text-muted-foreground">Resulting Balance</p>
@@ -414,7 +414,7 @@ export function ReceiptForm({
               <SelectContent>
                 {bills.map((b) => (
                   <SelectItem key={b.id} value={b.id}>
-                    {b.periodName} - {formatUGX(b.totalDue)} (Due:{" "}
+                    {b.periodName} - {formatUGX(Number(b.totalDue))} (Due:{" "}
                     {new Date(b.dueDate).toLocaleDateString()})
                   </SelectItem>
                 ))}

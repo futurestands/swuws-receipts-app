@@ -65,7 +65,7 @@ export default async function ExceptionDetailsPage({ params }: { params: Promise
                          <div className="grid grid-cols-2 gap-2">
                             <div>
                                <p className="text-[10px] uppercase font-bold text-muted-foreground">Amount</p>
-                               <p className="text-sm font-bold text-primary">{formatUGX(receipt.amount)}</p>
+                               <p className="text-sm font-bold text-primary">{formatUGX(Number(receipt.amount))}</p>
                             </div>
                             <div>
                                <p className="text-[10px] uppercase font-bold text-muted-foreground">Date</p>
@@ -115,7 +115,7 @@ export default async function ExceptionDetailsPage({ params }: { params: Promise
                          <div className="grid grid-cols-2 gap-2">
                             <div>
                                <p className="text-[10px] uppercase font-bold text-muted-foreground">Confirmed Amount</p>
-                               <p className="text-sm font-bold text-orange-600">{formatUGX(record.amount)}</p>
+                               <p className="text-sm font-bold text-orange-600">{formatUGX(Number(record.amount))}</p>
                             </div>
                             <div>
                                <p className="text-[10px] uppercase font-bold text-muted-foreground">Bank Date</p>

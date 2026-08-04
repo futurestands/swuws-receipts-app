@@ -70,7 +70,7 @@ export async function validateTariffImport(formData: FormData): Promise<{ ok: tr
           errors.push("Access Denied: You are not authorized to manage tariffs for this area.")
         } else {
           // Check for existing to show "Update" vs "New"
-          const key = `${data.targetType}:${targetId}:${data.customerCategory.toLowerCase()}`
+          const key = `${data.targetType}:${targetId}:${data.customerCategory?.toLowerCase() || 'domestic'}`
           if (existingSet.has(key)) {
             warnings.push("Update: This will override an existing tariff.")
           } else {

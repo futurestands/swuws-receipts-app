@@ -116,7 +116,7 @@ export async function runReconciliation(batchId: string) {
     const r = receipts.find(receipt =>
       !matchedReceiptIds.has(receipt.id) &&
       receipt.customerAccount === record.accountNumber &&
-      receipt.amount === record.amount &&
+      Number(receipt.amount) === Number(record.amount) &&
       new Date(receipt.paymentDate).toDateString() === new Date(record.paymentDate).toDateString()
     )
     if (r) {
@@ -139,7 +139,7 @@ export async function runReconciliation(batchId: string) {
     const r = receipts.find(receipt =>
       !matchedReceiptIds.has(receipt.id) &&
       receipt.customerAccount === record.accountNumber &&
-      receipt.amount === record.amount &&
+      Number(receipt.amount) === Number(record.amount) &&
       receipt.paymentMethod.toLowerCase() === record.paymentChannel.toLowerCase()
     )
     if (r) {
@@ -227,7 +227,7 @@ export async function runReconciliation(batchId: string) {
           ))
 
         if (arrearsMatches.length > 0) {
-          const totalArrearsResolved = arrearsMatches.reduce((s, m) => s + m.amount, 0)
+          const totalArrearsResolved = arrearsMatches.reduce((s, m) => s + Number(m.amount), 0)
           await writeAudit({
             user: current,
             action: "financial.arrears_resolved",
@@ -249,7 +249,7 @@ export async function runReconciliation(batchId: string) {
             dailyCollectionRecordId: r.id,
             exceptionType: 'unmatched_payment',
             reason: 'No matching receipt found for confirmed EBS payment',
-            priority: r.amount > 500000 ? 'high' : 'medium',
+            priority: Number(r.amount) > 500000 ? 'high' : 'medium',
             status: 'open'
           }))
           for (let i = 0; i < recordExceptions.length; i += CHUNK_SIZE) {
@@ -277,7 +277,7 @@ export async function runReconciliation(batchId: string) {
             receiptId: r.id,
             exceptionType: 'unmatched_receipt',
             reason: 'Issued receipt not found in official EBS daily report',
-            priority: r.amount > 500000 ? 'high' : 'medium',
+            priority: Number(r.amount) > 500000 ? 'high' : 'medium',
             status: 'open'
           }))
           for (let i = 0; i < receiptExceptions.length; i += CHUNK_SIZE) {

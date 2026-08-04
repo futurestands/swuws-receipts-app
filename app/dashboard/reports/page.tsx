@@ -283,7 +283,7 @@ export default async function ReportsPage({
                     <p className="text-[10px] text-muted-foreground truncate uppercase">{d.scheme} · {d.account}</p>
                   </div>
                   <div className="text-right ml-4">
-                    <p className="text-sm font-bold text-destructive">{formatUGX(d.outstanding)}</p>
+                    <p className="text-sm font-bold text-destructive">{formatUGX(Number(d.outstanding))}</p>
                   </div>
                 </div>
               )) : (

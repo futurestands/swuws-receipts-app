@@ -51,7 +51,7 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
           <Card className="px-4 py-2 bg-primary/5 border-primary/20">
             <p className="text-[10px] uppercase font-bold text-muted-foreground leading-none mb-1">Account Balance</p>
             <p className="text-lg font-mono font-bold text-primary leading-none">
-              {formatUGX(customer.accountBalance || 0)}
+              {formatUGX(Number(customer.accountBalance || 0))}
             </p>
           </Card>
           {bills[0] && (
@@ -197,7 +197,7 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
                             <TableCell className="text-sm">
                                {b.consumption !== null ? `${b.consumption} m³` : "Imported"}
                             </TableCell>
-                            <TableCell>{formatUGX(b.totalDue)}</TableCell>
+                            <TableCell>{formatUGX(Number(b.totalDue))}</TableCell>
                             <TableCell className="text-sm">{formatDate(b.dueDate)}</TableCell>
                             <TableCell>
                               <Badge variant={b.status === "paid" ? "default" : b.status === "partially_paid" ? "secondary" : "outline"}>
@@ -245,7 +245,7 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
                               </Link>
                             </TableCell>
                             <TableCell className="text-xs">{r.billingPeriod || "—"}</TableCell>
-                            <TableCell>{formatUGX(r.amount)}</TableCell>
+                            <TableCell>{formatUGX(Number(r.amount))}</TableCell>
                             <TableCell className="text-muted-foreground text-sm">
                               {formatDate(r.paymentDate)}
                             </TableCell>

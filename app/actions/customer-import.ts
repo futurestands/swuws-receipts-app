@@ -118,7 +118,7 @@ export async function importCustomers(summary: CustomerImportSummary): Promise<{
             serialNo: data.serialNo || null,
             category: data.category || "domestic",
             openingArrears: data.openingArrears,
-            accountBalance: data.openingArrears,
+            accountBalance: String(data.openingArrears),
             notes: data.notes || null,
             createdById: current.id,
             updatedAt: new Date(),
@@ -142,7 +142,7 @@ export async function importCustomers(summary: CustomerImportSummary): Promise<{
               serialNo: sql`COALESCE(EXCLUDED."serialNo", customer."serialNo")`,
               category: sql`COALESCE(EXCLUDED.category, customer.category)`,
               openingArrears: sql`EXCLUDED."openingArrears"`,
-              accountBalance: sql`EXCLUDED."openingArrears"`,
+              accountBalance: sql`EXCLUDED."accountBalance"`,
               updatedAt: new Date(),
             }
           })
@@ -180,7 +180,7 @@ export async function importCustomers(summary: CustomerImportSummary): Promise<{
               serialNo: data.serialNo || existing.serialNo,
               category: data.category || existing.category,
               openingArrears: data.openingArrears,
-              accountBalance: data.openingArrears,
+              accountBalance: String(data.openingArrears),
               updatedAt: new Date(),
             }).where(eq(customer.id, existing.id))
             updatedCount++
@@ -197,7 +197,7 @@ export async function importCustomers(summary: CustomerImportSummary): Promise<{
               serialNo: data.serialNo || null,
               category: data.category || "domestic",
               openingArrears: data.openingArrears,
-              accountBalance: data.openingArrears,
+              accountBalance: String(data.openingArrears),
               notes: data.notes || null,
               createdById: current.id,
             })

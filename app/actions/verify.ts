@@ -77,7 +77,7 @@ export async function verifyReceipt(receiptNumberInput: string) {
   const result: VerifyResult = {
     receiptNumber: row.receiptNumber,
     status: "valid",
-    amount: row.amount,
+    amount: Number(row.amount),
     currency: row.currency,
     paymentDate: row.paymentDate,
     orgName: row.orgNameSnapshot,

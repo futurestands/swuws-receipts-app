@@ -357,8 +357,8 @@ export async function upsertTariff(data: {
       targetType: data.targetType,
       targetId: data.targetId,
       customerCategory: category,
-      unitPrice: data.unitPrice,
-      serviceFee: data.serviceFee,
+      unitPrice: String(data.unitPrice),
+      serviceFee: String(data.serviceFee),
       vatPercentage: data.vatPercentage,
       active: true,
       updatedAt: new Date(),
@@ -366,8 +366,8 @@ export async function upsertTariff(data: {
     .onConflictDoUpdate({
       target: [tariffConfiguration.targetType, tariffConfiguration.targetId, tariffConfiguration.customerCategory],
       set: {
-        unitPrice: data.unitPrice,
-        serviceFee: data.serviceFee,
+        unitPrice: String(data.unitPrice),
+        serviceFee: String(data.serviceFee),
         vatPercentage: data.vatPercentage,
         updatedAt: new Date(),
       },

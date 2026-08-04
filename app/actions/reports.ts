@@ -106,26 +106,26 @@ export async function getCustomerStatement(customerId: string) {
 
   for (const event of events) {
     if (event.type === "bill") {
-      runningBalance += event.data.totalDue
+      runningBalance += Number(event.data.totalDue)
       ledger.push({
         date: event.date,
         type: "bill",
         description: `${event.data.periodName} Bill`,
-        amount: event.data.totalDue,
+        amount: Number(event.data.totalDue),
         balance: runningBalance,
         referenceId: event.data.id,
       })
     } else {
       // Reversal logic: If voided, the payment doesn't affect the balance
       if (!event.data.isVoided) {
-        runningBalance -= event.data.amount
+        runningBalance -= Number(event.data.amount)
       }
 
       ledger.push({
         date: event.date,
         type: "payment",
         description: `Receipt #${event.data.receiptNumber}${event.data.isVoided ? " (VOIDED)" : ""}`,
-        amount: event.data.amount,
+        amount: Number(event.data.amount),
         balance: runningBalance,
         referenceId: event.data.id,
         isVoided: event.data.isVoided
@@ -142,8 +142,8 @@ export async function getCustomerStatement(customerId: string) {
     .limit(1)
 
   // 6. Calculate Running Totals
-  const totalBilled = bills.reduce((sum, b) => sum + b.totalDue, 0)
-  const totalPaid = receipts.filter(r => !r.isVoided).reduce((sum, r) => sum + r.amount, 0)
+  const totalBilled = bills.reduce((sum, b) => sum + Number(b.totalDue), 0)
+  const totalPaid = receipts.filter(r => !r.isVoided).reduce((sum, r) => sum + Number(r.amount), 0)
   const currentBalance = totalBilled - totalPaid
 
   return {
@@ -401,7 +401,7 @@ export async function getBillPaymentHistory(billingRecordId: string) {
   return {
     bill,
     payments: receipts,
-    totalPaid: receipts.reduce((sum, r) => sum + r.amount, 0),
+    totalPaid: receipts.reduce((sum, r) => sum + Number(r.amount), 0),
   }
 }
 
@@ -428,6 +428,6 @@ export async function getTopDebtors(limit = 10) {
       sql`${customer.accountBalance} > 0`,
       applyCustomerScope(current)
     ))
-    .orderBy(desc(customer.accountBalance))
+    .orderBy(desc(sql`${customer.accountBalance}::numeric`))
     .limit(limit)
 }
