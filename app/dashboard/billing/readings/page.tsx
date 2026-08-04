@@ -33,8 +33,8 @@ export default async function MeterReadingsPage() {
         description="Capture meter readings or re-issue invoices to customers."
       />
 
-      <Tabs defaultValue="capture" className="no-print">
-        <TabsList className="grid w-full grid-cols-2 max-w-md">
+      <Tabs defaultValue="capture">
+        <TabsList className="grid w-full grid-cols-2 max-w-md no-print">
           <TabsTrigger value="capture">Capture Reading</TabsTrigger>
           <TabsTrigger value="invoice">Re-issue Invoice</TabsTrigger>
         </TabsList>
@@ -47,7 +47,7 @@ export default async function MeterReadingsPage() {
               currentUser={{ id: user.id, role: user.role }}
             />
           ) : (
-            <div className="p-8 text-center border-2 border-dashed rounded-xl bg-muted/20">
+            <div className="p-8 text-center border-2 border-dashed rounded-xl bg-muted/20 no-print">
               <p className="text-muted-foreground">There is no active billing period. Please contact an administrator.</p>
             </div>
           )}
@@ -57,11 +57,6 @@ export default async function MeterReadingsPage() {
            <InvoicingPanel />
         </TabsContent>
       </Tabs>
-
-      {/* Ensuring print only shows the invoice content when on that tab */}
-      <div className="hidden print:block">
-         <InvoicingPanel />
-      </div>
     </div>
   )
 }
