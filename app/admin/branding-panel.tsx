@@ -50,13 +50,18 @@ export function BrandingPanel({ settings }: { settings: OrgSettings }) {
     const formData = new FormData()
     formData.append("logo", file)
     startTransition(async () => {
-      const result = await uploadLogo(formData)
-      if (!result.ok) {
-        toast.error(result.error)
-        return
+      try {
+        const result = await uploadLogo(formData)
+        if (!result.ok) {
+          toast.error(result.error)
+          return
+        }
+        setLogoUrl(result.url)
+        toast.success("Logo updated successfully. Please wait a moment for the icons to refresh.")
+      } catch (err: unknown) {
+        toast.error("Critical upload error. Please try a smaller file or refresh the page.")
+        console.error("handleLogo transition crashed", err)
       }
-      setLogoUrl(result.url)
-      toast.success("Logo updated")
     })
   }
 

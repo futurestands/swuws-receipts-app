@@ -1,4 +1,4 @@
-# SWUWS v1.0 Production Certification Audit Report
+![img.png](img.png)# SWUWS v1.0 Production Certification Audit Report
 
 **Date:** July 19, 2026  
 **Auditor:** Principal Software Architect & Lead Security Engineer  
