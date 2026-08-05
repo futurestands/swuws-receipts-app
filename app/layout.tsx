@@ -13,7 +13,12 @@ export async function generateMetadata(): Promise<Metadata> {
     description: 'Revenue Assurance and Payment Tracking System — Southwestern Umbrella of Water and Sanitation',
     icons: {
       icon: iconUrl,
+      shortcut: iconUrl,
       apple: iconUrl,
+      other: {
+        rel: 'apple-touch-icon-precomposed',
+        url: iconUrl,
+      },
     }
   }
 }
