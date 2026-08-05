@@ -435,7 +435,11 @@ export function ReceiptForm({
                 disabled={!!form.billingRecordId}
               >
                 <SelectTrigger id="billingPeriodTrigger" className="w-full h-11">
-                  <SelectValue placeholder="Select period" />
+                  <SelectValue>
+                    {form.billingPeriodId
+                      ? billingPeriods.find(p => p.id === form.billingPeriodId)?.periodName || "Select period"
+                      : "Select period"}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {billingPeriods.map((p) => (
