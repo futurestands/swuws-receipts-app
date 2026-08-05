@@ -11,7 +11,6 @@ export async function generateMetadata(): Promise<Metadata> {
   return {
     title: 'SWUWS Collection Portal',
     description: 'Revenue Assurance and Payment Tracking System — Southwestern Umbrella of Water and Sanitation',
-    manifest: '/manifest.json',
     icons: {
       icon: iconUrl,
       apple: iconUrl,
