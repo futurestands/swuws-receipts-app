@@ -25,6 +25,10 @@ The project build has been stabilized by addressing several critical issues rela
 ### 4. Project Configuration Cleanup
 - Removed experimental and potentially conflicting flags from `gradle.properties` (e.g., `android.dependency.useConstraints`, `android.newDsl`).
 
+### 5. Mobile App Functional Fixes
+- **Update Button**: Modified the "Update to vX.X.X" button in the Account dashboard to use an absolute URL instead of a relative one. This ensures the APK download triggers correctly from the production server when clicked from within the mobile app.
+- **Icon Integrity**: Identified densities mismatch in `mipmap` resources. Provided a guide to use the **Image Asset Studio** to generate standard-compliant adaptive icons.
+
 ## Verification Results
 - **Gradle Sync**: Successful.
 - **Build**: `./gradlew :app:assembleDebug` completed successfully.

@@ -26,7 +26,7 @@ type UserProfile = {
   }
 }
 
-export function AccountClient({ user, settings }: { user: UserProfile, settings: OrgSettings }) {
+export function AccountClient({ user, settings, siteUrl }: { user: UserProfile, settings: OrgSettings, siteUrl: string }) {
   const [currentPassword, setCurrentPassword] = useState("")
   const [newPassword, setNewPassword] = useState("")
   const [confirmPassword, setConfirmPassword] = useState("")
@@ -240,7 +240,12 @@ export function AccountClient({ user, settings }: { user: UserProfile, settings:
                          isOutdated && "bg-brand-blue hover:bg-brand-blue/90 animate-pulse ring-4 ring-brand-blue/20"
                       )}
                    >
-                      <a href="/swuws-portal.apk" download>
+                      <a
+                        href={`${siteUrl}/swuws-portal.apk`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        download
+                      >
                          {isOutdated ? (
                             <><RefreshCw className="h-6 w-6 animate-spin-slow" /> UPDATE TO v{settings.latestAppVersion}</>
                          ) : (

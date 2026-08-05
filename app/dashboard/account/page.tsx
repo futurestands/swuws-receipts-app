@@ -2,11 +2,13 @@ import { requireUser } from "@/lib/session"
 import { AccountClient } from "./account-client"
 import { PageHeader } from "@/components/ui/page-header"
 import { getSettings } from "@/app/actions/settings"
+import { getSiteUrl } from "@/lib/site-url"
 
 export default async function AccountPage() {
-  const [user, settings] = await Promise.all([
+  const [user, settings, siteUrl] = await Promise.all([
     requireUser(),
     getSettings(),
+    getSiteUrl(),
   ])
 
   return (
@@ -15,7 +17,7 @@ export default async function AccountPage() {
         title="My Account"
         description="Manage your profile settings and security."
       />
-      <AccountClient user={user} settings={settings} />
+      <AccountClient user={user} settings={settings} siteUrl={siteUrl} />
     </div>
   )
 }
