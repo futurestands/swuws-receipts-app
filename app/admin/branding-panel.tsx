@@ -124,7 +124,9 @@ export function BrandingPanel({ settings }: { settings: OrgSettings }) {
               <div className="flex items-center gap-3 p-3 border rounded-lg bg-muted/20">
                 {logoUrl ? (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={logoUrl} alt="Logo" className="size-12 object-contain border rounded bg-white p-1" />
+                  <div className="size-12 rounded bg-white p-1.5 flex items-center justify-center border shadow-sm">
+                    <img src={logoUrl} alt="Logo" className="max-w-full max-h-full object-contain" />
+                  </div>
                 ) : (
                   <div className="size-12 border-2 border-dashed rounded flex items-center justify-center text-muted-foreground text-[10px]">
                     No Logo

@@ -44,6 +44,7 @@ export function AppShell({
     return false
   })
   const [mobileOpen, setMobileOpen] = useState(false)
+  const [imgError, setImgError] = useState(false)
 
   function toggleCollapsed() {
     setCollapsed((prev) => {
@@ -64,8 +65,15 @@ export function AppShell({
           <div className="flex flex-col min-w-0">
             {!collapsed ? (
               <Link href={brandHref} className="flex items-center gap-2 group leading-tight overflow-hidden">
-                {logoUrl ? (
-                  <img src={logoUrl} alt="Logo" className="size-8 object-contain shrink-0" />
+                {logoUrl && !imgError ? (
+                  <div className="size-8 rounded bg-white p-1 flex items-center justify-center shrink-0 border border-white/10 shadow-sm">
+                    <img
+                      src={logoUrl}
+                      alt=""
+                      className="max-w-full max-h-full object-contain"
+                      onError={() => setImgError(true)}
+                    />
+                  </div>
                 ) : (
                   <div className="size-8 rounded bg-primary/10 flex items-center justify-center shrink-0">
                     <span className="text-[10px] font-black text-primary">{receiptPrefix[0]}</span>
@@ -82,8 +90,15 @@ export function AppShell({
               </Link>
             ) : (
               <Link href={brandHref} className="flex justify-center">
-                {logoUrl ? (
-                  <img src={logoUrl} alt="Logo" className="size-6 object-contain" />
+                {logoUrl && !imgError ? (
+                  <div className="size-6 rounded bg-white p-0.5 flex items-center justify-center border border-white/10 shadow-sm">
+                    <img
+                      src={logoUrl}
+                      alt=""
+                      className="max-w-full max-h-full object-contain"
+                      onError={() => setImgError(true)}
+                    />
+                  </div>
                 ) : (
                   <div className="size-6 rounded bg-primary/10 flex items-center justify-center">
                     <span className="text-[8px] font-black text-primary">{receiptPrefix[0]}</span>
