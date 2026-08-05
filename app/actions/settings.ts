@@ -147,46 +147,53 @@ export async function uploadLogo(formData: FormData) {
   try {
     const file = formData.get("logo") as File | null
     if (!file || file.size === 0) {
-      return { ok: false as const, error: "No file provided" }
+      return { ok: false as const, error: "No file was received by the server." }
     }
 
-    // Safety Check: File Size (Vercel has a 4.5MB limit for Server Actions)
+    // Safety Check: File Size (Vercel infrastructure limit)
     if (file.size > 4 * 1024 * 1024) {
-      return { ok: false as const, error: "Logo is too large. Please use an image smaller than 4MB." }
-    }
-
-    if (!file.type.startsWith("image/")) {
-      return { ok: false as const, error: "File must be an image (PNG, JPG, SVG)" }
+      return { ok: false as const, error: `File is too large (${(file.size / 1024 / 1024).toFixed(1)}MB). Max allowed is 4MB.` }
     }
 
     let logoUrl: string
+    const token = process.env.BLOB_READ_WRITE_TOKEN
     const isProduction = process.env.NODE_ENV === "production"
-    const hasBlobToken = process.env.BLOB_READ_WRITE_TOKEN &&
-      process.env.BLOB_READ_WRITE_TOKEN !== "replace-with-a-real-vercel-blob-token"
 
-    if (hasBlobToken) {
-      // PRO FIX: Convert File to Buffer for stable Vercel Blob transmission
+    const isTokenValid = token && token.startsWith("vercel_blob_rw_") && token !== "replace-with-a-real-vercel-blob-token"
+
+    if (isTokenValid) {
+      // Convert File to Buffer for stable transmission
       const arrayBuffer = await file.arrayBuffer()
       const buffer = Buffer.from(arrayBuffer)
 
-      const blob = await put(`logos/${Date.now()}-${file.name.replace(/[^a-zA-Z0-9.]/g, "-")}`, buffer, {
-        access: "public",
-        addRandomSuffix: true,
-      })
-      logoUrl = blob.url
+      // Clean filename for cloud compatibility
+      const safeName = file.name.toLowerCase().replace(/[^a-z0-9.]/g, "-")
+
+      try {
+        const blob = await put(`logos/${Date.now()}-${safeName}`, buffer, {
+          access: "public",
+          addRandomSuffix: true,
+          token: token // Explicitly pass token for redundancy
+        })
+        logoUrl = blob.url
+      } catch (blobErr: any) {
+        console.error("Vercel Blob Storage Error:", blobErr)
+        return { ok: false as const, error: `Cloud Storage Error: ${blobErr.message || "Access Denied"}` }
+      }
     } else if (!isProduction) {
+      // Local fallback for dev
       const bytes = await file.arrayBuffer()
       const buffer = Buffer.from(bytes)
       const filename = `${Date.now()}-${file.name.replace(/\s+/g, "-")}`
       const uploadDir = path.join(process.cwd(), "public", "uploads")
-
       await fs.mkdir(uploadDir, { recursive: true })
       await fs.writeFile(path.join(uploadDir, filename), buffer)
       logoUrl = `/uploads/${filename}`
     } else {
-      return { ok: false as const, error: "BLOB_READ_WRITE_TOKEN is not correctly configured in Vercel settings." }
+      return { ok: false as const, error: "Configuration Error: BLOB_READ_WRITE_TOKEN is missing or invalid in Vercel settings." }
     }
 
+    // Update Database
     await db
       .update(orgSettings)
       .set({ logoUrl: logoUrl, updatedAt: new Date() })
@@ -200,14 +207,14 @@ export async function uploadLogo(formData: FormData) {
       details: { logoUrl: logoUrl },
     })
 
-    // Quiet revalidation to prevent page crash
-    revalidatePath("/", "layout")
+    // Targeted revalidation to prevent layout-level crashes
+    revalidatePath("/admin")
+    revalidatePath("/dashboard")
 
     return { ok: true as const, url: logoUrl }
-  } catch (err: unknown) {
-    console.error("CRITICAL: Logo upload crashed:", err)
-    const message = err instanceof Error ? err.message : "The server encountered an error during upload."
-    return { ok: false as const, error: message }
+  } catch (err: any) {
+    console.error("Deep System Failure during upload:", err)
+    return { ok: false as const, error: `System Error: ${err.message || "Unknown error occurred"}` }
   }
 }
 
