@@ -10,6 +10,7 @@ import * as XLSX from "xlsx"
 import { z } from "zod"
 import { revalidatePath } from "next/cache"
 import { writeAudit } from "@/lib/audit"
+import { getImportMapping } from "@/lib/import-engine"
 
 const REQUIRED_COLUMNS = [
   "Account Number",
@@ -19,6 +20,17 @@ const REQUIRED_COLUMNS = [
   "External Reference",
   "Payment Channel"
 ]
+
+const DEFAULT_DAILY_IMPORT_MAPPING = {
+  accountNumber: "Account Number",
+  customerName: "Customer Name",
+  amountPaid: "Amount Paid",
+  paymentDate: "Payment Date",
+  externalReference: "External Reference",
+  paymentChannel: "Payment Channel",
+  scheme: "Scheme",
+  area: "Area"
+}
 
 const dailyRowSchema = z.object({
   accountNumber: z.string().trim().min(1, "Account Number is required"),
@@ -357,5 +369,41 @@ export async function getDailyImportRecords(params: {
     total: Number(totalResult?.count || 0),
     page: params.page,
     totalPages: Math.ceil(Number(totalResult?.count || 0) / params.limit)
+  }
+}
+
+/**
+ * Generates a template file for Daily Collection imports.
+ */
+export async function downloadDailyCollectionTemplate(format: "xlsx" | "csv") {
+  await requireUser()
+
+  // Resolve headers from Template Hub (Optional, but good for consistency)
+  const dbMapping = await getImportMapping("import.daily.collections")
+  const mapping = { ...DEFAULT_DAILY_IMPORT_MAPPING, ...(dbMapping as any) } as Record<string, string>
+
+  const headers = Object.values(mapping)
+  const sampleRow: Record<string, string> = {}
+
+  Object.entries(mapping).forEach(([key, col]) => {
+    if (key === 'accountNumber') sampleRow[col] = "6000000000"
+    else if (key === 'customerName') sampleRow[col] = "Sample Customer"
+    else if (key === 'amountPaid') sampleRow[col] = "50000"
+    else if (key === 'paymentDate') sampleRow[col] = new Date().toISOString().split('T')[0]
+    else if (key === 'externalReference') sampleRow[col] = "REF-" + Math.random().toString(36).toUpperCase().slice(-8)
+    else if (key === 'paymentChannel') sampleRow[col] = "MTN Mobile Money"
+    else sampleRow[col] = "Optional Value"
+  })
+
+  const worksheet = XLSX.utils.json_to_sheet([sampleRow], { header: headers })
+  const workbook = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(workbook, worksheet, "DailyCollections")
+
+  if (format === "xlsx") {
+    const buffer = XLSX.write(workbook, { type: "buffer", bookType: "xlsx" })
+    return buffer.toString("base64")
+  } else {
+    const csv = XLSX.utils.sheet_to_csv(worksheet)
+    return Buffer.from(csv).toString("base64")
   }
 }

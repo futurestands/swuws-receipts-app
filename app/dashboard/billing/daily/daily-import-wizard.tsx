@@ -20,6 +20,7 @@ import {
 import {
   validateDailyCollectionImport,
   commitDailyCollectionImport,
+  downloadDailyCollectionTemplate,
   DailyValidationSummary,
 } from "@/app/actions/daily-collections"
 import { cn } from "@/lib/utils"
@@ -44,6 +45,31 @@ export function DailyImportWizard() {
   const [file, setFile] = useState<File | null>(null)
   const [summary, setSummary] = useState<DailyValidationSummary | null>(null)
   const [isProcessing, startTransition] = useTransition()
+
+  async function handleDownloadTemplate(format: "xlsx" | "csv") {
+    try {
+      const base64 = await downloadDailyCollectionTemplate(format)
+      const byteCharacters = atob(base64)
+      const byteNumbers = new Array(byteCharacters.length)
+      for (let i = 0; i < byteCharacters.length; i++) {
+        byteNumbers[i] = byteCharacters.charCodeAt(i)
+      }
+      const byteArray = new Uint8Array(byteNumbers)
+      const blob = new Blob([byteArray], {
+        type: format === "xlsx"
+          ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+          : "text/csv"
+      })
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = `daily_collection_template.${format}`
+      a.click()
+      window.URL.revokeObjectURL(url)
+    } catch (err) {
+      toast.error("Failed to download template")
+    }
+  }
 
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const selected = e.target.files?.[0]
@@ -149,6 +175,28 @@ export function DailyImportWizard() {
                 />
                 {file && <p className="text-xs font-medium">{file.name}</p>}
              </div>
+
+             <div className="flex items-center justify-between px-1">
+                <span className="text-[10px] text-muted-foreground uppercase font-bold">Need a template?</span>
+                <div className="flex gap-2">
+                   <button
+                      type="button"
+                      onClick={() => handleDownloadTemplate("xlsx")}
+                      className="text-[10px] text-primary hover:underline font-medium"
+                   >
+                      Excel (.xlsx)
+                   </button>
+                   <span className="text-[10px] text-muted-foreground">|</span>
+                   <button
+                      type="button"
+                      onClick={() => handleDownloadTemplate("csv")}
+                      className="text-[10px] text-primary hover:underline font-medium"
+                   >
+                      CSV (.csv)
+                   </button>
+                </div>
+             </div>
+
              <Button className="w-full h-11" disabled={!file || isProcessing} onClick={handleValidate}>
                 {isProcessing ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : "Analyze File"}
              </Button>

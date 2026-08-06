@@ -343,6 +343,22 @@ export async function seedSystemTemplates() {
       }, null, 2)
     },
     {
+      code: 'import.daily.collections',
+      name: 'Daily Collections Import Schema',
+      category: 'Finance',
+      type: 'IMPORT',
+      content: JSON.stringify({
+        accountNumber: "Account Number",
+        customerName: "Customer Name",
+        amountPaid: "Amount Paid",
+        paymentDate: "Payment Date",
+        externalReference: "External Reference",
+        paymentChannel: "Payment Channel",
+        scheme: "Scheme",
+        area: "Area"
+      }, null, 2)
+    },
+    {
       code: 'email.auth.reset_password',
       name: 'Password Reset Email',
       category: 'System',
