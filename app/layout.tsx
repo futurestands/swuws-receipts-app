@@ -6,7 +6,7 @@ import { getSettings } from './actions/settings'
 
 export async function generateMetadata(): Promise<Metadata> {
   const settings = await getSettings()
-  const iconUrl = settings.logoUrl || '/icon.svg'
+  const iconUrl = settings.logoUrl || '/logo.jpg'
 
   return {
     title: 'SWUWS Collection Portal',

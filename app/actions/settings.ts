@@ -58,7 +58,7 @@ export const getSettings = unstable_cache(
       return {
         id: 1,
         orgName: "South Western Umbrella of Water and Sanitation",
-        logoUrl: null,
+        logoUrl: "/logo.jpg",
         disclaimer: "This is an official, non-transferable receipt issued by SWUWS. It cannot be reissued or altered.",
         footerText: "Thank you for your payment.",
         address: null,

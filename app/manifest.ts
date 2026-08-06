@@ -3,10 +3,10 @@ import { getSettings } from './actions/settings'
 
 export default async function manifest(): Promise<MetadataRoute.Manifest> {
   const settings = await getSettings()
-  const iconUrl = settings.logoUrl || '/icon.svg'
+  const iconUrl = settings.logoUrl || '/logo.jpg'
 
   // Determine type from extension if possible, default to any
-  const type = iconUrl.endsWith('.svg') ? 'image/svg+xml' : 'image/png'
+  const type = iconUrl.endsWith('.svg') ? 'image/svg+xml' : 'image/jpeg'
 
   return {
     name: 'SWUWS Collection Portal',
