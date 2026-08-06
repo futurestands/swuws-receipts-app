@@ -160,40 +160,14 @@ export function AppShell({
             <Menu />
           </Button>
           <div className="flex flex-col min-w-0 md:hidden leading-tight">
-            <Link href={brandHref} className="flex items-center gap-2 group">
-              {logoUrl && !imgError ? (
-                <div className="size-8 rounded-full bg-white p-0.5 flex items-center justify-center shrink-0 border border-black/10 shadow-sm overflow-hidden group-hover:scale-110 transition-transform">
-                  <img
-                    src={logoUrl}
-                    alt=""
-                    className="w-full h-full object-cover"
-                    onError={() => setImgError(true)}
-                  />
-                </div>
-              ) : (
-                <div className="size-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0 border border-primary/20">
-                  <span className="text-[10px] font-black text-primary">{receiptPrefix[0]}</span>
-                </div>
-              )}
-              <div className="flex flex-col">
-                <span className="text-[10px] font-black text-primary uppercase leading-none tracking-tighter">{receiptPrefix}</span>
-                <span className="text-[8px] font-bold text-primary/60 uppercase leading-none">PORTAL</span>
-              </div>
+            <Link href={brandHref} className="flex flex-col">
+              <span className="text-[11px] font-black text-primary uppercase leading-none tracking-tighter">{receiptPrefix}</span>
+              <span className="text-[8px] font-bold text-primary/60 uppercase leading-none">PORTAL</span>
             </Link>
           </div>
 
-          <div className="hidden md:flex items-center flex-1 px-4 min-w-0 justify-center gap-4">
-            {logoUrl && !imgError && (
-              <div className="size-10 rounded-full bg-white p-0.5 flex items-center justify-center shrink-0 border border-black/10 shadow-lg overflow-hidden ring-2 ring-brand-blue/5">
-                <img
-                  src={logoUrl}
-                  alt=""
-                  className="w-full h-full object-cover"
-                  onError={() => setImgError(true)}
-                />
-              </div>
-            )}
-            <p className="max-w-[80%] text-[10px] md:text-sm lg:text-base xl:text-lg font-black text-brand-blue tracking-[0.15em] text-center italic font-serif truncate uppercase">
+          <div className="hidden md:flex items-center flex-1 px-4 min-w-0 justify-center">
+            <p className="max-w-[90%] text-[10px] md:text-sm lg:text-base xl:text-lg font-black text-brand-blue tracking-[0.15em] text-center italic font-serif truncate uppercase">
               {orgName}
             </p>
           </div>
