@@ -319,7 +319,11 @@ export function ReadingEntryForm({
                   <div className="space-y-2">
                      <Button
                         className="w-full h-16 text-lg bg-[#2c4a5e] hover:bg-[#1e3240] text-white font-black gap-3 shadow-lg border-b-4 border-[#142129] active:border-b-0 active:translate-y-1 transition-all"
-                        onClick={() => window.print()}
+                        onClick={() => {
+                          window.print();
+                          // Auto-close after a delay to allow the user to "continue"
+                          setTimeout(() => setLastSubmission(null), 1000);
+                        }}
                      >
                         <Printer className="h-6 w-6" /> PRINT PHYSICAL TICKET
                      </Button>
@@ -364,7 +368,14 @@ export function ReadingEntryForm({
             </div>
 
             {/* Footer Tip */}
-            <div className="bg-muted/20 p-3 text-center border-t">
+            <div className="bg-muted/20 p-4 text-center border-t space-y-3">
+               <Button
+                 variant="outline"
+                 className="w-full font-bold uppercase tracking-widest text-xs h-10 border-2"
+                 onClick={() => setLastSubmission(null)}
+               >
+                 Done & Close
+               </Button>
                <p className="text-[10px] font-medium text-muted-foreground italic">
                   Tip: You can always reprint or resend from the history table below.
                </p>

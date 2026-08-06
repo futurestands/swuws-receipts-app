@@ -13,6 +13,7 @@ import { ResponsiveFilterBar } from "@/components/ui/filter-bar"
 import { ScrollableTableContainer } from "@/components/ui/responsive-table"
 import { EmptyState } from "@/components/ui/empty-state"
 import { Receipt as ReceiptIcon, Search } from "lucide-react"
+import { VoidReceiptButton } from "@/components/receipts/void-receipt-button"
 
 export function ReceiptsTable({ receipts, isAdmin }: { receipts: Receipt[]; isAdmin: boolean }) {
   const [query, setQuery] = useState("")
@@ -84,6 +85,7 @@ export function ReceiptsTable({ receipts, isAdmin }: { receipts: Receipt[]; isAd
                   <TableHead>Recon</TableHead>
                   {isAdmin && <TableHead>Agent</TableHead>}
                   <TableHead>Date</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -114,6 +116,14 @@ export function ReceiptsTable({ receipts, isAdmin }: { receipts: Receipt[]; isAd
                     )}
                     <TableCell className="text-muted-foreground text-sm">
                       {formatDateTime(r.createdAt)}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <VoidReceiptButton
+                        receiptId={r.id}
+                        isVoided={r.isVoided}
+                        variant="small"
+                        disabled={r.reconciliationStatus === 'matched'}
+                      />
                     </TableCell>
                   </TableRow>
                 ))}

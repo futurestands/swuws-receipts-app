@@ -1,45 +1,36 @@
-# Mobile App Fixes: Update Button & App Icon
+# Fixes for Printing, Scrolling, and Receipt Deletion
 
-This plan addresses the two issues reported: the "Update" button not working on mobile and the app icon not reflecting the new logo.
+This plan addresses mobile usability issues: non-functional printing on the meter reading side, restricted scrolling on the dashboard, and making it easier to delete (void) receipts.
 
-## 1. Update Button Fix
-The "Update" button currently uses a relative path (`/swuws-portal.apk`). In a Capacitor app, relative paths resolve to `http://localhost`, which does not contain the APK. It needs to point to the absolute URL of the production server.
+## 1. Quick Receipt Deletion (Voiding)
+Currently, users must navigate to the receipt details page to void a receipt. I will add a "Void" button directly to the `ReceiptsTable` for authorized users.
 
-### [Component Name] - Account Section
+### [Component Name] - Receipts Dashboard
 
-#### [MODIFY] [account-client.tsx](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/app/dashboard/account/account-client.tsx)
-- Update the component to accept `siteUrl` as a prop.
-- Change the download link to use the absolute `siteUrl`.
-- Add `target="_blank"` and `rel="noopener noreferrer"` to ensure it opens in the system browser, which triggers the download correctly on Android.
+#### [MODIFY] [receipts-table.tsx](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/app/dashboard/receipts-table.tsx)
+- Add a new "Actions" column to the table.
+- Include a small `VoidReceiptButton` in each row.
+- Import `VoidReceiptButton` from the details folder (I will move it to a more shared location if necessary, but for now I'll use it as-is).
 
-#### [MODIFY] [page.tsx](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/app/dashboard/account/page.tsx)
-- Fetch the absolute `siteUrl` using the existing `getSiteUrl` helper.
-- Pass `siteUrl` to the `AccountClient` component.
+## 2. Fix Dashboard Scrolling
+The user reported the dashboard is "fixed in one position" and they "can't scroll to end". This is often caused by `overflow-hidden` containers on mobile or fixed heights in the layout.
 
----
+#### [MODIFY] [responsive-table.tsx](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/components/ui/responsive-table.tsx)
+- Change `overflow-hidden` to `overflow-visible` on the main container to ensure it doesn't clip vertical content or interfere with page scrolling on mobile devices.
 
-## 2. App Icon Fix
-The current app icons in `android/app/src/main/res/mipmap-*` are all identical copies of a large 169KB image (`img.png`). Android requires icons to be specifically sized for different screen densities (mdpi, hdpi, etc.). Using a single large file often causes the system to fall back to the default icon or display nothing.
+#### [MODIFY] [app-shell.tsx](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/components/layout/app-shell.tsx)
+- Ensure the `<main>` area doesn't have restrictive overflow settings that block natural scrolling on Android Chrome/Capacitor.
 
-### Proposed Solution
-I will provide instructions and a script/guide to correctly generate these icons using Android Studio's built-in **Image Asset Studio**. This is the only way to ensure the icons are correctly masked, padded, and sized for all Android versions (including Adaptive Icons).
+## 3. Meter Reading Printing Fix
+The `window.print()` command often fails in Capacitor native apps because there is no system print spooler configured by default.
 
-#### [GUIDE] App Icon Generation
-1. Right-click the `app` folder in Android Studio.
-2. Select **New > Image Asset**.
-3. Set **Icon Type** to "Launcher Icons (Adaptive and Legacy)".
-4. For the **Foreground Layer**, select the logo provided by the user (or `assets/logo.jpg`).
-5. Adjust the **Scaling** so the logo fits within the safe zone (circle).
-6. Click **Next** and **Finish**. This will automatically generate all required files in the `mipmap` folders.
+#### [MODIFY] [reading-entry-form.tsx](file:///C:/Users/MJ/Downloads/SWUWS_Complete_Project/components/billing/reading-entry-form.tsx)
+- Adjust the print logic to better handle the mobile environment.
+- Ensure the print dialog doesn't lock the UI ("unable to continue").
 
 ## Verification Plan
 
-### Update Button
-1. Deploy the app to a test environment.
-2. Click the "Update" button on an Android device.
-3. Verify that it opens the browser and starts the download of `swuws-portal.apk`.
-
-### App Icon
-1. Rebuild the app in Android Studio.
-2. Install the app on an emulator or device.
-3. Verify that the new logo appears on the home screen.
+### Manual Verification
+1. **Scrolling**: Open the dashboard on an Android device and verify the page scrolls to the bottom.
+2. **Deletion**: Check if a "Void" button appears on each receipt row and works as expected.
+3. **Printing**: Capture a meter reading and click "Print" to see if the preview opens correctly on mobile.

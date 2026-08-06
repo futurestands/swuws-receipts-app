@@ -43,7 +43,7 @@ function ScrollableTableContainer({
   return (
     <div
       data-slot="scrollable-table-container"
-      className={cn("relative overflow-hidden rounded-xl border", className)}
+      className={cn("relative overflow-visible rounded-xl border", className)}
     >
       <div
         ref={ref}
