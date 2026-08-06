@@ -166,8 +166,8 @@ export function AppShell({
             </Link>
           </div>
 
-          <div className="hidden md:flex items-center flex-1 px-4 min-w-0 justify-center">
-            <p className="text-[10px] md:text-sm lg:text-base xl:text-lg font-black text-brand-blue tracking-wider text-center font-serif uppercase">
+          <div className="hidden md:flex items-center flex-1 px-8 min-w-0 justify-center">
+            <p className="text-[10px] md:text-xs lg:text-sm xl:text-base font-black text-brand-blue tracking-[0.1em] text-center font-serif uppercase leading-tight">
               {orgName}
             </p>
           </div>
