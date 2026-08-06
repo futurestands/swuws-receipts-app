@@ -167,7 +167,7 @@ export function AppShell({
           </div>
 
           <div className="hidden md:flex items-center flex-1 px-4 min-w-0 justify-center">
-            <p className="max-w-[90%] text-[10px] md:text-sm lg:text-base xl:text-lg font-black text-brand-blue tracking-[0.15em] text-center italic font-serif truncate uppercase">
+            <p className="text-[10px] md:text-sm lg:text-base xl:text-lg font-black text-brand-blue tracking-wider text-center font-serif uppercase">
               {orgName}
             </p>
           </div>
