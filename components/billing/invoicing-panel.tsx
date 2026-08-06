@@ -137,10 +137,18 @@ export function InvoicingPanel() {
               <div className="space-y-6 animate-in fade-in zoom-in-95 duration-300">
                 <Card className="border-primary/20 bg-primary/5">
                   <CardContent className="pt-6">
-                    <div className="flex justify-between items-start mb-4">
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
                        <div className="space-y-1">
                           <p className="text-[10px] uppercase font-bold text-muted-foreground tracking-widest">Customer Account</p>
-                          <p className="text-xl font-black">{invoiceData.customer.customerAccount}</p>
+                          <p className="text-lg font-black">{invoiceData.customer.customerAccount}</p>
+                       </div>
+                       <div className="space-y-1">
+                          <p className="text-[10px] uppercase font-bold text-muted-foreground tracking-widest">Area / Branch</p>
+                          <p className="text-lg font-bold">{invoiceData.areaName}</p>
+                       </div>
+                       <div className="space-y-1">
+                          <p className="text-[10px] uppercase font-bold text-muted-foreground tracking-widest">Water Scheme</p>
+                          <p className="text-lg font-bold">{invoiceData.schemeName}</p>
                        </div>
                        <div className="text-right space-y-1">
                           <p className="text-[10px] uppercase font-bold text-muted-foreground tracking-widest">Live Arrears</p>
@@ -184,6 +192,7 @@ export function InvoicingPanel() {
               <tbody>
                 <tr><td className="font-bold py-1">Customer:</td><td className="text-right">{invoiceData.customer.name}</td></tr>
                 <tr><td className="font-bold py-1">Account:</td><td className="text-right font-mono">{invoiceData.customer.customerAccount}</td></tr>
+                <tr><td className="font-bold py-1">Area:</td><td className="text-right">{invoiceData.areaName}</td></tr>
                 <tr><td className="font-bold py-1">Scheme:</td><td className="text-right">{invoiceData.schemeName}</td></tr>
                 <tr><td className="font-bold py-1">Period:</td><td className="text-right">{invoiceData.reading?.periodName || invoiceData.importBill?.periodName || "Current"}</td></tr>
 
@@ -201,8 +210,17 @@ export function InvoicingPanel() {
                   </>
                 ) : null}
 
-                <tr><td className="py-1 pt-4 font-bold">Monthly Bill:</td><td className="text-right pt-4">{formatUGX(invoiceData.reading?.billedAmount || invoiceData.importBill?.currentCharges || 0)}</td></tr>
-                <tr><td className="py-1 font-bold">Past Arrears:</td><td className="text-right">{formatUGX(invoiceData.reading?.previousBalanceSnapshot || invoiceData.importBill?.arrears || 0)}</td></tr>
+                {(() => {
+                  const monthlyBill = invoiceData.reading?.billedAmount || invoiceData.importBill?.currentCharges || 0;
+                  const pastArrears = invoiceData.customer.accountBalance - monthlyBill;
+
+                  return (
+                    <>
+                      <tr><td className="py-1 pt-4 font-bold">Monthly Bill:</td><td className="text-right pt-4">{formatUGX(monthlyBill)}</td></tr>
+                      <tr><td className="py-1 font-bold">Past Arrears:</td><td className="text-right">{formatUGX(pastArrears)}</td></tr>
+                    </>
+                  );
+                })()}
 
                 <tr className="border-t-2 border-black font-black text-xl">
                   <td className="py-2 uppercase">GRAND TOTAL:</td>

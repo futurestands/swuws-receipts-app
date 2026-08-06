@@ -629,10 +629,14 @@ export async function getCustomerInvoiceData(customerId: string) {
     .where(and(eq(billingRecord.customerId, customerId), eq(billingPeriod.status, 'active')))
     .limit(1)
 
-  // 4. Get Scheme info
-  const [scheme] = await db
-     .select({ name: waterScheme.name })
+  // 4. Get Scheme & Area info
+  const [schemeData] = await db
+     .select({
+        schemeName: waterScheme.name,
+        branchName: branch.name
+     })
      .from(waterScheme)
+     .leftJoin(branch, eq(waterScheme.branchId, branch.id))
      .where(eq(waterScheme.id, cust.waterSchemeId || 'none'))
      .limit(1)
 
@@ -655,7 +659,8 @@ export async function getCustomerInvoiceData(customerId: string) {
       arrears: Number(importBill.arrears),
       currentCharges: Number(importBill.currentCharges)
     } : null,
-    schemeName: scheme?.name || "Unknown Scheme",
+    schemeName: schemeData?.schemeName || "Unknown Scheme",
+    areaName: schemeData?.branchName || "Unknown Area",
   }
 }
 
