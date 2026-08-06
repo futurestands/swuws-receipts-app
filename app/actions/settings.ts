@@ -6,7 +6,7 @@ import { getCurrentUser, requireUser } from "@/lib/session"
 import { writeAudit } from "@/lib/audit"
 import { eq } from "drizzle-orm"
 import { put } from "@vercel/blob"
-import { revalidatePath } from "next/cache"
+import { revalidatePath, unstable_cache } from "next/cache"
 import { randomUUID } from "crypto"
 import { isUniqueViolation } from "@/lib/db/errors"
 import fs from "fs/promises"
@@ -17,8 +17,6 @@ import {
   canManageSchemes,
   canAccessAdminConsole
 } from "@/lib/permissions"
-
-import { revalidatePath, revalidateTag, unstable_cache } from "next/cache"
 
 const DEFAULT_EDITABLE: EditableFields = {
   customerName: true,
@@ -124,7 +122,7 @@ export async function updateBranding(input: {
     entityId: "1",
     details: { orgName: input.orgName },
   })
-  revalidateTag("settings")
+  revalidatePath("/", "layout")
   revalidatePath("/admin")
   revalidatePath("/dashboard")
   return { ok: true as const }
@@ -146,7 +144,7 @@ export async function updateEditableFields(fields: EditableFields) {
     entityId: "1",
     details: { fields },
   })
-  revalidateTag("settings")
+  revalidatePath("/", "layout")
   revalidatePath("/admin")
   revalidatePath("/dashboard")
   return { ok: true as const }
@@ -220,7 +218,7 @@ export async function uploadLogo(formData: FormData) {
     })
 
     // Targeted revalidation to prevent layout-level crashes
-    revalidateTag("settings")
+    revalidatePath("/", "layout")
     revalidatePath("/admin")
     revalidatePath("/dashboard")
 
@@ -488,7 +486,7 @@ export async function updateLatestAppVersion(version: string) {
     }, tx)
   })
 
-  revalidateTag("settings")
+  revalidatePath("/", "layout")
   revalidatePath("/admin")
   revalidatePath("/dashboard")
   return { ok: true as const }

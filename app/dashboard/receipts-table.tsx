@@ -120,7 +120,6 @@ export function ReceiptsTable({ receipts, isAdmin }: { receipts: Receipt[]; isAd
                     <TableCell className="text-right">
                       <VoidReceiptButton
                         receiptId={r.id}
-                        isVoided={r.isVoided}
                         variant="small"
                         disabled={r.reconciliationStatus === 'matched'}
                       />
