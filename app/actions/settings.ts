@@ -18,6 +18,8 @@ import {
   canAccessAdminConsole
 } from "@/lib/permissions"
 
+import { revalidatePath, revalidateTag, unstable_cache } from "next/cache"
+
 const DEFAULT_EDITABLE: EditableFields = {
   customerName: true,
   customerAccount: true,
@@ -30,44 +32,52 @@ const DEFAULT_EDITABLE: EditableFields = {
   notes: true,
 }
 
-export async function getSettings() {
-  // Removed strict auth check here because settings (branding) are needed
-  // on the public login page. Actions that modify settings still check auth.
-  try {
-    const [row] = await db.select().from(orgSettings).where(eq(orgSettings.id, 1)).limit(1)
-    if (row) return row
+/**
+ * PRODUCTION OPTIMIZATION: System Settings Caching
+ *
+ * Wrapped in unstable_cache to prevent redundant database hits on every page load.
+ * This is critical for supporting 200+ concurrent users without latency.
+ * Invalidated automatically when branding is updated via 'settings' tag.
+ */
+export const getSettings = unstable_cache(
+  async () => {
+    try {
+      const [row] = await db.select().from(orgSettings).where(eq(orgSettings.id, 1)).limit(1)
+      if (row) return row
 
-    const [created] = await db
-      .insert(orgSettings)
-      .values({ id: 1, editableFields: DEFAULT_EDITABLE })
-      .onConflictDoUpdate({
-        target: orgSettings.id,
-        set: { updatedAt: new Date() },
-      })
-      .returning()
-    return created
-  } catch (e) {
-    console.error("getSettings failed — using safety defaults", e)
-    // Return a safe, static object to prevent a 500 error if the DB is out of sync.
-    return {
-      id: 1,
-      orgName: "South Western Umbrella of Water and Sanitation",
-      logoUrl: null,
-      disclaimer:
-        "This is an official, non-transferable receipt issued by SWUWS. It cannot be reissued or altered.",
-      footerText: "Thank you for your payment.",
-      address: null,
-      phone: null,
-      billingGraceDays: 14,
-      currencyCode: "UGX",
-      receiptPrefix: "SWUWS",
-      developerCredit: "Developed by Mugarura Johnson IT",
-      latestAppVersion: "1.0.0",
-      editableFields: DEFAULT_EDITABLE,
-      updatedAt: new Date(),
+      // Initialize defaults if first run
+      const [created] = await db
+        .insert(orgSettings)
+        .values({ id: 1, editableFields: DEFAULT_EDITABLE })
+        .onConflictDoUpdate({
+          target: orgSettings.id,
+          set: { updatedAt: new Date() },
+        })
+        .returning()
+      return created
+    } catch (e) {
+      console.error("getSettings failed — using safety defaults", e)
+      return {
+        id: 1,
+        orgName: "South Western Umbrella of Water and Sanitation",
+        logoUrl: null,
+        disclaimer: "This is an official, non-transferable receipt issued by SWUWS. It cannot be reissued or altered.",
+        footerText: "Thank you for your payment.",
+        address: null,
+        phone: null,
+        billingGraceDays: 14,
+        currencyCode: "UGX",
+        receiptPrefix: "SWUWS",
+        developerCredit: "Developed by Mugarura Johnson IT",
+        latestAppVersion: "1.0.0",
+        editableFields: DEFAULT_EDITABLE,
+        updatedAt: new Date(),
+      }
     }
-  }
-}
+  },
+  ["org-settings-v1"],
+  { tags: ["settings"], revalidate: 3600 }
+)
 
 /**
  * Updates ordinary branding fields ONLY. `disclaimer` is deliberately not a
@@ -114,6 +124,7 @@ export async function updateBranding(input: {
     entityId: "1",
     details: { orgName: input.orgName },
   })
+  revalidateTag("settings")
   revalidatePath("/admin")
   revalidatePath("/dashboard")
   return { ok: true as const }
@@ -135,6 +146,7 @@ export async function updateEditableFields(fields: EditableFields) {
     entityId: "1",
     details: { fields },
   })
+  revalidateTag("settings")
   revalidatePath("/admin")
   revalidatePath("/dashboard")
   return { ok: true as const }
@@ -208,6 +220,7 @@ export async function uploadLogo(formData: FormData) {
     })
 
     // Targeted revalidation to prevent layout-level crashes
+    revalidateTag("settings")
     revalidatePath("/admin")
     revalidatePath("/dashboard")
 
@@ -475,6 +488,7 @@ export async function updateLatestAppVersion(version: string) {
     }, tx)
   })
 
+  revalidateTag("settings")
   revalidatePath("/admin")
   revalidatePath("/dashboard")
   return { ok: true as const }

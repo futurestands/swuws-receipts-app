@@ -197,6 +197,7 @@ export function BillingImportClient({ schemes, periods }: Props) {
                     <SelectValue placeholder="Select scheme" />
                   </SelectTrigger>
                   <SelectContent>
+                    <SelectItem value="all" className="font-bold text-primary">--- ALL AUTHORIZED SCHEMES ---</SelectItem>
                     {schemes.map((s) => (
                       <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
                     ))}

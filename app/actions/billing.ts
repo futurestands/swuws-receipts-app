@@ -370,37 +370,48 @@ export async function validateBillingImport(
   }
 
   // 2. Scope Validation
-  const [scheme] = await db
-    .select({ branchId: waterScheme.branchId })
-    .from(waterScheme)
-    .where(eq(waterScheme.id, schemeId))
-    .limit(1)
+  if (schemeId !== "all") {
+    const [scheme] = await db
+      .select({ branchId: waterScheme.branchId })
+      .from(waterScheme)
+      .where(eq(waterScheme.id, schemeId))
+      .limit(1)
 
-  if (
-    !scheme ||
-    !(await validateWriteScope(current, "billing.import", { branchId: scheme.branchId, schemeId }))
-  ) {
-    return { ok: false, error: "You are not authorized to upload for this scheme" }
-  }
+    if (
+      !scheme ||
+      !(await validateWriteScope(current, "billing.import", { branchId: scheme.branchId, schemeId }))
+    ) {
+      return { ok: false, error: "You are not authorized to upload for this scheme" }
+    }
 
-  // 3. Prevent duplicate uploads for the same scheme/period
-  const [existingRun] = await db
-    .select({ id: billingRun.id })
-    .from(billingRun)
-    .where(and(eq(billingRun.schemeId, schemeId), eq(billingRun.billingPeriodId, billingPeriodId)))
-    .limit(1)
+    // 3. Prevent duplicate uploads for the same scheme/period
+    const [existingRun] = await db
+      .select({ id: billingRun.id })
+      .from(billingRun)
+      .where(and(eq(billingRun.schemeId, schemeId), eq(billingRun.billingPeriodId, billingPeriodId)))
+      .limit(1)
 
-  if (existingRun) {
-    return {
-      ok: false,
-      error: "Monthly billing has already been imported for this scheme and period",
+    if (existingRun) {
+      return {
+        ok: false,
+        error: "Monthly billing has already been imported for this scheme and period",
+      }
     }
   }
 
-  const schemeCustomers = await db
-    .select({ id: customer.id, account: customer.customerAccount })
+  // 4. Fetch Customers (Targeted or Global)
+  const customerQuery = db
+    .select({ id: customer.id, account: customer.customerAccount, waterSchemeId: customer.waterSchemeId })
     .from(customer)
-    .where(eq(customer.waterSchemeId, schemeId))
+
+  if (schemeId !== "all") {
+    customerQuery.where(eq(customer.waterSchemeId, schemeId))
+  } else {
+    // For "All Schemes", apply global scope filter to ensure user only sees what they are allowed to
+    customerQuery.where(applyCustomerScope(current))
+  }
+
+  const schemeCustomers = await customerQuery
 
   // Fetch existing manual meter readings for this period to prevent overwriting
   const existingReadings = await db
@@ -411,6 +422,7 @@ export async function validateBillingImport(
   const readingsMap = new Set(existingReadings.map(r => r.customerId))
   const customerMap = new Map(schemeCustomers.map((c) => [c.account?.toLowerCase(), c]))
   const seenInUpload = new Set<string>()
+  const detectedSchemeIds = new Set<string>()
 
       // Resolve dynamic mapping (with aliases support)
       const dbMapping = await getImportMapping("import.billing.monthly")
@@ -429,12 +441,15 @@ export async function validateBillingImport(
       const targetCustomer = customerMap.get(accLower)
 
       if (!targetCustomer) {
-        errors.push(`Customer account ${data.accountNumber} not found in this scheme`)
-      } else if (readingsMap.has(targetCustomer.id)) {
-        errors.push("This customer has a manual meter reading captured for this period. Import skipped to prevent double billing.")
+        errors.push(schemeId === "all"
+          ? `Account ${data.accountNumber} not found or outside your authorized scope`
+          : `Customer account ${data.accountNumber} not found in this scheme`)
+      } else {
+        if (targetCustomer.waterSchemeId) detectedSchemeIds.add(targetCustomer.waterSchemeId)
 
-        // Auto-log discrepancy for admin review
-        // We'll do this in the import step, not validation, to avoid spamming on preview
+        if (readingsMap.has(targetCustomer.id)) {
+          errors.push("This customer has a manual meter reading captured for this period. Import skipped to prevent double billing.")
+        }
       }
 
       if (seenInUpload.has(accLower)) {
@@ -445,6 +460,26 @@ export async function validateBillingImport(
       return { errors, warnings }
     },
   })
+
+  // 5. Duplicate Detection for "All Schemes" Mode
+  if (schemeId === "all" && detectedSchemeIds.size > 0) {
+    const existingRuns = await db
+      .select({ schemeName: waterScheme.name })
+      .from(billingRun)
+      .innerJoin(waterScheme, eq(billingRun.schemeId, waterScheme.id))
+      .where(and(
+        sql`${billingRun.schemeId} IN ${Array.from(detectedSchemeIds)}`,
+        eq(billingRun.billingPeriodId, billingPeriodId)
+      ))
+
+    if (existingRuns.length > 0) {
+      const names = existingRuns.map(r => r.schemeName).join(", ")
+      return {
+        ok: false,
+        error: `Import aborted. The following schemes already have data for this period: ${names}. Please import them individually or remove them from the file.`
+      }
+    }
+  }
 
   return {
     ok: true,
@@ -480,131 +515,98 @@ export async function importBilling(
   }
 
   const schemeCustomers = await db
-    .select({ id: customer.id, account: customer.customerAccount })
+    .select({ id: customer.id, account: customer.customerAccount, waterSchemeId: customer.waterSchemeId })
     .from(customer)
-    .where(eq(customer.waterSchemeId, summary.schemeId))
-  const customerMap = new Map(schemeCustomers.map((c) => [c.account?.toLowerCase(), c.id]))
+    .where(summary.schemeId !== "all" ? eq(customer.waterSchemeId, summary.schemeId) : applyCustomerScope(current))
+  const customerMap = new Map(schemeCustomers.map((c) => [c.account?.toLowerCase(), c]))
 
-  const runId = randomUUID()
   let importedCount = 0
-  let totalAmount = 0
+  let totalAmountGlobal = 0
   const reportRows: Array<Record<string, unknown>> = []
-  const discrepancies: Array<typeof billingDiscrepancy.$inferInsert> = []
 
   try {
     await db.transaction(async (tx) => {
-      await writeAudit({
-        user: current,
-        action: "billing.import.start",
-        entityType: "billing_period",
-        entityId: summary.billingPeriodId,
-        details: { filename, schemeId: summary.schemeId },
-      }, tx)
-
-      // Identify rows that were skipped due to manual readings
-      const skippedRows = summary.rows.filter(r => !r.valid && r.errors.some(e => e.includes("manual meter reading")))
-      for (const row of skippedRows) {
-        const custId = customerMap.get(row.data.accountNumber.toLowerCase())
-        if (custId) {
-          const [reading] = await tx.select({ currentReading: meterReading.currentReading }).from(meterReading).where(and(eq(meterReading.customerId, custId), eq(meterReading.billingPeriodId, summary.billingPeriodId))).limit(1)
-          discrepancies.push({
-            id: randomUUID(),
-            customerId: custId,
-            billingPeriodId: summary.billingPeriodId,
-            sourceType: 'bulk_import',
-            reportedById: current.id,
-            existingValue: reading?.currentReading || 0,
-            attemptedValue: row.data.totalDue,
-            reason: "Bulk import attempted to overwrite existing manual field reading.",
-            status: 'open'
-          })
+      // Group valid rows by scheme
+      const recordsByScheme = new Map<string, typeof validRows>()
+      for (const row of validRows) {
+        const cust = customerMap.get(row.data.accountNumber.toLowerCase())
+        if (cust?.waterSchemeId) {
+          const list = recordsByScheme.get(cust.waterSchemeId) || []
+          list.push(row)
+          recordsByScheme.set(cust.waterSchemeId, list)
         }
       }
 
-      if (discrepancies.length > 0) {
-        await tx.insert(billingDiscrepancy).values(discrepancies)
-      }
+      for (const [sId, rows] of recordsByScheme.entries()) {
+        const runId = randomUUID()
+        let schemeTotal = 0
 
-      await tx.insert(billingRun).values({
-        id: runId,
-        schemeId: summary.schemeId,
-        billingPeriodId: summary.billingPeriodId,
-        uploadedById: current.id,
-        sourceFile: filename,
-        status: "completed",
-        totalCustomers: validRows.length,
-        totalAmount: 0,
-      })
-
-      const recordsToInsert = validRows.map((row) => {
-        const custId = customerMap.get(row.data.accountNumber.toLowerCase())!
-        totalAmount += row.data.totalDue
-        return {
-          id: randomUUID(),
-          billingRunId: runId,
+        await tx.insert(billingRun).values({
+          id: runId,
+          schemeId: sId,
           billingPeriodId: summary.billingPeriodId,
-          customerId: custId,
-          accountNumber: row.data.accountNumber,
-          billAmount: String(row.data.billAmount),
-          arrears: String(row.data.arrears),
-          currentCharges: String(row.data.currentCharges),
-          totalDue: String(row.data.totalDue),
-          dueDate: new Date(row.data.dueDate),
-          status: "pending",
+          uploadedById: current.id,
+          sourceFile: filename,
+          status: "completed",
+          totalCustomers: rows.length,
+          totalAmount: 0,
+        })
+
+        const recordsToInsert = rows.map((row) => {
+          const cust = customerMap.get(row.data.accountNumber.toLowerCase())!
+          schemeTotal += row.data.totalDue
+          totalAmountGlobal += row.data.totalDue
+          return {
+            id: randomUUID(),
+            billingRunId: runId,
+            billingPeriodId: summary.billingPeriodId,
+            customerId: cust.id,
+            accountNumber: row.data.accountNumber,
+            billAmount: String(row.data.billAmount),
+            arrears: String(row.data.arrears),
+            currentCharges: String(row.data.currentCharges),
+            totalDue: String(row.data.totalDue),
+            dueDate: new Date(row.data.dueDate),
+            status: "pending",
+          }
+        })
+
+        const CHUNK_SIZE = 1000
+        for (let i = 0; i < recordsToInsert.length; i += CHUNK_SIZE) {
+          await tx.insert(billingRecord).values(recordsToInsert.slice(i, i + CHUNK_SIZE))
         }
-      })
 
-      const CHUNK_SIZE = 2000
-      for (let i = 0; i < recordsToInsert.length; i += CHUNK_SIZE) {
-        await tx.insert(billingRecord).values(recordsToInsert.slice(i, i + CHUNK_SIZE))
+        await tx.update(billingRun).set({ totalAmount: schemeTotal }).where(eq(billingRun.id, runId))
+
+        // Synchronize balances
+        const BAL_CHUNK_SIZE = 500
+        for (let i = 0; i < recordsToInsert.length; i += BAL_CHUNK_SIZE) {
+          const chunk = recordsToInsert.slice(i, i + BAL_CHUNK_SIZE)
+          const valuesList = chunk.map(r => sql`(${r.customerId}, ${r.totalDue}::numeric)`).reduce((acc, curr) => sql`${acc}, ${curr}`)
+          await tx.execute(sql`
+            UPDATE customer AS c
+            SET "accountBalance" = v.balance, "updatedAt" = now()
+            FROM (VALUES ${valuesList}) AS v(id, balance)
+            WHERE c.id = v.id
+          `)
+        }
+
+        importedCount += rows.length
       }
-
-      await tx.update(billingRun).set({ totalAmount }).where(eq(billingRun.id, runId))
-      await tx.insert(billingUpload).values({
-        id: randomUUID(),
-        billingRunId: runId,
-        filename,
-        storagePath: "system/imports/billing",
-        uploadedById: current.id,
-        importedRecords: validRows.length,
-        failedRecords: summary.errorRows,
-      })
 
       await writeAudit({
         user: current,
         action: "billing.import.complete",
-        entityType: "billing_run",
-        entityId: runId,
-        details: { schemeId: summary.schemeId, imported: validRows.length },
+        entityType: "billing_period",
+        entityId: summary.billingPeriodId,
+        details: { filename, imported: importedCount, schemes: recordsByScheme.size },
       }, tx)
-
-      // 5. Synchronize Customer Balances with EBS Source of Truth
-      // PERFORMANCE UPGRADE: Use Chunked SQL Updates instead of row-by-row loops
-      // We set the customer's LIVE balance to match the TotalDue from the billing import.
-      const BAL_CHUNK_SIZE = 500
-      for (let i = 0; i < recordsToInsert.length; i += BAL_CHUNK_SIZE) {
-        const chunk = recordsToInsert.slice(i, i + BAL_CHUNK_SIZE)
-
-        // Build a Bulk Update query using a VALUES list
-        const valuesList = chunk.map(r => sql`(${r.customerId}, ${r.totalDue}::numeric)`).reduce((acc, curr) => sql`${acc}, ${curr}`)
-
-        await tx.execute(sql`
-          UPDATE customer AS c
-          SET
-            "accountBalance" = v.balance,
-            "updatedAt" = now()
-          FROM (VALUES ${valuesList}) AS v(id, balance)
-          WHERE c.id = v.id
-        `)
-      }
-
-      importedCount = validRows.length
     })
 
-    logFinancial("Billing Imported", {
+    logFinancial("Billing Imported (Multi-Scheme)", {
       filename,
       imported: importedCount,
-      totalAmount
+      totalAmount: totalAmountGlobal
     }, current)
 
     summary.rows.forEach((r) => {
