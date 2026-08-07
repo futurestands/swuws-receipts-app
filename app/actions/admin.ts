@@ -278,6 +278,113 @@ export async function setAgentRole(userId: string, role: string, iamRoleId?: str
   return { ok: true as const }
 }
 
+/**
+ * Updates basic agent details (Name, Email, Phone).
+ */
+export async function updateAgent(userId: string, input: {
+  name: string
+  email: string
+  phone?: string | null
+}) {
+  const current = await requireUser()
+  if (!canManageUsers(current)) throw new Error("Forbidden")
+
+  // Security: Prevent editing self via this specific admin action
+  if (userId === current.id) {
+    return { ok: false as const, error: "Please use account settings to update your own profile" }
+  }
+
+  const sanitizedName = input.name.replace(/<[^>]*>?/gm, "").trim()
+
+  try {
+    // 1. Update auth provider email (if changed)
+    const [existing] = await db.select({ email: user.email }).from(user).where(eq(user.id, userId)).limit(1)
+    if (existing && existing.email !== input.email.toLowerCase()) {
+      // Better Auth doesn't have a direct "update email" admin API in this version's plugin,
+      // but we can update the user record. Note: In production, this would need
+      // re-verification or auth service sync depending on the provider.
+    }
+
+    // 2. Update Database Record
+    const [updated] = await db
+      .update(user)
+      .set({
+        name: sanitizedName,
+        email: input.email.trim().toLowerCase(),
+        phone: input.phone?.trim() || null,
+        updatedAt: new Date(),
+      })
+      .where(eq(user.id, userId))
+      .returning({ id: user.id })
+
+    if (!updated) return { ok: false as const, error: "Agent not found" }
+
+    await writeAudit({
+      user: current,
+      action: "agent.update_details",
+      entityType: "user",
+      entityId: userId,
+      details: { name: sanitizedName, email: input.email },
+    })
+
+    revalidatePath("/admin")
+    return { ok: true as const }
+  } catch (e) {
+    console.error("updateAgent failed", e)
+    return { ok: false as const, error: "Failed to update agent details" }
+  }
+}
+
+/**
+ * Permanently deletes an agent account.
+ * (Safety: Gated by 'users.manage' and checks for activity).
+ */
+export async function deleteAgent(userId: string) {
+  const current = await requireUser()
+  if (!canManageUsers(current)) throw new Error("Forbidden")
+
+  if (userId === current.id) {
+    return { ok: false as const, error: "You cannot delete your own account" }
+  }
+
+  try {
+    // 1. Check for activity (Receipts) - Block deletion if they have financial history
+    const [receiptCount] = await db
+      .select({ val: count() })
+      .from(receipt)
+      .where(eq(receipt.agentId, userId))
+
+    if (Number(receiptCount?.val || 0) > 0) {
+      return {
+        ok: false as const,
+        error: "This agent has issued receipts and cannot be deleted. Deactivate them instead to preserve audit integrity."
+      }
+    }
+
+    // 2. Delete from Auth Provider
+    await auth.api.removeUser({
+      body: { userId },
+      headers: await headers(),
+    })
+
+    // 3. Delete from Local DB (If not handled by Auth cleanup)
+    await db.delete(user).where(eq(user.id, userId))
+
+    await writeAudit({
+      user: current,
+      action: "agent.delete",
+      entityType: "user",
+      entityId: userId,
+    })
+
+    revalidatePath("/admin")
+    return { ok: true as const }
+  } catch (e) {
+    console.error("deleteAgent failed", e)
+    return { ok: false as const, error: "Failed to delete agent account" }
+  }
+}
+
 /** Module 2 (Branch & Scheme Management): assign an agent/admin to a hierarchy level. */
 export async function setAgentHierarchy(userId: string, input: {
   clusterId?: string | null

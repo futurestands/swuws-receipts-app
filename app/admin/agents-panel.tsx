@@ -3,6 +3,8 @@
 import { useState, useTransition } from "react"
 import {
   createAgent,
+  updateAgent,
+  deleteAgent,
   setAgentActive,
   setAgentRole,
   setAgentHierarchy,
@@ -32,12 +34,24 @@ import {
   DialogFooter,
   DialogTrigger,
 } from "@/components/ui/dialog"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog"
 import { toast } from "sonner"
 import { formatDate } from "@/lib/format"
 import type { Branch, Cluster, WaterScheme, IamRole } from "@/lib/db/schema"
-import { FileUp, Download } from "lucide-react"
+import { FileUp, Download, Edit2, Trash2, Key, MapPin, Shield } from "lucide-react"
 import Link from "next/link"
 import { downloadBulkImportTemplate } from "@/app/actions/bulk-import"
+import { cn } from "@/lib/utils"
 
 import { ROLES, ALL_ROLES, ROLE_LABELS, type Role } from "@/lib/permissions/roles"
 
@@ -220,6 +234,16 @@ export function AgentsPanel({
         prev.map((a) => (a.id === agent.id ? { ...a, ...update } : a)),
       )
     })
+  }
+
+  async function handleDelete(agentId: string) {
+    const result = await deleteAgent(agentId)
+    if (result.ok) {
+      toast.success("Agent account deleted")
+      setAgents(prev => prev.filter(a => a.id !== agentId))
+    } else {
+      toast.error(result.error)
+    }
   }
 
   function handleResetPassword(e: React.FormEvent) {
@@ -429,180 +453,142 @@ export function AgentsPanel({
           <Table>
             <TableHeader className="bg-muted/50">
               <TableRow>
-                <TableHead className="pl-6">Agent Details</TableHead>
+                <TableHead className="pl-6 w-[250px]">Agent Details</TableHead>
                 <TableHead>System Role</TableHead>
                 <TableHead>Hierarchy Access</TableHead>
-                <TableHead className="text-center">Active</TableHead>
+                <TableHead className="text-center">Status</TableHead>
                 <TableHead>Joined</TableHead>
                 <TableHead className="pr-6 text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {agents.map((agent) => (
-                <TableRow key={agent.id} className="group hover:bg-muted/30 transition-colors">
-                  <TableCell className="pl-6 py-4">
-                    <div className="flex flex-col">
-                      <span className="font-bold text-sm text-foreground">{agent.name}</span>
-                      <span className="text-xs text-muted-foreground">{agent.email}</span>
-                      {agent.phone && (
-                        <div className="flex items-center gap-1 mt-1">
-                          <span className="text-[10px] bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded border">
-                            {agent.phone}
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <Select
-                      value={agent.iamRoleId || "none"}
-                      onValueChange={(v) => v !== "none" && changeRole(agent, v)}
-                    >
-                      <SelectTrigger className="w-[180px] h-9 bg-background shadow-none border-transparent group-hover:border-input transition-all">
-                        <SelectValue>
-                          {agent.iamRoleId
-                            ? iamRoles.find(r => r.id === agent.iamRoleId)?.name || agent.iamRoleId
-                            : "No Role Assigned"}
-                        </SelectValue>
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="none">No Role Assigned</SelectItem>
-                        {iamRoles.map((r) => (
-                          <SelectItem key={r.id} value={r.id}>
-                            {r.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex flex-col gap-1.5 w-[220px]">
-                      <div className="grid grid-cols-[70px_1fr] items-center">
-                        <span className="text-[9px] uppercase font-bold text-muted-foreground">Cluster</span>
-                        <Select
-                          value={agent.clusterId ?? "none"}
-                          onValueChange={(v) => updateHierarchy(agent, "cluster", v)}
-                        >
-                          <SelectTrigger className="h-7 text-[11px] py-0 bg-transparent border-transparent group-hover:bg-background group-hover:border-input shadow-none transition-all">
-                            <SelectValue placeholder="None" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="none">None</SelectItem>
-                            {clusters.map((c) => (
-                              <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
+              {agents.map((agent) => {
+                const clusterName = clusters.find(c => c.id === agent.clusterId)?.name
+                const branchName = branches.find(b => b.id === agent.branchId)?.name
+                const schemeName = schemes.find(s => s.id === agent.schemeId)?.name
 
-                      <div className="grid grid-cols-[70px_1fr] items-center">
-                        <span className="text-[9px] uppercase font-bold text-muted-foreground">Branch</span>
-                        <Select
-                          value={agent.branchId ?? "none"}
-                          onValueChange={(v) => updateHierarchy(agent, "branch", v)}
-                        >
-                          <SelectTrigger className="h-7 text-[11px] py-0 bg-transparent border-transparent group-hover:bg-background group-hover:border-input shadow-none transition-all">
-                            <SelectValue placeholder="None" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="none">None</SelectItem>
-                            {(agent.clusterId
-                              ? branches.filter(b => b.clusterId === agent.clusterId)
-                              : branches
-                            ).map((b) => (
-                              <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                return (
+                  <TableRow key={agent.id} className="group hover:bg-muted/30 transition-colors">
+                    <TableCell className="pl-6 py-4">
+                      <div className="flex flex-col">
+                        <span className="font-bold text-sm text-foreground">{agent.name}</span>
+                        <span className="text-[11px] text-muted-foreground">{agent.email}</span>
+                        {agent.phone && (
+                          <span className="text-[10px] text-brand-blue font-medium mt-0.5">{agent.phone}</span>
+                        )}
                       </div>
-
-                      <div className="grid grid-cols-[70px_1fr] items-center">
-                        <span className="text-[9px] uppercase font-bold text-muted-foreground">Scheme</span>
-                        <Select
-                          value={agent.schemeId ?? "none"}
-                          onValueChange={(v) => updateHierarchy(agent, "scheme", v)}
-                        >
-                          <SelectTrigger className="h-7 text-[11px] py-0 bg-transparent border-transparent group-hover:bg-background group-hover:border-input shadow-none transition-all">
-                            <SelectValue placeholder="None" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="none">None</SelectItem>
-                            {(agent.branchId
-                              ? schemes.filter(s => s.branchId === agent.branchId)
-                              : []
-                            ).map((s) => (
-                              <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex justify-center">
-                      <Switch
-                        checked={agent.active}
-                        onCheckedChange={() => toggleActive(agent)}
-                        className="data-[state=checked]:bg-brand-blue"
-                      />
-                    </div>
-                  </TableCell>
-                  <TableCell className="text-muted-foreground text-xs whitespace-nowrap">
-                    {formatDate(agent.createdAt)}
-                  </TableCell>
-                  <TableCell className="pr-6 text-right">
-                    <Dialog
-                      open={resetTarget?.id === agent.id}
-                      onOpenChange={(open) => {
-                        if (!open) {
-                          setResetTarget(null)
-                          setNewPassword("")
-                          setResetError(null)
-                        }
-                      }}
-                    >
-                      <DialogTrigger asChild>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="h-8 text-xs font-bold"
-                          onClick={() => setResetTarget(agent)}
-                        >
-                          Reset Pass
-                        </Button>
-                      </DialogTrigger>
-                      <DialogContent>
-                        <DialogHeader>
-                          <DialogTitle>Reset password for {agent.name}</DialogTitle>
-                          <DialogDescription>
-                            Sets a new password immediately. Share it with them securely.
-                          </DialogDescription>
-                        </DialogHeader>
-                        <form onSubmit={handleResetPassword} className="space-y-4 pt-2">
-                          <div className="space-y-2">
-                            <Label htmlFor="new-password">New password</Label>
-                            <Input
-                              id="new-password"
-                              type="password"
-                              minLength={8}
-                              required
-                              value={newPassword}
-                              onChange={(e) => setNewPassword(e.target.value)}
-                              autoComplete="new-password"
-                            />
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="outline" className="bg-background text-[10px] uppercase font-bold tracking-tight">
+                        {iamRoles.find(r => r.id === agent.iamRoleId)?.name || "No Role"}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                        {clusterName ? (
+                          <div className="flex items-center gap-1 bg-muted px-2 py-0.5 rounded border border-muted-foreground/10">
+                            <MapPin className="size-3" />
+                            <span className="font-medium text-foreground truncate max-w-[120px]">
+                              {clusterName}
+                              {branchName && ` > ${branchName}`}
+                              {schemeName && ` > ${schemeName}`}
+                            </span>
                           </div>
-                          {resetError && <p className="text-sm text-destructive font-medium">{resetError}</p>}
-                          <DialogFooter>
-                            <Button type="submit" disabled={pending} className="w-full font-bold">
-                              {pending ? "Saving…" : "Confirm Password Reset"}
+                        ) : (
+                          <span className="italic opacity-50">No hierarchy set</span>
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex justify-center">
+                        <Switch
+                          checked={agent.active}
+                          onCheckedChange={() => toggleActive(agent)}
+                          className="data-[state=checked]:bg-brand-blue scale-75"
+                        />
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-muted-foreground text-[11px] whitespace-nowrap">
+                      {formatDate(agent.createdAt)}
+                    </TableCell>
+                    <TableCell className="pr-6 text-right">
+                      <div className="flex items-center justify-end gap-1">
+                        {/* Edit Action */}
+                        <EditAgentDialog
+                          agent={agent}
+                          clusters={clusters}
+                          branches={branches}
+                          schemes={schemes}
+                          iamRoles={iamRoles}
+                          onUpdated={(updated) => {
+                            setAgents(prev => prev.map(a => a.id === updated.id ? { ...a, ...updated } : a))
+                          }}
+                        />
+
+                        {/* Reset Password Action */}
+                        <Dialog
+                          open={resetTarget?.id === agent.id}
+                          onOpenChange={(open) => {
+                            if (!open) {
+                              setResetTarget(null)
+                              setNewPassword("")
+                              setResetError(null)
+                            }
+                          }}
+                        >
+                          <DialogTrigger asChild>
+                            <Button size="icon-sm" variant="ghost" className="h-8 w-8" onClick={() => setResetTarget(agent)}>
+                              <Key className="size-4" />
                             </Button>
-                          </DialogFooter>
-                        </form>
-                      </DialogContent>
-                    </Dialog>
-                  </TableCell>
-                </TableRow>
-              ))}
+                          </DialogTrigger>
+                          <DialogContent>
+                            <DialogHeader>
+                              <DialogTitle>Reset password for {agent.name}</DialogTitle>
+                              <DialogDescription>Sets a new password immediately. Share it with them securely.</DialogDescription>
+                            </DialogHeader>
+                            <form onSubmit={handleResetPassword} className="space-y-4 pt-2">
+                              <div className="space-y-2">
+                                <Label htmlFor="new-password">New password</Label>
+                                <Input id="new-password" type="password" minLength={8} required value={newPassword} onChange={(e) => setNewPassword(e.target.value)} autoComplete="new-password" />
+                              </div>
+                              {resetError && <p className="text-sm text-destructive font-medium">{resetError}</p>}
+                              <DialogFooter>
+                                <Button type="submit" disabled={pending} className="w-full font-bold">
+                                  {pending ? "Saving…" : "Confirm Password Reset"}
+                                </Button>
+                              </DialogFooter>
+                            </form>
+                          </DialogContent>
+                        </Dialog>
+
+                        {/* Delete Action */}
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button size="icon-sm" variant="ghost" className="h-8 w-8 text-destructive hover:bg-destructive/10">
+                              <Trash2 className="size-4" />
+                            </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>Delete Agent Account?</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                This will permanently remove <strong>{agent.name}</strong> from the system.
+                                Agents who have issued receipts cannot be deleted and must be deactivated instead.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>Cancel</AlertDialogCancel>
+                              <AlertDialogAction onClick={() => handleDelete(agent.id)} className="bg-destructive hover:bg-destructive/90">
+                                Delete Account
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                )
+              })}
             </TableBody>
           </Table>
           {totalPages > 1 && (
@@ -631,5 +617,168 @@ export function AgentsPanel({
         </CardContent>
       </Card>
     </div>
+  )
+}
+
+function EditAgentDialog({
+  agent,
+  clusters,
+  branches,
+  schemes,
+  iamRoles,
+  onUpdated
+}: {
+  agent: Agent
+  clusters: Cluster[]
+  branches: Branch[]
+  schemes: WaterScheme[]
+  iamRoles: IamRole[]
+  onUpdated: (agent: Agent) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const [name, setName] = useState(agent.name)
+  const [email, setEmail] = useState(agent.email)
+  const [phone, setPhone] = useState(agent.phone || "")
+  const [iamRoleId, setIamRoleId] = useState<string>(agent.iamRoleId || "none")
+  const [clusterId, setClusterId] = useState<string>(agent.clusterId || "none")
+  const [branchId, setBranchId] = useState<string>(agent.branchId || "none")
+  const [schemeId, setSchemeId] = useState<string>(agent.schemeId || "none")
+  const [pending, startTransition] = useTransition()
+
+  const availableBranches = clusterId !== "none"
+    ? branches.filter(b => b.clusterId === clusterId)
+    : branches
+
+  const availableSchemes = branchId !== "none"
+    ? schemes.filter(s => s.branchId === branchId)
+    : []
+
+  async function handleSave() {
+    startTransition(async () => {
+      // 1. Update basic details
+      const basicRes = await updateAgent(agent.id, { name, email, phone })
+      if (!basicRes.ok) {
+        toast.error(basicRes.error)
+        return
+      }
+
+      // 2. Update Role
+      const targetRole = iamRoles.find(r => r.id === iamRoleId)?.code || agent.role
+      const roleRes = await setAgentRole(agent.id, targetRole, iamRoleId === "none" ? null : iamRoleId)
+      if (!roleRes.ok) {
+        toast.error(roleRes.error)
+        return
+      }
+
+      // 3. Update Hierarchy
+      const hierRes = await setAgentHierarchy(agent.id, {
+        clusterId: clusterId === "none" ? null : clusterId,
+        branchId: branchId === "none" ? null : branchId,
+        schemeId: schemeId === "none" ? null : schemeId
+      })
+      if (!hierRes.ok) {
+        toast.error(hierRes.error)
+        return
+      }
+
+      toast.success("Agent updated successfully")
+      onUpdated({
+        ...agent,
+        name,
+        email,
+        phone,
+        role: targetRole,
+        iamRoleId: iamRoleId === "none" ? null : iamRoleId,
+        clusterId: clusterId === "none" ? null : clusterId,
+        branchId: branchId === "none" ? null : branchId,
+        schemeId: schemeId === "none" ? null : schemeId
+      })
+      setOpen(false)
+    })
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button size="icon-sm" variant="ghost" className="h-8 w-8">
+          <Edit2 className="size-4" />
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-[500px]">
+        <DialogHeader>
+          <DialogTitle>Edit Agent: {agent.name}</DialogTitle>
+          <DialogDescription>Update profile details, permissions, and regional access.</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4 py-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label>Full Name</Label>
+              <Input value={name} onChange={e => setName(e.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <Label>Phone</Label>
+              <Input value={phone} onChange={e => setPhone(e.target.value)} />
+            </div>
+          </div>
+          <div className="space-y-2">
+            <Label>Email Address</Label>
+            <Input type="email" value={email} onChange={e => setEmail(e.target.value)} />
+          </div>
+
+          <div className="space-y-2">
+            <Label>System Role</Label>
+            <Select value={iamRoleId} onValueChange={(v) => setIamRoleId(v || "none")}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">No Role Assigned</SelectItem>
+                {iamRoles.map(r => <SelectItem key={r.id} value={r.id}>{r.name}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="p-4 rounded-lg bg-muted/50 space-y-3">
+             <p className="text-[10px] font-black uppercase text-muted-foreground tracking-tighter">Hierarchy Access</p>
+             <div className="grid grid-cols-3 gap-2">
+                <div className="space-y-1">
+                   <Label className="text-[9px] uppercase">Cluster</Label>
+                   <Select value={clusterId} onValueChange={(v) => { setClusterId(v || "none"); setBranchId("none"); setSchemeId("none"); }}>
+                      <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                         <SelectItem value="none">None</SelectItem>
+                         {clusters.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+                      </SelectContent>
+                   </Select>
+                </div>
+                <div className="space-y-1">
+                   <Label className="text-[9px] uppercase">Area</Label>
+                   <Select value={branchId} onValueChange={(v) => { setBranchId(v || "none"); setSchemeId("none"); }}>
+                      <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                         <SelectItem value="none">None</SelectItem>
+                         {availableBranches.map(b => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}
+                      </SelectContent>
+                   </Select>
+                </div>
+                <div className="space-y-1">
+                   <Label className="text-[9px] uppercase">Scheme</Label>
+                   <Select value={schemeId} onValueChange={(v) => setSchemeId(v || "none")}>
+                      <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                         <SelectItem value="none">None</SelectItem>
+                         {availableSchemes.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
+                      </SelectContent>
+                   </Select>
+                </div>
+             </div>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setOpen(false)} disabled={pending}>Cancel</Button>
+          <Button onClick={handleSave} disabled={pending}>
+            {pending ? <div className="flex items-center gap-2"><div className="size-3 border-2 border-white/30 border-t-white animate-spin rounded-full" /> Saving...</div> : "Save Changes"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }
