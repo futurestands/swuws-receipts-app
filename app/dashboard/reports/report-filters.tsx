@@ -9,8 +9,9 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { X } from "lucide-react"
+import { X, Search } from "lucide-react"
 import type { BillingPeriod, Branch, WaterScheme } from "@/lib/db/schema"
 
 export function ReportFilters({
@@ -27,6 +28,7 @@ export function ReportFilters({
     branchId?: string
     schemeId?: string
     category?: string
+    query?: string
   }
 }) {
   const router = useRouter()
@@ -133,6 +135,23 @@ export function ReportFilters({
             <SelectItem value="commercial">Commercial</SelectItem>
           </SelectContent>
         </Select>
+      </div>
+
+      <div className="space-y-1.5 flex-1 min-w-[200px]">
+        <Label className="text-xs text-muted-foreground uppercase font-bold">Search Customer</Label>
+        <div className="relative">
+           <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+           <Input
+             placeholder="Name or Account #..."
+             className="pl-8 h-9 bg-background"
+             defaultValue={initialFilters.query || ""}
+             onKeyDown={(e) => {
+               if (e.key === 'Enter') {
+                 updateFilter("query", (e.target as HTMLInputElement).value)
+               }
+             }}
+           />
+        </div>
       </div>
 
       {hasFilters && (

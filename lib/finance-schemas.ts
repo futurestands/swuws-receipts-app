@@ -13,7 +13,7 @@ export const createReceiptSchema = z.object({
     .number()
     .finite()
     .positive("Amount must be greater than zero")
-    .refine((v) => Math.round(v) > 0, "Amount is too small to record as a receipt"),
+    .refine((v) => v >= 0.01, "Amount must be at least 0.01"),
   outstandingBalance: z.number().finite().min(0).optional(),
   paymentMethod: z.string().trim().min(1, "Payment method is required"),
   paymentReference: z.string().trim().max(100).optional(),

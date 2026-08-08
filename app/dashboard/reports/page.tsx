@@ -20,6 +20,7 @@ export default async function ReportsPage({
     branchId?: string
     schemeId?: string
     category?: string
+    query?: string
   }>
 }) {
   const current = await requireUser()
@@ -42,7 +43,7 @@ export default async function ReportsPage({
       getCollectionPeriods().catch(() => []),
       listActiveBranches().catch(() => []),
       getAuthorizedSchemes().catch(() => []),
-      getTopDebtors(100, params.category).catch(() => []),
+      getTopDebtors(100, params.category, params.query).catch(() => []),
     ])
     stats = results[0]
     periods = results[1]

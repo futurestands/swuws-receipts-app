@@ -15,7 +15,7 @@ import {
 } from "@/lib/db/schema"
 import { requireUser } from "@/lib/session"
 import { applyReceiptScope, applyCustomerScope } from "@/lib/scopes"
-import { and, eq, sql, desc, sum, count, gte, inArray } from "drizzle-orm"
+import { and, eq, sql, desc, sum, count, gte, inArray, or, ilike } from "drizzle-orm"
 import { canViewReports, canUploadBilling } from "@/lib/permissions"
 
 /**
@@ -170,6 +170,7 @@ export async function getDashboardStats(params: {
   branchId?: string
   schemeId?: string
   category?: string
+  query?: string
 }) {
   const current = await requireUser()
   if (!canViewReports(current)) throw new Error("Forbidden")
@@ -196,6 +197,13 @@ export async function getDashboardStats(params: {
   if (params.branchId) billingConditions.push(eq(waterScheme.branchId, params.branchId))
   if (params.clusterId) billingConditions.push(eq(branch.clusterId, params.clusterId))
   if (params.category) billingConditions.push(eq(customer.category, params.category))
+  if (params.query?.trim()) {
+    const q = `%${params.query.trim().toLowerCase()}%`
+    billingConditions.push(or(
+      ilike(customer.name, q),
+      ilike(customer.customerAccount, q)
+    ))
+  }
 
   if (customerScope) billingConditions.push(customerScope)
 
@@ -206,6 +214,13 @@ export async function getDashboardStats(params: {
   if (params.branchId) readingConditions.push(eq(waterScheme.branchId, params.branchId))
   if (params.clusterId) readingConditions.push(eq(branch.clusterId, params.clusterId))
   if (params.category) readingConditions.push(eq(customer.category, params.category))
+  if (params.query?.trim()) {
+    const q = `%${params.query.trim().toLowerCase()}%`
+    readingConditions.push(or(
+      ilike(customer.name, q),
+      ilike(customer.customerAccount, q)
+    ))
+  }
 
   if (customerScope) readingConditions.push(customerScope)
 
@@ -250,6 +265,13 @@ export async function getDashboardStats(params: {
   if (params.branchId) verifiedConditions.push(eq(waterScheme.branchId, params.branchId))
   if (activePeriodId) verifiedConditions.push(eq(receipt.billingPeriodId, activePeriodId))
   if (params.category) verifiedConditions.push(eq(customer.category, params.category))
+  if (params.query?.trim()) {
+    const q = `%${params.query.trim().toLowerCase()}%`
+    verifiedConditions.push(or(
+      ilike(customer.name, q),
+      ilike(customer.customerAccount, q)
+    )!)
+  }
   if (customerScope) verifiedConditions.push(customerScope)
 
   // Optimization: Simplified collection query to reduce join complexity
@@ -270,6 +292,13 @@ export async function getDashboardStats(params: {
   if (params.schemeId) receiptConditions.push(eq(customer.waterSchemeId, params.schemeId))
   if (activePeriodId) receiptConditions.push(eq(receipt.billingPeriodId, activePeriodId))
   if (params.category) receiptConditions.push(eq(customer.category, params.category))
+  if (params.query?.trim()) {
+    const q = `%${params.query.trim().toLowerCase()}%`
+    receiptConditions.push(or(
+      ilike(customer.name, q),
+      ilike(customer.customerAccount, q)
+    ))
+  }
 
   const [receiptStats] = await db
     .select({
@@ -333,13 +362,21 @@ export async function getDashboardStats(params: {
   // Total System Arrears (Current Snapshot)
   const arrearsConditions = []
   if (params.schemeId) arrearsConditions.push(eq(customer.waterSchemeId, params.schemeId))
+  if (params.category) arrearsConditions.push(eq(customer.category, params.category))
+  if (params.query?.trim()) {
+    const q = `%${params.query.trim().toLowerCase()}%`
+    arrearsConditions.push(or(
+      ilike(customer.name, q),
+      ilike(customer.customerAccount, q)
+    ))
+  }
   if (customerScope) arrearsConditions.push(customerScope)
 
   // Optimization: Direct customer query for debt snapshot (fewer joins)
   const [arrearsSnapshot] = await db
     .select({
-      totalDebt: sql<number>`sum(case when ${customer.accountBalance} > 0 then ${customer.accountBalance} else 0 end)::bigint`,
-      totalCredit: sql<number>`sum(case when ${customer.accountBalance} < 0 then abs(${customer.accountBalance}) else 0 end)::bigint`,
+      totalDebt: sql<number>`sum(case when ${customer.accountBalance} > 0 then ${customer.accountBalance} else 0 end)::numeric`,
+      totalCredit: sql<number>`sum(case when ${customer.accountBalance} < 0 then abs(${customer.accountBalance}) else 0 end)::numeric`,
     })
     .from(customer)
     .where(and(...arrearsConditions))
@@ -442,7 +479,7 @@ export async function getBillPaymentHistory(billingRecordId: string) {
  * TOP DEBTORS (Objective 7 & 14)
  * Fetches customers with the highest live account balances (arrears).
  */
-export async function getTopDebtors(limit = 10, category?: string) {
+export async function getTopDebtors(limit = 10, category?: string, query?: string) {
   const current = await requireUser()
   if (!canViewReports(current)) throw new Error("Forbidden")
 
@@ -454,6 +491,14 @@ export async function getTopDebtors(limit = 10, category?: string) {
 
   if (category) {
     conditions.push(eq(customer.category, category))
+  }
+
+  if (query?.trim()) {
+    const q = `%${query.trim().toLowerCase()}%`
+    conditions.push(or(
+      ilike(customer.name, q),
+      ilike(customer.customerAccount, q)
+    ))
   }
 
   return db

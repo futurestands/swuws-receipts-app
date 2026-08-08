@@ -78,7 +78,7 @@ export async function createReceipt(input: CreateReceiptInput) {
     return { ok: false as const, error: "No Active Collection Period. Receipts cannot be issued until an administrator activates one." }
   }
 
-  const amount = Math.round(data.amount)
+  const amount = data.amount
 
   try {
     const row = await db.transaction(async (tx) => {
@@ -567,7 +567,7 @@ export async function getDailyTotals(dateISO?: string) {
     const [totals] = await db
       .select({
         count: sql<number>`count(*)::int`,
-        total: sql<number>`coalesce(sum(${receipt.amount}), 0)::bigint`,
+        total: sql<number>`coalesce(sum(${receipt.amount}), 0)::numeric`,
       })
       .from(receipt)
       .where(and(...conditions))

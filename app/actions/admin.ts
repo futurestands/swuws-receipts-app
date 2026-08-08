@@ -502,7 +502,7 @@ export async function getCollectionsSummary(dateISO?: string) {
       agentId: receipt.agentId,
       agentName: receipt.agentName,
       count: sql<number>`count(*)::int`,
-      total: sql<number>`coalesce(sum(${receipt.amount}), 0)::bigint`,
+      total: sql<number>`coalesce(sum(${receipt.amount}), 0)::numeric`,
     })
     .from(receipt)
     .where(conditions)
@@ -512,7 +512,7 @@ export async function getCollectionsSummary(dateISO?: string) {
   const [grand] = await db
     .select({
       count: sql<number>`count(*)::int`,
-      total: sql<number>`coalesce(sum(${receipt.amount}), 0)::bigint`,
+      total: sql<number>`coalesce(sum(${receipt.amount}), 0)::numeric`,
     })
     .from(receipt)
     .where(conditions)
@@ -555,7 +555,7 @@ export async function getSystemStats() {
   const [receipts] = await db
     .select({
       count: sql<number>`count(*)::int`,
-      total: sql<number>`coalesce(sum(${receipt.amount}), 0)::bigint`,
+      total: sql<number>`coalesce(sum(${receipt.amount}), 0)::numeric`,
     })
     .from(receipt)
     .where(and(scope, sql`${receipt.id} NOT IN (${voidedIds})`))
@@ -698,6 +698,11 @@ export async function getPrintingReports() {
 export async function wipeOperationalData(confirmText: string) {
   const current = await requireUser()
   if (!canConfigureSystem(current)) throw new Error("Forbidden")
+
+  // PRODUCTION SAFETY: Disable full wipe in production environment
+  if (process.env.NODE_ENV === "production" || process.env.VERCEL === "1") {
+    return { ok: false as const, error: "CRITICAL SAFETY: System reset is disabled in the Production environment. Contact development for manual data maintenance." }
+  }
 
   if (confirmText !== "RESET") {
     throw new Error("Invalid confirmation text")
