@@ -558,8 +558,9 @@ export async function uploadReceiptAttachment(receiptId: string, formData: FormD
 }
 
 export async function getDailyTotals(dateISO?: string) {
+  let current;
   try {
-    const current = await requireUser()
+    current = await requireUser()
     const day = dateISO ? new Date(dateISO) : new Date()
     const start = new Date(day)
     start.setHours(0, 0, 0, 0)
@@ -583,13 +584,7 @@ export async function getDailyTotals(dateISO?: string) {
       total: Number(totals?.total ?? 0),
     }
   } catch (e) {
-    logEvent({
-      message: "getDailyTotals failed - using empty fallback",
-      severity: "warn",
-      category: "system",
-      error: e,
-      user: current,
-    })
+    console.warn("getDailyTotals failed - using empty fallback", e)
     return { count: 0, total: 0 }
   }
 }
