@@ -8,13 +8,14 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { toast } from "sonner"
-import { ShieldCheck, Lock, User, Smartphone, Download, Zap, RefreshCw } from "lucide-react"
+import { ShieldCheck, Lock, User, Smartphone, Download, Zap, RefreshCw, ExternalLink } from "lucide-react"
 import { CURRENT_APP_VERSION } from "@/lib/version"
 import { setVibrationPreference, isNative } from "@/lib/mobile-hardware"
 import { updateUserPreferences } from "@/app/actions/account"
 import { useEffect } from "react"
 import { cn } from "@/lib/utils"
 import type { OrgSettings } from "@/lib/db/schema"
+import { Browser } from "@capacitor/browser"
 
 type UserProfile = {
   id: string
@@ -40,6 +41,21 @@ export function AccountClient({ user, settings, siteUrl }: { user: UserProfile, 
   }, [vibrationEnabled])
 
   const isOutdated = settings.latestAppVersion !== CURRENT_APP_VERSION && isNative()
+
+  async function handleDownload() {
+    if (isNative()) {
+       // In native app, we MUST use the system browser to handle APK downloads
+       // because the internal webview doesn't support the "download" attribute.
+       const url = siteUrl.endsWith('/') ? `${siteUrl}swuws-portal.apk` : `${siteUrl}/swuws-portal.apk`
+       await Browser.open({ url })
+    } else {
+       // On web, a standard download works
+       const link = document.createElement('a')
+       link.href = '/swuws-portal.apk'
+       link.download = 'swuws-portal.apk'
+       link.click()
+    }
+  }
 
   async function handleChangePassword(e: React.FormEvent) {
     e.preventDefault()
@@ -232,7 +248,7 @@ export function AccountClient({ user, settings, siteUrl }: { user: UserProfile, 
                    </div>
                 ) : (
                    <Button
-                      asChild
+                      onClick={handleDownload}
                       size="lg"
                       variant={isOutdated ? "default" : "outline"}
                       className={cn(
@@ -240,18 +256,11 @@ export function AccountClient({ user, settings, siteUrl }: { user: UserProfile, 
                          isOutdated && "bg-brand-blue hover:bg-brand-blue/90 animate-pulse ring-4 ring-brand-blue/20"
                       )}
                    >
-                      <a
-                        href={`${siteUrl}/swuws-portal.apk`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        download
-                      >
-                         {isOutdated ? (
-                            <><RefreshCw className="h-6 w-6 animate-spin-slow" /> UPDATE TO v{settings.latestAppVersion}</>
-                         ) : (
-                            <><Download className="h-5 w-5" /> DOWNLOAD FOR ANDROID (APK)</>
-                         )}
-                      </a>
+                      {isOutdated ? (
+                         <><RefreshCw className="h-6 w-6 animate-spin-slow" /> UPDATE TO v{settings.latestAppVersion}</>
+                      ) : (
+                         <><Download className="h-5 w-5" /> DOWNLOAD FOR ANDROID (APK)</>
+                      )}
                    </Button>
                 )}
                 {!isNative() && (
