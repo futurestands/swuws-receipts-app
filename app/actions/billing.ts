@@ -401,7 +401,12 @@ export async function validateBillingImport(
 
   // 4. Fetch Customers (Targeted or Global)
   const customerQuery = db
-    .select({ id: customer.id, account: customer.customerAccount, waterSchemeId: customer.waterSchemeId })
+    .select({
+      id: customer.id,
+      account: customer.customerAccount,
+      waterSchemeId: customer.waterSchemeId,
+      accountBalance: customer.accountBalance
+    })
     .from(customer)
 
   if (schemeId !== "all") {
@@ -515,7 +520,12 @@ export async function importBilling(
   }
 
   const schemeCustomers = await db
-    .select({ id: customer.id, account: customer.customerAccount, waterSchemeId: customer.waterSchemeId })
+    .select({
+      id: customer.id,
+      account: customer.customerAccount,
+      waterSchemeId: customer.waterSchemeId,
+      accountBalance: customer.accountBalance
+    })
     .from(customer)
     .where(summary.schemeId !== "all" ? eq(customer.waterSchemeId, summary.schemeId) : applyCustomerScope(current))
   const customerMap = new Map(schemeCustomers.map((c) => [c.account?.toLowerCase(), c]))
@@ -554,20 +564,40 @@ export async function importBilling(
 
         const recordsToInsert = rows.map((row) => {
           const cust = customerMap.get(row.data.accountNumber.toLowerCase())!
-          schemeTotal += row.data.totalDue
-          totalAmountGlobal += row.data.totalDue
+
+          // HARMONIZATION ENGINE (Phase 2B Implementation)
+          // Goal: Merge live system balances with external monthly bills without
+          // overwriting payments made during the 1st-7th billing window.
+
+          const systemArrears = Number(cust.accountBalance)
+          const excelMonthlyBill = Number(row.data.billAmount)
+          const excelReportedArrears = Number(row.data.arrears)
+
+          // Calculate new total based on system state, not the static Excel total
+          const newTotalDue = systemArrears + excelMonthlyBill
+
+          // Determine if existing upfront covers all or part of the new bill
+          let appliedFromUpfront = 0
+          if (systemArrears < 0) {
+             appliedFromUpfront = Math.min(excelMonthlyBill, Math.abs(systemArrears))
+          }
+
+          schemeTotal += excelMonthlyBill
+          totalAmountGlobal += excelMonthlyBill
+
           return {
             id: randomUUID(),
             billingRunId: runId,
             billingPeriodId: summary.billingPeriodId,
             customerId: cust.id,
             accountNumber: row.data.accountNumber,
-            billAmount: String(row.data.billAmount),
-            arrears: String(row.data.arrears),
-            currentCharges: String(row.data.currentCharges),
-            totalDue: String(row.data.totalDue),
+            billAmount: String(excelMonthlyBill),
+            arrears: String(systemArrears), // Live System Arrears snapshot
+            currentCharges: String(excelReportedArrears), // External System Arrears (Brought Forward)
+            totalDue: String(newTotalDue),
             dueDate: new Date(row.data.dueDate),
-            status: "pending",
+            // If upfront covered it, mark as paid or partially paid immediately
+            status: newTotalDue <= 0 ? "paid" : (appliedFromUpfront > 0 ? "partially_paid" : "pending"),
           }
         })
 
@@ -578,15 +608,20 @@ export async function importBilling(
 
         await tx.update(billingRun).set({ totalAmount: schemeTotal }).where(eq(billingRun.id, runId))
 
-        // Synchronize balances
+        // Synchronize balances RELATIVELY (Incremental addition)
+        // This ensures that if a customer paid USh 10,000 yesterday,
+        // they are only charged the new bill amount on top of their current balance.
         const BAL_CHUNK_SIZE = 500
         for (let i = 0; i < recordsToInsert.length; i += BAL_CHUNK_SIZE) {
           const chunk = recordsToInsert.slice(i, i + BAL_CHUNK_SIZE)
-          const valuesList = chunk.map(r => sql`(${r.customerId}, ${r.totalDue}::numeric)`).reduce((acc, curr) => sql`${acc}, ${curr}`)
+          const valuesList = chunk.map(r => sql`(${r.customerId}, ${r.billAmount}::numeric)`).reduce((acc, curr) => sql`${acc}, ${curr}`)
+
           await tx.execute(sql`
             UPDATE customer AS c
-            SET "accountBalance" = v.balance, "updatedAt" = now()
-            FROM (VALUES ${valuesList}) AS v(id, balance)
+            SET
+              "accountBalance" = c."accountBalance" + v.bill_increment,
+              "updatedAt" = now()
+            FROM (VALUES ${valuesList}) AS v(id, bill_increment)
             WHERE c.id = v.id
           `)
         }

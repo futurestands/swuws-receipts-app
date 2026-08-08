@@ -287,15 +287,45 @@ export async function getDashboardStats(params: {
   const currentBilled = Number(importStats?.totalCurrentBilled || 0) + Number(fieldStats?.totalCurrentBilled || 0)
   const billedCount = Number(importStats?.billedCount || 0) + Number(fieldStats?.billedCount || 0)
 
+  // HARMONIZED COLLECTIONS logic:
+  // 1. Bank Confirmed (EBS Matches)
   const verifiedTotal = Number(collectionStats?.totalPaid || 0)
-  const verifiedArrears = 0
-  const verifiedCurrent = verifiedTotal
+
+  // 2. Paid via Upfront (Auto-recovered during billing import)
+  // We can derive this by checking billingRecords where arrears were negative and bill was covered
+  const [upfrontRecovery] = await db
+    .select({ total: sum(sql`case when ${billingRecord.arrears}::numeric < 0 then least(${billingRecord.billAmount}::numeric, abs(${billingRecord.arrears}::numeric)) else 0 end`) })
+    .from(billingRecord)
+    .innerJoin(customer, eq(billingRecord.customerId, customer.id))
+    .where(and(...billingConditions))
+
+  const verifiedUpfront = Number(upfrontRecovery?.total || 0)
+
+  // 3. Billing Window Recovery (Payments made between 1st and 7th)
+  // Logic: (Excel Arrears - System Arrears at Import) where reduction occurred.
+  const [windowRecoveryStats] = await db
+    .select({
+      total: sum(sql`case when ${billingRecord.currentCharges}::numeric > ${billingRecord.arrears}::numeric then ${billingRecord.currentCharges}::numeric - ${billingRecord.arrears}::numeric else 0 end`)
+    })
+    .from(billingRecord)
+    .innerJoin(customer, eq(billingRecord.customerId, customer.id))
+    .where(and(...billingConditions))
+
+  const windowRecovery = Number(windowRecoveryStats?.total || 0)
+
+  // Arrears Performance: Combine Matched EBS Arrears + Window Recovery
+  const verifiedArrears = windowRecovery // Simplified for Phase 2B
+
+  // Current Performance: EBS Verified + Upfront Used
+  const verifiedCurrent = verifiedTotal + verifiedUpfront
+
+  const totalHarmonizedCollected = verifiedArrears + verifiedCurrent
 
   const operationalCash = Number(receiptStats?.totalAmount || 0)
   const operationalCount = Number(receiptStats?.totalCount || 0)
 
   // Collection Rates
-  const globalRate = totalBilled > 0 ? (verifiedTotal / totalBilled) * 100 : 0
+  const globalRate = totalBilled > 0 ? (totalHarmonizedCollected / totalBilled) * 100 : 0
 
   // Total System Arrears (Current Snapshot)
   const arrearsConditions = []
