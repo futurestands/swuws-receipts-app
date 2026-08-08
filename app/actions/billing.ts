@@ -687,9 +687,31 @@ export async function downloadBillingTemplate() {
 
   // 1. Resolve Headers from Template Hub
   const dbMapping = await getImportMapping("import.billing.monthly")
-  const mapping = { ...DEFAULT_BILLING_IMPORT_MAPPING, ...(dbMapping as any) } as Record<string, string | string[] | number>
 
+  /**
+   * TEMPLATE ALIGNMENT FIX (Phase 2B)
+   *
+   * If a custom mapping exists in the DB, we use it as the PRIMARY source.
+   * We only fill in missing required keys from the default mapping.
+   * This ensures the downloaded file exactly matches the user's JSON configuration.
+   */
+  const mapping: Record<string, string | string[]> = dbMapping
+    ? { ...dbMapping }
+    : { ...DEFAULT_BILLING_IMPORT_MAPPING }
+
+  // Ensure mandatory columns exist even if user omitted them (for import safety)
+  const mandatoryKeys = ["accountNumber", "billAmount", "arrears", "currentCharges", "totalDue", "dueDate"]
+  mandatoryKeys.forEach(key => {
+    if (!mapping[key]) {
+      // @ts-expect-error - Key existence check
+      const defaultVal = DEFAULT_BILLING_IMPORT_MAPPING[key]
+      mapping[key] = Array.isArray(defaultVal) ? defaultVal[0] : defaultVal
+    }
+  })
+
+  // Headers should follow the order of keys in the mapping
   const headers = Object.values(mapping).map(v => Array.isArray(v) ? v[0] : v) as string[]
+
   const data = [
     {
       [(Array.isArray(mapping.accountNumber) ? mapping.accountNumber[0] : mapping.accountNumber) as string]: "C-12345",
@@ -700,6 +722,7 @@ export async function downloadBillingTemplate() {
       [(Array.isArray(mapping.dueDate) ? mapping.dueDate[0] : mapping.dueDate) as string]: new Date().toISOString().split("T")[0],
     },
   ]
+
   const worksheet = XLSX.utils.json_to_sheet(data, { header: headers })
   const workbook = XLSX.utils.book_new()
   XLSX.utils.book_append_sheet(workbook, worksheet, "BillingTemplate")

@@ -385,14 +385,31 @@ export async function getDailyImportRecords(params: {
 export async function downloadDailyCollectionTemplate(format: "xlsx" | "csv") {
   await requireUser()
 
-  // Resolve headers from Template Hub (Optional, but good for consistency)
+  // Resolve headers from Template Hub
   const dbMapping = await getImportMapping("import.daily.collections")
-  const mapping = { ...DEFAULT_DAILY_IMPORT_MAPPING, ...(dbMapping as any) } as Record<string, string>
 
-  const headers = Object.values(mapping)
+  /**
+   * TEMPLATE ALIGNMENT FIX (Phase 2B)
+   */
+  const mapping: Record<string, string | string[]> = dbMapping
+    ? { ...dbMapping }
+    : { ...DEFAULT_DAILY_IMPORT_MAPPING }
+
+  // Ensure mandatory columns exist
+  const mandatoryKeys = ["accountNumber", "customerName", "amountPaid", "paymentDate", "externalReference", "paymentChannel"]
+  mandatoryKeys.forEach(key => {
+    if (!mapping[key]) {
+      // @ts-expect-error - Key existence check
+      const defaultVal = DEFAULT_DAILY_IMPORT_MAPPING[key]
+      mapping[key] = Array.isArray(defaultVal) ? defaultVal[0] : defaultVal
+    }
+  })
+
+  const headers = Object.values(mapping).map(v => Array.isArray(v) ? v[0] : v) as string[]
   const sampleRow: Record<string, string> = {}
 
-  Object.entries(mapping).forEach(([key, col]) => {
+  Object.entries(mapping).forEach(([key, colOrList]) => {
+    const col = Array.isArray(colOrList) ? colOrList[0] : colOrList
     if (key === 'accountNumber') sampleRow[col] = "6000000000"
     else if (key === 'customerName') sampleRow[col] = "Sample Customer"
     else if (key === 'amountPaid') sampleRow[col] = "50000"

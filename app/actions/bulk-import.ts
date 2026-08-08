@@ -352,15 +352,30 @@ export async function importBulkUsers(summary: ImportSummary): Promise<{ ok: tru
 export async function downloadBulkImportTemplate(format: "xlsx" | "csv") {
   await requireUser()
 
-  // Resolve headers from Template Hub — same resolution path validateBulkUsers
-  // now uses, so what this generates and what that parses can never drift
-  // apart again.
+  // 1. Resolve Headers from Template Hub
   const dbMapping = await getImportMapping("import.users.bulk")
-  const mapping = { ...DEFAULT_USER_IMPORT_MAPPING, ...(dbMapping as any) } as Record<string, string>
 
-  const headers = Object.values(mapping)
+  /**
+   * TEMPLATE ALIGNMENT FIX (Phase 2B)
+   */
+  const mapping: Record<string, string | string[]> = dbMapping
+    ? { ...dbMapping }
+    : { ...DEFAULT_USER_IMPORT_MAPPING }
+
+  // Ensure mandatory columns exist
+  const mandatoryKeys = ["name", "email", "role", "cluster", "area", "scheme", "status"]
+  mandatoryKeys.forEach(key => {
+    if (!mapping[key]) {
+      // @ts-expect-error - Key existence check
+      const defaultVal = DEFAULT_USER_IMPORT_MAPPING[key]
+      mapping[key] = Array.isArray(defaultVal) ? defaultVal[0] : defaultVal
+    }
+  })
+
+  const headers = Object.values(mapping).map(v => Array.isArray(v) ? v[0] : v) as string[]
   const sampleRow: Record<string, string> = {}
-  Object.entries(mapping).forEach(([key, col]) => {
+  Object.entries(mapping).forEach(([key, colOrList]) => {
+    const col = Array.isArray(colOrList) ? colOrList[0] : colOrList
     if (key === 'email') sampleRow[col] = "john.doe@example.com"
     else if (key === 'name') sampleRow[col] = "John Doe"
     else if (key === 'role') sampleRow[col] = "Plumber (Agent)"

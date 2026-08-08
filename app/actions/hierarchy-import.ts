@@ -185,19 +185,30 @@ export async function importHierarchy(summary: HierarchyImportSummary): Promise<
 export async function downloadHierarchyTemplate() {
   await requireUser()
 
-  // Resolve headers the same way validateHierarchyImport resolves them for
-  // parsing, so what this generates and what that reads can never drift
-  // apart again.
+  // 1. Resolve Headers from Template Hub
   const dbMapping = await getImportMapping('import.hierarchy.master')
-  const mapping = {
-    ...DEFAULT_HIERARCHY_IMPORT_MAPPING,
-    ...(dbMapping as any)
-  } as Record<string, string | string[]>
 
-  const nameCol = mapping.schemeName as string
+  /**
+   * TEMPLATE ALIGNMENT FIX (Phase 2B)
+   */
+  const mapping: Record<string, string | string[]> = dbMapping
+    ? { ...dbMapping }
+    : { ...DEFAULT_HIERARCHY_IMPORT_MAPPING }
+
+  // Ensure mandatory columns exist
+  const mandatoryKeys = ["clusterName", "branchName", "schemeName", "schemeCode", "serviceArea"]
+  mandatoryKeys.forEach(key => {
+    if (!mapping[key]) {
+      // @ts-expect-error - Key existence check
+      const defaultVal = DEFAULT_HIERARCHY_IMPORT_MAPPING[key]
+      mapping[key] = Array.isArray(defaultVal) ? defaultVal[0] : defaultVal
+    }
+  })
+
+  const nameCol = (Array.isArray(mapping.schemeName) ? mapping.schemeName[0] : mapping.schemeName) as string
   const codeCol = (Array.isArray(mapping.schemeCode) ? mapping.schemeCode[0] : mapping.schemeCode) as string
-  const parentCol = mapping.branchName as string
-  const serviceAreaCol = mapping.serviceArea as string
+  const parentCol = (Array.isArray(mapping.branchName) ? mapping.branchName[0] : mapping.branchName) as string
+  const serviceAreaCol = (Array.isArray(mapping.serviceArea) ? mapping.serviceArea[0] : mapping.serviceArea) as string
 
   const headers = ["Type", nameCol, codeCol, parentCol, serviceAreaCol, "Status"]
   const data = [

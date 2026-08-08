@@ -258,12 +258,25 @@ export async function importCustomers(summary: CustomerImportSummary): Promise<{
 export async function downloadCustomerTemplate() {
   await requireUser()
 
-  // 1. Resolve Headers from Template Hub (Unified resilient resolution)
+  // 1. Resolve Headers from Template Hub
   const dbMapping = await getImportMapping("import.customers.bulk")
-  const mapping = {
-    ...DEFAULT_CUSTOMER_IMPORT_MAPPING,
-    ...(dbMapping as any)
-  } as Record<string, string | string[] | number>
+
+  /**
+   * TEMPLATE ALIGNMENT FIX (Phase 2B)
+   */
+  const mapping: Record<string, string | string[]> = dbMapping
+    ? { ...dbMapping }
+    : { ...DEFAULT_CUSTOMER_IMPORT_MAPPING }
+
+  // Ensure mandatory columns exist
+  const mandatoryKeys = ["name", "customerAccount", "phone", "schemeName", "openingArrears", "category"]
+  mandatoryKeys.forEach(key => {
+    if (!mapping[key]) {
+      // @ts-expect-error - Key existence check
+      const defaultVal = DEFAULT_CUSTOMER_IMPORT_MAPPING[key]
+      mapping[key] = Array.isArray(defaultVal) ? defaultVal[0] : defaultVal
+    }
+  })
 
   const headers = Object.values(mapping).map(v => Array.isArray(v) ? v[0] : v) as string[]
   const sampleRow: Record<string, string | number> = {}

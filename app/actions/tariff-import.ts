@@ -187,29 +187,37 @@ export async function executeTariffImport(summary: TariffImportSummary): Promise
 export async function downloadTariffTemplate() {
   await requireUser()
 
-  // 1. Resolve Mapping from Template Hub (Dynamic headers)
+  // 1. Resolve Mapping from Template Hub
   const dbMapping = await getImportMapping('import.tariffs.bulk')
-  const mapping = { ...DEFAULT_TARIFF_IMPORT_MAPPING, ...(dbMapping as any) } as Record<string, string>
 
-  const headers = [
-    mapping.targetType,
-    mapping.targetName,
-    mapping.customerCategory,
-    mapping.unitPrice,
-    mapping.serviceFee,
-    mapping.vatPercentage,
-    mapping.active
-  ]
+  /**
+   * TEMPLATE ALIGNMENT FIX (Phase 2B)
+   */
+  const mapping: Record<string, string | string[]> = dbMapping
+    ? { ...dbMapping }
+    : { ...DEFAULT_TARIFF_IMPORT_MAPPING }
+
+  // Ensure mandatory columns exist
+  const mandatoryKeys = ["targetType", "targetName", "customerCategory", "unitPrice", "serviceFee", "vatPercentage", "active"]
+  mandatoryKeys.forEach(key => {
+    if (!mapping[key]) {
+      // @ts-expect-error - Key existence check
+      const defaultVal = DEFAULT_TARIFF_IMPORT_MAPPING[key]
+      mapping[key] = Array.isArray(defaultVal) ? defaultVal[0] : defaultVal
+    }
+  })
+
+  const headers = Object.values(mapping).map(v => Array.isArray(v) ? v[0] : v) as string[]
 
   const data = [
     {
-      [mapping.targetType as string]: "scheme",
-      [mapping.targetName as string]: "MASTYORO",
-      [mapping.customerCategory as string]: "domestic",
-      [mapping.unitPrice as string]: 3000,
-      [mapping.serviceFee as string]: 123,
-      [mapping.vatPercentage as string]: 18,
-      [mapping.active as string]: "true"
+      [(Array.isArray(mapping.targetType) ? mapping.targetType[0] : mapping.targetType) as string]: "scheme",
+      [(Array.isArray(mapping.targetName) ? mapping.targetName[0] : mapping.targetName) as string]: "Sample Area",
+      [(Array.isArray(mapping.customerCategory) ? mapping.customerCategory[0] : mapping.customerCategory) as string]: "domestic",
+      [(Array.isArray(mapping.unitPrice) ? mapping.unitPrice[0] : mapping.unitPrice) as string]: 3000,
+      [(Array.isArray(mapping.serviceFee) ? mapping.serviceFee[0] : mapping.serviceFee) as string]: 1200,
+      [(Array.isArray(mapping.vatPercentage) ? mapping.vatPercentage[0] : mapping.vatPercentage) as string]: 18,
+      [(Array.isArray(mapping.active) ? mapping.active[0] : mapping.active) as string]: "TRUE"
     },
   ]
   const worksheet = XLSX.utils.json_to_sheet(data, { header: headers })
