@@ -424,14 +424,3 @@ export async function downloadDailyCollectionTemplate(format: "xlsx" | "csv") {
     return Buffer.from(csv).toString("base64")
   }
 }
-  const workbook = XLSX.utils.book_new()
-  XLSX.utils.book_append_sheet(workbook, worksheet, "DailyCollections")
-
-  if (format === "xlsx") {
-    const buffer = XLSX.write(workbook, { type: "buffer", bookType: "xlsx" })
-    return buffer.toString("base64")
-  } else {
-    const csv = XLSX.utils.sheet_to_csv(worksheet)
-    return Buffer.from(csv).toString("base64")
-  }
-}
