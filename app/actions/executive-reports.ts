@@ -11,11 +11,13 @@ import {
   billingPeriod,
   auditLog,
   meterReading,
+  customer,
+  waterScheme,
 } from "@/lib/db/schema"
 import { requireUser, SessionUser } from "@/lib/session"
 import { hasPermission } from "@/lib/iam"
-import { applyReceiptScope } from "@/lib/scopes"
-import { and, eq, gte, lte, sql, desc, ilike } from "drizzle-orm"
+import { applyReceiptScope, applyCustomerScope } from "@/lib/scopes"
+import { and, eq, gte, lte, sql, desc, ilike, notInArray } from "drizzle-orm"
 import { writeAudit } from "@/lib/audit"
 
 /**
@@ -65,6 +67,8 @@ export async function getReportData(id: string, filters: ReportFilters) {
       return getAuditActivity(filters)
     case "meter-reading":
       return getMeterReadingReport(current, filters)
+    case "unmetered-accounts":
+      return getUnmeteredReport(current, filters)
     default:
       throw new Error("Report not implemented")
   }
@@ -256,4 +260,37 @@ async function getMeterReadingReport(user: SessionUser, filters: ReportFilters) 
     .innerJoin(billingPeriod, eq(meterReading.billingPeriodId, billingPeriod.id))
     .where(and(...conditions))
     .orderBy(desc(meterReading.createdAt))
+}
+
+async function getUnmeteredReport(user: SessionUser, filters: ReportFilters) {
+  const periodId = filters.periodId || filters.batchId; // Use batchId as fallback if the UI passes it
+  if (!periodId) throw new Error("Billing Period is required for this report");
+
+  // Apply scope
+  const scope = applyCustomerScope(user);
+
+  // Subquery to find customers who have readings in this period
+  const meteredIds = db
+    .select({ customerId: meterReading.customerId })
+    .from(meterReading)
+    .where(eq(meterReading.billingPeriodId, periodId));
+
+  const conditions = [
+    notInArray(customer.id, meteredIds),
+    eq(customer.active, true)
+  ];
+  if (scope) conditions.push(scope);
+
+  return db
+    .select({
+      customerAccount: customer.customerAccount,
+      name: customer.name,
+      phone: customer.phone,
+      scheme: waterScheme.name,
+      balance: customer.accountBalance,
+    })
+    .from(customer)
+    .leftJoin(waterScheme, eq(customer.waterSchemeId, waterScheme.id))
+    .where(and(...conditions))
+    .orderBy(customer.customerAccount);
 }

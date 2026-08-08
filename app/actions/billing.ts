@@ -507,7 +507,6 @@ export async function validateBillingImport(
     } as BillingImportSummary,
   }
 }
-
 /**
  * Executes the billing import transactionally.
  */
@@ -546,23 +545,29 @@ export async function importBilling(
   let totalAmountGlobal = 0
   const reportRows: Array<Record<string, unknown>> = []
 
+  // Group valid rows by scheme
+  const recordsByScheme = new Map<string, typeof validRows>()
+  for (const row of validRows) {
+    const cust = customerMap.get(row.data.accountNumber.toLowerCase())
+    if (cust?.waterSchemeId) {
+      const list = recordsByScheme.get(cust.waterSchemeId) || []
+      list.push(row)
+      recordsByScheme.set(cust.waterSchemeId, list)
+    }
+  }
+
   try {
-    await db.transaction(async (tx) => {
-      // Group valid rows by scheme
-      const recordsByScheme = new Map<string, typeof validRows>()
-      for (const row of validRows) {
-        const cust = customerMap.get(row.data.accountNumber.toLowerCase())
-        if (cust?.waterSchemeId) {
-          const list = recordsByScheme.get(cust.waterSchemeId) || []
-          list.push(row)
-          recordsByScheme.set(cust.waterSchemeId, list)
-        }
-      }
+    /**
+     * MULTI-SCHEME RESILIENCE (Phase 2B Fix)
+     *
+     * We process each scheme in its own transaction.
+     * This prevents long-lived database locks and timeouts for large 18,000+ record uploads.
+     */
+    for (const [sId, rows] of recordsByScheme.entries()) {
+      const runId = randomUUID()
+      let schemeTotal = 0
 
-      for (const [sId, rows] of recordsByScheme.entries()) {
-        const runId = randomUUID()
-        let schemeTotal = 0
-
+      await db.transaction(async (tx) => {
         await tx.insert(billingRun).values({
           id: runId,
           schemeId: sId,
@@ -571,31 +576,23 @@ export async function importBilling(
           sourceFile: filename,
           status: "completed",
           totalCustomers: rows.length,
-          totalAmount: 0,
+          totalAmount: 0, // Placeholder
         })
 
         const recordsToInsert = rows.map((row) => {
           const cust = customerMap.get(row.data.accountNumber.toLowerCase())!
 
-          // HARMONIZATION ENGINE (Phase 2B Implementation)
-          // Goal: Merge live system balances with external monthly bills without
-          // overwriting payments made during the 1st-7th billing window.
-
           const systemArrears = Number(cust.accountBalance)
           const excelMonthlyBill = Number(row.data.billAmount)
           const excelReportedArrears = Number(row.data.arrears)
 
-          // Calculate new total based on system state, not the static Excel total
           const newTotalDue = (isNaN(systemArrears) ? 0 : systemArrears) + (isNaN(excelMonthlyBill) ? 0 : excelMonthlyBill)
-
-          // Determine if existing upfront covers all or part of the new bill
           let appliedFromUpfront = 0
           if (systemArrears < 0) {
              appliedFromUpfront = Math.min(isNaN(excelMonthlyBill) ? 0 : excelMonthlyBill, Math.abs(systemArrears))
           }
 
           schemeTotal += isNaN(excelMonthlyBill) ? 0 : excelMonthlyBill
-          totalAmountGlobal += isNaN(excelMonthlyBill) ? 0 : excelMonthlyBill
 
           return {
             id: randomUUID(),
@@ -604,25 +601,17 @@ export async function importBilling(
             customerId: cust.id,
             accountNumber: row.data.accountNumber,
             billAmount: String(isNaN(excelMonthlyBill) ? 0 : excelMonthlyBill),
-            arrears: String(isNaN(systemArrears) ? 0 : systemArrears), // Live System Arrears snapshot
-            currentCharges: String(isNaN(excelReportedArrears) ? 0 : excelReportedArrears), // External System Arrears
+            arrears: String(isNaN(systemArrears) ? 0 : systemArrears),
+            currentCharges: String(isNaN(excelReportedArrears) ? 0 : excelReportedArrears),
             totalDue: String(newTotalDue),
             dueDate: new Date(row.data.dueDate),
             status: newTotalDue <= 0 ? "paid" : (appliedFromUpfront > 0 ? "partially_paid" : "pending"),
           }
         })
 
-        const CHUNK_SIZE = 500 // Reduced chunk size for better error isolation
+        const CHUNK_SIZE = 400
         for (let i = 0; i < recordsToInsert.length; i += CHUNK_SIZE) {
           const chunk = recordsToInsert.slice(i, i + CHUNK_SIZE)
-
-          /**
-           * RESILIENT INSERT (Phase 2B)
-           *
-           * If a customer already has a bill for this period, we UPDATE it
-           * instead of crashing. This handles cases where a file might have
-           * duplicates or if a previous partial import happened.
-           */
           await tx
             .insert(billingRecord)
             .values(chunk)
@@ -640,12 +629,11 @@ export async function importBilling(
             })
         }
 
-        await tx.update(billingRun).set({ totalAmount: schemeTotal }).where(eq(billingRun.id, runId))
+        // Update run total with a WHOLE number for bigint compatibility
+        await tx.update(billingRun).set({ totalAmount: Math.round(schemeTotal) }).where(eq(billingRun.id, runId))
 
-        // Synchronize balances RELATIVELY (Incremental addition)
-        // This ensures that if a customer paid USh 10,000 yesterday,
-        // they are only charged the new bill amount on top of their current balance.
-        const BAL_CHUNK_SIZE = 500
+        // Balance Sync
+        const BAL_CHUNK_SIZE = 400
         for (let i = 0; i < recordsToInsert.length; i += BAL_CHUNK_SIZE) {
           const chunk = recordsToInsert.slice(i, i + BAL_CHUNK_SIZE)
           const valuesList = chunk.map(r => sql`(${r.customerId}, ${r.billAmount}::numeric)`).reduce((acc, curr) => sql`${acc}, ${curr}`)
@@ -659,20 +647,21 @@ export async function importBilling(
             WHERE c.id = v.id
           `)
         }
+      })
 
-        importedCount += rows.length
-      }
+      importedCount += rows.length
+      totalAmountGlobal += schemeTotal
+    }
 
-      await writeAudit({
-        user: current,
-        action: "billing.import.complete",
-        entityType: "billing_period",
-        entityId: summary.billingPeriodId,
-        details: { filename, imported: importedCount, schemes: recordsByScheme.size },
-      }, tx)
+    await writeAudit({
+      user: current,
+      action: "billing.import.complete",
+      entityType: "billing_period",
+      entityId: summary.billingPeriodId,
+      details: { filename, imported: importedCount, schemes: recordsByScheme.size },
     })
 
-    logFinancial("Billing Imported (Multi-Scheme)", {
+    logFinancial("Billing Imported (Multi-Scheme Resilience)", {
       filename,
       imported: importedCount,
       totalAmount: totalAmountGlobal
