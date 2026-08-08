@@ -93,7 +93,8 @@ export function BillingImportClient({ schemes, periods }: Props) {
         setStep("preview")
         toast.success("Validation complete")
       } else {
-        toast.error(response.error)
+        const errorMsg = typeof response.error === 'string' ? response.error : "Validation failed"
+        toast.error(errorMsg.length > 300 ? errorMsg.substring(0, 300) + "..." : errorMsg)
       }
     })
   }
@@ -108,7 +109,8 @@ export function BillingImportClient({ schemes, periods }: Props) {
         setStep("complete")
         toast.success(`Import complete: ${response.imported} records created.`)
       } else {
-        toast.error(response.error)
+        const errorMsg = typeof response.error === 'string' ? response.error : "Import failed"
+        toast.error(errorMsg.length > 300 ? errorMsg.substring(0, 300) + "..." : errorMsg)
       }
     })
   }
@@ -279,7 +281,9 @@ export function BillingImportClient({ schemes, periods }: Props) {
                   {summary.rows.map((row, i) => (
                     <TableRow key={i} className={cn(!row.valid && "bg-destructive/5")}>
                       <TableCell className="font-medium text-xs">{row.data.accountNumber}</TableCell>
-                      <TableCell className="text-xs">{formatUGX(row.data.totalDue)}</TableCell>
+                      <TableCell className="text-xs">
+                        {isNaN(Number(row.data.totalDue)) ? "Invalid Amount" : formatUGX(Number(row.data.totalDue))}
+                      </TableCell>
                       <TableCell>
                         {row.valid ? (
                           <Badge variant="outline" className="text-green-600 border-green-200">Valid</Badge>
@@ -311,17 +315,27 @@ export function BillingImportClient({ schemes, periods }: Props) {
              <div className="p-4 bg-primary/5 border border-primary/20 rounded-lg space-y-2">
                 <div className="flex justify-between text-sm">
                    <span className="text-muted-foreground">Scheme:</span>
-                   <span className="font-medium">{schemes.find(s => s.id === schemeId)?.name}</span>
+                   <span className="font-bold">
+                      {schemeId === "all" ? "--- ALL AUTHORIZED SCHEMES ---" : (schemes.find(s => s.id === schemeId)?.name || "Not Selected")}
+                   </span>
                 </div>
                 <div className="flex justify-between text-sm">
                    <span className="text-muted-foreground">Period:</span>
-                   <span className="font-medium">{periods.find(p => p.id === periodId)?.periodName}</span>
+                   <span className="font-bold">
+                      {periods.find(p => p.id === periodId)?.periodName || "Not Selected"}
+                   </span>
                 </div>
                 <div className="flex justify-between text-sm border-t pt-2 mt-2">
                    <span className="text-muted-foreground">Total Records:</span>
-                   <span className="font-bold text-primary">{summary.validRows}</span>
+                   <span className="font-black text-primary">{summary.validRows ?? 0}</span>
                 </div>
              </div>
+
+             {summary.errorRows > 0 && (
+               <div className="p-3 bg-amber-50 border border-amber-200 rounded text-xs text-amber-800">
+                 <strong>Warning:</strong> {summary.errorRows} records have errors and will be skipped during import.
+               </div>
+             )}
           </CardContent>
           <CardFooter className="flex justify-between">
             <Button variant="ghost" className="h-11" onClick={() => setStep("preview")}>Back</Button>

@@ -461,6 +461,12 @@ export async function validateBillingImport(
         if (readingsMap.has(targetCustomer.id)) {
           errors.push("This customer has a manual meter reading captured for this period. Import skipped to prevent double billing.")
         }
+
+        // PREVIEW ENHANCEMENT: Inject live system arrears into the preview data.
+        // This ensures the user sees the REAL arrears from the database profile
+        // instead of zeros or placeholders from their Excel file.
+        data.arrears = Number(targetCustomer.accountBalance)
+        data.totalDue = data.arrears + data.billAmount
       }
 
       if (seenInUpload.has(accLower)) {
