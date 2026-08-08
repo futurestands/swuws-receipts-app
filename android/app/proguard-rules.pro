@@ -29,11 +29,13 @@
 # Capacitor Plugins
 -keep class com.getcapacitor.** { *; }
 -keep class * extends com.getcapacitor.Plugin
+-keep @com.getcapacitor.annotation.CapacitorPlugin class * { *; }
 -keep @com.getcapacitor.NativePlugin class * { *; }
--keep @com.getcapacitor.CapacitorPlugin class * { *; }
 -dontwarn com.getcapacitor.**
 
-# AndroidX
--keep class androidx.** { *; }
+# AndroidX - Narrowed down to components known to cause issues with R8
+-keep class androidx.appcompat.** { *; }
+-keep class androidx.coordinatorlayout.** { *; }
+-keep class androidx.core.** { *; }
 -dontwarn androidx.**
 
