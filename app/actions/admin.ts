@@ -28,6 +28,7 @@ import { and, desc, eq, gte, lte, sql, ne, count, ilike, or, type SQL } from "dr
 import { revalidatePath } from "next/cache"
 import { headers } from "next/headers"
 import { checkRateLimit } from "@/lib/rate-limit"
+import { logEvent } from "@/lib/logger"
 
 import { ROLES } from "@/lib/permissions/roles"
 import {
@@ -199,7 +200,13 @@ export async function createAgent(input: {
     revalidatePath("/admin")
     return { ok: true as const }
   } catch (e) {
-    console.error("createAgent failed", e)
+    logEvent({
+      message: "createAgent failed",
+      severity: "error",
+      category: "system",
+      error: e,
+      user: current,
+    })
     const message = e instanceof Error ? e.message : "Failed to create account"
     return { ok: false as const, error: message }
   }
@@ -330,7 +337,13 @@ export async function updateAgent(userId: string, input: {
     revalidatePath("/admin")
     return { ok: true as const }
   } catch (e) {
-    console.error("updateAgent failed", e)
+    logEvent({
+      message: "updateAgent failed",
+      severity: "error",
+      category: "system",
+      error: e,
+      user: current,
+    })
     return { ok: false as const, error: "Failed to update agent details" }
   }
 }
@@ -380,7 +393,13 @@ export async function deleteAgent(userId: string) {
     revalidatePath("/admin")
     return { ok: true as const }
   } catch (e) {
-    console.error("deleteAgent failed", e)
+    logEvent({
+      message: "deleteAgent failed",
+      severity: "error",
+      category: "system",
+      error: e,
+      user: current,
+    })
     return { ok: false as const, error: "Failed to delete agent account" }
   }
 }
@@ -451,7 +470,13 @@ export async function resetAgentPassword(userId: string, newPassword: string) {
       headers: await headers(),
     })
   } catch (e) {
-    console.error("resetAgentPassword failed", e)
+    logEvent({
+      message: "resetAgentPassword failed",
+      severity: "error",
+      category: "system",
+      error: e,
+      user: current,
+    })
     const message = e instanceof Error ? e.message : "Failed to reset password"
     return { ok: false as const, error: message }
   }
@@ -752,7 +777,13 @@ export async function wipeOperationalData(confirmText: string) {
     revalidatePath("/admin")
     return { ok: true }
   } catch (e: unknown) {
-    console.error("wipeOperationalData failed", e)
+    logEvent({
+      message: "wipeOperationalData failed",
+      severity: "error",
+      category: "system",
+      error: e,
+      user: current,
+    })
     const message = e instanceof Error ? e.message : "A database error occurred during reset"
     return { ok: false, error: message }
   }

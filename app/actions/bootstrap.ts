@@ -6,6 +6,7 @@ import { user } from "@/lib/db/schema"
 import { writeAudit } from "@/lib/audit"
 import { eq, and } from "drizzle-orm"
 import { headers } from "next/headers"
+import { logEvent } from "@/lib/logger"
 
 import { ROLES } from "@/lib/permissions/roles"
 
@@ -82,7 +83,12 @@ export async function bootstrapAdmin(input: { name: string; email: string; passw
         return { ok: false as const, error: message }
       }
     } else {
-      console.error("bootstrapAdmin: signUpEmail failed", e)
+      logEvent({
+        message: "bootstrapAdmin: signUpEmail failed",
+        severity: "error",
+        category: "system",
+        error: e,
+      })
       return { ok: false as const, error: message }
     }
   }
@@ -115,7 +121,12 @@ export async function bootstrapAdmin(input: { name: string; email: string; passw
 
     return { ok: true as const }
   } catch (roleError) {
-    console.error(`bootstrapAdmin: user ${userId} (${email}) promotion failed`, roleError)
+    logEvent({
+      message: `bootstrapAdmin: user ${userId} (${email}) promotion failed`,
+      severity: "error",
+      category: "system",
+      error: roleError,
+    })
     return { ok: false as const, error: "Failed to promote account to admin. Please try again." }
   }
 }

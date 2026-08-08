@@ -9,6 +9,7 @@ import { put } from "@vercel/blob"
 import { revalidatePath, unstable_cache } from "next/cache"
 import { randomUUID } from "crypto"
 import { isUniqueViolation } from "@/lib/db/errors"
+import { logEvent } from "@/lib/logger"
 import fs from "fs/promises"
 import path from "path"
 import {
@@ -54,7 +55,12 @@ export const getSettings = unstable_cache(
         .returning()
       return created
     } catch (e) {
-      console.error("getSettings failed — using safety defaults", e)
+      logEvent({
+        message: "getSettings failed — using safety defaults",
+        severity: "error",
+        category: "system",
+        error: e,
+      })
       return {
         id: 1,
         orgName: "South Western Umbrella of Water and Sanitation",
@@ -187,7 +193,13 @@ export async function uploadLogo(formData: FormData) {
         })
         logoUrl = blob.url
       } catch (blobErr: any) {
-        console.error("Vercel Blob Storage Error:", blobErr)
+        logEvent({
+          message: "Vercel Blob Storage Error:",
+          severity: "error",
+          category: "system",
+          error: blobErr,
+          user: current,
+        })
         return { ok: false as const, error: `Cloud Storage Error: ${blobErr.message || "Access Denied"}` }
       }
     } else if (!isProduction) {
@@ -224,7 +236,13 @@ export async function uploadLogo(formData: FormData) {
 
     return { ok: true as const, url: logoUrl }
   } catch (err: any) {
-    console.error("Deep System Failure during upload:", err)
+    logEvent({
+      message: "Deep System Failure during upload:",
+      severity: "fatal",
+      category: "system",
+      error: err,
+      user: current,
+    })
     return { ok: false as const, error: `System Error: ${err.message || "Unknown error occurred"}` }
   }
 }
@@ -276,7 +294,13 @@ export async function createBranch(input: { name: string; code: string }) {
     if (isUniqueViolation(e)) {
       return { ok: false as const, error: "A branch with that code already exists" }
     }
-    console.error("createBranch failed", e)
+    logEvent({
+      message: "createBranch failed",
+      severity: "error",
+      category: "system",
+      error: e,
+      user: current,
+    })
     return { ok: false as const, error: "Could not create branch. Please try again." }
   }
 }
@@ -341,7 +365,13 @@ export async function createPaymentMethod(input: { name: string; code: string })
     if (isUniqueViolation(e)) {
       return { ok: false as const, error: "A payment method with that code already exists" }
     }
-    console.error("createPaymentMethod failed", e)
+    logEvent({
+      message: "createPaymentMethod failed",
+      severity: "error",
+      category: "system",
+      error: e,
+      user: current,
+    })
     return { ok: false as const, error: "Could not create payment method. Please try again." }
   }
 }
@@ -417,7 +447,13 @@ export async function createWaterScheme(input: {
     if (isUniqueViolation(e)) {
       return { ok: false as const, error: "A water scheme with that code already exists" }
     }
-    console.error("createWaterScheme failed", e)
+    logEvent({
+      message: "createWaterScheme failed",
+      severity: "error",
+      category: "system",
+      error: e,
+      user: current,
+    })
     return { ok: false as const, error: "Could not create water scheme. Please try again." }
   }
 }

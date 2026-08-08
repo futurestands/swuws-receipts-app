@@ -19,7 +19,7 @@ import { and, eq, gte, lte, sql, inArray, count, desc, asc, ne } from "drizzle-o
 import { randomUUID } from "crypto"
 import { createNotification } from "./notifications"
 import { revalidatePath } from "next/cache"
-import { logFinancial, logSecurity } from "@/lib/logger"
+import { logEvent, logFinancial, logSecurity } from "@/lib/logger"
 
 /**
  * AUTOMATED RECONCILIATION ENGINE (Phase 3A)
@@ -302,7 +302,13 @@ export async function runReconciliation(batchId: string) {
       duration: Date.now() - startTime
     }
   } catch (err: unknown) {
-    console.error("Reconciliation run failed", err)
+    logEvent({
+      message: "Reconciliation run failed",
+      severity: "error",
+      category: "system",
+      error: err,
+      user: current,
+    })
     const message = err instanceof Error ? err.message : "A database error occurred during reconciliation."
     return { ok: false, error: message }
   }
@@ -465,7 +471,13 @@ export async function resolveException(id: string, data: {
     revalidatePath(`/dashboard/reconciliation/exceptions/${id}`)
     return { ok: true }
   } catch (err: unknown) {
-    console.error("Manual resolution failed", err)
+    logEvent({
+      message: "Manual resolution failed",
+      severity: "error",
+      category: "system",
+      error: err,
+      user: current,
+    })
     const message = err instanceof Error ? err.message : "Failed to resolve exception"
     return { ok: false, error: message }
   }

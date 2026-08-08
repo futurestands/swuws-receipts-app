@@ -11,6 +11,7 @@ import { randomUUID } from "crypto"
 import { revalidatePath } from "next/cache"
 import { getImportMapping } from "@/lib/import-engine"
 import { DEFAULT_HIERARCHY_IMPORT_MAPPING } from "@/lib/import-mappings"
+import { logEvent } from "@/lib/logger"
 
 /**
  * Unified Hierarchy Import Logic
@@ -91,7 +92,13 @@ export async function importUnifiedHierarchy(formData: FormData) {
 
       importedCount++
     } catch (e: unknown) {
-      console.error("Hierarchy row import failed", e)
+      logEvent({
+        message: "Hierarchy row import failed",
+        severity: "error",
+        category: "system",
+        error: e,
+        user: current,
+      })
     }
   }
 

@@ -18,6 +18,7 @@ import {
 } from "@/lib/permissions"
 import { applyCustomerScope, applyReceiptScope, validateWriteScope } from "@/lib/scopes"
 import { hasPermission } from "@/lib/iam"
+import { logEvent } from "@/lib/logger"
 
 const customerSchema = z.object({
   name: z.string().trim().min(1, "Name is required").max(200),
@@ -82,7 +83,13 @@ export async function createCustomer(input: CustomerInput) {
     if (isUniqueViolation(e)) {
       return { ok: false as const, error: "A customer with that account number already exists" }
     }
-    console.error("createCustomer failed", e)
+    logEvent({
+      message: "createCustomer failed",
+      severity: "error",
+      category: "system",
+      error: e,
+      user: current,
+    })
     return { ok: false as const, error: "Could not save the customer. Please try again." }
   }
 }
@@ -141,7 +148,13 @@ export async function updateCustomer(id: string, input: CustomerInput) {
     if (isUniqueViolation(e)) {
       return { ok: false as const, error: "A customer with that account number already exists" }
     }
-    console.error("updateCustomer failed", e)
+    logEvent({
+      message: "updateCustomer failed",
+      severity: "error",
+      category: "system",
+      error: e,
+      user: current,
+    })
     return { ok: false as const, error: "Could not save changes. Please try again." }
   }
 }

@@ -14,8 +14,26 @@
 
 # Uncomment this to preserve the line number information for
 # debugging stack traces.
-#-keepattributes SourceFile,LineNumberTable
+-keepattributes SourceFile,LineNumberTable
 
 # If you keep the line number information, uncomment this to
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile
+
+# GSON
+-keep class com.google.gson.** { *; }
+-keepattributes Signature
+-keepattributes *Annotation*
+-dontwarn com.google.gson.**
+
+# Capacitor Plugins
+-keep class com.getcapacitor.** { *; }
+-keep class * extends com.getcapacitor.Plugin
+-keep @com.getcapacitor.NativePlugin class * { *; }
+-keep @com.getcapacitor.CapacitorPlugin class * { *; }
+-dontwarn com.getcapacitor.**
+
+# AndroidX
+-keep class androidx.** { *; }
+-dontwarn androidx.**
+

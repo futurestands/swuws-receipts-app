@@ -15,6 +15,7 @@ import { randomUUID } from "crypto"
 import { getImportMapping } from "@/lib/import-engine"
 import { DEFAULT_USER_IMPORT_MAPPING } from "@/lib/import-mappings"
 import { userImportSchema, type UserImportRow } from "@/lib/import-schemas"
+import { logEvent } from "@/lib/logger"
 
 export type ValidationResult = {
   valid: boolean
@@ -271,7 +272,13 @@ export async function importBulkUsers(summary: ImportSummary): Promise<{ ok: tru
         Details: "Account created successfully",
       })
     } catch (e: unknown) {
-      console.error(`Import failed for ${data.email}`, e)
+      logEvent({
+        message: `Import failed for ${data.email}`,
+        severity: "error",
+        category: "system",
+        error: e,
+        user: current,
+      })
       let errorDetails = e instanceof Error ? e.message : "Unknown error"
 
       // Zombie Account Protection: Cleanup if DB update or audit failed after auth creation
@@ -283,7 +290,13 @@ export async function importBulkUsers(summary: ImportSummary): Promise<{ ok: tru
           })
           errorDetails += " (Zombie account cleaned up)"
         } catch (cleanupError: unknown) {
-          console.error(`Cleanup failed for ${data.email}`, cleanupError)
+          logEvent({
+            message: `Cleanup failed for ${data.email}`,
+            severity: "fatal",
+            category: "system",
+            error: cleanupError,
+            user: current,
+          })
           const cleanupMsg = cleanupError instanceof Error ? cleanupError.message : "Unknown error"
           errorDetails += ` (CRITICAL: Zombie account remains. Cleanup failed: ${cleanupMsg})`
         }

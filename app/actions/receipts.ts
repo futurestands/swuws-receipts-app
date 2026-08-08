@@ -25,7 +25,7 @@ import { applyReceiptScope, validateWriteScope } from "@/lib/scopes"
 import { hasPermission } from "@/lib/iam"
 import { receiptPrintHistory, user as userTable } from "@/lib/db/schema"
 import { headers } from "next/headers"
-import { logFinancial, logSecurity } from "@/lib/logger"
+import { logEvent, logFinancial, logSecurity } from "@/lib/logger"
 import { createReceiptSchema, type CreateReceiptInput } from "@/lib/finance-schemas"
 
 function generatePaymentReference(): string {
@@ -342,7 +342,13 @@ export async function createReceipt(input: CreateReceiptInput) {
         return { ok: true as const, receipt: existing, duplicate: true as const }
       }
     }
-    console.error("createReceipt failed", e)
+    logEvent({
+      message: "createReceipt failed",
+      severity: "error",
+      category: "system",
+      error: e,
+      user: current,
+    })
     const message = e instanceof Error ? e.message : "Could not save the receipt. Nothing was charged or recorded — please try again."
     return {
       ok: false as const,
@@ -577,7 +583,13 @@ export async function getDailyTotals(dateISO?: string) {
       total: Number(totals?.total ?? 0),
     }
   } catch (e) {
-    console.warn("getDailyTotals failed - using empty fallback", e)
+    logEvent({
+      message: "getDailyTotals failed - using empty fallback",
+      severity: "warn",
+      category: "system",
+      error: e,
+      user: current,
+    })
     return { count: 0, total: 0 }
   }
 }
@@ -800,7 +812,13 @@ export async function requestReceiptVoid(receiptId: string, reason: string) {
     revalidatePath(`/dashboard/receipts/${receiptId}`)
     return { ok: true as const }
   } catch (e: unknown) {
-    console.error("voidReceipt failed", e)
+    logEvent({
+      message: "voidReceipt failed",
+      severity: "error",
+      category: "system",
+      error: e,
+      user: current,
+    })
     const message = e instanceof Error ? e.message : "Failed to void receipt"
     return { ok: false as const, error: message }
   }

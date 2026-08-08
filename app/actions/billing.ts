@@ -36,7 +36,7 @@ import { createNotification } from "./notifications"
 import { processExcelImport, getImportMapping, type ImportSummary } from "@/lib/import-engine"
 import { DEFAULT_BILLING_IMPORT_MAPPING } from "@/lib/import-mappings"
 import { billingImportSchema, type BillingImportRow } from "@/lib/import-schemas"
-import { logFinancial } from "@/lib/logger"
+import { logEvent, logFinancial } from "@/lib/logger"
 
 export type BillingImportSummary = ImportSummary<BillingImportRow> & {
   schemeId: string
@@ -333,7 +333,13 @@ export async function archiveCollectionPeriod(id: string) {
     revalidatePath("/dashboard/billing")
     return { ok: true }
   } catch (e: unknown) {
-    console.error("archiveCollectionPeriod failed", e)
+    logEvent({
+      message: "archiveCollectionPeriod failed",
+      severity: "error",
+      category: "system",
+      error: e,
+      user: current,
+    })
     const message = e instanceof Error ? e.message : "Failed to archive period"
     return { ok: false, error: message }
   }
@@ -657,7 +663,13 @@ export async function importBilling(
       report: XLSX.utils.sheet_to_csv(worksheet)
     }
   } catch (e: unknown) {
-    console.error("Billing import failed", e)
+    logEvent({
+      message: "Billing import failed",
+      severity: "error",
+      category: "system",
+      error: e,
+      user: current,
+    })
     const message = e instanceof Error ? e.message : "A database error occurred during import"
     await writeAudit({
       user: current,

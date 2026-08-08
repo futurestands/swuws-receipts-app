@@ -18,6 +18,7 @@ import { revalidatePath } from "next/cache"
 import { processExcelImport, getImportMapping, type ImportSummary } from "@/lib/import-engine"
 import { DEFAULT_CUSTOMER_IMPORT_MAPPING } from "@/lib/import-mappings"
 import { customerImportSchema, type CustomerImportRow } from "@/lib/import-schemas"
+import { logEvent } from "@/lib/logger"
 
 export type CustomerImportSummary = ImportSummary<CustomerImportRow>
 
@@ -159,7 +160,12 @@ export async function importCustomers(summary: CustomerImportSummary): Promise<{
     } catch (e: unknown) {
       // If a bulk chunk fails (rare with pre-validation), fall back to row-by-row
       // for this specific chunk to preserve accuracy and identify errors.
-      console.warn(`Chunk starting at ${i} failed. Falling back to individual processing...`)
+      logEvent({
+        message: `Chunk starting at ${i} failed. Falling back to individual processing...`,
+        severity: "warn",
+        category: "operational",
+        user: current,
+      })
 
       for (const row of chunk) {
         const { data } = row

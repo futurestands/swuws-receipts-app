@@ -11,6 +11,7 @@ import { z } from "zod"
 import { revalidatePath } from "next/cache"
 import { writeAudit } from "@/lib/audit"
 import { getImportMapping } from "@/lib/import-engine"
+import { logEvent } from "@/lib/logger"
 
 const REQUIRED_COLUMNS = [
   "Account Number",
@@ -288,7 +289,13 @@ export async function commitDailyCollectionImport(summary: DailyValidationSummar
     revalidatePath("/dashboard/billing/daily")
     return { ok: true, id: importId }
   } catch (err: unknown) {
-    console.error("Daily import failed", err)
+    logEvent({
+      message: "Daily import failed",
+      severity: "error",
+      category: "system",
+      error: err,
+      user: current,
+    })
     const message = err instanceof Error ? err.message : "Failed to commit import"
     return { ok: false, error: message }
   }

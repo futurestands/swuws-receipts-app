@@ -14,16 +14,21 @@ import 'dotenv/config';
 // back to the current Vercel URL if unset, so nothing breaks today.
 const serverUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://swuws-receipts-app-q2z9.vercel.app';
 
+if (process.env.NODE_ENV === 'production' && !process.env.NEXT_PUBLIC_APP_URL) {
+  console.warn('\x1b[33m%s\x1b[0m', 'WARNING: Production build detected but NEXT_PUBLIC_APP_URL is not set.');
+  console.warn('\x1b[33m%s\x1b[0m', 'Defaulting to: ' + serverUrl);
+}
+
 const config: CapacitorConfig = {
   appId: 'org.swuws.portal',
   appName: 'SWUWS',
   webDir: 'out',
   server: {
     url: serverUrl,
-    cleartext: true
+    cleartext: false
   },
   android: {
-    allowMixedContent: true
+    allowMixedContent: false
   },
   plugins: {
     SplashScreen: {

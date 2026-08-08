@@ -14,6 +14,7 @@ import { revalidatePath } from "next/cache"
 import { processExcelImport, getImportMapping, type ImportSummary } from "@/lib/import-engine"
 import { DEFAULT_TARIFF_IMPORT_MAPPING } from "@/lib/import-mappings"
 import { tariffImportSchema, type TariffImportRow } from "@/lib/import-schemas"
+import { logEvent } from "@/lib/logger"
 
 export type TariffImportSummary = ImportSummary<TariffImportRow>
 
@@ -171,7 +172,13 @@ export async function executeTariffImport(summary: TariffImportSummary): Promise
     const worksheet = XLSX.utils.json_to_sheet(reportRows)
     return { ok: true, count, report: XLSX.utils.sheet_to_csv(worksheet) }
   } catch (e: unknown) {
-    console.error("Tariff import failed", e)
+    logEvent({
+      message: "Tariff import failed",
+      severity: "error",
+      category: "system",
+      error: e,
+      user: current,
+    })
     const message = e instanceof Error ? e.message : "Failed to execute bulk import"
     return { ok: false, error: message }
   }
