@@ -441,7 +441,7 @@ export async function validateBillingImport(
 
   const engineSummary = await processExcelImport({
     file,
-    schema: billingImportSchema,
+    schema: billingImportSchema as any,
     mapping,
     headerMode: noHeaders ? "none" : "headers",
     onValidateRow: (data: BillingImportRow) => {
