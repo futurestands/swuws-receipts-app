@@ -689,41 +689,26 @@ export async function downloadBillingTemplate() {
   const dbMapping = await getImportMapping("import.billing.monthly")
 
   /**
-   * TEMPLATE ALIGNMENT FIX (Phase 2B)
+   * STRICT TEMPLATE ALIGNMENT (Phase 2B Fix)
    *
-   * If a custom mapping exists in the DB, we use it as the PRIMARY source.
-   * We only fill in missing required keys from the default mapping.
-   * This ensures the downloaded file exactly matches the user's JSON configuration.
+   * We now use the DB mapping EXCLUSIVELY if it exists.
+   * Mandatory columns are NO LONGER injected. What is in the JSON is what is in the Excel.
    */
-  const mapping: Record<string, string | string[]> = dbMapping
-    ? { ...dbMapping }
-    : { ...DEFAULT_BILLING_IMPORT_MAPPING }
+  const mapping: Record<string, string | string[]> = dbMapping || { ...DEFAULT_BILLING_IMPORT_MAPPING }
 
-  // Ensure mandatory columns exist even if user omitted them (for import safety)
-  const mandatoryKeys = ["accountNumber", "billAmount", "arrears", "currentCharges", "totalDue", "dueDate"]
-  mandatoryKeys.forEach(key => {
-    if (!mapping[key]) {
-      // @ts-expect-error - Key existence check
-      const defaultVal = DEFAULT_BILLING_IMPORT_MAPPING[key]
-      mapping[key] = Array.isArray(defaultVal) ? defaultVal[0] : defaultVal
-    }
-  })
-
-  // Headers should follow the order of keys in the mapping
+  // 2. Generate Sample Data strictly based on the mapping keys
   const headers = Object.values(mapping).map(v => Array.isArray(v) ? v[0] : v) as string[]
+  const sampleRow: Record<string, any> = {}
 
-  const data = [
-    {
-      [(Array.isArray(mapping.accountNumber) ? mapping.accountNumber[0] : mapping.accountNumber) as string]: "C-12345",
-      [(Array.isArray(mapping.billAmount) ? mapping.billAmount[0] : mapping.billAmount) as string]: 50000,
-      [(Array.isArray(mapping.arrears) ? mapping.arrears[0] : mapping.arrears) as string]: 10000,
-      [(Array.isArray(mapping.currentCharges) ? mapping.currentCharges[0] : mapping.currentCharges) as string]: 40000,
-      [(Array.isArray(mapping.totalDue) ? mapping.totalDue[0] : mapping.totalDue) as string]: 50000,
-      [(Array.isArray(mapping.dueDate) ? mapping.dueDate[0] : mapping.dueDate) as string]: new Date().toISOString().split("T")[0],
-    },
-  ]
+  // Fill sample values ONLY for keys that the user defined in their JSON
+  if (mapping.accountNumber) sampleRow[Array.isArray(mapping.accountNumber) ? mapping.accountNumber[0] : mapping.accountNumber] = "C-12345"
+  if (mapping.billAmount) sampleRow[Array.isArray(mapping.billAmount) ? mapping.billAmount[0] : mapping.billAmount] = 50000
+  if (mapping.arrears) sampleRow[Array.isArray(mapping.arrears) ? mapping.arrears[0] : mapping.arrears] = 10000
+  if (mapping.currentCharges) sampleRow[Array.isArray(mapping.currentCharges) ? mapping.currentCharges[0] : mapping.currentCharges] = 40000
+  if (mapping.totalDue) sampleRow[Array.isArray(mapping.totalDue) ? mapping.totalDue[0] : mapping.totalDue] = 50000
+  if (mapping.dueDate) sampleRow[Array.isArray(mapping.dueDate) ? mapping.dueDate[0] : mapping.dueDate] = new Date().toISOString().split("T")[0]
 
-  const worksheet = XLSX.utils.json_to_sheet(data, { header: headers })
+  const worksheet = XLSX.utils.json_to_sheet([sampleRow], { header: headers })
   const workbook = XLSX.utils.book_new()
   XLSX.utils.book_append_sheet(workbook, worksheet, "BillingTemplate")
   return XLSX.write(workbook, { type: "base64", bookType: "xlsx" })

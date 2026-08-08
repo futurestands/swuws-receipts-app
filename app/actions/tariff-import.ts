@@ -191,36 +191,27 @@ export async function downloadTariffTemplate() {
   const dbMapping = await getImportMapping('import.tariffs.bulk')
 
   /**
-   * TEMPLATE ALIGNMENT FIX (Phase 2B)
+   * STRICT TEMPLATE ALIGNMENT (Phase 2B Fix)
+   *
+   * We now use the DB mapping EXCLUSIVELY if it exists.
+   * Mandatory columns are NO LONGER injected. What is in the JSON is what is in the Excel.
    */
-  const mapping: Record<string, string | string[]> = dbMapping
-    ? { ...dbMapping }
-    : { ...DEFAULT_TARIFF_IMPORT_MAPPING }
+  const mapping: Record<string, string | string[]> = dbMapping || { ...DEFAULT_TARIFF_IMPORT_MAPPING }
 
-  // Ensure mandatory columns exist
-  const mandatoryKeys = ["targetType", "targetName", "customerCategory", "unitPrice", "serviceFee", "vatPercentage", "active"]
-  mandatoryKeys.forEach(key => {
-    if (!mapping[key]) {
-      // @ts-expect-error - Key existence check
-      const defaultVal = DEFAULT_TARIFF_IMPORT_MAPPING[key]
-      mapping[key] = Array.isArray(defaultVal) ? defaultVal[0] : defaultVal
-    }
-  })
-
+  // 2. Generate Sample Data strictly based on the mapping keys
   const headers = Object.values(mapping).map(v => Array.isArray(v) ? v[0] : v) as string[]
+  const sampleRow: Record<string, any> = {}
 
-  const data = [
-    {
-      [(Array.isArray(mapping.targetType) ? mapping.targetType[0] : mapping.targetType) as string]: "scheme",
-      [(Array.isArray(mapping.targetName) ? mapping.targetName[0] : mapping.targetName) as string]: "Sample Area",
-      [(Array.isArray(mapping.customerCategory) ? mapping.customerCategory[0] : mapping.customerCategory) as string]: "domestic",
-      [(Array.isArray(mapping.unitPrice) ? mapping.unitPrice[0] : mapping.unitPrice) as string]: 3000,
-      [(Array.isArray(mapping.serviceFee) ? mapping.serviceFee[0] : mapping.serviceFee) as string]: 1200,
-      [(Array.isArray(mapping.vatPercentage) ? mapping.vatPercentage[0] : mapping.vatPercentage) as string]: 18,
-      [(Array.isArray(mapping.active) ? mapping.active[0] : mapping.active) as string]: "TRUE"
-    },
-  ]
-  const worksheet = XLSX.utils.json_to_sheet(data, { header: headers })
+  // Fill sample values ONLY for keys that the user defined in their JSON
+  if (mapping.targetType) sampleRow[Array.isArray(mapping.targetType) ? mapping.targetType[0] : mapping.targetType] = "scheme"
+  if (mapping.targetName) sampleRow[Array.isArray(mapping.targetName) ? mapping.targetName[0] : mapping.targetName] = "Sample Area"
+  if (mapping.customerCategory) sampleRow[Array.isArray(mapping.customerCategory) ? mapping.customerCategory[0] : mapping.customerCategory] = "domestic"
+  if (mapping.unitPrice) sampleRow[Array.isArray(mapping.unitPrice) ? mapping.unitPrice[0] : mapping.unitPrice] = 3000
+  if (mapping.serviceFee) sampleRow[Array.isArray(mapping.serviceFee) ? mapping.serviceFee[0] : mapping.serviceFee] = 1200
+  if (mapping.vatPercentage) sampleRow[Array.isArray(mapping.vatPercentage) ? mapping.vatPercentage[0] : mapping.vatPercentage] = 18
+  if (mapping.active) sampleRow[Array.isArray(mapping.active) ? mapping.active[0] : mapping.active] = "TRUE"
+
+  const worksheet = XLSX.utils.json_to_sheet([sampleRow], { header: headers })
   const workbook = XLSX.utils.book_new()
   XLSX.utils.book_append_sheet(workbook, worksheet, "TariffTemplate")
   return XLSX.write(workbook, { type: "base64", bookType: "xlsx" })

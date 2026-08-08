@@ -356,24 +356,18 @@ export async function downloadBulkImportTemplate(format: "xlsx" | "csv") {
   const dbMapping = await getImportMapping("import.users.bulk")
 
   /**
-   * TEMPLATE ALIGNMENT FIX (Phase 2B)
+   * STRICT TEMPLATE ALIGNMENT (Phase 2B Fix)
+   *
+   * We now use the DB mapping EXCLUSIVELY if it exists.
+   * Mandatory columns are NO LONGER injected. What is in the JSON is what is in the Excel.
    */
-  const mapping: Record<string, string | string[]> = dbMapping
-    ? { ...dbMapping }
-    : { ...DEFAULT_USER_IMPORT_MAPPING }
+  const mapping: Record<string, string | string[]> = dbMapping || { ...DEFAULT_USER_IMPORT_MAPPING }
 
-  // Ensure mandatory columns exist
-  const mandatoryKeys = ["name", "email", "role", "cluster", "area", "scheme", "status"]
-  mandatoryKeys.forEach(key => {
-    if (!mapping[key]) {
-      // @ts-expect-error - Key existence check
-      const defaultVal = DEFAULT_USER_IMPORT_MAPPING[key]
-      mapping[key] = Array.isArray(defaultVal) ? defaultVal[0] : defaultVal
-    }
-  })
-
+  // 2. Generate Sample Data strictly based on the mapping keys
   const headers = Object.values(mapping).map(v => Array.isArray(v) ? v[0] : v) as string[]
   const sampleRow: Record<string, string> = {}
+
+  // Fill sample values ONLY for keys that the user defined in their JSON
   Object.entries(mapping).forEach(([key, colOrList]) => {
     const col = Array.isArray(colOrList) ? colOrList[0] : colOrList
     if (key === 'email') sampleRow[col] = "john.doe@example.com"

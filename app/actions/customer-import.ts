@@ -262,24 +262,18 @@ export async function downloadCustomerTemplate() {
   const dbMapping = await getImportMapping("import.customers.bulk")
 
   /**
-   * TEMPLATE ALIGNMENT FIX (Phase 2B)
+   * STRICT TEMPLATE ALIGNMENT (Phase 2B Fix)
+   *
+   * We now use the DB mapping EXCLUSIVELY if it exists.
+   * Mandatory columns are NO LONGER injected. What is in the JSON is what is in the Excel.
    */
-  const mapping: Record<string, string | string[]> = dbMapping
-    ? { ...dbMapping }
-    : { ...DEFAULT_CUSTOMER_IMPORT_MAPPING }
+  const mapping: Record<string, string | string[]> = dbMapping || { ...DEFAULT_CUSTOMER_IMPORT_MAPPING }
 
-  // Ensure mandatory columns exist
-  const mandatoryKeys = ["name", "customerAccount", "phone", "schemeName", "openingArrears", "category"]
-  mandatoryKeys.forEach(key => {
-    if (!mapping[key]) {
-      // @ts-expect-error - Key existence check
-      const defaultVal = DEFAULT_CUSTOMER_IMPORT_MAPPING[key]
-      mapping[key] = Array.isArray(defaultVal) ? defaultVal[0] : defaultVal
-    }
-  })
-
+  // 2. Generate Sample Data strictly based on the mapping keys
   const headers = Object.values(mapping).map(v => Array.isArray(v) ? v[0] : v) as string[]
   const sampleRow: Record<string, string | number> = {}
+
+  // Fill sample values ONLY for keys that the user defined in their JSON
   Object.entries(mapping).forEach(([key, colOrList]) => {
     const col = Array.isArray(colOrList) ? colOrList[0] : colOrList
     if (typeof col !== 'string') return

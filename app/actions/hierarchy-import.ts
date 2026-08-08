@@ -189,28 +189,19 @@ export async function downloadHierarchyTemplate() {
   const dbMapping = await getImportMapping('import.hierarchy.master')
 
   /**
-   * TEMPLATE ALIGNMENT FIX (Phase 2B)
+   * STRICT TEMPLATE ALIGNMENT (Phase 2B Fix)
+   *
+   * We now use the DB mapping EXCLUSIVELY if it exists.
+   * Mandatory columns are NO LONGER injected. What is in the JSON is what is in the Excel.
    */
-  const mapping: Record<string, string | string[]> = dbMapping
-    ? { ...dbMapping }
-    : { ...DEFAULT_HIERARCHY_IMPORT_MAPPING }
-
-  // Ensure mandatory columns exist
-  const mandatoryKeys = ["clusterName", "branchName", "schemeName", "schemeCode", "serviceArea"]
-  mandatoryKeys.forEach(key => {
-    if (!mapping[key]) {
-      // @ts-expect-error - Key existence check
-      const defaultVal = DEFAULT_HIERARCHY_IMPORT_MAPPING[key]
-      mapping[key] = Array.isArray(defaultVal) ? defaultVal[0] : defaultVal
-    }
-  })
+  const mapping: Record<string, string | string[]> = dbMapping || { ...DEFAULT_HIERARCHY_IMPORT_MAPPING }
 
   const nameCol = (Array.isArray(mapping.schemeName) ? mapping.schemeName[0] : mapping.schemeName) as string
   const codeCol = (Array.isArray(mapping.schemeCode) ? mapping.schemeCode[0] : mapping.schemeCode) as string
   const parentCol = (Array.isArray(mapping.branchName) ? mapping.branchName[0] : mapping.branchName) as string
   const serviceAreaCol = (Array.isArray(mapping.serviceArea) ? mapping.serviceArea[0] : mapping.serviceArea) as string
 
-  const headers = ["Type", nameCol, codeCol, parentCol, serviceAreaCol, "Status"]
+  const headers = ["Type", nameCol, codeCol, parentCol, serviceAreaCol, "Status"].filter(h => !!h)
   const data = [
     { Type: "Cluster", [nameCol]: "Central Cluster", [codeCol]: "central", [parentCol]: "", [serviceAreaCol]: "", Status: "Active" },
     { Type: "Branch", [nameCol]: "Mbarara Branch", [codeCol]: "mbarara", [parentCol]: "Central Cluster", [serviceAreaCol]: "", Status: "Active" },
