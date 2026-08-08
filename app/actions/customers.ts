@@ -27,6 +27,7 @@ const customerSchema = z.object({
   address: z.string().trim().max(30).optional(), // Audit note: Address field is short, but schema is text.
   waterSchemeId: z.string().trim().optional(),
   notes: z.string().trim().max(1000).optional(),
+  category: z.string().trim().toLowerCase().optional(),
   active: z.boolean().optional(),
   lastReading: z.number().min(0).optional(),
 })
@@ -65,6 +66,7 @@ export async function createCustomer(input: CustomerInput) {
         address: data.address || null,
         waterSchemeId: data.waterSchemeId || null,
         notes: data.notes || null,
+        category: data.category || "domestic",
         active: data.active ?? true,
         createdById: current.id,
       })
@@ -223,6 +225,7 @@ export async function searchCustomers(params: {
   query?: string
   waterSchemeId?: string
   branchId?: string
+  category?: string
   minBalance?: number
   maxBalance?: number
   page?: number
@@ -258,6 +261,9 @@ export async function searchCustomers(params: {
   }
   if (params.branchId) {
     conditions.push(eq(waterScheme.branchId, params.branchId))
+  }
+  if (params.category && params.category !== 'all') {
+    conditions.push(eq(customer.category, params.category))
   }
   if (params.minBalance !== undefined) {
     conditions.push(gte(customer.accountBalance, String(params.minBalance)))
@@ -306,6 +312,7 @@ export async function exportCustomersExcel(params: {
   query?: string
   waterSchemeId?: string
   branchId?: string
+  category?: string
   minBalance?: number
   maxBalance?: number
   showInactive?: boolean
@@ -334,6 +341,9 @@ export async function exportCustomersExcel(params: {
   if (params.branchId && params.branchId !== "all") {
     conditions.push(eq(waterScheme.branchId, params.branchId))
   }
+  if (params.category && params.category !== 'all') {
+    conditions.push(eq(customer.category, params.category))
+  }
   if (params.minBalance !== undefined) {
     conditions.push(gte(customer.accountBalance, String(params.minBalance)))
   }
@@ -351,6 +361,7 @@ export async function exportCustomersExcel(params: {
       account: customer.customerAccount,
       phone: customer.phone,
       address: customer.address,
+      category: customer.category,
       scheme: waterScheme.name,
       branch: branch.name,
       arrears: customer.accountBalance,
@@ -366,6 +377,7 @@ export async function exportCustomersExcel(params: {
   const data = rows.map((r) => ({
     "Name": r.name,
     "Account #": r.account || "—",
+    "Category": r.category || "—",
     "Phone": r.phone || "—",
     "Address": r.address || "—",
     "Water Scheme": r.scheme || "—",
@@ -383,6 +395,7 @@ export async function exportCustomersExcel(params: {
   const wscols = [
     { wch: 25 }, // Name
     { wch: 15 }, // Account #
+    { wch: 12 }, // Category
     { wch: 15 }, // Phone
     { wch: 20 }, // Address
     { wch: 20 }, // Water Scheme

@@ -5,6 +5,7 @@ import { CustomerSearchBar } from "@/app/dashboard/customers/customer-search-bar
 import { Card, CardContent } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
 import { formatDate, formatUGX } from "@/lib/format"
 import { getCurrentUser } from "@/lib/session"
 import { canUploadCustomers } from "@/lib/permissions"
@@ -20,6 +21,7 @@ export default async function CustomersPage({
     q?: string;
     branchId?: string;
     schemeId?: string;
+    category?: string;
     page?: string;
     minBalance?: string;
     maxBalance?: string;
@@ -28,7 +30,7 @@ export default async function CustomersPage({
   const current = await getCurrentUser()
   const canImport = current ? canUploadCustomers(current) : false
 
-  const { q, branchId, schemeId, page, minBalance, maxBalance } = await searchParams
+  const { q, branchId, schemeId, category, page, minBalance, maxBalance } = await searchParams
   const pageNum = Number(page) || 1
   const minBalNum = minBalance ? Number(minBalance) : undefined
   const maxBalNum = maxBalance ? Number(maxBalance) : undefined
@@ -40,6 +42,7 @@ export default async function CustomersPage({
       query: q,
       branchId,
       waterSchemeId: schemeId,
+      category,
       page: pageNum,
       minBalance: minBalNum,
       maxBalance: maxBalNum
@@ -60,6 +63,7 @@ export default async function CustomersPage({
         initialQuery={q ?? ""}
         initialBranchId={branchId}
         initialSchemeId={schemeId}
+        initialCategory={category}
         initialMinBalance={minBalance}
         initialMaxBalance={maxBalance}
         branches={branches}
@@ -82,6 +86,7 @@ export default async function CustomersPage({
                   <TableRow>
                     <TableHead>Name</TableHead>
                     <TableHead>Account #</TableHead>
+                    <TableHead>Category</TableHead>
                     <TableHead>Branch</TableHead>
                     <TableHead>Scheme</TableHead>
                     <TableHead className="text-right">Arrears</TableHead>
@@ -103,6 +108,9 @@ export default async function CustomersPage({
                       <TableCell className="text-muted-foreground">
                         {c.customerAccount || "—"}
                       </TableCell>
+                      <TableCell>
+                         <Badge variant="outline" className="capitalize text-[10px] py-0">{c.category}</Badge>
+                      </TableCell>
                       <TableCell className="text-muted-foreground">
                         {c.branchName || "—"}
                       </TableCell>
@@ -112,7 +120,7 @@ export default async function CustomersPage({
                       <TableCell className={`text-right font-mono font-bold ${Number(c.accountBalance) > 0 ? 'text-destructive' : 'text-primary'}`}>
                         {formatUGX(Number(c.accountBalance))}
                       </TableCell>
-                      <TableCell className="text-muted-foreground">{c.phone || "—"}</TableCell>
+                      <TableCell className="text-muted-foreground font-medium text-xs">{c.phone || "—"}</TableCell>
                       <TableCell className="text-muted-foreground text-sm">
                         {formatDate(c.createdAt)}
                       </TableCell>
@@ -131,6 +139,7 @@ export default async function CustomersPage({
                     ...(q ? { q } : {}),
                     ...(branchId ? { branchId } : {}),
                     ...(schemeId ? { schemeId } : {}),
+                    ...(category ? { category } : {}),
                     ...(minBalance ? { minBalance } : {}),
                     ...(maxBalance ? { maxBalance } : {}),
                     page: String(pageNum - 1)
@@ -148,6 +157,7 @@ export default async function CustomersPage({
                     ...(q ? { q } : {}),
                     ...(branchId ? { branchId } : {}),
                     ...(schemeId ? { schemeId } : {}),
+                    ...(category ? { category } : {}),
                     ...(minBalance ? { minBalance } : {}),
                     ...(maxBalance ? { maxBalance } : {}),
                     page: String(pageNum + 1)

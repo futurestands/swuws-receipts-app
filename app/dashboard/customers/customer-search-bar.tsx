@@ -33,6 +33,7 @@ export function CustomerSearchBar({
   initialQuery,
   initialBranchId,
   initialSchemeId,
+  initialCategory,
   initialMinBalance,
   initialMaxBalance,
   branches,
@@ -42,6 +43,7 @@ export function CustomerSearchBar({
   initialQuery: string
   initialBranchId?: string
   initialSchemeId?: string
+  initialCategory?: string
   initialMinBalance?: string
   initialMaxBalance?: string
   branches: Branch[]
@@ -52,6 +54,7 @@ export function CustomerSearchBar({
   const [query, setQuery] = useState(initialQuery)
   const [branchId, setBranchId] = useState<string>(initialBranchId || "all")
   const [schemeId, setSchemeId] = useState<string>(initialSchemeId || "all")
+  const [category, setCategory] = useState<string>(initialCategory || "all")
   const [minBalance, setMinBalance] = useState(initialMinBalance || "")
   const [maxBalance, setMaxBalance] = useState(initialMaxBalance || "")
 
@@ -60,6 +63,7 @@ export function CustomerSearchBar({
   const [account, setAccount] = useState("")
   const [phone, setPhone] = useState("")
   const [address, setAddress] = useState("")
+  const [newCustomerCategory, setNewCustomerCategory] = useState("domestic")
   const [error, setError] = useState<string | null>(null)
   const [pending, startTransition] = useTransition()
   const [isScanning, setIsScanning] = useState(false)
@@ -77,6 +81,7 @@ export function CustomerSearchBar({
     if (query.trim()) params.set("q", query.trim())
     if (branchId !== "all") params.set("branchId", branchId)
     if (schemeId !== "all") params.set("schemeId", schemeId)
+    if (category !== "all") params.set("category", category)
     if (minBalance.trim()) params.set("minBalance", minBalance.trim())
     if (maxBalance.trim()) params.set("maxBalance", maxBalance.trim())
 
@@ -89,6 +94,7 @@ export function CustomerSearchBar({
     setQuery("")
     setBranchId("all")
     setSchemeId("all")
+    setCategory("all")
     setMinBalance("")
     setMaxBalance("")
     startTransition(() => {
@@ -105,6 +111,7 @@ export function CustomerSearchBar({
         customerAccount: account || undefined,
         phone: phone || undefined,
         address: address || undefined,
+        category: newCustomerCategory,
       })
       if (!result.ok) {
         setError(result.error)
@@ -151,6 +158,7 @@ export function CustomerSearchBar({
         params.set("q", result.ScanResult)
         if (branchId !== "all") params.set("branchId", branchId)
         if (schemeId !== "all") params.set("schemeId", schemeId)
+        if (category !== "all") params.set("category", category)
         if (minBalance.trim()) params.set("minBalance", minBalance.trim())
         if (maxBalance.trim()) params.set("maxBalance", maxBalance.trim())
         startTransition(() => {
@@ -171,6 +179,7 @@ export function CustomerSearchBar({
         query: query.trim() || undefined,
         branchId,
         waterSchemeId: schemeId,
+        category: category === 'all' ? undefined : category,
         minBalance: minBalance ? Number(minBalance) : undefined,
         maxBalance: maxBalance ? Number(maxBalance) : undefined,
       })
@@ -271,6 +280,24 @@ export function CustomerSearchBar({
 
           <div className="space-y-1">
             <Label className="text-[10px] uppercase font-bold text-muted-foreground ml-1">
+              Category
+            </Label>
+            <Select value={category} onValueChange={(v) => setCategory(v || "all")}>
+              <SelectTrigger className="h-11">
+                <SelectValue placeholder="All Categories" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Categories</SelectItem>
+                <SelectItem value="domestic">Domestic</SelectItem>
+                <SelectItem value="institutional">Institutional</SelectItem>
+                <SelectItem value="psp">PSP (Public Standpost)</SelectItem>
+                <SelectItem value="commercial">Commercial</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-1">
+            <Label className="text-[10px] uppercase font-bold text-muted-foreground ml-1">
               Min Arrears
             </Label>
             <Input
@@ -316,7 +343,7 @@ export function CustomerSearchBar({
               </Button>
             )}
 
-            {(query || branchId !== "all" || schemeId !== "all" || minBalance || maxBalance) && (
+            {(query || branchId !== "all" || schemeId !== "all" || category !== "all" || minBalance || maxBalance) && (
               <Button
                 type="button"
                 variant="ghost"
@@ -400,6 +427,19 @@ export function CustomerSearchBar({
                     onChange={(e) => setAddress(e.target.value)}
                     className="h-11"
                   />
+                </FormField>
+                <FormField label="Category" htmlFor="c-category">
+                  <Select value={newCustomerCategory} onValueChange={(v) => setNewCustomerCategory(v || "domestic")}>
+                    <SelectTrigger className="h-11">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="domestic">Domestic</SelectItem>
+                      <SelectItem value="institutional">Institutional</SelectItem>
+                      <SelectItem value="psp">PSP (Public Standpost)</SelectItem>
+                      <SelectItem value="commercial">Commercial</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </FormField>
                 {error && <p className="text-sm text-destructive">{error}</p>}
                 <FormActions>

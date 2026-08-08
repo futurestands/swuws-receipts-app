@@ -31,14 +31,14 @@ export const DEFAULT_USER_IMPORT_MAPPING = {
 export const DEFAULT_CUSTOMER_IMPORT_MAPPING = {
   name: "Name",
   customerAccount: "CustomerRef",
-  phone: "Phone",
+  phone: ["Phone", "Telephone", "Mobile", "Contact", "PhoneNumber"],
   address: "VillageName",
   schemeName: "SchemeName",
   meterRef: "MeterRef",
   serialNo: "MeterSerial",
   lastReading: ["InitialReading", "BaselineReading", "OpeningReading", "StartReading", "LastReading"],
   openingArrears: ["OpeningArrears", "Arrears", "Balance Brought Forward", "BalanceBroughtForward", "Brought Forward"],
-  category: "Category",
+  category: ["Category", "Type", "CustomerType"],
   notes: "Notes",
 }
 
