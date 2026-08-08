@@ -586,16 +586,16 @@ export async function importBilling(
           const excelReportedArrears = Number(row.data.arrears)
 
           // Calculate new total based on system state, not the static Excel total
-          const newTotalDue = systemArrears + excelMonthlyBill
+          const newTotalDue = (isNaN(systemArrears) ? 0 : systemArrears) + (isNaN(excelMonthlyBill) ? 0 : excelMonthlyBill)
 
           // Determine if existing upfront covers all or part of the new bill
           let appliedFromUpfront = 0
           if (systemArrears < 0) {
-             appliedFromUpfront = Math.min(excelMonthlyBill, Math.abs(systemArrears))
+             appliedFromUpfront = Math.min(isNaN(excelMonthlyBill) ? 0 : excelMonthlyBill, Math.abs(systemArrears))
           }
 
-          schemeTotal += excelMonthlyBill
-          totalAmountGlobal += excelMonthlyBill
+          schemeTotal += isNaN(excelMonthlyBill) ? 0 : excelMonthlyBill
+          totalAmountGlobal += isNaN(excelMonthlyBill) ? 0 : excelMonthlyBill
 
           return {
             id: randomUUID(),
@@ -603,19 +603,41 @@ export async function importBilling(
             billingPeriodId: summary.billingPeriodId,
             customerId: cust.id,
             accountNumber: row.data.accountNumber,
-            billAmount: String(excelMonthlyBill),
-            arrears: String(systemArrears), // Live System Arrears snapshot
-            currentCharges: String(excelReportedArrears), // External System Arrears (Brought Forward)
+            billAmount: String(isNaN(excelMonthlyBill) ? 0 : excelMonthlyBill),
+            arrears: String(isNaN(systemArrears) ? 0 : systemArrears), // Live System Arrears snapshot
+            currentCharges: String(isNaN(excelReportedArrears) ? 0 : excelReportedArrears), // External System Arrears
             totalDue: String(newTotalDue),
             dueDate: new Date(row.data.dueDate),
-            // If upfront covered it, mark as paid or partially paid immediately
             status: newTotalDue <= 0 ? "paid" : (appliedFromUpfront > 0 ? "partially_paid" : "pending"),
           }
         })
 
-        const CHUNK_SIZE = 1000
+        const CHUNK_SIZE = 500 // Reduced chunk size for better error isolation
         for (let i = 0; i < recordsToInsert.length; i += CHUNK_SIZE) {
-          await tx.insert(billingRecord).values(recordsToInsert.slice(i, i + CHUNK_SIZE))
+          const chunk = recordsToInsert.slice(i, i + CHUNK_SIZE)
+
+          /**
+           * RESILIENT INSERT (Phase 2B)
+           *
+           * If a customer already has a bill for this period, we UPDATE it
+           * instead of crashing. This handles cases where a file might have
+           * duplicates or if a previous partial import happened.
+           */
+          await tx
+            .insert(billingRecord)
+            .values(chunk)
+            .onConflictDoUpdate({
+              target: [billingRecord.customerId, billingRecord.billingPeriodId],
+              set: {
+                billAmount: sql`excluded."billAmount"`,
+                arrears: sql`excluded."arrears"`,
+                currentCharges: sql`excluded."currentCharges"`,
+                totalDue: sql`excluded."totalDue"`,
+                dueDate: sql`excluded."dueDate"`,
+                status: sql`excluded."status"`,
+                updatedAt: new Date(),
+              }
+            })
         }
 
         await tx.update(billingRun).set({ totalAmount: schemeTotal }).where(eq(billingRun.id, runId))
