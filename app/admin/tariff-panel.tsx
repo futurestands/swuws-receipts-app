@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { toast } from "sonner"
 import { formatUGX } from "@/lib/format"
-import { Settings2, Plus, Trash2, Globe, Home } from "lucide-react"
+import { Settings2, Plus, Trash2, Globe, Home, Edit2, Loader2 } from "lucide-react"
 import { upsertTariff, deleteTariff } from "@/app/actions/billing-engine"
 import { TariffImportWizard } from "./tariff-import-wizard"
 import type { Branch, WaterScheme } from "@/lib/db/schema"
@@ -251,14 +251,21 @@ export function TariffPanel({
                     <TableCell>{formatUGX(t.serviceFee)} / mo</TableCell>
                     <TableCell>{t.vatPercentage}%</TableCell>
                     <TableCell className="text-right">
-                      <Button
-                        variant="ghost"
-                        size="icon-sm"
-                        onClick={() => handleDelete(t.id)}
-                        className="text-destructive hover:bg-destructive/10"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
+                      <div className="flex items-center justify-end gap-1">
+                        <EditTariffDialog
+                          tariff={t}
+                          branches={branches}
+                          schemes={schemes}
+                        />
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          onClick={() => handleDelete(t.id)}
+                          className="text-destructive hover:bg-destructive/10"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))
@@ -273,5 +280,116 @@ export function TariffPanel({
         <p><strong>Impact:</strong> Changes here will immediately update the &quot;Amount Due&quot; shown to plumbers in the field when they capture readings.</p>
       </div>
     </div>
+  )
+}
+
+function EditTariffDialog({
+  tariff,
+  branches,
+  schemes,
+}: {
+  tariff: TariffWithMetadata
+  branches: Branch[]
+  schemes: WaterScheme[]
+}) {
+  const [open, setOpen] = useState(false)
+  const [isPending, startTransition] = useTransition()
+
+  const [formData, setFormData] = useState({
+    unitPrice: String(tariff.unitPrice),
+    serviceFee: String(tariff.serviceFee),
+    vatPercentage: String(tariff.vatPercentage),
+  })
+
+  async function handleSave() {
+    if (!formData.unitPrice) {
+      toast.error("Unit rate is required.")
+      return
+    }
+
+    startTransition(async () => {
+      try {
+        const result = await upsertTariff({
+          id: tariff.id,
+          targetType: tariff.targetType as "branch" | "scheme",
+          targetId: tariff.targetId,
+          customerCategory: tariff.customerCategory,
+          unitPrice: Number(formData.unitPrice),
+          serviceFee: Number(formData.serviceFee || 0),
+          vatPercentage: Number(formData.vatPercentage),
+        })
+
+        if (result.ok) {
+          toast.success("Tariff updated successfully")
+          setOpen(false)
+          // The page data is revalidated in the server action,
+          // but for instant UI update we can reload or handle state in parent.
+          window.location.reload()
+        }
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : "Failed to update tariff"
+        toast.error(message)
+      }
+    })
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button variant="ghost" size="icon-sm" className="text-muted-foreground hover:text-primary">
+          <Edit2 className="h-4 w-4" />
+        </Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Edit Tariff Configuration</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4 py-4">
+          <div className="p-3 rounded-lg bg-muted/50 space-y-1 border">
+            <p className="text-[10px] uppercase font-black text-muted-foreground tracking-widest leading-none">Target Area</p>
+            <p className="font-bold">{tariff.targetName}</p>
+            <div className="flex gap-2 text-[10px] uppercase font-bold text-brand-blue">
+               <span>{tariff.targetType}</span>
+               <span>•</span>
+               <span>{tariff.customerCategory}</span>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label>Unit Rate (UGX/m³)</Label>
+              <Input
+                type="number"
+                value={formData.unitPrice}
+                onChange={(e) => setFormData(f => ({ ...f, unitPrice: e.target.value }))}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Monthly Service Fee</Label>
+              <Input
+                type="number"
+                value={formData.serviceFee}
+                onChange={(e) => setFormData(f => ({ ...f, serviceFee: e.target.value }))}
+              />
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label>VAT Percentage (%)</Label>
+            <Input
+              type="number"
+              value={formData.vatPercentage}
+              onChange={(e) => setFormData(f => ({ ...f, vatPercentage: e.target.value }))}
+            />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setOpen(false)} disabled={isPending}>Cancel</Button>
+          <Button onClick={handleSave} disabled={isPending}>
+            {isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : "Update Tariff"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }
