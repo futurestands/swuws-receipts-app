@@ -19,6 +19,7 @@ export default async function ReportsPage({
     clusterId?: string
     branchId?: string
     schemeId?: string
+    category?: string
   }>
 }) {
   const current = await requireUser()
@@ -41,7 +42,7 @@ export default async function ReportsPage({
       getCollectionPeriods().catch(() => []),
       listActiveBranches().catch(() => []),
       getAuthorizedSchemes().catch(() => []),
-      getTopDebtors(100).catch(() => []),
+      getTopDebtors(100, params.category).catch(() => []),
     ])
     stats = results[0]
     periods = results[1]

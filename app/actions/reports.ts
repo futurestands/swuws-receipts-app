@@ -169,6 +169,7 @@ export async function getDashboardStats(params: {
   clusterId?: string
   branchId?: string
   schemeId?: string
+  category?: string
 }) {
   const current = await requireUser()
   if (!canViewReports(current)) throw new Error("Forbidden")
@@ -194,6 +195,7 @@ export async function getDashboardStats(params: {
   if (params.schemeId) billingConditions.push(eq(customer.waterSchemeId, params.schemeId))
   if (params.branchId) billingConditions.push(eq(waterScheme.branchId, params.branchId))
   if (params.clusterId) billingConditions.push(eq(branch.clusterId, params.clusterId))
+  if (params.category) billingConditions.push(eq(customer.category, params.category))
 
   if (customerScope) billingConditions.push(customerScope)
 
@@ -203,6 +205,7 @@ export async function getDashboardStats(params: {
   if (params.schemeId) readingConditions.push(eq(customer.waterSchemeId, params.schemeId))
   if (params.branchId) readingConditions.push(eq(waterScheme.branchId, params.branchId))
   if (params.clusterId) readingConditions.push(eq(branch.clusterId, params.clusterId))
+  if (params.category) readingConditions.push(eq(customer.category, params.category))
 
   if (customerScope) readingConditions.push(customerScope)
 
@@ -211,7 +214,7 @@ export async function getDashboardStats(params: {
       .select({
         totalBilled: sum(billingRecord.totalDue),
         totalArrearsBilled: sum(billingRecord.arrears),
-        totalCurrentBilled: sum(billingRecord.currentCharges),
+        totalCurrentBilled: sum(billingRecord.billAmount),
         billedCount: count(billingRecord.id),
         paidCount: sql<number>`count(case when ${billingRecord.status} = 'paid' then 1 end)::int`,
         confirmedCount: sql<number>`count(case when ${billingRecord.status} = 'pending_bank_confirmation' then 1 end)::int`,
@@ -246,14 +249,13 @@ export async function getDashboardStats(params: {
   if (params.schemeId) verifiedConditions.push(eq(customer.waterSchemeId, params.schemeId))
   if (params.branchId) verifiedConditions.push(eq(waterScheme.branchId, params.branchId))
   if (activePeriodId) verifiedConditions.push(eq(receipt.billingPeriodId, activePeriodId))
+  if (params.category) verifiedConditions.push(eq(customer.category, params.category))
   if (customerScope) verifiedConditions.push(customerScope)
 
   // Optimization: Simplified collection query to reduce join complexity
   const [collectionStats] = await db
     .select({
       totalPaid: sum(dailyCollectionRecord.amount),
-      // For performance on production, we'll do a simpler arrears/current split
-      // or defer the split if the query is too slow.
     })
     .from(dailyCollectionRecord)
     .innerJoin(reconciliationMatch, eq(dailyCollectionRecord.id, reconciliationMatch.dailyCollectionRecordId))
@@ -267,6 +269,7 @@ export async function getDashboardStats(params: {
   if (receiptScope) receiptConditions.push(receiptScope)
   if (params.schemeId) receiptConditions.push(eq(customer.waterSchemeId, params.schemeId))
   if (activePeriodId) receiptConditions.push(eq(receipt.billingPeriodId, activePeriodId))
+  if (params.category) receiptConditions.push(eq(customer.category, params.category))
 
   const [receiptStats] = await db
     .select({
@@ -439,9 +442,19 @@ export async function getBillPaymentHistory(billingRecordId: string) {
  * TOP DEBTORS (Objective 7 & 14)
  * Fetches customers with the highest live account balances (arrears).
  */
-export async function getTopDebtors(limit = 10) {
+export async function getTopDebtors(limit = 10, category?: string) {
   const current = await requireUser()
   if (!canViewReports(current)) throw new Error("Forbidden")
+
+  const conditions = [
+    eq(customer.active, true),
+    sql`${customer.accountBalance} > 0`,
+    applyCustomerScope(current)
+  ]
+
+  if (category) {
+    conditions.push(eq(customer.category, category))
+  }
 
   return db
     .select({
@@ -453,11 +466,7 @@ export async function getTopDebtors(limit = 10) {
     })
     .from(customer)
     .leftJoin(waterScheme, eq(customer.waterSchemeId, waterScheme.id))
-    .where(and(
-      eq(customer.active, true),
-      sql`${customer.accountBalance} > 0`,
-      applyCustomerScope(current)
-    ))
+    .where(and(...conditions))
     .orderBy(desc(sql`${customer.accountBalance}::numeric`))
     .limit(limit)
 }

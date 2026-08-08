@@ -26,6 +26,7 @@ export function ReportFilters({
     periodId?: string
     branchId?: string
     schemeId?: string
+    category?: string
   }
 }) {
   const router = useRouter()
@@ -54,12 +55,12 @@ export function ReportFilters({
   return (
     <div className="flex flex-wrap items-end gap-4 bg-muted/40 p-4 rounded-lg">
       <div className="space-y-1.5">
-        <Label className="text-xs">Billing Period</Label>
+        <Label className="text-xs text-muted-foreground uppercase font-bold">Billing Period</Label>
         <Select
           value={initialFilters.periodId || "all"}
           onValueChange={(v) => updateFilter("periodId", v)}
         >
-          <SelectTrigger className="w-[180px] h-9">
+          <SelectTrigger className="w-[180px] h-9 bg-background">
             <SelectValue placeholder="All Periods" />
           </SelectTrigger>
           <SelectContent>
@@ -74,12 +75,12 @@ export function ReportFilters({
       </div>
 
       <div className="space-y-1.5">
-        <Label className="text-xs">Branch (Area)</Label>
+        <Label className="text-xs text-muted-foreground uppercase font-bold">Branch (Area)</Label>
         <Select
           value={initialFilters.branchId || "all"}
           onValueChange={(v) => updateFilter("branchId", v)}
         >
-          <SelectTrigger className="w-[180px] h-9">
+          <SelectTrigger className="w-[180px] h-9 bg-background">
             <SelectValue placeholder="All Branches" />
           </SelectTrigger>
           <SelectContent>
@@ -94,12 +95,12 @@ export function ReportFilters({
       </div>
 
       <div className="space-y-1.5">
-        <Label className="text-xs">Water Scheme</Label>
+        <Label className="text-xs text-muted-foreground uppercase font-bold">Water Scheme</Label>
         <Select
           value={initialFilters.schemeId || "all"}
           onValueChange={(v) => updateFilter("schemeId", v)}
         >
-          <SelectTrigger className="w-[180px] h-9">
+          <SelectTrigger className="w-[180px] h-9 bg-background">
             <SelectValue placeholder="All Schemes" />
           </SelectTrigger>
           <SelectContent>
@@ -111,6 +112,25 @@ export function ReportFilters({
                   {s.name}
                 </SelectItem>
               ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      <div className="space-y-1.5">
+        <Label className="text-xs text-muted-foreground uppercase font-bold">Customer Category</Label>
+        <Select
+          value={initialFilters.category || "all"}
+          onValueChange={(v) => updateFilter("category", v)}
+        >
+          <SelectTrigger className="w-[180px] h-9 bg-background">
+            <SelectValue placeholder="All Categories" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Categories</SelectItem>
+            <SelectItem value="domestic">Domestic</SelectItem>
+            <SelectItem value="institutional">Institutional</SelectItem>
+            <SelectItem value="psp">PSP (Public Standpost)</SelectItem>
+            <SelectItem value="commercial">Commercial</SelectItem>
           </SelectContent>
         </Select>
       </div>
