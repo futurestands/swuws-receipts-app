@@ -1,7 +1,8 @@
 "use client"
 
-import { useState, useTransition } from "react"
+import { useState, useTransition, useEffect } from "react"
 import { getReportData } from "@/app/actions/executive-reports"
+import { getCollectionPeriods } from "@/app/actions/billing"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
@@ -27,16 +28,27 @@ import * as XLSX from "xlsx"
 export function ReportGeneratorClient({ reportId, title }: { reportId: string, title: string }) {
   const [pending, startTransition] = useTransition()
   const [data, setData] = useState<Array<Record<string, unknown>> | null>(null)
+  const [periods, setPeriods] = useState<{ id: string; periodName: string }[]>([])
 
   // Filters
   const [startDate, setStartDate] = useState("")
   const [endDate, setEndDate] = useState("")
   const [status, setStatus] = useState("all")
+  const [selectedPeriodId, setSelectedPeriodId] = useState("")
+
+  useEffect(() => {
+    getCollectionPeriods().then(setPeriods).catch(console.error)
+  }, [])
 
   async function handleGenerate() {
     startTransition(async () => {
       try {
-        const result = await getReportData(reportId, { startDate, endDate, status })
+        const result = await getReportData(reportId, {
+          startDate,
+          endDate,
+          status,
+          periodId: selectedPeriodId
+        })
         setData(result as Array<Record<string, unknown>>)
         toast.success("Report data retrieved")
       } catch (err: unknown) {
@@ -63,16 +75,34 @@ export function ReportGeneratorClient({ reportId, title }: { reportId: string, t
            <CardDescription>Configure filters to narrow down the report results.</CardDescription>
         </CardHeader>
         <CardContent className="grid gap-6 md:grid-cols-4 items-end">
-           <div className="space-y-2">
-              <Label className="text-xs">Start Date</Label>
-              <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
-           </div>
-           <div className="space-y-2">
-              <Label className="text-xs">End Date</Label>
-              <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
-           </div>
+           {reportId === 'unmetered-accounts' ? (
+             <div className="space-y-2">
+                <Label className="text-xs">Billing Period</Label>
+                <Select value={selectedPeriodId} onValueChange={(v) => setSelectedPeriodId(v || "")}>
+                   <SelectTrigger>
+                      <SelectValue placeholder="Select period..." />
+                   </SelectTrigger>
+                   <SelectContent>
+                      {periods.map(p => (
+                        <SelectItem key={p.id} value={p.id}>{p.periodName}</SelectItem>
+                      ))}
+                   </SelectContent>
+                </Select>
+             </div>
+           ) : (
+             <>
+               <div className="space-y-2">
+                  <Label className="text-xs">Start Date</Label>
+                  <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+               </div>
+               <div className="space-y-2">
+                  <Label className="text-xs">End Date</Label>
+                  <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
+               </div>
+             </>
+           )}
 
-           {reportId !== 'meter-reading' && reportId !== 'audit-activity' ? (
+           {reportId !== 'meter-reading' && reportId !== 'audit-activity' && reportId !== 'unmetered-accounts' ? (
              <div className="space-y-2">
                 <Label className="text-xs">Reconciliation Status</Label>
                 <Select value={status} onValueChange={(v) => v && setStatus(v)}>

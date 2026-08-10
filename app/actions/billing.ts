@@ -27,7 +27,7 @@ import {
   canIssueReceipt
 } from "@/lib/permissions"
 import { validateWriteScope, applyCustomerScope } from "@/lib/scopes"
-import { and, eq, sql, desc, or, count, sum } from "drizzle-orm"
+import { and, eq, sql, desc, or, count, sum, inArray } from "drizzle-orm"
 import * as XLSX from "xlsx"
 import { z } from "zod"
 import { randomUUID } from "crypto"
@@ -612,21 +612,19 @@ export async function importBilling(
         const CHUNK_SIZE = 400
         for (let i = 0; i < recordsToInsert.length; i += CHUNK_SIZE) {
           const chunk = recordsToInsert.slice(i, i + CHUNK_SIZE)
+          const customerIds = chunk.map(r => r.customerId)
+
+          // 1. Clear existing records for these customers in this period
+          // (Ensures no unique constraint violations and clean data)
           await tx
-            .insert(billingRecord)
-            .values(chunk)
-            .onConflictDoUpdate({
-              target: [billingRecord.customerId, billingRecord.billingPeriodId],
-              set: {
-                billAmount: sql`excluded."billAmount"`,
-                arrears: sql`excluded."arrears"`,
-                currentCharges: sql`excluded."currentCharges"`,
-                totalDue: sql`excluded."totalDue"`,
-                dueDate: sql`excluded."dueDate"`,
-                status: sql`excluded."status"`,
-                updatedAt: new Date(),
-              }
-            })
+            .delete(billingRecord)
+            .where(and(
+              eq(billingRecord.billingPeriodId, summary.billingPeriodId),
+              inArray(billingRecord.customerId, customerIds)
+            ))
+
+          // 2. Insert new records
+          await tx.insert(billingRecord).values(chunk)
         }
 
         // Update run total with a WHOLE number for bigint compatibility
@@ -718,12 +716,14 @@ export async function downloadBillingTemplate() {
   const sampleRow: Record<string, any> = {}
 
   // Fill sample values ONLY for keys that the user defined in their JSON
-  if (mapping.accountNumber) sampleRow[Array.isArray(mapping.accountNumber) ? mapping.accountNumber[0] : mapping.accountNumber] = "C-12345"
+  if (mapping.accountNumber) sampleRow[Array.isArray(mapping.accountNumber) ? mapping.accountNumber[0] : mapping.accountNumber] = "6000000000"
   if (mapping.billAmount) sampleRow[Array.isArray(mapping.billAmount) ? mapping.billAmount[0] : mapping.billAmount] = 50000
-  if (mapping.arrears) sampleRow[Array.isArray(mapping.arrears) ? mapping.arrears[0] : mapping.arrears] = 10000
-  if (mapping.currentCharges) sampleRow[Array.isArray(mapping.currentCharges) ? mapping.currentCharges[0] : mapping.currentCharges] = 40000
-  if (mapping.totalDue) sampleRow[Array.isArray(mapping.totalDue) ? mapping.totalDue[0] : mapping.totalDue] = 50000
   if (mapping.dueDate) sampleRow[Array.isArray(mapping.dueDate) ? mapping.dueDate[0] : mapping.dueDate] = new Date().toISOString().split("T")[0]
+
+  // Optional fields - only fill if the user specifically chose to include them in their JSON
+  if (mapping.arrears) sampleRow[Array.isArray(mapping.arrears) ? mapping.arrears[0] : mapping.arrears] = 0
+  if (mapping.currentCharges) sampleRow[Array.isArray(mapping.currentCharges) ? mapping.currentCharges[0] : mapping.currentCharges] = 0
+  if (mapping.totalDue) sampleRow[Array.isArray(mapping.totalDue) ? mapping.totalDue[0] : mapping.totalDue] = 50000
 
   const worksheet = XLSX.utils.json_to_sheet([sampleRow], { header: headers })
   const workbook = XLSX.utils.book_new()
