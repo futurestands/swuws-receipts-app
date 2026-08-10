@@ -462,11 +462,16 @@ export async function validateBillingImport(
           errors.push("This customer has a manual meter reading captured for this period. Import skipped to prevent double billing.")
         }
 
-        // PREVIEW ENHANCEMENT: Handle Balance Brought Forward
-        // If the Excel file has a balance (non-zero), use it. Otherwise fall back to system balance.
-        const fileArrears = Number(data.arrears)
-        data.arrears = (fileArrears !== 0) ? fileArrears : Number(targetCustomer.accountBalance)
-        data.totalDue = data.arrears + data.billAmount
+        // PREVIEW ENHANCEMENT: "Balance Brought Forward" is the TOTAL balance (Inclusive of Bill)
+        const fileTotal = Number(data.arrears)
+        if (fileTotal !== 0) {
+          data.totalDue = fileTotal
+          data.arrears = data.totalDue - data.billAmount
+        } else {
+          // Fallback: If Excel total is zero, use system balance as the starting point
+          data.arrears = Number(targetCustomer.accountBalance)
+          data.totalDue = data.arrears + data.billAmount
+        }
       }
 
       if (seenInUpload.has(accLower)) {
@@ -630,18 +635,18 @@ export async function importBilling(
         // Update run total with a WHOLE number for bigint compatibility
         await tx.update(billingRun).set({ totalAmount: Math.round(schemeTotal) }).where(eq(billingRun.id, runId))
 
-        // Balance Sync
+        // Balance Sync: OVERWRITE system balance with the new Total Due
         const BAL_CHUNK_SIZE = 400
         for (let i = 0; i < recordsToInsert.length; i += BAL_CHUNK_SIZE) {
           const chunk = recordsToInsert.slice(i, i + BAL_CHUNK_SIZE)
-          const valuesList = chunk.map(r => sql`(${r.customerId}, ${r.billAmount}::numeric)`).reduce((acc, curr) => sql`${acc}, ${curr}`)
+          const valuesList = chunk.map(r => sql`(${r.customerId}, ${r.totalDue}::numeric)`).reduce((acc, curr) => sql`${acc}, ${curr}`)
 
           await tx.execute(sql`
             UPDATE customer AS c
             SET
-              "accountBalance" = c."accountBalance" + v.bill_increment,
+              "accountBalance" = v.new_balance,
               "updatedAt" = now()
-            FROM (VALUES ${valuesList}) AS v(id, bill_increment)
+            FROM (VALUES ${valuesList}) AS v(id, new_balance)
             WHERE c.id = v.id
           `)
         }
