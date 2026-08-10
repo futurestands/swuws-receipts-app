@@ -13,7 +13,9 @@ export function PrintButton({ receiptId }: { receiptId: string }) {
     try {
       const result = await recordReceiptPrint(receiptId)
       if (result.ok) {
-        window.print()
+        // Small delay to ensure any server-side revalidation updates have
+        // propagated to the DOM before the print preview takes a snapshot.
+        setTimeout(() => window.print(), 200)
       } else {
         toast.error("Failed to record print event.")
       }

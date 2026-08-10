@@ -321,8 +321,9 @@ export function ReadingEntryForm({
                         className="w-full h-16 text-lg bg-[#2c4a5e] hover:bg-[#1e3240] text-white font-black gap-3 shadow-lg border-b-4 border-[#142129] active:border-b-0 active:translate-y-1 transition-all"
                         onClick={() => {
                           window.print();
-                          // Auto-close after a delay to allow the user to "continue"
-                          setTimeout(() => setLastSubmission(null), 1000);
+                          // REMOVED: Automatic timeout that clears data too early.
+                          // Let the user click "Done & Close" manually so they can
+                          // also choose to send an SMS after printing.
                         }}
                      >
                         <Printer className="h-6 w-6" /> PRINT PHYSICAL TICKET
@@ -720,7 +721,7 @@ export function ReadingEntryForm({
                           size="sm"
                           className="h-8 gap-1.5"
                           onClick={() => {
-                            setLastSubmission({
+                            const submissionData = {
                               ok: true,
                               readingId: item.id as string,
                               customerName: item.customerName as string,
@@ -739,9 +740,11 @@ export function ReadingEntryForm({
                               totalDue: item.totalDue as number,
                               phone: (item.phone as string) || "",
                               isSmsSent: (item.isNotified as boolean) ?? false
-                            })
-                            // Wait for state to update then print
-                            setTimeout(() => window.print(), 100)
+                            }
+                            setLastSubmission(submissionData)
+                            // Increase delay slightly to ensure the print-area DOM is
+                            // fully rendered with the new state before capturing.
+                            setTimeout(() => window.print(), 300)
                           }}
                         >
                           <Printer className="h-3 w-3" /> Reprint

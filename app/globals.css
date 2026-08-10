@@ -172,8 +172,11 @@
   main,
   .mx-auto,
   [data-slot="card"],
+  [data-slot="card-content"],
+  [data-slot="card-header"],
   .overflow-hidden,
-  .overflow-x-hidden {
+  .overflow-x-hidden,
+  .overflow-y-auto {
     display: block !important;
     overflow: visible !important;
     padding: 0 !important;
