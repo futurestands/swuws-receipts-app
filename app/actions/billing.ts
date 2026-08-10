@@ -448,7 +448,12 @@ export async function validateBillingImport(
       const errors: string[] = []
       const warnings: string[] = []
 
-      const accLower = String(data.accountNumber).toLowerCase()
+      if (!data.accountNumber || data.accountNumber === "undefined") {
+        errors.push("Account number is missing or the column header was not recognized. Please check the template.")
+        return { errors, warnings }
+      }
+
+      const accLower = data.accountNumber.toLowerCase()
       const targetCustomer = customerMap.get(accLower)
 
       if (!targetCustomer) {

@@ -47,7 +47,10 @@ export const customerImportSchema = z.object({
 export type CustomerImportRow = z.infer<typeof customerImportSchema>
 
 export const billingImportSchema = z.object({
-  accountNumber: z.coerce.string().trim().min(1, "Account number is required"),
+  accountNumber: z.preprocess(
+    (val) => (val === undefined || val === null ? "" : String(val)),
+    z.string().trim().min(1, "Account number is required or column missing")
+  ),
   billAmount: z.coerce.number().min(0).default(0),
   arrears: z.coerce.number().default(0),
   currentCharges: z.coerce.number().min(0).default(0),
