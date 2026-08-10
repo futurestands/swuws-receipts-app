@@ -87,9 +87,13 @@ export async function processExcelImport<T extends Record<string, unknown>>(para
         : []
 
       if (aliases.length > 0) {
-        // Find the first alias that exists in the file (case-insensitive)
+        // Fuzzy Match: Find the first alias that matches (case-insensitive, ignore spaces/underscores)
         const matched = fileHeaders.find((h) =>
-          aliases.some((a) => a.toLowerCase() === h.toLowerCase()),
+          aliases.some((a) => {
+            if (typeof a !== "string") return false
+            const normalize = (s: string) => s.toLowerCase().replace(/[\s_-]/g, "")
+            return normalize(a) === normalize(h)
+          }),
         )
         if (matched) {
           actualHeaderMap[field] = matched

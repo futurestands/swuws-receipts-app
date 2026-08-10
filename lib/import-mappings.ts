@@ -43,12 +43,12 @@ export const DEFAULT_CUSTOMER_IMPORT_MAPPING = {
 }
 
 export const DEFAULT_BILLING_IMPORT_MAPPING = {
-  accountNumber: ["AccountNumber", "Account Number", "CustID", "Account", "AccountNo", "Account #", "CustomerRef", "CustomerAccount", "Customer No", "CustomerNo"],
-  billAmount: ["BillAmount", "MonthlyBill", "CurrentCharges", "Bill Amount"],
-  arrears: ["TotalAmountDue", "Balance Brought Forward", "Arrears", "BalanceBroughtForward", "Brought Forward", "OpeningBalance"],
+  accountNumber: ["AccountNumber", "Account Number", "CustID", "Account", "AccountNo", "Account #", "CustomerRef", "CustomerAccount", "Customer No", "CustomerNo", "Code", "Ref", "Reference", "Acc No", "Acct No", "Cust ID", "ID", 0],
+  billAmount: ["BillAmount", "MonthlyBill", "CurrentCharges", "Bill Amount", 1],
+  arrears: ["TotalAmountDue", "Balance Brought Forward", "Arrears", "BalanceBroughtForward", "Brought Forward", "OpeningBalance", 2],
   currentCharges: ["CurrentCharges", "BillAmount", "MonthlyBill"],
   totalDue: ["TotalAmountDue", "TotalDue", "Balance", "GrandTotal", "Total Amount"],
-  dueDate: ["DueDate", "Due Date"],
+  dueDate: ["DueDate", "Due Date", 3],
 }
 
 export const DEFAULT_TARIFF_IMPORT_MAPPING = {
