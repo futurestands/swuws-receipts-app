@@ -49,9 +49,9 @@ export type CustomerImportRow = z.infer<typeof customerImportSchema>
 export const billingImportSchema = z.object({
   accountNumber: z.coerce.string().trim().min(1, "Account number is required"),
   billAmount: z.coerce.number().min(0).default(0),
-  arrears: z.coerce.number().min(0).default(0),
+  arrears: z.coerce.number().default(0),
   currentCharges: z.coerce.number().min(0).default(0),
-  totalDue: z.coerce.number().min(0).default(0),
+  totalDue: z.coerce.number().default(0),
   dueDate: z.coerce.string().refine((val) => !isNaN(Date.parse(val)), {
     message: "Invalid due date format",
   }),

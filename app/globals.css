@@ -133,10 +133,20 @@
     @apply border-border outline-ring/50;
   }
   html {
-    font-size: 15px; /* High-density scaling */
+    /* Responsive base font size: 14px on small phones, up to 16px on large tablets/desktops */
+    font-size: clamp(14px, 1.2vw, 16px);
+    -webkit-text-size-adjust: 100%;
+    -moz-text-size-adjust: 100%;
+    text-size-adjust: 100%;
   }
   body {
     @apply bg-background text-foreground;
+    /* Prevent rubber-banding on iOS/Capacitor but allow scroll */
+    min-height: 100vh;
+    min-height: -webkit-fill-available;
+    overflow-x: hidden;
+    padding-bottom: env(safe-area-inset-bottom);
+    padding-top: env(safe-area-inset-top);
   }
 }
 

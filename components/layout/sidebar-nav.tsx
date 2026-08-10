@@ -34,8 +34,11 @@ export function SidebarNav({
     <nav className="flex flex-col gap-6 px-2 py-4" aria-label="Primary">
       {sections.map((section, i) => (
         <div key={section.label ?? i} className="flex flex-col gap-1">
-          {section.label && !collapsed && (
-            <div className="px-3 pt-2 pb-1 text-[0.65rem] font-black tracking-[0.2em] text-sidebar-foreground/80 uppercase">
+          {section.label && (
+            <div className={cn(
+              "px-3 pt-2 pb-1 text-[0.65rem] font-black tracking-[0.2em] text-sidebar-foreground/80 uppercase transition-opacity duration-200",
+              collapsed ? "sr-only" : "sr-only lg:not-sr-only"
+            )}>
               {section.label}
             </div>
           )}
@@ -60,12 +63,14 @@ export function SidebarNav({
                   "hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
                   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring",
                   active ? "bg-sidebar-primary text-sidebar-primary-foreground shadow-md" : "text-sidebar-foreground/95",
-                  collapsed && "justify-center px-0"
+                  (collapsed) && "justify-center px-0",
+                  // Center icons on tablet rail automatically
+                  "md:max-lg:justify-center md:max-lg:px-0"
                 )}
               >
                 {/* Active Accent Bar (White/Primary on Dark) */}
                 {active && !collapsed && (
-                  <div className="absolute left-0 top-2 bottom-2 w-1.5 rounded-r-full bg-white/80" />
+                  <div className="absolute left-0 top-2 bottom-2 w-1.5 rounded-r-full bg-white/80 lg:block hidden" />
                 )}
 
                 <DynamicIcon
@@ -78,7 +83,7 @@ export function SidebarNav({
                 />
                 <span className={cn(
                   "transition-opacity duration-200",
-                  collapsed && "sr-only"
+                  collapsed ? "sr-only" : "sr-only lg:not-sr-only"
                 )}>
                   {item.label}
                 </span>

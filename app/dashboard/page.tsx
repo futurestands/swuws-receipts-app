@@ -64,10 +64,10 @@ export default async function DashboardPage() {
         />
       </StatCardGrid>
 
-      <div className="grid gap-6 lg:grid-cols-5">
+      <div className="grid gap-6 md:grid-cols-1 lg:grid-cols-5">
         {canIssue && collectionSummary?.isActive ? (
           <>
-            <div className="lg:col-span-2">
+            <div className="md:col-span-1 lg:col-span-2">
               <ReceiptForm
                 editableFields={settings.editableFields}
                 branches={branches}
@@ -77,12 +77,12 @@ export default async function DashboardPage() {
                 activePeriodId={collectionSummary.displayPeriod.id}
               />
             </div>
-            <div className="lg:col-span-3">
+            <div className="md:col-span-1 lg:col-span-3">
               <ReceiptsTable receipts={receipts} isAdmin={canViewAll} />
             </div>
           </>
         ) : (
-          <div className="lg:col-span-5">
+          <div className="md:col-span-1 lg:col-span-5">
             <ReceiptsTable receipts={receipts} isAdmin={canViewAll} />
           </div>
         )}

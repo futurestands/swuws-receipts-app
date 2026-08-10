@@ -462,10 +462,10 @@ export async function validateBillingImport(
           errors.push("This customer has a manual meter reading captured for this period. Import skipped to prevent double billing.")
         }
 
-        // PREVIEW ENHANCEMENT: Inject live system arrears into the preview data.
-        // This ensures the user sees the REAL arrears from the database profile
-        // instead of zeros or placeholders from their Excel file.
-        data.arrears = Number(targetCustomer.accountBalance)
+        // PREVIEW ENHANCEMENT: Handle Balance Brought Forward
+        // If the Excel file has a balance (non-zero), use it. Otherwise fall back to system balance.
+        const fileArrears = Number(data.arrears)
+        data.arrears = (fileArrears !== 0) ? fileArrears : Number(targetCustomer.accountBalance)
         data.totalDue = data.arrears + data.billAmount
       }
 
@@ -582,14 +582,13 @@ export async function importBilling(
         const recordsToInsert = rows.map((row) => {
           const cust = customerMap.get(row.data.accountNumber.toLowerCase())!
 
-          const systemArrears = Number(cust.accountBalance)
           const excelMonthlyBill = Number(row.data.billAmount)
-          const excelReportedArrears = Number(row.data.arrears)
+          const finalizedArrears = Number(row.data.arrears)
+          const newTotalDue = Number(row.data.totalDue)
 
-          const newTotalDue = (isNaN(systemArrears) ? 0 : systemArrears) + (isNaN(excelMonthlyBill) ? 0 : excelMonthlyBill)
           let appliedFromUpfront = 0
-          if (systemArrears < 0) {
-             appliedFromUpfront = Math.min(isNaN(excelMonthlyBill) ? 0 : excelMonthlyBill, Math.abs(systemArrears))
+          if (finalizedArrears < 0) {
+             appliedFromUpfront = Math.min(isNaN(excelMonthlyBill) ? 0 : excelMonthlyBill, Math.abs(finalizedArrears))
           }
 
           schemeTotal += isNaN(excelMonthlyBill) ? 0 : excelMonthlyBill
@@ -601,8 +600,9 @@ export async function importBilling(
             customerId: cust.id,
             accountNumber: row.data.accountNumber,
             billAmount: String(isNaN(excelMonthlyBill) ? 0 : excelMonthlyBill),
-            arrears: String(isNaN(systemArrears) ? 0 : systemArrears),
-            currentCharges: String(isNaN(excelReportedArrears) ? 0 : excelReportedArrears),
+            arrears: String(isNaN(finalizedArrears) ? 0 : finalizedArrears),
+            // FIX: currentCharges represents the bill for this period, which must be >= 0.
+            currentCharges: String(isNaN(excelMonthlyBill) ? 0 : excelMonthlyBill),
             totalDue: String(newTotalDue),
             dueDate: new Date(row.data.dueDate),
             status: newTotalDue <= 0 ? "paid" : (appliedFromUpfront > 0 ? "partially_paid" : "pending"),

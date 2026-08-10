@@ -56,61 +56,58 @@ export function AppShell({
 
   return (
     <div className="min-h-screen bg-muted/20 md:flex">
-      {/* Desktop sidebar */}
+      {/*
+          ADAPTIVE SIDEBAR:
+          - Mobile (<768px): Hidden, accessed via Sheet drawer.
+          - Tablet (768px - 1024px): Navigation Rail (icon-only) by default.
+          - Desktop (>1024px): Full Sidebar (expanded or user-collapsed).
+      */}
       <aside
-        className="sticky top-0 hidden h-screen shrink-0 flex-col border-r border-sidebar-border bg-sidebar transition-[width] duration-150 md:flex no-print"
-        style={{ width: collapsed ? "4rem" : "13.5rem" }}
+        className={cn(
+          "sticky top-0 hidden h-screen shrink-0 flex-col border-r border-sidebar-border bg-sidebar transition-[width] duration-200 md:flex no-print",
+          collapsed ? "w-16" : "w-16 lg:w-[13.5rem]"
+        )}
       >
         <div className="flex h-14 shrink-0 items-center justify-between border-b border-sidebar-border px-3">
           <div className="flex flex-col min-w-0">
-            {!collapsed ? (
-              <Link href={brandHref} className="flex items-center gap-2 group leading-tight overflow-hidden">
-                {logoUrl && !imgError ? (
-                  <div className="size-8 rounded-full bg-white p-0.5 flex items-center justify-center shrink-0 border border-black/5 shadow-sm overflow-hidden">
-                    <img
-                      src={logoUrl}
-                      alt=""
-                      className="w-full h-full object-cover"
-                      onError={() => setImgError(true)}
-                    />
-                  </div>
-                ) : (
-                  <div className="size-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0 border border-primary/20">
-                    <span className="text-[10px] font-black text-primary">{receiptPrefix[0]}</span>
-                  </div>
-                )}
-                <div className="flex flex-col min-w-0">
-                  <span className="text-[11px] font-black text-sidebar-foreground tracking-tight uppercase truncate">
-                    {receiptPrefix} Portal
-                  </span>
-                  <span className="text-[9px] font-bold text-sidebar-foreground/50 uppercase tracking-tighter">
-                    Management
-                  </span>
+            {/* Automatic visibility: label is hidden on tablet (md:max-lg) even if 'collapsed' is false */}
+            <Link href={brandHref} className="flex items-center gap-2 group leading-tight overflow-hidden">
+              {logoUrl && !imgError ? (
+                <div className="size-8 rounded-full bg-white p-0.5 flex items-center justify-center shrink-0 border border-black/5 shadow-sm overflow-hidden">
+                  <img
+                    src={logoUrl}
+                    alt=""
+                    className="w-full h-full object-cover"
+                    onError={() => setImgError(true)}
+                  />
                 </div>
-              </Link>
-            ) : (
-              <Link href={brandHref} className="flex justify-center">
-                {logoUrl && !imgError ? (
-                  <div className="size-6 rounded bg-white p-0.5 flex items-center justify-center border border-white/10 shadow-sm">
-                    <img
-                      src={logoUrl}
-                      alt=""
-                      className="max-w-full max-h-full object-contain"
-                      onError={() => setImgError(true)}
-                    />
-                  </div>
-                ) : (
-                  <div className="size-6 rounded bg-primary/10 flex items-center justify-center">
-                    <span className="text-[8px] font-black text-primary">{receiptPrefix[0]}</span>
-                  </div>
-                )}
-              </Link>
-            )}
+              ) : (
+                <div className="size-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0 border border-primary/20">
+                  <span className="text-[10px] font-black text-primary">{receiptPrefix[0]}</span>
+                </div>
+              )}
+              <div className={cn(
+                "flex flex-col min-w-0 transition-opacity duration-300",
+                collapsed ? "sr-only" : "sr-only lg:not-sr-only"
+              )}>
+                <span className="text-[11px] font-black text-sidebar-foreground tracking-tight uppercase truncate">
+                  {receiptPrefix} Portal
+                </span>
+                <span className="text-[9px] font-bold text-sidebar-foreground/50 uppercase tracking-tighter">
+                  Management
+                </span>
+              </div>
+            </Link>
           </div>
           <Button
             variant="ghost"
             size="icon-sm"
-            className="ml-auto shrink-0 text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+            className={cn(
+              "ml-auto shrink-0 text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-all duration-300",
+              collapsed ? "rotate-180" : "rotate-0",
+              // Hide toggle on pure tablets to keep the "Auto-Rail" clean
+              "md:max-lg:hidden"
+            )}
             onClick={toggleCollapsed}
             aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
           >
@@ -122,7 +119,7 @@ export function AppShell({
         </div>
         <div className={cn(
           "shrink-0 border-t border-sidebar-border p-3 text-center transition-opacity duration-200",
-          collapsed || !developerCredit ? "opacity-0 h-0 p-0 overflow-hidden" : "opacity-100"
+          collapsed || !developerCredit ? "sr-only h-0 p-0 overflow-hidden" : "sr-only lg:not-sr-only"
         )}>
           {developerCredit && (
             <p className="text-[10px] font-medium text-sidebar-foreground/50 leading-tight">
