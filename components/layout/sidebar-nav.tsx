@@ -36,8 +36,8 @@ export function SidebarNav({
         <div key={section.label ?? i} className="flex flex-col gap-1">
           {section.label && (
             <div className={cn(
-              "px-3 pt-2 pb-1 text-[0.65rem] font-black tracking-[0.2em] text-sidebar-foreground/80 uppercase transition-opacity duration-200",
-              collapsed ? "sr-only" : "sr-only lg:not-sr-only"
+              "px-3 pt-2 pb-1 text-[0.65rem] font-black tracking-[0.2em] text-sidebar-foreground/60 uppercase transition-opacity duration-200",
+              collapsed ? "sr-only" : "opacity-100"
             )}>
               {section.label}
             </div>
@@ -45,11 +45,11 @@ export function SidebarNav({
           {section.items.map((item) => {
             const active = activeItem?.href === item.href
 
-            // Lively Color Coding based on section or label
-            let iconColor = "text-brand-blue" // Default
-            if (section.label === "Finance") iconColor = "text-brand-green"
-            if (item.label === "Exceptions") iconColor = "text-brand-red"
-            if (section.label === "System") iconColor = "text-brand-blue"
+            // Lively Color Coding: Brightened for dark sidebar contrast
+            let iconColor = "text-blue-400" // Light Blue
+            if (section.label === "Finance") iconColor = "text-emerald-400"
+            if (item.label === "Exceptions") iconColor = "text-red-400"
+            if (section.label === "System") iconColor = "text-blue-400"
 
             return (
               <Link
@@ -62,28 +62,26 @@ export function SidebarNav({
                   "group relative flex min-h-10 items-center gap-3 rounded-md px-3 text-sm font-bold transition-all duration-200",
                   "hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
                   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring",
-                  active ? "bg-sidebar-primary text-sidebar-primary-foreground shadow-md" : "text-sidebar-foreground/95",
-                  (collapsed) && "justify-center px-0",
-                  // Center icons on tablet rail automatically
-                  "md:max-lg:justify-center md:max-lg:px-0"
+                  active ? "bg-sidebar-primary text-sidebar-primary-foreground shadow-md" : "text-sidebar-foreground/90",
+                  collapsed && "justify-center px-0"
                 )}
               >
-                {/* Active Accent Bar (White/Primary on Dark) */}
+                {/* Active Accent Bar */}
                 {active && !collapsed && (
-                  <div className="absolute left-0 top-2 bottom-2 w-1.5 rounded-r-full bg-white/80 lg:block hidden" />
+                  <div className="absolute left-0 top-2 bottom-2 w-1.5 rounded-r-full bg-white/90" />
                 )}
 
                 <DynamicIcon
                   name={item.icon}
                   className={cn(
                     "size-4.5 shrink-0 transition-transform group-hover:scale-110",
-                    active ? "text-sidebar-primary-foreground" : cn(iconColor, "opacity-100 group-hover:opacity-100")
+                    active ? "text-sidebar-primary-foreground" : cn(iconColor, "opacity-100")
                   )}
                   aria-hidden="true"
                 />
                 <span className={cn(
-                  "transition-opacity duration-200",
-                  collapsed ? "sr-only" : "sr-only lg:not-sr-only"
+                  "transition-opacity duration-200 whitespace-nowrap",
+                  collapsed ? "sr-only" : "opacity-100"
                 )}>
                   {item.label}
                 </span>

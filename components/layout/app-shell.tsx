@@ -65,7 +65,7 @@ export function AppShell({
       <aside
         className={cn(
           "sticky top-0 hidden h-screen shrink-0 flex-col border-r border-sidebar-border bg-sidebar transition-[width] duration-200 md:flex no-print",
-          collapsed ? "w-16" : "w-16 lg:w-[13.5rem]"
+          collapsed ? "w-16" : "w-[13.5rem]"
         )}
       >
         <div className="flex h-14 shrink-0 items-center justify-between border-b border-sidebar-border px-3">
@@ -88,7 +88,7 @@ export function AppShell({
               )}
               <div className={cn(
                 "flex flex-col min-w-0 transition-opacity duration-300",
-                collapsed ? "sr-only" : "sr-only lg:not-sr-only"
+                collapsed ? "sr-only" : "opacity-100"
               )}>
                 <span className="text-[11px] font-black text-sidebar-foreground tracking-tight uppercase truncate">
                   {receiptPrefix} Portal
@@ -119,7 +119,7 @@ export function AppShell({
         </div>
         <div className={cn(
           "shrink-0 border-t border-sidebar-border p-3 text-center transition-opacity duration-200",
-          collapsed || !developerCredit ? "sr-only h-0 p-0 overflow-hidden" : "sr-only lg:not-sr-only"
+          collapsed || !developerCredit ? "sr-only h-0 p-0 overflow-hidden" : "opacity-100"
         )}>
           {developerCredit && (
             <p className="text-[10px] font-medium text-sidebar-foreground/50 leading-tight">
