@@ -98,6 +98,7 @@ export async function submitMeterReading(data: {
   customerId: string
   billingPeriodId: string
   currentReading: number
+  previousReading?: number // Allow manual override
   notes?: string
   phoneNumber?: string
   sendSms?: boolean
@@ -128,9 +129,12 @@ export async function submitMeterReading(data: {
 
   if (!cust) throw new Error("Customer not found or access denied")
 
+  // Use manual override if provided, otherwise fallback to system last reading
+  const effectivePreviousReading = data.previousReading !== undefined ? data.previousReading : cust.lastReading
+
   // Finding 3 Fix: Server-side validation of reading value
-  if (data.currentReading < cust.lastReading) {
-    throw new Error(`Invalid reading: ${data.currentReading} is lower than the previous reading of ${cust.lastReading}`)
+  if (data.currentReading < effectivePreviousReading) {
+    throw new Error(`Invalid reading: ${data.currentReading} is lower than the previous reading of ${effectivePreviousReading}`)
   }
 
   // Check for duplicate reading in this period
@@ -167,7 +171,7 @@ export async function submitMeterReading(data: {
   // Handle numeric strings from DB
   const unitPrice = Number(tariff.unitPrice)
   const serviceFee = Number(tariff.serviceFee)
-  const calc = calculateBill(cust.lastReading, data.currentReading, { ...tariff, unitPrice, serviceFee })
+  const calc = calculateBill(effectivePreviousReading, data.currentReading, { ...tariff, unitPrice, serviceFee })
 
   // Finding 8 Fix: Calculate Grand Total (New Bill + Existing Arrears)
   const totalArrears = Number(cust.accountBalance) || 0
@@ -181,7 +185,7 @@ export async function submitMeterReading(data: {
       id: readingId,
       customerId: data.customerId,
       billingPeriodId: data.billingPeriodId,
-      previousReading: cust.lastReading,
+      previousReading: effectivePreviousReading,
       currentReading: data.currentReading,
       consumption: calc.consumption,
       billedAmount: String(calc.totalNewBill),

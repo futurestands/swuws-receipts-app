@@ -37,6 +37,7 @@ export function ReadingEntryForm({
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null)
 
   const [currentReading, setCurrentReading] = useState("")
+  const [manualPreviousReading, setManualPreviousReading] = useState("")
   const [customerPhone, setCustomerPhone] = useState("")
   const [notes, setNotes] = useState("")
   const [tariff, setTariff] = useState<TariffConfiguration | null>(null)
@@ -96,6 +97,7 @@ export function ReadingEntryForm({
       const timer = setTimeout(() => {
         setCalculation(null)
         setCurrentReading("")
+        setManualPreviousReading(selectedCustomer.lastReading.toString())
         setCustomerPhone(selectedCustomer.phone || "")
       }, 0)
       return () => clearTimeout(timer)
@@ -103,6 +105,7 @@ export function ReadingEntryForm({
       const timer = setTimeout(() => {
         setTariff(null)
         setCustomerPhone("")
+        setManualPreviousReading("")
       }, 0)
       return () => clearTimeout(timer)
     }
@@ -110,16 +113,17 @@ export function ReadingEntryForm({
 
   // Recalculate bill in real-time
   useEffect(() => {
-    if (selectedCustomer && tariff && currentReading) {
+    if (selectedCustomer && tariff && currentReading && manualPreviousReading) {
       const current = Number(currentReading)
-      if (!isNaN(current)) {
+      const prev = Number(manualPreviousReading)
+      if (!isNaN(current) && !isNaN(prev)) {
         // Convert numeric strings from DB to numbers for calculation
         const numericTariff = {
           ...tariff,
           unitPrice: Number(tariff.unitPrice),
           serviceFee: Number(tariff.serviceFee)
         }
-        const calc = calculateBill(selectedCustomer.lastReading, current, numericTariff)
+        const calc = calculateBill(prev, current, numericTariff)
         const timer = setTimeout(() => {
           setCalculation(calc)
         }, 0)
@@ -131,7 +135,7 @@ export function ReadingEntryForm({
       }, 0)
       return () => clearTimeout(timer)
     }
-  }, [currentReading, selectedCustomer, tariff])
+  }, [currentReading, manualPreviousReading, selectedCustomer, tariff])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -139,7 +143,9 @@ export function ReadingEntryForm({
     if (!selectedCustomer || !currentReading) return
 
     const readingValue = Number(currentReading)
-    if (readingValue < (selectedCustomer?.lastReading || 0)) {
+    const prevReadingValue = Number(manualPreviousReading)
+
+    if (readingValue < prevReadingValue) {
       toast.error("Current reading cannot be lower than the previous reading.")
       return
     }
@@ -150,6 +156,7 @@ export function ReadingEntryForm({
           customerId: selectedCustomer.id,
           billingPeriodId: activePeriod.id,
           currentReading: readingValue,
+          previousReading: prevReadingValue,
           notes,
           phoneNumber: customerPhone,
           sendSms: false // Finding: Decoupling SMS from creation
@@ -182,7 +189,7 @@ export function ReadingEntryForm({
               id: result.readingId,
               customerName: selectedCustomer.name,
               meterRef: selectedCustomer.meterRef,
-              previousReading: selectedCustomer.lastReading,
+              previousReading: prevReadingValue,
               currentReading: readingValue,
               consumption: calculation.consumption,
               billedAmount: calculation.totalNewBill,
@@ -198,6 +205,7 @@ export function ReadingEntryForm({
           setSelectedCustomer(null)
           setSearchQuery("")
           setCurrentReading("")
+          setManualPreviousReading("")
           setNotes("")
         }
       } catch (err: unknown) {
@@ -537,14 +545,27 @@ export function ReadingEntryForm({
             </div>
 
             {selectedCustomer && (
-              <div className="p-3 bg-primary/5 rounded-lg border border-primary/10 text-sm space-y-1 animate-in fade-in slide-in-from-top-2 duration-300">
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground flex items-center gap-1.5"><User className="h-3 w-3" /> Previous Reading:</span>
-                  <span className="font-bold">{selectedCustomer.lastReading}</span>
+              <div className="p-4 bg-amber-50/50 rounded-lg border border-amber-100 text-sm space-y-3 animate-in fade-in slide-in-from-top-2 duration-300">
+                <div className="flex items-center gap-2 text-amber-800 font-bold mb-1">
+                   <ShieldAlert className="h-4 w-4" />
+                   Verification Data
                 </div>
-                <div className="flex justify-between">
+
+                <div className="space-y-1">
+                   <Label htmlFor="prev-reading" className="text-[10px] uppercase text-muted-foreground font-black">Previous Reading (Editable)</Label>
+                   <Input
+                      id="prev-reading"
+                      type="number"
+                      value={manualPreviousReading}
+                      onChange={(e) => setManualPreviousReading(e.target.value)}
+                      className="h-9 bg-white font-mono font-bold"
+                   />
+                   <p className="text-[9px] text-amber-600 italic">Adjust this only if the physical meter or paper bill differs from the system.</p>
+                </div>
+
+                <div className="flex justify-between pt-1 border-t border-amber-100">
                   <span className="text-muted-foreground">Last Recorded Date:</span>
-                  <span>{selectedCustomer.lastReadingDate ? new Date(selectedCustomer.lastReadingDate).toLocaleDateString() : 'Never'}</span>
+                  <span className="font-medium">{selectedCustomer.lastReadingDate ? new Date(selectedCustomer.lastReadingDate).toLocaleDateString() : 'Never'}</span>
                 </div>
               </div>
             )}
