@@ -29,6 +29,13 @@
       "when": 1785500731913,
       "tag": "0003_add_developer_credit",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1786431780637,
+      "tag": "0004_numerous_magma",
+      "breakpoints": true
     }
   ]
 }
