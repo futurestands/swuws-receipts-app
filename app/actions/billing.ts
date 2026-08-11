@@ -436,8 +436,22 @@ export async function validateBillingImport(
   const detectedSchemeIds = new Set<string>()
 
       // Resolve dynamic mapping (with aliases support)
-      const dbMapping = await getImportMapping("import.billing.monthly")
-      const mapping = { ...DEFAULT_BILLING_IMPORT_MAPPING, ...(dbMapping as any) } as Record<string, string | string[] | number>
+      const dbMappingRaw = await getImportMapping("import.billing.monthly")
+
+      // KEY NORMALIZATION: Map common UI/CRM keys to the internal schema keys
+      const dbMapping: Record<string, any> = {}
+      if (dbMappingRaw) {
+        for (const [k, v] of Object.entries(dbMappingRaw)) {
+          const lowerK = k.toLowerCase()
+          if (lowerK === "customeraccount" || lowerK === "accountnumber") dbMapping.accountNumber = v
+          else if (lowerK === "billamount") dbMapping.billAmount = v
+          else if (lowerK === "totalamountdue" || lowerK === "arrears") dbMapping.arrears = v
+          else if (lowerK === "duedate") dbMapping.dueDate = v
+          else dbMapping[k] = v
+        }
+      }
+
+      const mapping = { ...DEFAULT_BILLING_IMPORT_MAPPING, ...dbMapping } as Record<string, string | string[] | number>
 
   const engineSummary = await processExcelImport({
     file,
@@ -589,7 +603,7 @@ export async function importBilling(
           totalAmount: 0, // Placeholder
         })
 
-        const recordsToInsert = rows.map((row) => {
+        const recordsToInsertRaw = rows.map((row) => {
           const cust = customerMap.get(row.data.accountNumber.toLowerCase())!
 
           const excelMonthlyBill = Number(row.data.billAmount)
@@ -618,6 +632,15 @@ export async function importBilling(
             status: newTotalDue <= 0 ? "paid" : (appliedFromUpfront > 0 ? "partially_paid" : "pending"),
           }
         })
+
+        // DEDUPLICATION: Resolve duplicates by customerId before insert
+        // This prevents unique constraint violations if the file has multiple entries for one customer
+        const recordsToInsert = Array.from(
+          recordsToInsertRaw.reduce((map, record) => {
+            map.set(record.customerId, record)
+            return map
+          }, new Map<string, typeof recordsToInsertRaw[0]>()).values()
+        )
 
         const CHUNK_SIZE = 400
         for (let i = 0; i < recordsToInsert.length; i += CHUNK_SIZE) {
@@ -711,15 +734,29 @@ export async function downloadBillingTemplate() {
   await requireUser()
 
   // 1. Resolve Headers from Template Hub
-  const dbMapping = await getImportMapping("import.billing.monthly")
+  const dbMappingRaw = await getImportMapping("import.billing.monthly")
+
+  // KEY NORMALIZATION: Map common UI/CRM keys to the internal schema keys
+  const dbMapping: Record<string, any> = {}
+  if (dbMappingRaw) {
+    for (const [k, v] of Object.entries(dbMappingRaw)) {
+      const lowerK = k.toLowerCase()
+      if (lowerK === "customeraccount" || lowerK === "accountnumber") dbMapping.accountNumber = v
+      else if (lowerK === "billamount") dbMapping.billAmount = v
+      else if (lowerK === "totalamountdue" || lowerK === "arrears") dbMapping.arrears = v
+      else if (lowerK === "duedate") dbMapping.dueDate = v
+      else dbMapping[k] = v
+    }
+  }
 
   /**
    * STRICT TEMPLATE ALIGNMENT (Phase 2B Fix)
    *
-   * We now use the DB mapping EXCLUSIVELY if it exists.
-   * Mandatory columns are NO LONGER injected. What is in the JSON is what is in the Excel.
+   * We now MERGE the DB mapping with defaults.
+   * This ensures that mandatory columns (accountNumber, dueDate) are preserved
+   * even if the user only configures custom names for a subset of fields.
    */
-  const mapping: Record<string, any> = dbMapping || { ...DEFAULT_BILLING_IMPORT_MAPPING }
+  const mapping: Record<string, any> = { ...DEFAULT_BILLING_IMPORT_MAPPING, ...dbMapping }
 
   // 2. Generate Sample Data strictly based on the mapping keys
   const headers = Object.values(mapping).map(v => Array.isArray(v) ? v[0] : v) as string[]
