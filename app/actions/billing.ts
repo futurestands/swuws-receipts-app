@@ -594,6 +594,7 @@ export async function importBilling(
     for (const [sId, rows] of recordsByScheme.entries()) {
       const runId = randomUUID()
       let schemeTotal = 0
+      let schemeRecovery = 0
 
       await db.transaction(async (tx) => {
         await tx.insert(billingRun).values({
@@ -605,6 +606,7 @@ export async function importBilling(
           status: "completed",
           totalCustomers: rows.length,
           totalAmount: 0, // Placeholder
+          totalRecovered: "0", // Placeholder
         })
 
         const recordsToInsertRaw = rows.map((row) => {
@@ -613,6 +615,14 @@ export async function importBilling(
           const excelMonthlyBill = Number(row.data.billAmount)
           const finalizedArrears = Number(row.data.arrears)
           const newTotalDue = Number(row.data.totalDue)
+          const systemBalanceBefore = Number(cust.accountBalance)
+
+          /**
+           * ULTIMATE RECOVERY LOGIC:
+           * 1. If customer has credit (systemBalanceBefore < 0), any reduction in debt or use of credit is recovery.
+           * 2. If customer has debt, and the Excel shows they owe LESS than the portal did, they paid at the bank.
+           */
+          const recovery = Math.max(0, systemBalanceBefore - (newTotalDue - excelMonthlyBill))
 
           let appliedFromUpfront = 0
           if (finalizedArrears < 0) {
@@ -620,6 +630,7 @@ export async function importBilling(
           }
 
           schemeTotal += isNaN(excelMonthlyBill) ? 0 : excelMonthlyBill
+          schemeRecovery += recovery
 
           return {
             id: randomUUID(),
@@ -632,6 +643,7 @@ export async function importBilling(
             // FIX: currentCharges represents the bill for this period, which must be >= 0.
             currentCharges: String(isNaN(excelMonthlyBill) ? 0 : excelMonthlyBill),
             totalDue: String(newTotalDue),
+            recoveryAmount: String(recovery),
             dueDate: new Date(row.data.dueDate),
             status: newTotalDue <= 0 ? "paid" : (appliedFromUpfront > 0 ? "partially_paid" : "pending"),
           }
@@ -664,8 +676,11 @@ export async function importBilling(
           await tx.insert(billingRecord).values(chunk)
         }
 
-        // Update run total with a WHOLE number for bigint compatibility
-        await tx.update(billingRun).set({ totalAmount: Math.round(schemeTotal) }).where(eq(billingRun.id, runId))
+        // Update run totals
+        await tx.update(billingRun).set({
+          totalAmount: Math.round(schemeTotal),
+          totalRecovered: String(schemeRecovery)
+        }).where(eq(billingRun.id, runId))
 
         // Balance Sync: OVERWRITE system balance with the new Total Due
         const BAL_CHUNK_SIZE = 400
@@ -842,7 +857,16 @@ export async function getCollectionSummary() {
     db
       .select({
         totalBills: count(billingRecord.id),
-        totalAmount: sum(billingRecord.totalDue),
+        totalMonthlyBilled: sum(billingRecord.billAmount),
+        // PRIORITY LOGIC: Collected money only counts as "Current Collected" AFTER Arrears are fully cleared.
+        // CurrentCollected = LEAST(BillAmount, MAX(0, TotalRecovered - Arrears))
+        totalCurrentCollected: sum(sql`
+          case
+            when ${billingRecord.recoveryAmount}::numeric > ${billingRecord.arrears}::numeric
+            then least(${billingRecord.billAmount}::numeric, ${billingRecord.recoveryAmount}::numeric - ${billingRecord.arrears}::numeric)
+            else 0
+          end
+        `),
       })
       .from(billingRecord)
       .where(eq(billingRecord.billingPeriodId, displayPeriod.id))
@@ -850,7 +874,9 @@ export async function getCollectionSummary() {
     db
       .select({
         totalReadings: count(meterReading.id),
-        totalAmount: sum(meterReading.billedAmount),
+        totalMonthlyBilled: sum(meterReading.billedAmount),
+        // Field Readings are effectively 100% current billing (no manual arrears split yet)
+        totalCurrentCollected: sql<number>`0`, // Collected later via receipts
       })
       .from(meterReading)
       .where(eq(meterReading.billingPeriodId, displayPeriod.id))
@@ -915,8 +941,13 @@ export async function getCollectionSummary() {
     .where(eq(billingRun.billingPeriodId, displayPeriod.id))
     .orderBy(desc(billingRun.uploadedAt)).limit(5)
 
-  const totalBilled = Number(importStats?.totalAmount || 0) + Number(readingStats?.totalAmount || 0)
-  const totalCollected = Number(ebsStats?.totalConfirmed || 0)
+  const totalBilled = Number(importStats?.totalMonthlyBilled || 0) + Number(readingStats?.totalMonthlyBilled || 0)
+
+  // Official Collection on CURRENT bills (Priority: Arrears First)
+  // This combines bank recovery that cleared the bill + EBS receipts that cleared the bill
+  const ebsCurrentRecovery = Number(ebsStats?.totalConfirmed || 0) // Future: will need receipt-to-bill allocation
+  const totalCollected = Number(importStats?.totalCurrentCollected || 0) + ebsCurrentRecovery
+
   const cashInHand = Number(cashStats?.totalCashInHand || 0)
   const outstanding = Math.max(0, totalBilled - totalCollected)
   const progress = totalBilled > 0 ? (totalCollected / totalBilled) * 100 : 0

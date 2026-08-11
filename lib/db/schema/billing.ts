@@ -74,6 +74,7 @@ export const billingRun = pgTable(
     status: text("status").notNull().default("pending"), // pending, completed, failed
     totalCustomers: integer("totalCustomers").notNull().default(0),
     totalAmount: bigint("totalAmount", { mode: "number" }).notNull().default(0),
+    totalRecovered: numeric("totalRecovered", { precision: 12, scale: 2 }).notNull().default("0"),
     remarks: text("remarks"),
     createdAt: timestamp("createdAt").notNull().defaultNow(),
     updatedAt: timestamp("updatedAt").notNull().defaultNow(),
@@ -108,6 +109,7 @@ export const billingRecord = pgTable(
     arrears: numeric("arrears", { precision: 12, scale: 2 }).notNull().default("0"),
     currentCharges: numeric("currentCharges", { precision: 12, scale: 2 }).notNull().default("0"),
     totalDue: numeric("totalDue", { precision: 12, scale: 2 }).notNull().default("0"),
+    recoveryAmount: numeric("recoveryAmount", { precision: 12, scale: 2 }).notNull().default("0"),
     dueDate: timestamp("dueDate").notNull(),
     status: text("status").notNull().default("pending"), // pending, partially_paid, paid, cancelled, written_off
     createdAt: timestamp("createdAt").notNull().defaultNow(),

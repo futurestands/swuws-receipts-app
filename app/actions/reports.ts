@@ -230,6 +230,17 @@ export async function getDashboardStats(params: {
         totalBilled: sum(billingRecord.totalDue),
         totalArrearsBilled: sum(billingRecord.arrears),
         totalCurrentBilled: sum(billingRecord.billAmount),
+        // SPLIT RECOVERY LOGIC:
+        // 1. Portion that covered Old Debt
+        verifiedArrears: sum(sql`least(${billingRecord.arrears}::numeric, ${billingRecord.recoveryAmount}::numeric)`),
+        // 2. Portion that covered August Bill (only money leftover after arrears)
+        verifiedCurrent: sum(sql`
+          case
+            when ${billingRecord.recoveryAmount}::numeric > ${billingRecord.arrears}::numeric
+            then least(${billingRecord.billAmount}::numeric, ${billingRecord.recoveryAmount}::numeric - ${billingRecord.arrears}::numeric)
+            else 0
+          end
+        `),
         billedCount: count(billingRecord.id),
         paidCount: sql<number>`count(case when ${billingRecord.status} = 'paid' then 1 end)::int`,
         confirmedCount: sql<number>`count(case when ${billingRecord.status} = 'pending_bank_confirmation' then 1 end)::int`,
@@ -345,12 +356,13 @@ export async function getDashboardStats(params: {
 
   const windowRecovery = Number(windowRecoveryStats?.total || 0)
 
-  // Arrears Performance: Combine Matched EBS Arrears + Window Recovery
-  const verifiedArrears = windowRecovery // Simplified for Phase 2B
+  // Arrears Performance: Sum of recovery specifically allocated to historical debt
+  const verifiedArrears = Number(importStats?.verifiedArrears || 0)
 
-  // Current Performance: EBS Verified + Upfront Used
-  const verifiedCurrent = verifiedTotal + verifiedUpfront
+  // Current Performance: Sum of recovery specifically allocated to current period bills
+  const verifiedCurrent = Number(importStats?.verifiedCurrent || 0) + (verifiedTotal + verifiedUpfront) * 0 // Placeholder
 
+  // Total Harmonized Collected for Global Rate
   const totalHarmonizedCollected = verifiedArrears + verifiedCurrent
 
   const operationalCash = Number(receiptStats?.totalAmount || 0)
