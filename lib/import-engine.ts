@@ -87,12 +87,15 @@ export async function processExcelImport<T extends Record<string, unknown>>(para
         : []
 
       if (aliases.length > 0) {
-        // Fuzzy Match: Find the first alias that matches (case-insensitive, ignore spaces/underscores)
+        // Super-Fuzzy Match: Ignore all non-alphanumeric characters (dots, spaces, slashes, etc.)
+        const normalize = (s: string | number) => String(s).toLowerCase().replace(/[^a-z0-9]/g, "")
+
         const matched = fileHeaders.find((h) =>
           aliases.some((a) => {
-            if (typeof a !== "string") return false
-            const normalize = (s: string) => s.toLowerCase().replace(/[\s_-]/g, "")
-            return normalize(a) === normalize(h)
+            if (typeof a === "number") return false
+            const normA = normalize(a)
+            const normH = normalize(h)
+            return normA === normH || (normA.length > 3 && (normA.includes(normH) || normH.includes(normA)))
           }),
         )
         if (matched) {

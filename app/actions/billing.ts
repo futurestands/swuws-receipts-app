@@ -438,20 +438,24 @@ export async function validateBillingImport(
       // Resolve dynamic mapping (with aliases support)
       const dbMappingRaw = await getImportMapping("import.billing.monthly")
 
-      // KEY NORMALIZATION: Map common UI/CRM keys to the internal schema keys
-      const dbMapping: Record<string, any> = {}
+      // ULTIMATE RESILIENCE: Merge custom keys ADDITIVELY with defaults
+      const mapping = { ...DEFAULT_BILLING_IMPORT_MAPPING } as Record<string, any>
       if (dbMappingRaw) {
         for (const [k, v] of Object.entries(dbMappingRaw)) {
           const lowerK = k.toLowerCase()
-          if (lowerK === "customeraccount" || lowerK === "accountnumber") dbMapping.accountNumber = v
-          else if (lowerK === "billamount") dbMapping.billAmount = v
-          else if (lowerK === "totalamountdue" || lowerK === "arrears") dbMapping.arrears = v
-          else if (lowerK === "duedate") dbMapping.dueDate = v
-          else dbMapping[k] = v
+          if (lowerK === "customeraccount" || lowerK === "accountnumber") {
+             mapping.accountNumber = [v, ...(Array.isArray(mapping.accountNumber) ? mapping.accountNumber : [mapping.accountNumber])]
+          } else if (lowerK === "billamount") {
+             mapping.billAmount = [v, ...(Array.isArray(mapping.billAmount) ? mapping.billAmount : [mapping.billAmount])]
+          } else if (lowerK === "totalamountdue" || lowerK === "arrears") {
+             mapping.arrears = [v, ...(Array.isArray(mapping.arrears) ? mapping.arrears : [mapping.arrears])]
+          } else if (lowerK === "duedate") {
+             mapping.dueDate = [v, ...(Array.isArray(mapping.dueDate) ? mapping.dueDate : [mapping.dueDate])]
+          } else {
+             mapping[k] = v
+          }
         }
       }
-
-      const mapping = { ...DEFAULT_BILLING_IMPORT_MAPPING, ...dbMapping } as Record<string, string | string[] | number>
 
   const engineSummary = await processExcelImport({
     file,
@@ -462,12 +466,12 @@ export async function validateBillingImport(
       const errors: string[] = []
       const warnings: string[] = []
 
-      if (!data.accountNumber || data.accountNumber === "undefined") {
+      if (!data.accountNumber || String(data.accountNumber) === "undefined") {
         errors.push("Account number is missing or the column header was not recognized. Please check the template.")
         return { errors, warnings }
       }
 
-      const accLower = data.accountNumber.toLowerCase()
+      const accLower = String(data.accountNumber).toLowerCase()
       const targetCustomer = customerMap.get(accLower)
 
       if (!targetCustomer) {
@@ -736,27 +740,24 @@ export async function downloadBillingTemplate() {
   // 1. Resolve Headers from Template Hub
   const dbMappingRaw = await getImportMapping("import.billing.monthly")
 
-  // KEY NORMALIZATION: Map common UI/CRM keys to the internal schema keys
-  const dbMapping: Record<string, any> = {}
+  // ULTIMATE RESILIENCE: Merge custom keys ADDITIVELY with defaults
+  const mapping = { ...DEFAULT_BILLING_IMPORT_MAPPING } as Record<string, any>
   if (dbMappingRaw) {
     for (const [k, v] of Object.entries(dbMappingRaw)) {
       const lowerK = k.toLowerCase()
-      if (lowerK === "customeraccount" || lowerK === "accountnumber") dbMapping.accountNumber = v
-      else if (lowerK === "billamount") dbMapping.billAmount = v
-      else if (lowerK === "totalamountdue" || lowerK === "arrears") dbMapping.arrears = v
-      else if (lowerK === "duedate") dbMapping.dueDate = v
-      else dbMapping[k] = v
+      if (lowerK === "customeraccount" || lowerK === "accountnumber") {
+         mapping.accountNumber = [v, ...(Array.isArray(mapping.accountNumber) ? mapping.accountNumber : [mapping.accountNumber])]
+      } else if (lowerK === "billamount") {
+         mapping.billAmount = [v, ...(Array.isArray(mapping.billAmount) ? mapping.billAmount : [mapping.billAmount])]
+      } else if (lowerK === "totalamountdue" || lowerK === "arrears") {
+         mapping.arrears = [v, ...(Array.isArray(mapping.arrears) ? mapping.arrears : [mapping.arrears])]
+      } else if (lowerK === "duedate") {
+         mapping.dueDate = [v, ...(Array.isArray(mapping.dueDate) ? mapping.dueDate : [mapping.dueDate])]
+      } else {
+         mapping[k] = v
+      }
     }
   }
-
-  /**
-   * STRICT TEMPLATE ALIGNMENT (Phase 2B Fix)
-   *
-   * We now MERGE the DB mapping with defaults.
-   * This ensures that mandatory columns (accountNumber, dueDate) are preserved
-   * even if the user only configures custom names for a subset of fields.
-   */
-  const mapping: Record<string, any> = { ...DEFAULT_BILLING_IMPORT_MAPPING, ...dbMapping }
 
   // 2. Generate Sample Data strictly based on the mapping keys
   const headers = Object.values(mapping).map(v => Array.isArray(v) ? v[0] : v) as string[]

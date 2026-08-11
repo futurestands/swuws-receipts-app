@@ -49,9 +49,9 @@ function createPool(): Pool {
       ssl: sslConfig,
       // Goal Alignment: Platform-aware pool sizing.
       // - Vercel: Cap at 1 (Serverless concurrency limit safety)
-      // - Generic Production: Cap at 10 (standard dedicated server)
+      // - Remote (Supabase): Cap at 5 (Prevent EMAXCONNSESSION in session mode)
       // - Local: Cap at 20 (Speed for development)
-      max: isVercel ? 1 : (isProduction ? 10 : 20),
+      max: isVercel ? 1 : (useSsl ? 5 : 20),
       idleTimeoutMillis: 30_000,
       connectionTimeoutMillis: 30_000,
     }

@@ -29,15 +29,20 @@ export async function getNotifications(limit = 20) {
 }
 
 export async function getUnreadCount() {
-  const current = await requireUser()
-  const [result] = await db
-    .select({ count: count() })
-    .from(notification)
-    .where(and(
-      eq(notification.userId, current.id),
-      eq(notification.status, 'unread')
-    ))
-  return Number(result?.count || 0)
+  try {
+    const current = await requireUser()
+    const [result] = await db
+      .select({ count: count() })
+      .from(notification)
+      .where(and(
+        eq(notification.userId, current.id),
+        eq(notification.status, 'unread')
+      ))
+    return Number(result?.count || 0)
+  } catch (e) {
+    // Gracefully handle unauthenticated state (common during session expiry or DB switch)
+    return 0
+  }
 }
 
 export async function markAsRead(id: string) {

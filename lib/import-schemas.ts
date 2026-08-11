@@ -55,9 +55,28 @@ export const billingImportSchema = z.object({
   arrears: z.coerce.number().default(0),
   currentCharges: z.coerce.number().min(0).default(0),
   totalDue: z.coerce.number().default(0),
-  dueDate: z.coerce.string().refine((val) => !isNaN(Date.parse(val)), {
-    message: "Invalid due date format",
-  }),
+  dueDate: z.preprocess((val) => {
+    if (!val) return val
+    // Handle Excel-style dates and strings
+    const str = String(val).trim()
+    // Try to parse common formats
+    const d = new Date(str)
+    if (!isNaN(d.getTime())) return d.toISOString().split('T')[0]
+
+    // Fallback: If it's DD/MM/YYYY, try to flip it
+    const parts = str.split(/[\/\-.]/)
+    if (parts.length === 3) {
+      // Check if it's DD/MM/YYYY
+      if (parts[0].length <= 2 && parts[2].length === 4) {
+        const flipped = `${parts[2]}-${parts[1]}-${parts[0]}`
+        const d2 = new Date(flipped)
+        if (!isNaN(d2.getTime())) return d2.toISOString().split('T')[0]
+      }
+    }
+    return str
+  }, z.string().refine((val) => !isNaN(Date.parse(val)), {
+    message: "Invalid due date format. Use YYYY-MM-DD or DD/MM/YYYY.",
+  })),
 })
 
 export type BillingImportRow = z.infer<typeof billingImportSchema>
