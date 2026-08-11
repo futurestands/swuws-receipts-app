@@ -230,17 +230,11 @@ export async function getDashboardStats(params: {
         totalBilled: sum(billingRecord.totalDue),
         totalArrearsBilled: sum(billingRecord.arrears),
         totalCurrentBilled: sum(billingRecord.billAmount),
-        // SPLIT RECOVERY LOGIC:
-        // 1. Portion that covered Old Debt
-        verifiedArrears: sum(sql`least(${billingRecord.arrears}::numeric, ${billingRecord.recoveryAmount}::numeric)`),
-        // 2. Portion that covered August Bill (only money leftover after arrears)
-        verifiedCurrent: sum(sql`
-          case
-            when ${billingRecord.recoveryAmount}::numeric > ${billingRecord.arrears}::numeric
-            then least(${billingRecord.billAmount}::numeric, ${billingRecord.recoveryAmount}::numeric - ${billingRecord.arrears}::numeric)
-            else 0
-          end
-        `),
+        // STABLE RECOVERY LOGIC:
+        // 1. Portion that covered August Bill (matches Dashboard)
+        verifiedCurrent: sum(billingRecord.recoveryAmount),
+        // 2. Portion that covered Old Debt
+        // (This is derived from total_recovery - bill_coverage logic elsewhere)
         billedCount: count(billingRecord.id),
         paidCount: sql<number>`count(case when ${billingRecord.status} = 'paid' then 1 end)::int`,
         confirmedCount: sql<number>`count(case when ${billingRecord.status} = 'pending_bank_confirmation' then 1 end)::int`,
@@ -297,7 +291,14 @@ export async function getDashboardStats(params: {
     .leftJoin(waterScheme, eq(customer.waterSchemeId, waterScheme.id))
     .where(and(...verifiedConditions))
 
-  // 3. OPERATIONAL CASH (Source: All Issued Receipts)
+  // 3. UPFRONT RECOVERY (Source: Credit consumed during import)
+  const [upfrontRecovery] = await db
+    .select({ total: sum(sql`case when ${billingRecord.arrears}::numeric < 0 then least(${billingRecord.billAmount}::numeric, abs(${billingRecord.arrears}::numeric)) else 0 end`) })
+    .from(billingRecord)
+    .innerJoin(customer, eq(billingRecord.customerId, customer.id))
+    .where(and(...billingConditions))
+
+  // 4. OPERATIONAL CASH (Source: All Issued Receipts)
   const receiptConditions = []
   if (receiptScope) receiptConditions.push(receiptScope)
   if (params.schemeId) receiptConditions.push(eq(customer.waterSchemeId, params.schemeId))
@@ -325,45 +326,31 @@ export async function getDashboardStats(params: {
       sql`${auditLog.id} IS NULL`
     ))
 
-  const totalBilled = Number(importStats?.totalBilled || 0) + Number(fieldStats?.totalBilled || 0)
   const arrearsBilled = Number(importStats?.totalArrearsBilled || 0) + Number(fieldStats?.totalArrearsBilled || 0)
   const currentBilled = Number(importStats?.totalCurrentBilled || 0) + Number(fieldStats?.totalCurrentBilled || 0)
   const billedCount = Number(importStats?.billedCount || 0) + Number(fieldStats?.billedCount || 0)
 
+  // TOTAL BILLING (Selected Period Only)
+  const totalBilled = currentBilled // Dashboard focus: Current Month Charges only
+
   // HARMONIZED COLLECTIONS logic:
   // 1. Bank Confirmed (EBS Matches)
-  const verifiedTotal = Number(collectionStats?.totalPaid || 0)
+  const bankMatched = Number(collectionStats?.totalPaid || 0)
 
-  // 2. Paid via Upfront (Auto-recovered during billing import)
-  // We can derive this by checking billingRecords where arrears were negative and bill was covered
-  const [upfrontRecovery] = await db
-    .select({ total: sum(sql`case when ${billingRecord.arrears}::numeric < 0 then least(${billingRecord.billAmount}::numeric, abs(${billingRecord.arrears}::numeric)) else 0 end`) })
-    .from(billingRecord)
-    .innerJoin(customer, eq(billingRecord.customerId, customer.id))
-    .where(and(...billingConditions))
+  // 2. Paid via Upfront (Credit used)
+  const upfrontUsed = Number(upfrontRecovery?.total || 0)
 
-  const verifiedUpfront = Number(upfrontRecovery?.total || 0)
+  // 3. Current Month Recovery (Portion from Excel that cleared August bill)
+  const verifiedCurrent = Number(importStats?.verifiedCurrent || 0)
 
-  // 3. Billing Window Recovery (Payments made between 1st and 7th)
-  // Logic: (Excel Arrears - System Arrears at Import) where reduction occurred.
-  const [windowRecoveryStats] = await db
-    .select({
-      total: sum(sql`case when ${billingRecord.currentCharges}::numeric > ${billingRecord.arrears}::numeric then ${billingRecord.currentCharges}::numeric - ${billingRecord.arrears}::numeric else 0 end`)
-    })
-    .from(billingRecord)
-    .innerJoin(customer, eq(billingRecord.customerId, customer.id))
-    .where(and(...billingConditions))
+  // 4. Arrears Recovery (Old Debt cleared via Bank Matches + Excel)
+  const verifiedArrears = bankMatched + upfrontUsed
 
-  const windowRecovery = Number(windowRecoveryStats?.total || 0)
+  // 5. Bank Verified Total (Sum of all bank-confirmed recovery)
+  const verifiedTotal = verifiedArrears + verifiedCurrent
 
-  // Arrears Performance: Sum of recovery specifically allocated to historical debt
-  const verifiedArrears = Number(importStats?.verifiedArrears || 0)
-
-  // Current Performance: Sum of recovery specifically allocated to current period bills
-  const verifiedCurrent = Number(importStats?.verifiedCurrent || 0) + (verifiedTotal + verifiedUpfront) * 0 // Placeholder
-
-  // Total Harmonized Collected for Global Rate
-  const totalHarmonizedCollected = verifiedArrears + verifiedCurrent
+  // Total Harmonized Collected for Global Rate calculation
+  const totalHarmonizedCollected = verifiedTotal
 
   const operationalCash = Number(receiptStats?.totalAmount || 0)
   const operationalCount = Number(receiptStats?.totalCount || 0)

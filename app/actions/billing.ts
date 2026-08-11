@@ -618,11 +618,16 @@ export async function importBilling(
           const systemBalanceBefore = Number(cust.accountBalance)
 
           /**
-           * ULTIMATE RECOVERY LOGIC:
-           * 1. If customer has credit (systemBalanceBefore < 0), any reduction in debt or use of credit is recovery.
-           * 2. If customer has debt, and the Excel shows they owe LESS than the portal did, they paid at the bank.
+           * STRICT SWUWS RECOVERY LOGIC (Arrears First):
+           * 1. Total Shillings Found = Portal Balance - (Excel Balance - Monthly Bill)
+           * 2. Any found money MUST clear historical Arrears first.
+           * 3. 'recoveryAmount' only counts money that cleared the August Bill.
            */
-          const recovery = Math.max(0, systemBalanceBefore - (newTotalDue - excelMonthlyBill))
+          const totalMoneyFound = Math.max(0, systemBalanceBefore - (newTotalDue - excelMonthlyBill))
+
+          // Portion of found money that cleared August Bill
+          // (Money found - Historical Arrears)
+          const recovery = Math.max(0, totalMoneyFound - finalizedArrears)
 
           let appliedFromUpfront = 0
           if (finalizedArrears < 0) {
