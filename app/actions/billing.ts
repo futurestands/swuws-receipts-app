@@ -719,7 +719,7 @@ export async function downloadBillingTemplate() {
    * We now use the DB mapping EXCLUSIVELY if it exists.
    * Mandatory columns are NO LONGER injected. What is in the JSON is what is in the Excel.
    */
-  const mapping: Record<string, string | string[]> = dbMapping || { ...DEFAULT_BILLING_IMPORT_MAPPING }
+  const mapping: Record<string, any> = dbMapping || { ...DEFAULT_BILLING_IMPORT_MAPPING }
 
   // 2. Generate Sample Data strictly based on the mapping keys
   const headers = Object.values(mapping).map(v => Array.isArray(v) ? v[0] : v) as string[]
