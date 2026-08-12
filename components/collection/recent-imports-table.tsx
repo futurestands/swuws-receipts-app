@@ -125,8 +125,8 @@ export function RecentImportsTable({ uploads }: RecentImportsTableProps) {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="w-[80px]">
-                <div className="flex flex-col items-center justify-center gap-1">
+              <TableHead className="w-[80px] px-0">
+                <div className="flex flex-col items-center justify-center gap-1 min-w-[80px]">
                   <Checkbox
                     checked={selectedIds.length === uploads.length && uploads.length > 0}
                     onCheckedChange={toggleAll}
@@ -146,8 +146,8 @@ export function RecentImportsTable({ uploads }: RecentImportsTableProps) {
           <TableBody>
             {uploads.map((run) => (
               <TableRow key={run.id} className={selectedIds.includes(run.id) ? "bg-muted/50" : ""}>
-                <TableCell>
-                  <div className="flex items-center justify-center">
+                <TableCell className="w-[80px] px-0">
+                  <div className="flex items-center justify-center min-w-[80px]">
                     <Checkbox
                       checked={selectedIds.includes(run.id)}
                       onCheckedChange={() => toggleOne(run.id)}

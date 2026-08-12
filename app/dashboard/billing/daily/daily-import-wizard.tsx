@@ -20,13 +20,17 @@ import {
 import {
   validateDailyCollectionImport,
   commitDailyCollectionImport,
+  validateDailyBalanceSync,
+  commitDailyBalanceSync,
   downloadDailyCollectionTemplate,
   DailyValidationSummary,
+  DailySyncSummary,
 } from "@/app/actions/daily-collections"
 import { cn } from "@/lib/utils"
 import { formatUGX, formatDate } from "@/lib/format"
 import { StatCard, StatCardGrid } from "@/components/ui/stat-card"
 import { ScrollableTableContainer } from "@/components/ui/responsive-table"
+import * as XLSX from "xlsx"
 import {
   Dialog,
   DialogContent,
@@ -42,11 +46,25 @@ export function DailyImportWizard() {
   const router = useRouter()
   const [open, setOpen] = useState(false)
   const [step, setStep] = useState<Step>("setup")
+  const [mode, setMode] = useState<"standard" | "sync">("sync")
   const [file, setFile] = useState<File | null>(null)
   const [summary, setSummary] = useState<DailyValidationSummary | null>(null)
+  const [syncSummary, setSyncSummary] = useState<DailySyncSummary | null>(null)
   const [isProcessing, startTransition] = useTransition()
 
   async function handleDownloadTemplate(format: "xlsx" | "csv") {
+    // If in sync mode, we use the simple template
+    if (mode === "sync") {
+       // Mock simple download for sync mode
+       const headers = ["AccountNumber", "TotalAmountDue"]
+       const sample = [{ AccountNumber: "6000000000", TotalAmountDue: "50000" }]
+       const ws = XLSX.utils.json_to_sheet(sample, { header: headers })
+       const wb = XLSX.utils.book_new()
+       XLSX.utils.book_append_sheet(wb, ws, "BalanceSync")
+       XLSX.writeFile(wb, `balance_sync_template.${format}`)
+       return
+    }
+
     try {
       const base64 = await downloadDailyCollectionTemplate(format)
       const byteCharacters = atob(base64)
@@ -88,27 +106,50 @@ export function DailyImportWizard() {
     formData.append("file", file)
 
     startTransition(async () => {
-      const response = await validateDailyCollectionImport(formData)
-      if (response.ok) {
-        setSummary(response.summary)
-        setStep("preview")
-        toast.success("Validation complete")
+      if (mode === "sync") {
+        const response = await validateDailyBalanceSync(formData)
+        if (response.ok) {
+          setSyncSummary(response.summary)
+          setStep("preview")
+          toast.success("Balance analysis complete")
+        } else {
+          toast.error(response.error)
+        }
       } else {
-        toast.error(response.error)
+        const response = await validateDailyCollectionImport(formData)
+        if (response.ok) {
+          setSummary(response.summary)
+          setStep("preview")
+          toast.success("Validation complete")
+        } else {
+          toast.error(response.error)
+        }
       }
     })
   }
 
   async function handleConfirm() {
-    if (!summary) return
     startTransition(async () => {
-      const response = await commitDailyCollectionImport(summary)
-      if (response.ok) {
-        setStep("complete")
-        toast.success("Import processed successfully")
-        router.refresh()
+      if (mode === "sync") {
+        if (!syncSummary) return
+        const response = await commitDailyBalanceSync(syncSummary)
+        if (response.ok) {
+          setStep("complete")
+          toast.success("Balances synced successfully")
+          router.refresh()
+        } else {
+          toast.error(response.error)
+        }
       } else {
-        toast.error(response.error)
+        if (!summary) return
+        const response = await commitDailyCollectionImport(summary)
+        if (response.ok) {
+          setStep("complete")
+          toast.success("Import processed successfully")
+          router.refresh()
+        } else {
+          toast.error(response.error)
+        }
       }
     })
   }
@@ -160,7 +201,24 @@ export function DailyImportWizard() {
         {renderProgress()}
 
         {step === "setup" && (
-          <div className="space-y-4 py-4">
+          <div className="space-y-6 py-4">
+             <div className="flex bg-muted p-1 rounded-lg">
+                <button
+                  type="button"
+                  onClick={() => setMode("sync")}
+                  className={cn("flex-1 text-[10px] font-bold py-2 rounded-md transition-all", mode === 'sync' ? "bg-white shadow-sm text-primary" : "text-muted-foreground")}
+                >
+                  BALANCE SYNC (2 COLUMNS)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMode("standard")}
+                  className={cn("flex-1 text-[10px] font-bold py-2 rounded-md transition-all", mode === 'standard' ? "bg-white shadow-sm text-primary" : "text-muted-foreground")}
+                >
+                  FULL REPORT (6 COLUMNS)
+                </button>
+             </div>
+
              <div className="p-4 bg-muted/50 rounded-lg border border-dashed flex flex-col items-center gap-2">
                 <FileSpreadsheet className="h-8 w-8 text-muted-foreground" />
                 <Label htmlFor="daily-file" className="cursor-pointer text-primary hover:underline">
@@ -174,6 +232,13 @@ export function DailyImportWizard() {
                   onChange={handleFileChange}
                 />
                 {file && <p className="text-xs font-medium">{file.name}</p>}
+             </div>
+
+             <div className="bg-primary/5 p-3 rounded-lg border border-primary/20">
+                <p className="text-[10px] font-bold text-primary mb-1 uppercase">Expected Columns ({mode === 'sync' ? '2' : '6'}):</p>
+                <p className="text-[10px] text-muted-foreground">
+                   {mode === 'sync' ? 'AccountNumber, TotalAmountDue' : 'Account Number, Customer Name, Amount Paid, Payment Date, External Reference, Payment Channel'}
+                </p>
              </div>
 
              <div className="flex items-center justify-between px-1">
@@ -203,40 +268,44 @@ export function DailyImportWizard() {
           </div>
         )}
 
-        {step === "preview" && summary && (
+        {step === "preview" && (summary || syncSummary) && (
           <div className="space-y-4 py-2">
              <StatCardGrid className="sm:grid-cols-2 lg:grid-cols-4">
-                <StatCard label="Business Date" value={formatDate(summary.businessDate)} />
-                <StatCard label="Valid Records" value={<span className="text-green-600">{summary.validRecords}</span>} />
-                <StatCard label="Errors" value={<span className="text-destructive">{summary.failedRecords}</span>} />
-                <StatCard label="Total Amount" value={<span className="text-primary">{formatUGX(summary.totalAmount)}</span>} />
+                <StatCard
+                   label={mode === 'sync' ? "Sync Records" : "Business Date"}
+                   value={mode === 'sync' ? syncSummary?.totalRecords : formatDate(summary?.businessDate || "")}
+                />
+                <StatCard
+                   label="Valid Records"
+                   value={<span className="text-green-600">{mode === 'sync' ? syncSummary?.validRecords : summary?.validRecords}</span>}
+                />
+                <StatCard
+                   label="Errors"
+                   value={<span className="text-destructive">{mode === 'sync' ? syncSummary?.failedRecords : summary?.failedRecords}</span>}
+                />
+                <StatCard
+                   label="Total Collection"
+                   value={<span className="text-primary">{formatUGX(mode === 'sync' ? syncSummary?.totalCollection || 0 : summary?.totalAmount || 0)}</span>}
+                />
              </StatCardGrid>
-
-             {(summary.isDuplicateFile || summary.isDuplicateDate) && (
-               <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg flex gap-3 text-amber-800 text-xs">
-                  <ShieldAlert className="h-5 w-5 shrink-0" />
-                  <div>
-                    <p className="font-bold">Duplicate Detected</p>
-                    <p>{summary.isDuplicateFile ? "This exact file has already been imported." : "An import already exists for this business date."}</p>
-                  </div>
-               </div>
-             )}
 
              <ScrollableTableContainer className="max-h-[300px]">
                 <Table>
                    <TableHeader className="sticky top-0 bg-white">
                       <TableRow>
                          <TableHead>Account #</TableHead>
-                         <TableHead>Amount</TableHead>
+                         <TableHead>{mode === 'sync' ? "New Balance" : "Amount"}</TableHead>
+                         {mode === 'sync' && <TableHead>Reduction</TableHead>}
                          <TableHead>Status</TableHead>
                          <TableHead>Issues</TableHead>
                       </TableRow>
                    </TableHeader>
                    <TableBody>
-                      {summary.rows.slice(0, 50).map((row, i) => (
+                      {(mode === 'sync' ? syncSummary?.rows : summary?.rows)?.slice(0, 50).map((row, i) => (
                         <TableRow key={i} className={cn(!row.valid && "bg-destructive/5")}>
                            <TableCell className="text-xs font-mono">{row.data.accountNumber}</TableCell>
-                           <TableCell className="text-xs">{formatUGX(row.data.amountPaid)}</TableCell>
+                           <TableCell className="text-xs">{formatUGX(mode === 'sync' ? (row.data as any).totalDue : (row.data as any).amountPaid)}</TableCell>
+                           {mode === 'sync' && <TableCell className="text-xs text-green-600 font-bold">{(row as any).collection > 0 ? `+${formatUGX((row as any).collection)}` : '—'}</TableCell>}
                            <TableCell>
                               {row.valid ? <Badge variant="outline" className="text-green-600 bg-green-50">Valid</Badge> : <Badge variant="destructive">Error</Badge>}
                            </TableCell>
@@ -245,41 +314,35 @@ export function DailyImportWizard() {
                            </TableCell>
                         </TableRow>
                       ))}
-                      {summary.totalRecords > 50 && (
-                        <TableRow>
-                           <TableCell colSpan={4} className="text-center text-xs text-muted-foreground py-4">
-                              Showing first 50 of {summary.totalRecords} records...
-                           </TableCell>
-                        </TableRow>
-                      )}
                    </TableBody>
                 </Table>
              </ScrollableTableContainer>
 
              <div className="flex justify-between gap-3 pt-4">
                 <Button variant="outline" className="h-11" onClick={() => setStep("setup")}>Back</Button>
-                <Button className="h-11" disabled={summary.validRecords === 0 || isProcessing} onClick={() => setStep("confirm")}>
+                <Button className="h-11" disabled={((mode === 'sync' ? syncSummary?.validRecords : summary?.validRecords) || 0) === 0 || isProcessing} onClick={() => setStep("confirm")}>
                    Confirm Totals <ChevronRight className="ml-2 h-4 w-4" />
                 </Button>
              </div>
           </div>
         )}
 
-        {step === "confirm" && summary && (
+        {step === "confirm" && (summary || syncSummary) && (
           <div className="space-y-6 py-6">
              <div className="text-center space-y-2">
                 <div className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary mb-2">
                    <AlertCircle className="h-6 w-6" />
                 </div>
-                <h3 className="text-lg font-bold">Ready to Import?</h3>
+                <h3 className="text-lg font-bold">Ready to Sync?</h3>
                 <p className="text-sm text-muted-foreground">
-                  You are about to import <strong>{summary.validRecords}</strong> confirmed payments for <strong>{formatDate(summary.businessDate)}</strong> totaling <strong>{formatUGX(summary.totalAmount)}</strong>.
+                  You are about to process <strong>{mode === 'sync' ? syncSummary?.validRecords : summary?.validRecords}</strong> records.
+                  {mode === 'sync' ? ' Customer balances will be updated and' : ''} <strong>{formatUGX(mode === 'sync' ? syncSummary?.totalCollection || 0 : summary?.totalAmount || 0)}</strong> will be registered as confirmed bank collections.
                 </p>
              </div>
 
              <div className="flex flex-col gap-2">
                 <Button className="w-full h-12 text-lg" disabled={isProcessing} onClick={handleConfirm}>
-                   {isProcessing ? <Loader2 className="h-5 w-5 animate-spin mr-2" /> : "Process Import Now"}
+                   {isProcessing ? <Loader2 className="h-5 w-5 animate-spin mr-2" /> : "Process Sync Now"}
                 </Button>
                 <Button variant="ghost" className="h-11" disabled={isProcessing} onClick={() => setStep("preview")}>
                    Review Records Again
@@ -288,33 +351,28 @@ export function DailyImportWizard() {
           </div>
         )}
 
-        {step === "complete" && summary && (
+        {step === "complete" && (summary || syncSummary) && (
           <div className="space-y-6 py-6 text-center">
              <div className="inline-flex h-16 w-16 items-center justify-center rounded-full bg-green-100 text-green-600 mb-2">
                 <CheckCircle2 className="h-10 w-10" />
              </div>
              <div className="space-y-1">
-                <h3 className="text-xl font-bold">Import Successful</h3>
-                <p className="text-sm text-muted-foreground">The daily collection report has been recorded in the audit trail.</p>
+                <h3 className="text-xl font-bold">{mode === 'sync' ? 'Balance Sync' : 'Import'} Successful</h3>
+                <p className="text-sm text-muted-foreground">{mode === 'sync' ? 'Account balances have been updated and daily totals updated.' : 'The daily collection report has been recorded in the audit trail.'}</p>
              </div>
 
              <div className="bg-muted/50 p-4 rounded-xl space-y-2 text-left">
                 <div className="flex justify-between text-xs">
-                   <span className="text-muted-foreground">Business Date:</span>
-                   <span className="font-bold">{formatDate(summary.businessDate)}</span>
+                   <span className="text-muted-foreground">{mode === 'sync' ? 'Records Synced:' : 'Business Date:'}</span>
+                   <span className="font-bold">{mode === 'sync' ? syncSummary?.totalRecords : formatDate(summary?.businessDate || "")}</span>
                 </div>
                 <div className="flex justify-between text-xs">
-                   <span className="text-muted-foreground">Total Records:</span>
-                   <span className="font-bold">{summary.totalRecords}</span>
-                </div>
-                <div className="flex justify-between text-xs">
-                   <span className="text-muted-foreground">Total Amount:</span>
-                   <span className="font-bold text-primary">{formatUGX(summary.totalAmount)}</span>
+                   <span className="text-muted-foreground">Confirmed Collection:</span>
+                   <span className="font-bold text-primary">{formatUGX(mode === 'sync' ? syncSummary?.totalCollection || 0 : summary?.totalAmount || 0)}</span>
                 </div>
              </div>
 
              <Button className="w-full h-11" onClick={() => setOpen(false)}>Close Wizard</Button>
-             <p className="text-[10px] text-muted-foreground">This import is now available for future reconciliation.</p>
           </div>
         )}
       </DialogContent>

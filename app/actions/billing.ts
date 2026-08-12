@@ -12,6 +12,7 @@ import {
   user as userTable,
   receipt,
   dailyCollectionRecord,
+  dailyCollectionImport,
   reconciliationMatch,
   auditLog,
   meterReading,
@@ -910,10 +911,9 @@ export async function getCollectionSummary() {
       totalConfirmed: sum(dailyCollectionRecord.amount),
     })
     .from(dailyCollectionRecord)
-    .innerJoin(reconciliationMatch, eq(dailyCollectionRecord.id, reconciliationMatch.dailyCollectionRecordId))
-    .innerJoin(receipt, eq(reconciliationMatch.receiptId, receipt.id))
+    .innerJoin(dailyCollectionImport, eq(dailyCollectionRecord.batchId, dailyCollectionImport.id))
     .where(and(
-      eq(receipt.billingPeriodId, displayPeriod.id),
+      eq(dailyCollectionImport.billingPeriodId, displayPeriod.id),
       eq(dailyCollectionRecord.importStatus, 'matched')
     ))
 

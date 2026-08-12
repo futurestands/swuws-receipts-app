@@ -11,6 +11,8 @@ import { sql } from "drizzle-orm"
 import { user } from "./auth"
 import { receipt } from "./finance"
 
+import { billingPeriod } from "./billing"
+
 /**
  * Metadata for daily collection reports imported from the external billing system.
  */
@@ -19,6 +21,7 @@ export const dailyCollectionImport = pgTable(
   {
     id: text("id").primaryKey(),
     businessDate: timestamp("businessDate").notNull(),
+    billingPeriodId: text("billingPeriodId").references(() => billingPeriod.id, { onDelete: "set null" }),
     filename: text("filename").notNull(),
     uploadedById: text("uploadedById")
       .notNull()

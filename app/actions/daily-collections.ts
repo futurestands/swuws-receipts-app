@@ -1,17 +1,24 @@
 "use server"
 
 import { db } from "@/lib/db"
-import { dailyCollectionImport, dailyCollectionRecord, user as userTable } from "@/lib/db/schema"
+import {
+  dailyCollectionImport,
+  dailyCollectionRecord,
+  user as userTable,
+  customer,
+  billingPeriod
+} from "@/lib/db/schema"
 import { requireUser } from "@/lib/session"
 import { canUploadBilling } from "@/lib/permissions"
-import { eq, desc, and, ilike, or, sql, count } from "drizzle-orm"
+import { eq, desc, and, ilike, or, sql, count, inArray } from "drizzle-orm"
 import { randomUUID, createHash } from "crypto"
 import * as XLSX from "xlsx"
 import { z } from "zod"
 import { revalidatePath } from "next/cache"
 import { writeAudit } from "@/lib/audit"
-import { getImportMapping } from "@/lib/import-engine"
-import { logEvent } from "@/lib/logger"
+import { getImportMapping, processExcelImport } from "@/lib/import-engine"
+import { DEFAULT_DAILY_SYNC_MAPPING } from "@/lib/import-mappings"
+import { logEvent, logFinancial } from "@/lib/logger"
 
 const REQUIRED_COLUMNS = [
   "Account Number",
@@ -60,25 +67,10 @@ export interface DailyValidationSummary {
 }
 
 /**
- * DAILY COLLECTION MODULE (Phase 2A Foundation)
- *
- * This module prepares the system for future implementation of:
- * - Daily Collection Import (File Parsing)
- * - Collection Validation
- * - Collection Reconciliation (Matching Receipts to External Data)
- * - Business Day Closing
- * - Official Collection Metrics for Dashboard
- *
- * These features are intentionally deferred to Phase 2B and beyond.
- */
-
-/**
  * Returns metadata for previously uploaded daily collection reports.
  */
 export async function listDailyImports() {
   const current = await requireUser()
-
-  // Restricted to users authorized for collection/billing administration
   if (!canUploadBilling(current)) throw new Error("Forbidden")
 
   return db
@@ -94,12 +86,9 @@ export async function listDailyImports() {
     })
     .from(dailyCollectionImport)
     .innerJoin(userTable, eq(dailyCollectionImport.uploadedById, userTable.id))
-    .orderBy(desc(dailyCollectionImport.businessDate))
+    .orderBy(desc(dailyCollectionImport.businessDate), desc(dailyCollectionImport.createdAt))
 }
 
-/**
- * Calculates SHA-256 hash of a file for duplicate detection.
- */
 async function calculateHash(file: File): Promise<string> {
   const buffer = Buffer.from(await file.arrayBuffer())
   return createHash("sha256").update(buffer).digest("hex")
@@ -115,15 +104,10 @@ export async function validateDailyCollectionImport(formData: FormData): Promise
   const file = formData.get("file") as File
   if (!file || file.size === 0) return { ok: false, error: "No file provided" }
 
-  const startTime = Date.now()
   const fileHash = await calculateHash(file)
 
-  // 1. Duplicate File Check
-  const [existingHash] = await db
-    .select({ id: dailyCollectionImport.id })
-    .from(dailyCollectionImport)
-    .where(eq(dailyCollectionImport.fileHash, fileHash))
-    .limit(1)
+  // Duplicate Check
+  const [existingHash] = await db.select({ id: dailyCollectionImport.id }).from(dailyCollectionImport).where(eq(dailyCollectionImport.fileHash, fileHash)).limit(1)
 
   const buffer = await file.arrayBuffer()
   const workbook = XLSX.read(buffer)
@@ -135,21 +119,17 @@ export async function validateDailyCollectionImport(formData: FormData): Promise
   const results: { valid: boolean; errors: string[]; data: DailyImportRow }[] = []
   let totalAmount = 0
   let validCount = 0
-  let errorCount = 0
   let businessDate: string | null = null
 
   // Check columns
   const firstRow = rawData[0] as Record<string, unknown>
   const missingColumns = REQUIRED_COLUMNS.filter(col => !(col in firstRow))
-  if (missingColumns.length > 0) {
-    return { ok: false, error: `Missing required columns: ${missingColumns.join(", ")}` }
-  }
+  if (missingColumns.length > 0) return { ok: false, error: `Missing columns: ${missingColumns.join(", ")}` }
 
   const seenRefs = new Set<string>()
 
   for (const rawRow of rawData as Array<Record<string, unknown>>) {
     const errors: string[] = []
-
     const mappedRow: DailyImportRow = {
       accountNumber: String(rawRow["Account Number"] || "").trim(),
       customerName: String(rawRow["Customer Name"] || "").trim(),
@@ -162,265 +142,196 @@ export async function validateDailyCollectionImport(formData: FormData): Promise
     }
 
     const parsed = dailyRowSchema.safeParse(mappedRow)
-    if (!parsed.success) {
-      parsed.error.issues.forEach(i => errors.push(i.message))
-    }
-
-    if (seenRefs.has(mappedRow.externalReference)) {
-      errors.push(`Duplicate External Reference: ${mappedRow.externalReference}`)
-    }
+    if (!parsed.success) parsed.error.issues.forEach(i => errors.push(i.message))
+    if (seenRefs.has(mappedRow.externalReference)) errors.push(`Duplicate Ref: ${mappedRow.externalReference}`)
     seenRefs.add(mappedRow.externalReference)
 
     const isValid = errors.length === 0
     if (isValid) {
-      validCount++
-      totalAmount += mappedRow.amountPaid
-      // Use the first valid row to determine business date
+      validCount++; totalAmount += mappedRow.amountPaid;
       if (!businessDate) businessDate = mappedRow.paymentDate
-    } else {
-      errorCount++
     }
-
     results.push({ valid: isValid, errors, data: mappedRow })
-  }
-
-  // 2. Duplicate Date Check
-  let isDuplicateDate = false
-  if (businessDate) {
-    const [existingDate] = await db
-      .select({ id: dailyCollectionImport.id })
-      .from(dailyCollectionImport)
-      .where(and(
-        eq(dailyCollectionImport.businessDate, new Date(businessDate)),
-        eq(dailyCollectionImport.status, 'processed')
-      ))
-      .limit(1)
-    isDuplicateDate = !!existingDate
   }
 
   return {
     ok: true,
     summary: {
-      filename: file.name,
-      fileHash,
-      businessDate: businessDate || "",
-      totalRecords: rawData.length,
-      validRecords: validCount,
-      failedRecords: errorCount,
-      totalAmount,
-      rows: results,
-      isDuplicateFile: !!existingHash,
-      isDuplicateDate
+      filename: file.name, fileHash, businessDate: businessDate || "",
+      totalRecords: rawData.length, validRecords: validCount, failedRecords: rawData.length - validCount,
+      totalAmount, rows: results, isDuplicateFile: !!existingHash, isDuplicateDate: false
     }
   }
 }
 
 /**
- * Commits the Daily Collection Import to history and persists individual records.
- * (Phase 2C Transactional Persistence)
+ * Commits the Daily Collection Import.
  */
 export async function commitDailyCollectionImport(summary: DailyValidationSummary) {
   const current = await requireUser()
   if (!canUploadBilling(current)) throw new Error("Forbidden")
 
-  if (summary.isDuplicateFile && current.role !== 'admin') {
-    throw new Error("Duplicate file hash detected. Only System Administrators can override this.")
-  }
-
-  const startTime = Date.now()
   const importId = randomUUID()
+  const [activePeriod] = await db.select({ id: billingPeriod.id }).from(billingPeriod).where(eq(billingPeriod.status, 'active')).limit(1)
 
   try {
     await db.transaction(async (tx) => {
-      // 1. Create Metadata Batch Entry
       await tx.insert(dailyCollectionImport).values({
-        id: importId,
-        businessDate: new Date(summary.businessDate),
-        filename: summary.filename,
-        fileHash: summary.fileHash,
-        uploadedById: current.id,
-        status: 'processed',
-        totalRecords: summary.totalRecords,
-        successfulRecords: summary.validRecords,
-        failedRecords: summary.failedRecords,
-        totalAmount: summary.totalAmount,
-        processingDuration: Date.now() - startTime,
+        id: importId, businessDate: new Date(summary.businessDate), billingPeriodId: activePeriod?.id,
+        filename: summary.filename, fileHash: summary.fileHash, uploadedById: current.id,
+        status: 'processed', totalRecords: summary.totalRecords, totalAmount: summary.totalAmount,
       })
 
-      // 2. Persist Individual Valid Records
       const validRows = summary.rows.filter(r => r.valid)
       if (validRows.length > 0) {
-        const recordsToInsert = validRows.map(row => ({
-          id: randomUUID(),
-          batchId: importId,
-          accountNumber: row.data.accountNumber,
-          customerName: row.data.customerName,
-          amount: row.data.amountPaid,
-          paymentDate: new Date(row.data.paymentDate),
-          externalReference: row.data.externalReference,
-          paymentChannel: row.data.paymentChannel,
-          schemeName: row.data.scheme,
-          branchName: row.data.area,
-          importStatus: 'imported',
+        const records = validRows.map(row => ({
+          id: randomUUID(), batchId: importId, accountNumber: row.data.accountNumber, customerName: row.data.customerName,
+          amount: row.data.amountPaid, paymentDate: new Date(row.data.paymentDate), externalReference: row.data.externalReference,
+          paymentChannel: row.data.paymentChannel, schemeName: row.data.scheme, branchName: row.data.area, importStatus: 'imported' as const,
         }))
-
-        // Chunked batch insert for performance
-        const CHUNK_SIZE = 1000
-        for (let i = 0; i < recordsToInsert.length; i += CHUNK_SIZE) {
-          await tx.insert(dailyCollectionRecord).values(recordsToInsert.slice(i, i + CHUNK_SIZE))
-        }
+        const CHUNK = 1000
+        for (let i = 0; i < records.length; i += CHUNK) await tx.insert(dailyCollectionRecord).values(records.slice(i, i + CHUNK))
       }
 
-      // 3. Log Audit
-      await writeAudit({
-        user: current,
-        action: "daily_collection.import",
-        entityType: "daily_collection_import",
-        entityId: importId,
-        details: {
-          filename: summary.filename,
-          businessDate: summary.businessDate,
-          records: summary.totalRecords,
-          amount: summary.totalAmount,
-        }
-      }, tx)
+      await writeAudit({ user: current, action: "daily_collection.import", entityType: "daily_collection_import", entityId: importId, details: { filename: summary.filename, amount: summary.totalAmount } }, tx)
     })
 
     revalidatePath("/dashboard/billing/daily")
     return { ok: true, id: importId }
-  } catch (err: unknown) {
-    logEvent({
-      message: "Daily import failed",
-      severity: "error",
-      category: "system",
-      error: err,
-      user: current,
-    })
-    const message = err instanceof Error ? err.message : "Failed to commit import"
-    return { ok: false, error: message }
-  }
+  } catch (err: any) { return { ok: false, error: err.message } }
+}
+
+const dailySyncSchema = z.object({
+  accountNumber: z.coerce.string().trim().min(1, "Account Number is required"),
+  totalDue: z.coerce.number().default(0),
+})
+
+export type DailySyncRow = z.infer<typeof dailySyncSchema>
+
+export interface DailySyncSummary {
+  filename: string
+  fileHash: string
+  totalRecords: number
+  validRecords: number
+  failedRecords: number
+  totalCollection: number
+  rows: { valid: boolean; errors: string[]; data: DailySyncRow; collection: number }[]
 }
 
 /**
- * Fetch a single import batch details.
+ * DAILY BALANCE SYNC (Simplified Import)
  */
+export async function validateDailyBalanceSync(formData: FormData): Promise<{ ok: true; summary: DailySyncSummary } | { ok: false; error: string }> {
+  const current = await requireUser()
+  if (!canUploadBilling(current)) throw new Error("Forbidden")
+
+  const file = formData.get("file") as File
+  if (!file || file.size === 0) return { ok: false, error: "No file" }
+
+  const fileHash = await calculateHash(file)
+  const allCustomers = await db.select({ id: customer.id, account: customer.customerAccount, balance: customer.accountBalance }).from(customer)
+  const customerMap = new Map(allCustomers.map(c => [c.account?.toLowerCase(), c]))
+
+  const engineSummary = await processExcelImport({
+    file, schema: dailySyncSchema as any, mapping: DEFAULT_DAILY_SYNC_MAPPING as any,
+    onValidateRow: (data: DailySyncRow) => {
+      const errors: string[] = []
+      if (!customerMap.get(data.accountNumber.toLowerCase())) errors.push(`Not found: ${data.accountNumber}`)
+      return { errors, warnings: [] }
+    }
+  })
+
+  let totalCollection = 0
+  const rows = engineSummary.rows.map(r => {
+    let collection = 0
+    if (r.valid) {
+      const cust = customerMap.get(r.data.accountNumber.toLowerCase())!
+      collection = Math.max(0, Number(cust.balance) - r.data.totalDue)
+      totalCollection += collection
+    }
+    return { ...r, collection }
+  })
+
+  return { ok: true, summary: { filename: file.name, fileHash, totalRecords: engineSummary.totalRows, validRecords: engineSummary.validRows, failedRecords: engineSummary.errorRows, totalCollection, rows } }
+}
+
+/**
+ * COMMITS THE BALANCE SYNC
+ */
+export async function commitDailyBalanceSync(summary: DailySyncSummary) {
+  const current = await requireUser()
+  if (!canUploadBilling(current)) throw new Error("Forbidden")
+
+  const importId = randomUUID()
+  const [activePeriod] = await db.select({ id: billingPeriod.id }).from(billingPeriod).where(eq(billingPeriod.status, 'active')).limit(1)
+
+  try {
+    await db.transaction(async (tx) => {
+      await tx.insert(dailyCollectionImport).values({
+        id: importId, businessDate: new Date(), billingPeriodId: activePeriod?.id, filename: summary.filename,
+        fileHash: summary.fileHash, uploadedById: current.id, status: 'processed', totalRecords: summary.totalRecords, totalAmount: summary.totalCollection,
+      })
+
+      const validRows = summary.rows.filter(r => r.valid)
+      const accounts = validRows.map(r => r.data.accountNumber.toLowerCase())
+      const customers = await tx.select({ id: customer.id, account: customer.customerAccount, name: customer.name }).from(customer).where(inArray(customer.customerAccount, accounts))
+      const custMap = new Map(customers.map(c => [c.account?.toLowerCase(), c]))
+
+      const CHUNK = 400
+      for (let i = 0; i < validRows.length; i += CHUNK) {
+        const chunk = validRows.slice(i, i + CHUNK)
+        const valuesList = chunk.map(r => sql`(${custMap.get(r.data.accountNumber.toLowerCase())!.id}, ${r.data.totalDue}::numeric)`).reduce((a, c) => sql`${a}, ${c}`)
+        await tx.execute(sql`UPDATE customer AS c SET "accountBalance" = v.new_balance, "updatedAt" = now() FROM (VALUES ${valuesList}) AS v(id, new_balance) WHERE c.id = v.id`)
+      }
+
+      const collections = validRows.filter(r => r.collection > 0).map(r => ({
+        id: randomUUID(), batchId: importId, accountNumber: r.data.accountNumber, customerName: custMap.get(r.data.accountNumber.toLowerCase())!.name,
+        amount: r.collection, paymentDate: new Date(), externalReference: `SYNC-${importId.slice(0, 8)}`, paymentChannel: "EBS Balance Sync", importStatus: 'matched' as const,
+      }))
+      for (let i = 0; i < collections.length; i += CHUNK) await tx.insert(dailyCollectionRecord).values(collections.slice(i, i + CHUNK))
+
+      await writeAudit({ user: current, action: "daily_collection.balance_sync", entityType: "daily_collection_import", entityId: importId, details: { filename: summary.filename, amount: summary.totalCollection } }, tx)
+    })
+
+    logFinancial("Daily Balance Sync Complete", { filename: summary.filename, amount: summary.totalCollection }, current)
+    revalidatePath("/dashboard/billing/daily")
+    return { ok: true, id: importId }
+  } catch (err: any) { return { ok: false, error: err.message } }
+}
+
+export async function downloadDailyCollectionTemplate(format: "xlsx" | "csv") {
+  await requireUser()
+  const dbMapping = await getImportMapping("import.daily.collections")
+  const mapping: Record<string, string | string[]> = dbMapping || { ...DEFAULT_DAILY_IMPORT_MAPPING }
+  const headers = Object.values(mapping).map(v => Array.isArray(v) ? v[0] : v) as string[]
+  const sample: Record<string, string> = {}
+  Object.entries(mapping).forEach(([k, v]) => {
+    const col = Array.isArray(v) ? v[0] : v
+    if (k === 'accountNumber') sample[col] = "6000000000"
+    else if (k === 'amountPaid') sample[col] = "50000"
+    else sample[col] = "Sample"
+  })
+  const ws = XLSX.utils.json_to_sheet([sample], { header: headers })
+  const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "Template")
+  return format === "xlsx" ? XLSX.write(wb, { type: "buffer", bookType: "xlsx" }).toString("base64") : Buffer.from(XLSX.utils.sheet_to_csv(ws)).toString("base64")
+}
+
 export async function getDailyImportDetails(id: string) {
   const current = await requireUser()
   if (!canUploadBilling(current)) throw new Error("Forbidden")
-
-  const [batch] = await db
-    .select({
-      id: dailyCollectionImport.id,
-      businessDate: dailyCollectionImport.businessDate,
-      filename: dailyCollectionImport.filename,
-      totalRecords: dailyCollectionImport.totalRecords,
-      totalAmount: dailyCollectionImport.totalAmount,
-      status: dailyCollectionImport.status,
-      uploadedByName: userTable.name,
-      createdAt: dailyCollectionImport.createdAt,
-    })
-    .from(dailyCollectionImport)
-    .innerJoin(userTable, eq(dailyCollectionImport.uploadedById, userTable.id))
-    .where(eq(dailyCollectionImport.id, id))
-    .limit(1)
-
+  const [batch] = await db.select({ id: dailyCollectionImport.id, businessDate: dailyCollectionImport.businessDate, filename: dailyCollectionImport.filename, totalRecords: dailyCollectionImport.totalRecords, totalAmount: dailyCollectionImport.totalAmount, status: dailyCollectionImport.status, uploadedByName: userTable.name, createdAt: dailyCollectionImport.createdAt }).from(dailyCollectionImport).innerJoin(userTable, eq(dailyCollectionImport.uploadedById, userTable.id)).where(eq(dailyCollectionImport.id, id)).limit(1)
   return batch || null
 }
 
-/**
- * Search and paginate imported records for a specific batch.
- */
-export async function getDailyImportRecords(params: {
-  batchId: string
-  page: number
-  limit: number
-  search?: string
-  channel?: string
-  status?: string
-}) {
+export async function getDailyImportRecords(params: { batchId: string, page: number, limit: number, search?: string, channel?: string, status?: string }) {
   const current = await requireUser()
   if (!canUploadBilling(current)) throw new Error("Forbidden")
-
   const offset = (params.page - 1) * params.limit
-
-  const conditions = [eq(dailyCollectionRecord.batchId, params.batchId)]
-  if (params.search) {
-    conditions.push(or(
-      ilike(dailyCollectionRecord.accountNumber, `%${params.search}%`),
-      ilike(dailyCollectionRecord.customerName, `%${params.search}%`),
-      ilike(dailyCollectionRecord.externalReference, `%${params.search}%`)
-    )!)
-  }
-  if (params.channel && params.channel !== 'all') {
-    conditions.push(eq(dailyCollectionRecord.paymentChannel, params.channel))
-  }
-  if (params.status && params.status !== 'all') {
-    conditions.push(eq(dailyCollectionRecord.importStatus, params.status))
-  }
-
-  const [totalResult] = await db
-    .select({ count: count() })
-    .from(dailyCollectionRecord)
-    .where(and(...conditions))
-
-  const records = await db
-    .select()
-    .from(dailyCollectionRecord)
-    .where(and(...conditions))
-    .limit(params.limit)
-    .offset(offset)
-    .orderBy(dailyCollectionRecord.customerName)
-
-  return {
-    records,
-    total: Number(totalResult?.count || 0),
-    page: params.page,
-    totalPages: Math.ceil(Number(totalResult?.count || 0) / params.limit)
-  }
-}
-
-/**
- * Generates a template file for Daily Collection imports.
- */
-export async function downloadDailyCollectionTemplate(format: "xlsx" | "csv") {
-  await requireUser()
-
-  // Resolve headers from Template Hub
-  const dbMapping = await getImportMapping("import.daily.collections")
-
-  /**
-   * STRICT TEMPLATE ALIGNMENT (Phase 2B Fix)
-   *
-   * We now use the DB mapping EXCLUSIVELY if it exists.
-   * Mandatory columns are NO LONGER injected. What is in the JSON is what is in the Excel.
-   */
-  const mapping: Record<string, string | string[]> = dbMapping || { ...DEFAULT_DAILY_IMPORT_MAPPING }
-
-  // 2. Generate Sample Data strictly based on the mapping keys
-  const headers = Object.values(mapping).map(v => Array.isArray(v) ? v[0] : v) as string[]
-  const sampleRow: Record<string, string> = {}
-
-  // Fill sample values ONLY for keys that the user defined in their JSON
-  Object.entries(mapping).forEach(([key, colOrList]) => {
-    const col = Array.isArray(colOrList) ? colOrList[0] : colOrList
-    if (key === 'accountNumber') sampleRow[col] = "6000000000"
-    else if (key === 'customerName') sampleRow[col] = "Sample Customer"
-    else if (key === 'amountPaid') sampleRow[col] = "50000"
-    else if (key === 'paymentDate') sampleRow[col] = new Date().toISOString().split('T')[0]
-    else if (key === 'externalReference') sampleRow[col] = "REF-" + Math.random().toString(36).toUpperCase().slice(-8)
-    else if (key === 'paymentChannel') sampleRow[col] = "MTN Mobile Money"
-    else sampleRow[col] = "Optional Value"
-  })
-
-  const worksheet = XLSX.utils.json_to_sheet([sampleRow], { header: headers })
-  const workbook = XLSX.utils.book_new()
-  XLSX.utils.book_append_sheet(workbook, worksheet, "DailyCollections")
-
-  if (format === "xlsx") {
-    const buffer = XLSX.write(workbook, { type: "buffer", bookType: "xlsx" })
-    return buffer.toString("base64")
-  } else {
-    const csv = XLSX.utils.sheet_to_csv(worksheet)
-    return Buffer.from(csv).toString("base64")
-  }
+  const cond = [eq(dailyCollectionRecord.batchId, params.batchId)]
+  if (params.search) cond.push(or(ilike(dailyCollectionRecord.accountNumber, `%${params.search}%`), ilike(dailyCollectionRecord.customerName, `%${params.search}%`), ilike(dailyCollectionRecord.externalReference, `%${params.search}%`))!)
+  if (params.channel && params.channel !== 'all') cond.push(eq(dailyCollectionRecord.paymentChannel, params.channel))
+  if (params.status && params.status !== 'all') cond.push(eq(dailyCollectionRecord.importStatus, params.status))
+  const [total] = await db.select({ count: count() }).from(dailyCollectionRecord).where(and(...cond))
+  const records = await db.select().from(dailyCollectionRecord).where(and(...cond)).limit(params.limit).offset(offset).orderBy(dailyCollectionRecord.customerName)
+  return { records, total: Number(total?.count || 0), page: params.page, totalPages: Math.ceil(Number(total?.count || 0) / params.limit) }
 }

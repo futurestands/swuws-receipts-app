@@ -145,7 +145,7 @@ export default async function CollectionManagementPage() {
                 {(summary.displayPeriod.status === 'active' || summary.displayPeriod.status === 'draft') && (
                   <Button asChild>
                     <Link href="/dashboard/billing/upload">
-                      <Upload className="mr-2 h-4 w-4" /> Import Monthly Billing
+                      <DynamicIcon name="Upload" className="mr-2 h-4 w-4" /> Import Monthly Billing
                     </Link>
                   </Button>
                 )}

@@ -12,6 +12,7 @@ const TITLES: Record<string, string> = {
   "approval-register": "Approval Register",
   "audit-activity": "Audit Activity Report",
   "meter-reading": "Meter Reading Report",
+  "unmetered-accounts": "Unmetered Accounts Report",
 }
 
 export default async function ReportConfigPage({ params }: { params: Promise<{ id: string }> }) {

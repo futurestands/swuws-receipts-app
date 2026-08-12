@@ -315,10 +315,8 @@ export async function getDashboardStats(params: {
   if (params.category && params.category !== "all") receiptConditions.push(eq(customer.category, params.category))
   if (params.query?.trim()) {
     const q = `%${params.query.trim().toLowerCase()}%`
-    receiptConditions.push(or(
-      ilike(customer.name, q),
-      ilike(customer.customerAccount, q)
-    ))
+    const cond = or(ilike(customer.name, q), ilike(customer.customerAccount, q))
+    if (cond) receiptConditions.push(cond)
   }
 
   const [receiptStats] = await db
@@ -376,10 +374,8 @@ export async function getDashboardStats(params: {
   if (params.category && params.category !== "all") arrearsConditions.push(eq(customer.category, params.category))
   if (params.query?.trim()) {
     const q = `%${params.query.trim().toLowerCase()}%`
-    arrearsConditions.push(or(
-      ilike(customer.name, q),
-      ilike(customer.customerAccount, q)
-    ))
+    const cond = or(ilike(customer.name, q), ilike(customer.customerAccount, q))
+    if (cond) arrearsConditions.push(cond)
   }
   if (customerScope) arrearsConditions.push(customerScope)
 
@@ -508,10 +504,8 @@ export async function getTopDebtors(limit = 10, category?: string, query?: strin
 
   if (query?.trim()) {
     const q = `%${query.trim().toLowerCase()}%`
-    conditions.push(or(
-      ilike(customer.name, q),
-      ilike(customer.customerAccount, q)
-    ))
+    const cond = or(ilike(customer.name, q), ilike(customer.customerAccount, q))
+    if (cond) conditions.push(cond)
   }
 
   return db
