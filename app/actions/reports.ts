@@ -230,23 +230,29 @@ export async function getDashboardStats(params: {
         totalBilled: sum(billingRecord.totalDue),
         totalArrearsBilled: sum(billingRecord.arrears),
         totalCurrentBilled: sum(billingRecord.billAmount),
-        // ULTIMATE RECOVERY MATH (Unified in one query for stability)
-        // 1. Total money moved (Old Debt + Bill - Final Balance)
+        // ULTIMATE RECOVERY MATH (New Money Only)
+        // 1. Total NEW money recovered = (Old Balance + Bill) - New Balance
         totalMoneyRecovered: sum(sql`
-          greatest(0, (greatest(0, coalesce(${billingRecord.arrears}, 0)::numeric) + coalesce(${billingRecord.billAmount}, 0)::numeric) - coalesce(${billingRecord.totalDue}, 0)::numeric)
+          greatest(0, (coalesce(${billingRecord.arrears}, 0)::numeric + coalesce(${billingRecord.billAmount}, 0)::numeric) - coalesce(${billingRecord.totalDue}, 0)::numeric)
         `),
-        // 2. Arrears portion = Reduction in Old Arrears
+        // 2. Applied to Arrears first
         verifiedArrears: sum(sql`
-          greatest(0,
-            greatest(0, coalesce(${billingRecord.arrears}, 0)::numeric) -
-            greatest(0, coalesce(${billingRecord.totalDue}, 0)::numeric - coalesce(${billingRecord.billAmount}, 0)::numeric)
+          least(
+            greatest(0, coalesce(${billingRecord.arrears}, 0)::numeric),
+            greatest(0, (coalesce(${billingRecord.arrears}, 0)::numeric + coalesce(${billingRecord.billAmount}, 0)::numeric) - coalesce(${billingRecord.totalDue}, 0)::numeric)
           )
         `),
-        // 3. Current portion = Reduction in Current Bill
+        // 3. Applied to Current Bill next
         verifiedCurrent: sum(sql`
           least(
             coalesce(${billingRecord.billAmount}, 0)::numeric,
-            greatest(0, coalesce(${billingRecord.billAmount}, 0)::numeric - greatest(0, coalesce(${billingRecord.totalDue}, 0)::numeric))
+            greatest(0,
+              greatest(0, (coalesce(${billingRecord.arrears}, 0)::numeric + coalesce(${billingRecord.billAmount}, 0)::numeric) - coalesce(${billingRecord.totalDue}, 0)::numeric) -
+              least(
+                greatest(0, coalesce(${billingRecord.arrears}, 0)::numeric),
+                greatest(0, (coalesce(${billingRecord.arrears}, 0)::numeric + coalesce(${billingRecord.billAmount}, 0)::numeric) - coalesce(${billingRecord.totalDue}, 0)::numeric)
+              )
+            )
           )
         `),
         // 4. Upfront portion = New credit generated
@@ -291,25 +297,13 @@ export async function getDashboardStats(params: {
   if (params.category && params.category !== "all") verifiedConditions.push(eq(customer.category, params.category))
   if (params.query?.trim()) {
     const q = `%${params.query.trim().toLowerCase()}%`
-    verifiedConditions.push(or(
+    const queryCondition = or(
       ilike(customer.name, q),
       ilike(customer.customerAccount, q)
-    ))
+    )
+    if (queryCondition) verifiedConditions.push(queryCondition)
   }
   if (customerScope) verifiedConditions.push(customerScope)
-
-  // Optimization: Simplified collection query to reduce join complexity
-  const [collectionStats] = await db
-    .select({
-      totalPaid: sum(dailyCollectionRecord.amount),
-    })
-    .from(dailyCollectionRecord)
-    .innerJoin(reconciliationMatch, eq(dailyCollectionRecord.id, reconciliationMatch.dailyCollectionRecordId))
-    .innerJoin(receipt, eq(reconciliationMatch.receiptId, receipt.id))
-    .innerJoin(customer, eq(receipt.customerId, customer.id))
-    .leftJoin(waterScheme, eq(customer.waterSchemeId, waterScheme.id))
-    .leftJoin(branch, eq(waterScheme.branchId, branch.id))
-    .where(and(...verifiedConditions))
 
   // 4. OPERATIONAL CASH (Source: All Issued Receipts)
   const receiptConditions = []
@@ -356,7 +350,6 @@ export async function getDashboardStats(params: {
 
   const excelArrearsCollected = Number(importStats?.verifiedArrears || 0)
   const excelCurrentCollected = Number(importStats?.verifiedCurrent || 0)
-  const excelUpfrontGenerated = Number(importStats?.verifiedUpfront || 0)
 
   // 1. Arrears Recovery (Portion that cleared old debt)
   const verifiedArrears = excelArrearsCollected
@@ -364,8 +357,8 @@ export async function getDashboardStats(params: {
   // 2. Current Month Recovery (Portion that cleared current month bill)
   const verifiedCurrent = excelCurrentCollected
 
-  // 3. Official Collection focus: Only Current Month recovery for progress rates
-  const verifiedTotal = verifiedCurrent
+  // 3. Bank Verified Total (Sum of ALL confirmed recovery from Excel: Arrears + Current)
+  const verifiedTotal = verifiedArrears + verifiedCurrent
 
   const totalHarmonizedCollected = verifiedTotal
 

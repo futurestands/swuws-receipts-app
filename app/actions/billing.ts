@@ -617,22 +617,24 @@ export async function importBilling(
           const cust = customerMap.get(row.data.accountNumber.toLowerCase())!
 
           /**
-           * ULTIMATE RECONCILIATION MATH (Current Bill Focus):
+           * ULTIMATE RECONCILIATION MATH (New Money Only):
            *
-           * 1. Bill Satisfaction: How much of the current month's bill was covered?
-           *    (Including payments and consumption of existing upfront credit)
+           * We only register "Collection" if the customer actually brought in NEW money
+           * this month (or a reduction in balance that isn't just consuming upfront).
            */
           const excelMonthlyBill = Number(row.data.billAmount)
           const excelTotalAmountDue = Number(row.data.totalDue)
           const systemBalanceBefore = Number(cust.accountBalance)
 
-          // billPortion: portion of the CURRENT month's bill that is satisfied
-          const billPortion = Math.max(0, Math.min(excelMonthlyBill, excelMonthlyBill - excelTotalAmountDue))
+          // 1. Total New Money = (Old Balance + Bill) - Final Balance
+          const totalNewMoney = Math.max(0, (systemBalanceBefore + excelMonthlyBill) - excelTotalAmountDue)
 
-          // 2. Arrears Recovery: How much of the old debt was cleared?
+          // 2. Portion 1: Clear Arrears first
           const startingArrears = Math.max(0, systemBalanceBefore)
-          const arrearsRemaining = Math.max(0, excelTotalAmountDue - excelMonthlyBill)
-          const arrearsPortion = Math.max(0, startingArrears - arrearsRemaining)
+          const arrearsPortion = Math.min(startingArrears, totalNewMoney)
+
+          // 3. Portion 2: Clear Current Bill with what's left
+          const billPortion = Math.min(excelMonthlyBill, Math.max(0, totalNewMoney - arrearsPortion))
 
           let appliedFromUpfront = 0
           if (systemBalanceBefore < 0) {
