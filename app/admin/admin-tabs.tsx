@@ -11,7 +11,7 @@ import { CommercialDashboard } from "@/app/admin/commercial-dashboard"
 import { IamPanel } from "@/app/admin/iam-panel"
 import { TariffPanel } from "@/app/admin/tariff-panel"
 import { TemplateManager } from "@/app/admin/template-manager"
-import { SystemResetPanel } from "@/app/admin/system-reset-panel"
+import { MaintenancePanel } from "@/app/admin/maintenance-panel"
 import type { AuditLog, Branch, Cluster, OrgSettings, PaymentMethod, WaterScheme, BillingPeriod, IamRole, IamPermission } from "@/lib/db/schema"
 
 type Agent = {
@@ -184,7 +184,7 @@ export function AdminTabs({
 
       {permissions.canConfigureSystem && (
         <TabsContent value="maintenance" className="mt-4">
-          <SystemResetPanel />
+          <MaintenancePanel initialActive={settings.maintenanceMode} />
         </TabsContent>
       )}
     </Tabs>

@@ -35,6 +35,11 @@ export async function adminExistsPublic() {
  * worth re-solving with a different locking mechanism here.
  */
 export async function bootstrapAdmin(input: { name: string; email: string; password: string }) {
+  // Long-Term Hardening: Disable bootstrap feature in production
+  if (process.env.ALLOW_ADMIN_BOOTSTRAP !== "true") {
+    return { ok: false as const, error: "Feature Disabled for security. Contact System Administrator." }
+  }
+
   if (!input.name?.trim()) return { ok: false as const, error: "Name is required" }
   if (!input.email?.trim()) return { ok: false as const, error: "Email is required" }
   if (!input.password || input.password.length < 8) {
