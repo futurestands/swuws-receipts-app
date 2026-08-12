@@ -487,11 +487,11 @@ export async function validateBillingImport(
 
         // PREVIEW ENHANCEMENT: "Balance Brought Forward" is the TOTAL balance (Inclusive of Bill)
         const fileTotal = Number(data.arrears)
-        if (fileTotal !== 0) {
+        if (fileTotal !== 0 && !isNaN(fileTotal)) {
           data.totalDue = fileTotal
           data.arrears = data.totalDue - data.billAmount
         } else {
-          // Fallback: If Excel total is zero, use system balance as the starting point
+          // Fallback: If Excel total is zero or missing, use system balance as the starting point
           data.arrears = Number(targetCustomer.accountBalance)
           data.totalDue = data.arrears + data.billAmount
         }
@@ -593,8 +593,9 @@ export async function importBilling(
      */
     for (const [sId, rows] of recordsByScheme.entries()) {
       const runId = randomUUID()
-      let schemeTotal = 0
-      let schemeRecovery = 0
+      let schemeBillTotal = 0
+      let schemeRecoveryBill = 0
+      let schemeRecoveryArrears = 0
 
       await db.transaction(async (tx) => {
         await tx.insert(billingRun).values({
@@ -606,36 +607,39 @@ export async function importBilling(
           status: "completed",
           totalCustomers: rows.length,
           totalAmount: 0, // Placeholder
-          totalRecovered: "0", // Placeholder
+          totalRecovered: "0",
+          arrearsRecovered: "0",
         })
 
         const recordsToInsertRaw = rows.map((row) => {
           const cust = customerMap.get(row.data.accountNumber.toLowerCase())!
 
           const excelMonthlyBill = Number(row.data.billAmount)
-          const finalizedArrears = Number(row.data.arrears)
-          const newTotalDue = Number(row.data.totalDue)
+          const excelTotalAmountDue = Number(row.data.totalDue)
           const systemBalanceBefore = Number(cust.accountBalance)
 
           /**
-           * STRICT SWUWS RECOVERY LOGIC (Arrears First):
-           * 1. Total Shillings Found = Portal Balance - (Excel Balance - Monthly Bill)
-           * 2. Any found money MUST clear historical Arrears first.
-           * 3. 'recoveryAmount' only counts money that cleared the August Bill.
+           * ULTIMATE RECONCILIATION MATH (matching user vision):
+           *
+           * 1. Total Shillings Found = (Old Debt + New Bill) - Excel Balance
            */
-          const totalMoneyFound = Math.max(0, systemBalanceBefore - (newTotalDue - excelMonthlyBill))
+          const startingTotalDebt = Math.max(0, systemBalanceBefore) + excelMonthlyBill
+          const totalMoneyRecovered = Math.max(0, startingTotalDebt - excelTotalAmountDue)
 
-          // Portion of found money that cleared August Bill
-          // (Money found - Historical Arrears)
-          const recovery = Math.max(0, totalMoneyFound - finalizedArrears)
+          // 2. Portion 1: Clear Arrears first
+          const arrearsPortion = Math.min(Math.max(0, systemBalanceBefore), totalMoneyRecovered)
+
+          // 3. Portion 2: Clear Current Bill with what's left
+          const billPortion = Math.min(excelMonthlyBill, Math.max(0, totalMoneyRecovered - arrearsPortion))
 
           let appliedFromUpfront = 0
-          if (finalizedArrears < 0) {
-             appliedFromUpfront = Math.min(isNaN(excelMonthlyBill) ? 0 : excelMonthlyBill, Math.abs(finalizedArrears))
+          if (systemBalanceBefore < 0) {
+             appliedFromUpfront = Math.min(excelMonthlyBill, Math.abs(systemBalanceBefore))
           }
 
-          schemeTotal += isNaN(excelMonthlyBill) ? 0 : excelMonthlyBill
-          schemeRecovery += recovery
+          schemeBillTotal += excelMonthlyBill
+          schemeRecoveryBill += billPortion
+          schemeRecoveryArrears += arrearsPortion
 
           return {
             id: randomUUID(),
@@ -643,14 +647,15 @@ export async function importBilling(
             billingPeriodId: summary.billingPeriodId,
             customerId: cust.id,
             accountNumber: row.data.accountNumber,
-            billAmount: String(isNaN(excelMonthlyBill) ? 0 : excelMonthlyBill),
-            arrears: String(isNaN(finalizedArrears) ? 0 : finalizedArrears),
-            // FIX: currentCharges represents the bill for this period, which must be >= 0.
-            currentCharges: String(isNaN(excelMonthlyBill) ? 0 : excelMonthlyBill),
-            totalDue: String(newTotalDue),
-            recoveryAmount: String(recovery),
+            billAmount: String(excelMonthlyBill),
+            arrears: String(systemBalanceBefore),
+            // currentCharges represents the bill for this period, which must be >= 0.
+            currentCharges: String(excelMonthlyBill),
+            totalDue: String(excelTotalAmountDue),
+            recoveryAmount: String(billPortion), // Dashboard success metric
+            arrearsRecovery: String(arrearsPortion), // Reports box 1
             dueDate: new Date(row.data.dueDate),
-            status: newTotalDue <= 0 ? "paid" : (appliedFromUpfront > 0 ? "partially_paid" : "pending"),
+            status: excelTotalAmountDue <= 0 ? "paid" : (appliedFromUpfront > 0 ? "partially_paid" : "pending"),
           }
         })
 
@@ -683,8 +688,9 @@ export async function importBilling(
 
         // Update run totals
         await tx.update(billingRun).set({
-          totalAmount: Math.round(schemeTotal),
-          totalRecovered: String(schemeRecovery)
+          totalAmount: Math.round(schemeBillTotal),
+          totalRecovered: String(schemeRecoveryBill),
+          arrearsRecovered: String(schemeRecoveryArrears)
         }).where(eq(billingRun.id, runId))
 
         // Balance Sync: OVERWRITE system balance with the new Total Due
@@ -705,7 +711,7 @@ export async function importBilling(
       })
 
       importedCount += rows.length
-      totalAmountGlobal += schemeTotal
+      totalAmountGlobal += schemeBillTotal
     }
 
     await writeAudit({

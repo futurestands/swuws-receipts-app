@@ -192,11 +192,11 @@ export async function getDashboardStats(params: {
 
   // Build filters based on selection AND scope
   const billingConditions = []
-  if (activePeriodId) billingConditions.push(eq(billingRecord.billingPeriodId, activePeriodId))
-  if (params.schemeId) billingConditions.push(eq(customer.waterSchemeId, params.schemeId))
-  if (params.branchId) billingConditions.push(eq(waterScheme.branchId, params.branchId))
-  if (params.clusterId) billingConditions.push(eq(branch.clusterId, params.clusterId))
-  if (params.category) billingConditions.push(eq(customer.category, params.category))
+  if (activePeriodId && activePeriodId !== "all") billingConditions.push(eq(billingRecord.billingPeriodId, activePeriodId))
+  if (params.schemeId && params.schemeId !== "all") billingConditions.push(eq(customer.waterSchemeId, params.schemeId))
+  if (params.branchId && params.branchId !== "all") billingConditions.push(eq(waterScheme.branchId, params.branchId))
+  if (params.clusterId && params.clusterId !== "all") billingConditions.push(eq(branch.clusterId, params.clusterId))
+  if (params.category && params.category !== "all") billingConditions.push(eq(customer.category, params.category))
   if (params.query?.trim()) {
     const q = `%${params.query.trim().toLowerCase()}%`
     billingConditions.push(or(
@@ -209,11 +209,11 @@ export async function getDashboardStats(params: {
 
   // 1. BILLING AGGREGATION (Unified: Imports + Field Readings)
   const readingConditions = []
-  if (activePeriodId) readingConditions.push(eq(meterReading.billingPeriodId, activePeriodId))
-  if (params.schemeId) readingConditions.push(eq(customer.waterSchemeId, params.schemeId))
-  if (params.branchId) readingConditions.push(eq(waterScheme.branchId, params.branchId))
-  if (params.clusterId) readingConditions.push(eq(branch.clusterId, params.clusterId))
-  if (params.category) readingConditions.push(eq(customer.category, params.category))
+  if (activePeriodId && activePeriodId !== "all") readingConditions.push(eq(meterReading.billingPeriodId, activePeriodId))
+  if (params.schemeId && params.schemeId !== "all") readingConditions.push(eq(customer.waterSchemeId, params.schemeId))
+  if (params.branchId && params.branchId !== "all") readingConditions.push(eq(waterScheme.branchId, params.branchId))
+  if (params.clusterId && params.clusterId !== "all") readingConditions.push(eq(branch.clusterId, params.clusterId))
+  if (params.category && params.category !== "all") readingConditions.push(eq(customer.category, params.category))
   if (params.query?.trim()) {
     const q = `%${params.query.trim().toLowerCase()}%`
     readingConditions.push(or(
@@ -230,11 +230,29 @@ export async function getDashboardStats(params: {
         totalBilled: sum(billingRecord.totalDue),
         totalArrearsBilled: sum(billingRecord.arrears),
         totalCurrentBilled: sum(billingRecord.billAmount),
-        // STABLE RECOVERY LOGIC:
-        // 1. Portion that covered August Bill (matches Dashboard)
-        verifiedCurrent: sum(billingRecord.recoveryAmount),
-        // 2. Portion that covered Old Debt
-        // (This is derived from total_recovery - bill_coverage logic elsewhere)
+        // ULTIMATE RECOVERY MATH (Unified in one query for stability)
+        // 1. Total money moved (Old Debt + Bill - Final Balance)
+        totalMoneyRecovered: sum(sql`
+          greatest(0, (greatest(0, coalesce(${billingRecord.arrears}, 0)::numeric) + coalesce(${billingRecord.billAmount}, 0)::numeric) - coalesce(${billingRecord.totalDue}, 0)::numeric)
+        `),
+        // 2. Arrears portion = Reduction in Old Arrears
+        verifiedArrears: sum(sql`
+          greatest(0,
+            greatest(0, coalesce(${billingRecord.arrears}, 0)::numeric) -
+            greatest(0, coalesce(${billingRecord.totalDue}, 0)::numeric - coalesce(${billingRecord.billAmount}, 0)::numeric)
+          )
+        `),
+        // 3. Current portion = Reduction in Current Bill
+        verifiedCurrent: sum(sql`
+          least(
+            coalesce(${billingRecord.billAmount}, 0)::numeric,
+            greatest(0, coalesce(${billingRecord.billAmount}, 0)::numeric - greatest(0, coalesce(${billingRecord.totalDue}, 0)::numeric))
+          )
+        `),
+        // 4. Upfront portion = New credit generated
+        verifiedUpfront: sum(sql`
+          greatest(0, coalesce(${billingRecord.totalDue}, 0)::numeric * -1)
+        `),
         billedCount: count(billingRecord.id),
         paidCount: sql<number>`count(case when ${billingRecord.status} = 'paid' then 1 end)::int`,
         confirmedCount: sql<number>`count(case when ${billingRecord.status} = 'pending_bank_confirmation' then 1 end)::int`,
@@ -262,20 +280,21 @@ export async function getDashboardStats(params: {
       .then(rows => rows[0]),
   ])
 
-  // 2. BANK VERIFIED COLLECTIONS (Source: EBS Matched Records)
+  // 3. BANK VERIFIED COLLECTIONS (Source: EBS Matched Records)
   const verifiedConditions = [
     eq(dailyCollectionRecord.importStatus, 'matched')
   ]
-  if (params.schemeId) verifiedConditions.push(eq(customer.waterSchemeId, params.schemeId))
-  if (params.branchId) verifiedConditions.push(eq(waterScheme.branchId, params.branchId))
-  if (activePeriodId) verifiedConditions.push(eq(receipt.billingPeriodId, activePeriodId))
-  if (params.category) verifiedConditions.push(eq(customer.category, params.category))
+  if (params.schemeId && params.schemeId !== "all") verifiedConditions.push(eq(customer.waterSchemeId, params.schemeId))
+  if (params.branchId && params.branchId !== "all") verifiedConditions.push(eq(waterScheme.branchId, params.branchId))
+  if (params.clusterId && params.clusterId !== "all") verifiedConditions.push(eq(branch.clusterId, params.clusterId))
+  if (activePeriodId && activePeriodId !== "all") verifiedConditions.push(eq(receipt.billingPeriodId, activePeriodId))
+  if (params.category && params.category !== "all") verifiedConditions.push(eq(customer.category, params.category))
   if (params.query?.trim()) {
     const q = `%${params.query.trim().toLowerCase()}%`
     verifiedConditions.push(or(
       ilike(customer.name, q),
       ilike(customer.customerAccount, q)
-    )!)
+    ))
   }
   if (customerScope) verifiedConditions.push(customerScope)
 
@@ -289,21 +308,17 @@ export async function getDashboardStats(params: {
     .innerJoin(receipt, eq(reconciliationMatch.receiptId, receipt.id))
     .innerJoin(customer, eq(receipt.customerId, customer.id))
     .leftJoin(waterScheme, eq(customer.waterSchemeId, waterScheme.id))
+    .leftJoin(branch, eq(waterScheme.branchId, branch.id))
     .where(and(...verifiedConditions))
-
-  // 3. UPFRONT RECOVERY (Source: Credit consumed during import)
-  const [upfrontRecovery] = await db
-    .select({ total: sum(sql`case when ${billingRecord.arrears}::numeric < 0 then least(${billingRecord.billAmount}::numeric, abs(${billingRecord.arrears}::numeric)) else 0 end`) })
-    .from(billingRecord)
-    .innerJoin(customer, eq(billingRecord.customerId, customer.id))
-    .where(and(...billingConditions))
 
   // 4. OPERATIONAL CASH (Source: All Issued Receipts)
   const receiptConditions = []
   if (receiptScope) receiptConditions.push(receiptScope)
-  if (params.schemeId) receiptConditions.push(eq(customer.waterSchemeId, params.schemeId))
-  if (activePeriodId) receiptConditions.push(eq(receipt.billingPeriodId, activePeriodId))
-  if (params.category) receiptConditions.push(eq(customer.category, params.category))
+  if (params.schemeId && params.schemeId !== "all") receiptConditions.push(eq(customer.waterSchemeId, params.schemeId))
+  if (params.branchId && params.branchId !== "all") receiptConditions.push(eq(waterScheme.branchId, params.branchId))
+  if (params.clusterId && params.clusterId !== "all") receiptConditions.push(eq(branch.clusterId, params.clusterId))
+  if (activePeriodId && activePeriodId !== "all") receiptConditions.push(eq(receipt.billingPeriodId, activePeriodId))
+  if (params.category && params.category !== "all") receiptConditions.push(eq(customer.category, params.category))
   if (params.query?.trim()) {
     const q = `%${params.query.trim().toLowerCase()}%`
     receiptConditions.push(or(
@@ -319,6 +334,8 @@ export async function getDashboardStats(params: {
     })
     .from(receipt)
     .innerJoin(customer, eq(receipt.customerId, customer.id))
+    .leftJoin(waterScheme, eq(customer.waterSchemeId, waterScheme.id))
+    .leftJoin(branch, eq(waterScheme.branchId, branch.id))
     // Optimization: Exclude voided receipts using LEFT JOIN + NULL check instead of NOT IN
     .leftJoin(auditLog, and(eq(receipt.id, auditLog.entityId), eq(auditLog.action, 'receipt.void')))
     .where(and(
@@ -333,23 +350,23 @@ export async function getDashboardStats(params: {
   // TOTAL BILLING (Selected Period Only)
   const totalBilled = currentBilled // Dashboard focus: Current Month Charges only
 
-  // HARMONIZED COLLECTIONS logic:
-  // 1. Bank Confirmed (EBS Matches)
-  const bankMatched = Number(collectionStats?.totalPaid || 0)
+  // COMPREHENSIVE RECOVERY LOGIC (Arrears First):
+  // As per Business Rule: Use Excel Balance Reductions for Recovery Distribution.
+  // Ignore Daily Collection Imports for these specific summary boxes.
 
-  // 2. Paid via Upfront (Credit used)
-  const upfrontUsed = Number(upfrontRecovery?.total || 0)
+  const excelArrearsCollected = Number(importStats?.verifiedArrears || 0)
+  const excelCurrentCollected = Number(importStats?.verifiedCurrent || 0)
+  const excelUpfrontGenerated = Number(importStats?.verifiedUpfront || 0)
 
-  // 3. Current Month Recovery (Portion from Excel that cleared August bill)
-  const verifiedCurrent = Number(importStats?.verifiedCurrent || 0)
+  // 1. Arrears Recovery (Portion that cleared old debt)
+  const verifiedArrears = excelArrearsCollected
 
-  // 4. Arrears Recovery (Old Debt cleared via Bank Matches + Excel)
-  const verifiedArrears = bankMatched + upfrontUsed
+  // 2. Current Month Recovery (Portion that cleared August bill)
+  const verifiedCurrent = excelCurrentCollected
 
-  // 5. Bank Verified Total (Sum of all bank-confirmed recovery)
+  // 3. Bank Verified Total (Sum of all confirmed recovery from Excel)
   const verifiedTotal = verifiedArrears + verifiedCurrent
 
-  // Total Harmonized Collected for Global Rate calculation
   const totalHarmonizedCollected = verifiedTotal
 
   const operationalCash = Number(receiptStats?.totalAmount || 0)
@@ -360,8 +377,10 @@ export async function getDashboardStats(params: {
 
   // Total System Arrears (Current Snapshot)
   const arrearsConditions = []
-  if (params.schemeId) arrearsConditions.push(eq(customer.waterSchemeId, params.schemeId))
-  if (params.category) arrearsConditions.push(eq(customer.category, params.category))
+  if (params.schemeId && params.schemeId !== "all") arrearsConditions.push(eq(customer.waterSchemeId, params.schemeId))
+  if (params.branchId && params.branchId !== "all") arrearsConditions.push(eq(waterScheme.branchId, params.branchId))
+  if (params.clusterId && params.clusterId !== "all") arrearsConditions.push(eq(branch.clusterId, params.clusterId))
+  if (params.category && params.category !== "all") arrearsConditions.push(eq(customer.category, params.category))
   if (params.query?.trim()) {
     const q = `%${params.query.trim().toLowerCase()}%`
     arrearsConditions.push(or(
@@ -378,6 +397,8 @@ export async function getDashboardStats(params: {
       totalCredit: sql<number>`sum(case when ${customer.accountBalance} < 0 then abs(${customer.accountBalance}) else 0 end)::numeric`,
     })
     .from(customer)
+    .leftJoin(waterScheme, eq(customer.waterSchemeId, waterScheme.id))
+    .leftJoin(branch, eq(waterScheme.branchId, branch.id))
     .where(and(...arrearsConditions))
 
   const totalArrears = Number(arrearsSnapshot?.totalDebt || 0)
