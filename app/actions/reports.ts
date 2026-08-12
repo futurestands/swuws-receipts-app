@@ -361,11 +361,11 @@ export async function getDashboardStats(params: {
   // 1. Arrears Recovery (Portion that cleared old debt)
   const verifiedArrears = excelArrearsCollected
 
-  // 2. Current Month Recovery (Portion that cleared August bill)
+  // 2. Current Month Recovery (Portion that cleared current month bill)
   const verifiedCurrent = excelCurrentCollected
 
-  // 3. Bank Verified Total (Sum of all confirmed recovery from Excel)
-  const verifiedTotal = verifiedArrears + verifiedCurrent
+  // 3. Official Collection focus: Only Current Month recovery for progress rates
+  const verifiedTotal = verifiedCurrent
 
   const totalHarmonizedCollected = verifiedTotal
 

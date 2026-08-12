@@ -447,8 +447,10 @@ export async function validateBillingImport(
              mapping.accountNumber = [v, ...(Array.isArray(mapping.accountNumber) ? mapping.accountNumber : [mapping.accountNumber])]
           } else if (lowerK === "billamount") {
              mapping.billAmount = [v, ...(Array.isArray(mapping.billAmount) ? mapping.billAmount : [mapping.billAmount])]
-          } else if (lowerK === "totalamountdue" || lowerK === "arrears") {
+          } else if (lowerK === "arrears") {
              mapping.arrears = [v, ...(Array.isArray(mapping.arrears) ? mapping.arrears : [mapping.arrears])]
+          } else if (lowerK === "totaldue" || lowerK === "totalamountdue") {
+             mapping.totalDue = [v, ...(Array.isArray(mapping.totalDue) ? mapping.totalDue : [mapping.totalDue])]
           } else if (lowerK === "duedate") {
              mapping.dueDate = [v, ...(Array.isArray(mapping.dueDate) ? mapping.dueDate : [mapping.dueDate])]
           } else {
@@ -614,23 +616,23 @@ export async function importBilling(
         const recordsToInsertRaw = rows.map((row) => {
           const cust = customerMap.get(row.data.accountNumber.toLowerCase())!
 
+          /**
+           * ULTIMATE RECONCILIATION MATH (Current Bill Focus):
+           *
+           * 1. Bill Satisfaction: How much of the current month's bill was covered?
+           *    (Including payments and consumption of existing upfront credit)
+           */
           const excelMonthlyBill = Number(row.data.billAmount)
           const excelTotalAmountDue = Number(row.data.totalDue)
           const systemBalanceBefore = Number(cust.accountBalance)
 
-          /**
-           * ULTIMATE RECONCILIATION MATH (matching user vision):
-           *
-           * 1. Total Shillings Found = (Old Debt + New Bill) - Excel Balance
-           */
-          const startingTotalDebt = Math.max(0, systemBalanceBefore) + excelMonthlyBill
-          const totalMoneyRecovered = Math.max(0, startingTotalDebt - excelTotalAmountDue)
+          // billPortion: portion of the CURRENT month's bill that is satisfied
+          const billPortion = Math.max(0, Math.min(excelMonthlyBill, excelMonthlyBill - excelTotalAmountDue))
 
-          // 2. Portion 1: Clear Arrears first
-          const arrearsPortion = Math.min(Math.max(0, systemBalanceBefore), totalMoneyRecovered)
-
-          // 3. Portion 2: Clear Current Bill with what's left
-          const billPortion = Math.min(excelMonthlyBill, Math.max(0, totalMoneyRecovered - arrearsPortion))
+          // 2. Arrears Recovery: How much of the old debt was cleared?
+          const startingArrears = Math.max(0, systemBalanceBefore)
+          const arrearsRemaining = Math.max(0, excelTotalAmountDue - excelMonthlyBill)
+          const arrearsPortion = Math.max(0, startingArrears - arrearsRemaining)
 
           let appliedFromUpfront = 0
           if (systemBalanceBefore < 0) {
@@ -871,13 +873,7 @@ export async function getCollectionSummary() {
         totalMonthlyBilled: sum(billingRecord.billAmount),
         // PRIORITY LOGIC: Collected money only counts as "Current Collected" AFTER Arrears are fully cleared.
         // CurrentCollected = LEAST(BillAmount, MAX(0, TotalRecovered - Arrears))
-        totalCurrentCollected: sum(sql`
-          case
-            when ${billingRecord.recoveryAmount}::numeric > ${billingRecord.arrears}::numeric
-            then least(${billingRecord.billAmount}::numeric, ${billingRecord.recoveryAmount}::numeric - ${billingRecord.arrears}::numeric)
-            else 0
-          end
-        `),
+        totalCurrentCollected: sum(billingRecord.recoveryAmount),
       })
       .from(billingRecord)
       .where(eq(billingRecord.billingPeriodId, displayPeriod.id))
@@ -950,14 +946,20 @@ export async function getCollectionSummary() {
     .from(billingRun)
     .innerJoin(waterScheme, eq(billingRun.schemeId, waterScheme.id))
     .where(eq(billingRun.billingPeriodId, displayPeriod.id))
-    .orderBy(desc(billingRun.uploadedAt)).limit(5)
+    .orderBy(desc(billingRun.uploadedAt)).limit(100)
+
+  // Arrears & Upfront Snapshot (Global)
+  const [arrearsSnapshot] = await db
+    .select({
+      totalArrears: sql<number>`sum(case when ${customer.accountBalance} > 0 then ${customer.accountBalance} else 0 end)::numeric`,
+      totalUpfront: sql<number>`sum(case when ${customer.accountBalance} < 0 then abs(${customer.accountBalance}) else 0 end)::numeric`,
+    })
+    .from(customer)
 
   const totalBilled = Number(importStats?.totalMonthlyBilled || 0) + Number(readingStats?.totalMonthlyBilled || 0)
 
-  // Official Collection on CURRENT bills (Priority: Arrears First)
-  // This combines bank recovery that cleared the bill + EBS receipts that cleared the bill
-  const ebsCurrentRecovery = Number(ebsStats?.totalConfirmed || 0) // Future: will need receipt-to-bill allocation
-  const totalCollected = Number(importStats?.totalCurrentCollected || 0) + ebsCurrentRecovery
+  // Official Collection on CURRENT bills
+  const totalCollected = Number(importStats?.totalCurrentCollected || 0)
 
   const cashInHand = Number(cashStats?.totalCashInHand || 0)
   const outstanding = Math.max(0, totalBilled - totalCollected)
@@ -975,8 +977,10 @@ export async function getCollectionSummary() {
     totalBills: Number(importStats?.totalBills || 0) + Number(readingStats?.totalReadings || 0),
     customersImported,
     totalBilled,
-    totalCollected, // This is now CONFIRMED EBS money
-    cashInHand,    // This is OPERATIONAL cash from receipts
+    totalCollected,
+    totalSystemArrears: Number(arrearsSnapshot?.totalArrears || 0),
+    totalUpfront: Number(arrearsSnapshot?.totalUpfront || 0),
+    cashInHand,
     outstanding,
     progress,
     receiptsToday: Number(cashStats?.receiptsToday || 0),
@@ -1087,4 +1091,142 @@ export async function getBillingRunDetails(runId: string) {
     .orderBy(customer.name)
 
   return { run, records }
+}
+
+/**
+ * DELETE BILLING RUN (Rollback)
+ *
+ * Permanently deletes a billing run and restores customer balances to their
+ * state before the import (the 'arrears' value captured in the records).
+ */
+export async function deleteBillingRun(runId: string) {
+  const current = await requireUser()
+  if (!canUploadBilling(current)) throw new Error("Forbidden")
+
+  const [run] = await db
+    .select({
+      id: billingRun.id,
+      schemeId: billingRun.schemeId,
+      billingPeriodId: billingRun.billingPeriodId,
+      status: billingPeriod.status
+    })
+    .from(billingRun)
+    .innerJoin(billingPeriod, eq(billingRun.billingPeriodId, billingPeriod.id))
+    .where(eq(billingRun.id, runId))
+    .limit(1)
+
+  if (!run) throw new Error("Billing run not found")
+  if (run.status === "closed" || run.status === "archived") {
+    throw new Error(`Cannot delete a run from a ${run.status} period.`)
+  }
+
+  try {
+    await db.transaction(async (tx) => {
+      // 1. Fetch all records to get the rollback values (the 'arrears' field stores the previous balance)
+      const records = await tx
+        .select({
+          customerId: billingRecord.customerId,
+          arrears: billingRecord.arrears
+        })
+        .from(billingRecord)
+        .where(eq(billingRecord.billingRunId, runId))
+
+      // 2. Restore customer balances in chunks
+      const CHUNK_SIZE = 400
+      for (let i = 0; i < records.length; i += CHUNK_SIZE) {
+        const chunk = records.slice(i, i + CHUNK_SIZE)
+        const valuesList = chunk
+          .map(r => sql`(${r.customerId}, ${r.arrears}::numeric)`)
+          .reduce((acc, curr) => sql`${acc}, ${curr}`)
+
+        await tx.execute(sql`
+          UPDATE customer AS c
+          SET
+            "accountBalance" = v.old_balance,
+            "updatedAt" = now()
+          FROM (VALUES ${valuesList}) AS v(id, old_balance)
+          WHERE c.id = v.id
+        `)
+      }
+
+      // 3. Delete associated records and the run itself
+      // (Cascade deletes billingRecord and billingUpload)
+      await tx.delete(billingRun).where(eq(billingRun.id, runId))
+
+      // 4. Audit Log
+      await writeAudit({
+        user: current,
+        action: "billing.import.delete",
+        entityType: "billing_run",
+        entityId: runId,
+        details: { schemeId: run.schemeId, periodId: run.billingPeriodId },
+      }, tx)
+    })
+
+    logFinancial("Billing Run Deleted (Rollback)", { runId }, current)
+    revalidatePath("/dashboard/billing")
+    return { ok: true }
+  } catch (e: unknown) {
+    console.error("deleteBillingRun failed:", e)
+    return { ok: false, error: e instanceof Error ? e.message : "Failed to delete billing run" }
+  }
+}
+
+/**
+ * BULK DELETE BILLING RUNS (Batch Rollback)
+ */
+export async function bulkDeleteBillingRuns(runIds: string[]) {
+  const current = await requireUser()
+  if (!canUploadBilling(current)) throw new Error("Forbidden")
+  if (!runIds.length) return { ok: true }
+
+  try {
+    await db.transaction(async (tx) => {
+      // 1. Fetch all records for balance restoration
+      const records = await tx
+        .select({
+          customerId: billingRecord.customerId,
+          arrears: billingRecord.arrears
+        })
+        .from(billingRecord)
+        .where(inArray(billingRecord.billingRunId, runIds))
+
+      // 2. Restore balances
+      const CHUNK_SIZE = 400
+      for (let i = 0; i < records.length; i += CHUNK_SIZE) {
+        const chunk = records.slice(i, i + CHUNK_SIZE)
+        const valuesList = chunk
+          .map(r => sql`(${r.customerId}, ${r.arrears}::numeric)`)
+          .reduce((acc, curr) => sql`${acc}, ${curr}`)
+
+        await tx.execute(sql`
+          UPDATE customer AS c
+          SET
+            "accountBalance" = v.old_balance,
+            "updatedAt" = now()
+          FROM (VALUES ${valuesList}) AS v(id, old_balance)
+          WHERE c.id = v.id
+        `)
+      }
+
+      // 3. Delete runs
+      await tx.delete(billingRun).where(inArray(billingRun.id, runIds))
+
+      // 4. Audit Log
+      await writeAudit({
+        user: current,
+        action: "billing.import.bulk_delete",
+        entityType: "billing_run",
+        entityId: runIds.join(","),
+        details: { count: runIds.length },
+      }, tx)
+    })
+
+    logFinancial("Bulk Billing Runs Deleted", { count: runIds.length }, current)
+    revalidatePath("/dashboard/billing")
+    return { ok: true }
+  } catch (e: unknown) {
+    console.error("bulkDeleteBillingRuns failed:", e)
+    return { ok: false, error: e instanceof Error ? e.message : "Failed to delete billing runs" }
+  }
 }

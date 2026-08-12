@@ -11,15 +11,13 @@ import { Button } from "@/components/ui/button"
 import { Upload, FileText, Activity, AlertCircle, Calendar, Wallet, Users, TrendingUp, HandCoins } from "lucide-react"
 import Link from "next/link"
 import { formatUGX, formatDateTime } from "@/lib/format"
-import { Badge } from "@/components/ui/badge"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { CollectionPeriodWizard } from "@/components/collection/collection-period-wizard"
 import { CollectionStatusBadge } from "@/components/collection/collection-status-badge"
 import { CollectionStatusActions } from "@/components/collection/collection-status-actions"
+import { RecentImportsTable } from "@/components/collection/recent-imports-table"
 import { Progress } from "@/components/ui/progress"
 import { PageHeader } from "@/components/ui/page-header"
 import { StatCard, StatCardGrid } from "@/components/ui/stat-card"
-import { ScrollableTableContainer } from "@/components/ui/responsive-table"
 import { EmptyState } from "@/components/ui/empty-state"
 import { DynamicIcon } from "@/components/layout/icons"
 
@@ -83,17 +81,67 @@ export default async function CollectionManagementPage() {
               </div>
             </CardHeader>
             <CardContent className="space-y-6">
-              <StatCardGrid className="sm:grid-cols-5">
-                <StatCard icon={FileText} label="Billed" value={formatUGX(summary.totalBilled)} />
-                <StatCard icon={HandCoins} label="Collected (Cash)" value={formatUGX(summary.cashInHand)} />
-                <StatCard icon={Wallet} label="Matched (EBS)" value={formatUGX(summary.totalCollected)} />
-                <StatCard icon={Users} label="Customers" value={summary.customersImported.toLocaleString()} />
-                <StatCard icon={TrendingUp} label="Progress" value={`${summary.progress.toFixed(1)}%`} />
-              </StatCardGrid>
-
+              <div className="flex items-center justify-between text-sm mb-2">
+                <span className="font-medium">Collection Progress</span>
+                <span className="font-bold">{summary.progress.toFixed(1)}%</span>
+              </div>
               <Progress value={summary.progress} className="h-2" />
 
-              <div className="flex flex-wrap gap-2 pt-4">
+              <StatCardGrid className="sm:grid-cols-2 lg:grid-cols-4">
+                <StatCard
+                  icon={FileText}
+                  label="BILLED (CURRENT)"
+                  value={formatUGX(summary.totalBilled)}
+                  description="New charges for this period"
+                />
+                <StatCard
+                  icon={HandCoins}
+                  label="COLLECTED"
+                  value={formatUGX(summary.totalCollected)}
+                  brandColor="blue"
+                  description="Payments applied to current bill"
+                />
+                <StatCard
+                  icon={AlertCircle}
+                  label="OUTSTANDING"
+                  value={formatUGX(summary.outstanding)}
+                  brandColor="red"
+                  description="Unpaid current charges"
+                />
+                <StatCard
+                  icon={Activity}
+                  label="RECEIPTS PRINTED"
+                  value={summary.receiptsToday.toLocaleString()}
+                />
+              </StatCardGrid>
+
+              <div className="pt-4">
+                <h4 className="text-sm font-semibold mb-3 text-muted-foreground uppercase tracking-wider">Financial Snapshot</h4>
+                <StatCardGrid className="sm:grid-cols-3">
+                  <StatCard
+                    icon={Wallet}
+                    label="TOTAL SYSTEM ARREARS"
+                    value={formatUGX(summary.totalSystemArrears)}
+                    brandColor="yellow"
+                    description="Total debt excluding current bills"
+                  />
+                  <StatCard
+                    icon={TrendingUp}
+                    label="UPFRONT CREDITS"
+                    value={formatUGX(summary.totalUpfront)}
+                    brandColor="green"
+                    description="Total customer overpayments"
+                  />
+                  <StatCard
+                    icon={HandCoins}
+                    label="CASH IN HAND"
+                    value={formatUGX(summary.cashInHand)}
+                    description="Receipts not yet banked"
+                  />
+                </StatCardGrid>
+              </div>
+
+              <div className="flex flex-wrap gap-2 pt-6">
                 {(summary.displayPeriod.status === 'active' || summary.displayPeriod.status === 'draft') && (
                   <Button asChild>
                     <Link href="/dashboard/billing/upload">
@@ -137,38 +185,7 @@ export default async function CollectionManagementPage() {
                 description="Billing data imported for this period will appear here."
               />
             ) : (
-              <ScrollableTableContainer className="border-0">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Scheme</TableHead>
-                      <TableHead>Date</TableHead>
-                      <TableHead>Customers</TableHead>
-                      <TableHead>Total Amount</TableHead>
-                      <TableHead>Status</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {summary.recentUploads.map((run) => (
-                      <TableRow key={run.id}>
-                        <TableCell className="font-medium">
-                          {run.schemeName}
-                        </TableCell>
-                        <TableCell className="text-sm text-muted-foreground">
-                          {formatDateTime(run.uploadedAt)}
-                        </TableCell>
-                        <TableCell>{run.totalCustomers}</TableCell>
-                        <TableCell>{formatUGX(run.totalAmount)}</TableCell>
-                        <TableCell>
-                          <Badge variant="secondary" className="capitalize">
-                            {run.status}
-                          </Badge>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </ScrollableTableContainer>
+              <RecentImportsTable uploads={summary.recentUploads} />
             )}
           </CardContent>
         </Card>
