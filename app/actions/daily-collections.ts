@@ -280,40 +280,105 @@ export async function commitDailyBalanceSync(summary: DailySyncSummary) {
   if (!canUploadBilling(current)) throw new Error("Forbidden")
 
   const importId = randomUUID()
+  const startTime = Date.now()
+
+  // Find current active period to link this import
   const [activePeriod] = await db.select({ id: billingPeriod.id }).from(billingPeriod).where(eq(billingPeriod.status, 'active')).limit(1)
 
   try {
+    const validRows = summary.rows.filter(r => r.valid)
+    if (validRows.length === 0) return { ok: true, id: importId }
+
+    // 1. Fetch Customers in bulk for Mapping (ensure we have IDs and Names)
+    // We use a broader fetch to avoid casing issues with inArray
+    const accounts = Array.from(new Set(validRows.map(r => r.data.accountNumber.trim())))
+
+    const customers = await db
+      .select({ id: customer.id, account: customer.customerAccount, name: customer.name })
+      .from(customer)
+      .where(inArray(customer.customerAccount, accounts))
+
+    const custMap = new Map(customers.map(c => [c.account?.toLowerCase().trim(), c]))
+
     await db.transaction(async (tx) => {
+      // 2. Metadata
       await tx.insert(dailyCollectionImport).values({
-        id: importId, businessDate: new Date(), billingPeriodId: activePeriod?.id, filename: summary.filename,
-        fileHash: summary.fileHash, uploadedById: current.id, status: 'processed', totalRecords: summary.totalRecords, totalAmount: summary.totalCollection,
+        id: importId,
+        businessDate: new Date(),
+        billingPeriodId: activePeriod?.id,
+        filename: summary.filename,
+        fileHash: summary.fileHash,
+        uploadedById: current.id,
+        status: 'processed',
+        totalRecords: summary.totalRecords,
+        successfulRecords: summary.validRecords,
+        failedRecords: summary.failedRecords,
+        totalAmount: summary.totalCollection,
+        processingDuration: Date.now() - startTime,
       })
 
-      const validRows = summary.rows.filter(r => r.valid)
-      const accounts = validRows.map(r => r.data.accountNumber.toLowerCase())
-      const customers = await tx.select({ id: customer.id, account: customer.customerAccount, name: customer.name }).from(customer).where(inArray(customer.customerAccount, accounts))
-      const custMap = new Map(customers.map(c => [c.account?.toLowerCase(), c]))
+      // 3. Batch Update Balances
+      const CHUNK_SIZE = 300
+      for (let i = 0; i < validRows.length; i += CHUNK_SIZE) {
+        const chunk = validRows.slice(i, i + CHUNK_SIZE)
 
-      const CHUNK = 400
-      for (let i = 0; i < validRows.length; i += CHUNK) {
-        const chunk = validRows.slice(i, i + CHUNK)
-        const valuesList = chunk.map(r => sql`(${custMap.get(r.data.accountNumber.toLowerCase())!.id}, ${r.data.totalDue}::numeric)`).reduce((a, c) => sql`${a}, ${c}`)
-        await tx.execute(sql`UPDATE customer AS c SET "accountBalance" = v.new_balance, "updatedAt" = now() FROM (VALUES ${valuesList}) AS v(id, new_balance) WHERE c.id = v.id`)
+        // Filter out rows where customer wasn't found in map (safety)
+        const findable = chunk.filter(r => custMap.has(r.data.accountNumber.toLowerCase().trim()))
+        if (findable.length === 0) continue
+
+        const valuesList = findable.map(r => {
+          const cust = custMap.get(r.data.accountNumber.toLowerCase().trim())!
+          return sql`(${cust.id}, ${r.data.totalDue}::numeric)`
+        }).reduce((acc, curr) => sql`${acc}, ${curr}`)
+
+        await tx.execute(sql`
+          UPDATE customer AS c
+          SET "accountBalance" = v.new_balance, "updatedAt" = now()
+          FROM (VALUES ${valuesList}) AS v(id, new_balance)
+          WHERE c.id = v.id
+        `)
       }
 
-      const collections = validRows.filter(r => r.collection > 0).map(r => ({
-        id: randomUUID(), batchId: importId, accountNumber: r.data.accountNumber, customerName: custMap.get(r.data.accountNumber.toLowerCase())!.name,
-        amount: r.collection, paymentDate: new Date(), externalReference: `SYNC-${importId.slice(0, 8)}`, paymentChannel: "EBS Balance Sync", importStatus: 'matched' as const,
-      }))
-      for (let i = 0; i < collections.length; i += CHUNK) await tx.insert(dailyCollectionRecord).values(collections.slice(i, i + CHUNK))
+      // 4. Register Collections (only for rows where collection > 0)
+      const collectionsToInsert = validRows
+        .filter(r => r.collection > 0 && custMap.has(r.data.accountNumber.toLowerCase().trim()))
+        .map(r => {
+          const cust = custMap.get(r.data.accountNumber.toLowerCase().trim())!
+          return {
+            id: randomUUID(),
+            batchId: importId,
+            accountNumber: r.data.accountNumber,
+            customerName: cust.name,
+            amount: r.collection,
+            paymentDate: new Date(),
+            externalReference: `SYNC-${importId.slice(0, 8)}`,
+            paymentChannel: "EBS Balance Sync",
+            importStatus: 'matched' as const,
+          }
+        })
 
-      await writeAudit({ user: current, action: "daily_collection.balance_sync", entityType: "daily_collection_import", entityId: importId, details: { filename: summary.filename, amount: summary.totalCollection } }, tx)
+      if (collectionsToInsert.length > 0) {
+        for (let i = 0; i < collectionsToInsert.length; i += CHUNK_SIZE) {
+          await tx.insert(dailyCollectionRecord).values(collectionsToInsert.slice(i, i + CHUNK_SIZE))
+        }
+      }
+
+      await writeAudit({
+        user: current,
+        action: "daily_collection.balance_sync",
+        entityType: "daily_collection_import",
+        entityId: importId,
+        details: { filename: summary.filename, records: summary.totalRecords, totalCollection: summary.totalCollection }
+      }, tx)
     })
 
     logFinancial("Daily Balance Sync Complete", { filename: summary.filename, amount: summary.totalCollection }, current)
     revalidatePath("/dashboard/billing/daily")
     return { ok: true, id: importId }
-  } catch (err: any) { return { ok: false, error: err.message } }
+  } catch (err: unknown) {
+    console.error("Daily Balance Sync Failed:", err)
+    return { ok: false, error: err instanceof Error ? err.message : "Failed to sync balances" }
+  }
 }
 
 export async function downloadDailyCollectionTemplate(format: "xlsx" | "csv") {
