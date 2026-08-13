@@ -287,13 +287,8 @@ export async function createReceipt(input: CreateReceiptInput) {
         })
         .returning()
 
-      // 4. Update Customer Account Balance atomically
-      if (data.customerId) {
-        await tx
-          .update(customerTable)
-          .set({ accountBalance: String(newAccountBalance), updatedAt: new Date() })
-          .where(eq(customerTable.id, data.customerId))
-      }
+      // NOTE: We NO LONGER update the customerTable.accountBalance or billingRecord status here.
+      // Customer balances are only reduced when an EBS import (Daily/Monthly) is processed.
 
       // 5. Audit Log
       await writeAudit(

@@ -339,8 +339,8 @@ export async function getDashboardStats(params: {
   const currentBilled = Number(importStats?.totalCurrentBilled || 0) + Number(fieldStats?.totalCurrentBilled || 0)
   const billedCount = Number(importStats?.billedCount || 0) + Number(fieldStats?.billedCount || 0)
 
-  // TOTAL BILLING (Selected Period Only)
-  const totalBilled = currentBilled // Dashboard focus: Current Month Charges only
+  // TOTAL BILLING (Selected Period: Current Charges + Arrears Billed)
+  const totalBilled = currentBilled + arrearsBilled
 
   // COMPREHENSIVE RECOVERY LOGIC (Arrears First):
   // As per Business Rule: Use Excel Balance Reductions for Recovery Distribution.
@@ -488,9 +488,18 @@ export async function getBillPaymentHistory(billingRecordId: string) {
  * TOP DEBTORS (Objective 7 & 14)
  * Fetches customers with the highest live account balances (arrears).
  */
-export async function getTopDebtors(limit = 10, category?: string, query?: string) {
+export async function getTopDebtors(params: {
+  limit?: number
+  category?: string
+  query?: string
+  schemeId?: string
+  branchId?: string
+  clusterId?: string
+}) {
   const current = await requireUser()
   if (!canViewReports(current)) throw new Error("Forbidden")
+
+  const limit = params.limit ?? 10
 
   const conditions = [
     eq(customer.active, true),
@@ -498,12 +507,13 @@ export async function getTopDebtors(limit = 10, category?: string, query?: strin
     applyCustomerScope(current)
   ]
 
-  if (category) {
-    conditions.push(eq(customer.category, category))
-  }
+  if (params.schemeId && params.schemeId !== "all") conditions.push(eq(customer.waterSchemeId, params.schemeId))
+  if (params.branchId && params.branchId !== "all") conditions.push(eq(waterScheme.branchId, params.branchId))
+  if (params.clusterId && params.clusterId !== "all") conditions.push(eq(branch.clusterId, params.clusterId))
+  if (params.category && params.category !== "all") conditions.push(eq(customer.category, params.category))
 
-  if (query?.trim()) {
-    const q = `%${query.trim().toLowerCase()}%`
+  if (params.query?.trim()) {
+    const q = `%${params.query.trim().toLowerCase()}%`
     const cond = or(ilike(customer.name, q), ilike(customer.customerAccount, q))
     if (cond) conditions.push(cond)
   }
@@ -518,6 +528,7 @@ export async function getTopDebtors(limit = 10, category?: string, query?: strin
     })
     .from(customer)
     .leftJoin(waterScheme, eq(customer.waterSchemeId, waterScheme.id))
+    .leftJoin(branch, eq(waterScheme.branchId, branch.id))
     .where(and(...conditions))
     .orderBy(desc(sql`${customer.accountBalance}::numeric`))
     .limit(limit)

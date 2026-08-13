@@ -874,9 +874,11 @@ export async function getCollectionSummary() {
       .select({
         totalBills: count(billingRecord.id),
         totalMonthlyBilled: sum(billingRecord.billAmount),
+        totalArrearsBilled: sum(billingRecord.arrears),
         // PRIORITY LOGIC: Collected money only counts as "Current Collected" AFTER Arrears are fully cleared.
         // CurrentCollected = LEAST(BillAmount, MAX(0, TotalRecovered - Arrears))
         totalCurrentCollected: sum(billingRecord.recoveryAmount),
+        totalArrearsRecovered: sum(billingRecord.arrearsRecovery),
       })
       .from(billingRecord)
       .where(eq(billingRecord.billingPeriodId, displayPeriod.id))
@@ -885,6 +887,7 @@ export async function getCollectionSummary() {
       .select({
         totalReadings: count(meterReading.id),
         totalMonthlyBilled: sum(meterReading.billedAmount),
+        totalArrearsBilled: sum(meterReading.previousBalanceSnapshot),
         // Field Readings are effectively 100% current billing (no manual arrears split yet)
         totalCurrentCollected: sql<number>`0`, // Collected later via receipts
       })
@@ -958,10 +961,14 @@ export async function getCollectionSummary() {
     })
     .from(customer)
 
-  const totalBilled = Number(importStats?.totalMonthlyBilled || 0) + Number(readingStats?.totalMonthlyBilled || 0)
+  const totalBilled = Number(importStats?.totalMonthlyBilled || 0) +
+                     Number(readingStats?.totalMonthlyBilled || 0) +
+                     Number(importStats?.totalArrearsBilled || 0) +
+                     Number(readingStats?.totalArrearsBilled || 0)
 
-  // Official Collection on CURRENT bills
-  const totalCollected = Number(importStats?.totalCurrentCollected || 0)
+  // Official Collection (Arrears + Current)
+  const totalCollected = Number(importStats?.totalCurrentCollected || 0) +
+                         Number(importStats?.totalArrearsRecovered || 0)
 
   const cashInHand = Number(cashStats?.totalCashInHand || 0)
   const outstanding = Math.max(0, totalBilled - totalCollected)

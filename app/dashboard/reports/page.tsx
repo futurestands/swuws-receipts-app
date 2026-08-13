@@ -43,7 +43,14 @@ export default async function ReportsPage({
       getCollectionPeriods().catch(() => []),
       listActiveBranches().catch(() => []),
       getAuthorizedSchemes().catch(() => []),
-      getTopDebtors(100, params.category, params.query).catch(() => []),
+      getTopDebtors({
+        limit: 100,
+        category: params.category,
+        query: params.query,
+        schemeId: params.schemeId,
+        branchId: params.branchId,
+        clusterId: params.clusterId
+      }).catch(() => []),
     ])
     stats = results[0]
     periods = results[1]
@@ -100,34 +107,34 @@ export default async function ReportsPage({
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         <Card className="card-accent-red">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Total System Arrears</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Total Cumulative Debt</CardTitle>
             <AlertCircle className="h-4 w-4 text-destructive" />
           </CardHeader>
           <CardContent>
             <div className="text-3xl font-black text-destructive">{formatUGX(arrears.totalArrears)}</div>
-            <p className="text-xs text-muted-foreground mt-1">Cumulative debt from day one</p>
+            <p className="text-xs text-muted-foreground mt-1">Live snapshot of all outstanding balances</p>
           </CardContent>
         </Card>
 
         <Card className="card-accent-green">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Arrears Collected</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Old Debt Recovered</CardTitle>
             <TrendingUp className="h-4 w-4 text-green-500" />
           </CardHeader>
           <CardContent>
             <div className="text-3xl font-black text-green-600">{formatUGX(collections.verifiedArrears)}</div>
-            <p className="text-xs text-muted-foreground mt-1">Bank Confirmed (Against past debts)</p>
+            <p className="text-xs text-muted-foreground mt-1">Collections applied to historical arrears</p>
           </CardContent>
         </Card>
 
         <Card className="card-accent-blue">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Upfront / Advance</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Customer Advances</CardTitle>
             <Landmark className="h-4 w-4 text-brand-blue" />
           </CardHeader>
           <CardContent>
             <div className="text-3xl font-black text-brand-blue">{formatUGX(arrears.totalUpfront)}</div>
-            <p className="text-xs text-muted-foreground mt-1">Surplus money paid in advance</p>
+            <p className="text-xs text-muted-foreground mt-1">Total surplus money paid in advance</p>
           </CardContent>
         </Card>
       </div>

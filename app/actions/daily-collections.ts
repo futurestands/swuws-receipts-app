@@ -232,8 +232,25 @@ export async function validateDailyBalanceSync(formData: FormData): Promise<{ ok
   const allCustomers = await db.select({ id: customer.id, account: customer.customerAccount, balance: customer.accountBalance }).from(customer)
   const customerMap = new Map(allCustomers.map(c => [c.account?.toLowerCase(), c]))
 
+  // Resolve custom mapping from Admin > Templates
+  const dbMappingRaw = await getImportMapping("import.daily.collections")
+  const mapping = { ...DEFAULT_DAILY_SYNC_MAPPING } as Record<string, any>
+
+  if (dbMappingRaw) {
+    for (const [k, v] of Object.entries(dbMappingRaw)) {
+      const lowerK = k.toLowerCase()
+      if (lowerK === "accountnumber" || lowerK === "customeraccount") {
+        mapping.accountNumber = [v, ...(Array.isArray(mapping.accountNumber) ? mapping.accountNumber : [mapping.accountNumber])]
+      } else if (lowerK === "totaldue" || lowerK === "totalamountdue") {
+        mapping.totalDue = [v, ...(Array.isArray(mapping.totalDue) ? mapping.totalDue : [mapping.totalDue])]
+      } else {
+        mapping[k] = v
+      }
+    }
+  }
+
   const engineSummary = await processExcelImport({
-    file, schema: dailySyncSchema as any, mapping: DEFAULT_DAILY_SYNC_MAPPING as any,
+    file, schema: dailySyncSchema as any, mapping: mapping as any,
     onValidateRow: (data: DailySyncRow) => {
       const errors: string[] = []
       if (!customerMap.get(data.accountNumber.toLowerCase())) errors.push(`Not found: ${data.accountNumber}`)
