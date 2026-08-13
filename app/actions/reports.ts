@@ -10,6 +10,7 @@ import {
   branch,
   auditLog,
   dailyCollectionRecord,
+  dailyCollectionImport,
   reconciliationMatch,
   meterReading,
 } from "@/lib/db/schema"
@@ -293,7 +294,7 @@ export async function getDashboardStats(params: {
   if (params.schemeId && params.schemeId !== "all") verifiedConditions.push(eq(customer.waterSchemeId, params.schemeId))
   if (params.branchId && params.branchId !== "all") verifiedConditions.push(eq(waterScheme.branchId, params.branchId))
   if (params.clusterId && params.clusterId !== "all") verifiedConditions.push(eq(branch.clusterId, params.clusterId))
-  if (activePeriodId && activePeriodId !== "all") verifiedConditions.push(eq(receipt.billingPeriodId, activePeriodId))
+  if (activePeriodId && activePeriodId !== "all") verifiedConditions.push(eq(dailyCollectionImport.billingPeriodId, activePeriodId))
   if (params.category && params.category !== "all") verifiedConditions.push(eq(customer.category, params.category))
   if (params.query?.trim()) {
     const q = `%${params.query.trim().toLowerCase()}%`
@@ -304,6 +305,18 @@ export async function getDashboardStats(params: {
     if (queryCondition) verifiedConditions.push(queryCondition)
   }
   if (customerScope) verifiedConditions.push(customerScope)
+
+  // EXECUTE: Aggregate Daily Collections from EBS Syncs
+  const [dailyStats] = await db
+    .select({
+      totalCollected: sum(dailyCollectionRecord.amount),
+    })
+    .from(dailyCollectionRecord)
+    .innerJoin(dailyCollectionImport, eq(dailyCollectionRecord.batchId, dailyCollectionImport.id))
+    .innerJoin(customer, eq(dailyCollectionRecord.accountNumber, customer.customerAccount))
+    .leftJoin(waterScheme, eq(customer.waterSchemeId, waterScheme.id))
+    .leftJoin(branch, eq(waterScheme.branchId, branch.id))
+    .where(and(...verifiedConditions))
 
   // 4. OPERATIONAL CASH (Source: All Issued Receipts)
   const receiptConditions = []
@@ -344,13 +357,14 @@ export async function getDashboardStats(params: {
 
   // COMPREHENSIVE RECOVERY LOGIC (Arrears First):
   // As per Business Rule: Use Excel Balance Reductions for Recovery Distribution.
-  // Ignore Daily Collection Imports for these specific summary boxes.
 
   const excelArrearsCollected = Number(importStats?.verifiedArrears || 0)
   const excelCurrentCollected = Number(importStats?.verifiedCurrent || 0)
+  const dailyTotalCollected = Number(dailyStats?.totalCollected || 0)
 
   // 1. Arrears Recovery (Portion that cleared old debt)
-  const verifiedArrears = excelArrearsCollected
+  // Combine Monthly Arrears Recovery + Daily Balance Sync Recovery
+  const verifiedArrears = excelArrearsCollected + dailyTotalCollected
 
   // 2. Current Month Recovery (Portion that cleared current month bill)
   const verifiedCurrent = excelCurrentCollected
