@@ -342,7 +342,7 @@ export async function commitDailyBalanceSync(summary: DailySyncSummary) {
       // 4. Register Collections (only for rows where collection > 0)
       const collectionsToInsert = validRows
         .filter(r => r.collection > 0 && custMap.has(r.data.accountNumber.toLowerCase().trim()))
-        .map(r => {
+        .map((r, index) => {
           const cust = custMap.get(r.data.accountNumber.toLowerCase().trim())!
           return {
             id: randomUUID(),
@@ -351,7 +351,8 @@ export async function commitDailyBalanceSync(summary: DailySyncSummary) {
             customerName: cust.name,
             amount: r.collection,
             paymentDate: new Date(),
-            externalReference: `SYNC-${importId.slice(0, 8)}`,
+            // FIXED: Ensure each reference is unique within the batch to prevent index violation
+            externalReference: `SYNC-${importId.slice(0, 8)}-${(index + 1).toString().padStart(4, '0')}`,
             paymentChannel: "EBS Balance Sync",
             importStatus: 'matched' as const,
           }
