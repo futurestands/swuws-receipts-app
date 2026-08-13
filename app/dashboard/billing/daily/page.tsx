@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge"
 import { formatUGX, formatDate, formatDateTime } from "@/lib/format"
 import { Info, History } from "lucide-react"
 import { DailyImportWizard } from "./daily-import-wizard"
+import { DeleteImportButton } from "./delete-import-button"
 import Link from "next/link"
 import { PageHeader } from "@/components/ui/page-header"
 import { ScrollableTableContainer } from "@/components/ui/responsive-table"
@@ -67,6 +68,7 @@ export default async function DailyCollectionImportPage() {
                     <TableHead>Status</TableHead>
                     <TableHead>Uploaded By</TableHead>
                     <TableHead>Imported On</TableHead>
+                    <TableHead className="w-10"></TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -86,6 +88,9 @@ export default async function DailyCollectionImportPage() {
                       <TableCell className="text-sm">{item.uploadedByName}</TableCell>
                       <TableCell className="text-xs text-muted-foreground">
                         {formatDateTime(item.createdAt)}
+                      </TableCell>
+                      <TableCell>
+                        <DeleteImportButton id={item.id} filename={item.filename} />
                       </TableCell>
                     </TableRow>
                   ))}

@@ -418,3 +418,45 @@ export async function getDailyImportRecords(params: { batchId: string, page: num
   const records = await db.select().from(dailyCollectionRecord).where(and(...cond)).limit(params.limit).offset(offset).orderBy(dailyCollectionRecord.customerName)
   return { records, total: Number(total?.count || 0), page: params.page, totalPages: Math.ceil(Number(total?.count || 0) / params.limit) }
 }
+
+/**
+ * DELETES A DAILY IMPORT BATCH (Phase 2B Hardening)
+ * This removes the import record and all its associated collection records.
+ * Note: It does NOT roll back customer balance changes (reconciliation logic).
+ */
+export async function deleteDailyImport(id: string) {
+  const current = await requireUser()
+  if (!canUploadBilling(current)) throw new Error("Forbidden")
+
+  try {
+    const [batch] = await db
+      .select({ filename: dailyCollectionImport.filename })
+      .from(dailyCollectionImport)
+      .where(eq(dailyCollectionImport.id, id))
+      .limit(1)
+
+    if (!batch) return { ok: false, error: "Import not found" }
+
+    await db.transaction(async (tx) => {
+      // 1. Delete granular records (cascades but manual is safer for auditing)
+      await tx.delete(dailyCollectionRecord).where(eq(dailyCollectionRecord.batchId, id))
+
+      // 2. Delete the import metadata
+      await tx.delete(dailyCollectionImport).where(eq(dailyCollectionImport.id, id))
+
+      await writeAudit({
+        user: current,
+        action: "daily_collection.delete",
+        entityType: "daily_collection_import",
+        entityId: id,
+        details: { filename: batch.filename }
+      }, tx)
+    })
+
+    revalidatePath("/dashboard/billing/daily")
+    return { ok: true }
+  } catch (err: any) {
+    console.error("Failed to delete import:", err)
+    return { ok: false, error: err.message || "Failed to delete import" }
+  }
+}
