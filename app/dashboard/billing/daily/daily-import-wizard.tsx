@@ -36,6 +36,7 @@ import {
   DialogContent,
   DialogDescription,
   DialogHeader,
+  DialogFooter,
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
@@ -269,86 +270,90 @@ export function DailyImportWizard() {
         )}
 
         {step === "preview" && (summary || syncSummary) && (
-          <div className="space-y-4 py-2">
-             <StatCardGrid className="sm:grid-cols-2 lg:grid-cols-4">
-                <StatCard
-                   label={mode === 'sync' ? "Sync Records" : "Business Date"}
-                   value={mode === 'sync' ? syncSummary?.totalRecords : formatDate(summary?.businessDate || "")}
-                />
-                <StatCard
-                   label="Valid Records"
-                   value={<span className="text-green-600">{mode === 'sync' ? syncSummary?.validRecords : summary?.validRecords}</span>}
-                />
-                <StatCard
-                   label="Errors"
-                   value={<span className="text-destructive">{mode === 'sync' ? syncSummary?.failedRecords : summary?.failedRecords}</span>}
-                />
-                <StatCard
-                   label="Total Collection"
-                   value={<span className="text-primary">{formatUGX(mode === 'sync' ? syncSummary?.totalCollection || 0 : summary?.totalAmount || 0)}</span>}
-                />
-             </StatCardGrid>
+          <>
+            <div className="space-y-4 py-2">
+               <StatCardGrid className="sm:grid-cols-2 lg:grid-cols-4">
+                  <StatCard
+                     label={mode === 'sync' ? "Sync Records" : "Business Date"}
+                     value={mode === 'sync' ? syncSummary?.totalRecords : formatDate(summary?.businessDate || "")}
+                  />
+                  <StatCard
+                     label="Valid Records"
+                     value={<span className="text-green-600">{mode === 'sync' ? syncSummary?.validRecords : summary?.validRecords}</span>}
+                  />
+                  <StatCard
+                     label="Errors"
+                     value={<span className="text-destructive">{mode === 'sync' ? syncSummary?.failedRecords : summary?.failedRecords}</span>}
+                  />
+                  <StatCard
+                     label="Total Collection"
+                     value={<span className="text-primary">{formatUGX(mode === 'sync' ? syncSummary?.totalCollection || 0 : summary?.totalAmount || 0)}</span>}
+                  />
+               </StatCardGrid>
 
-             <ScrollableTableContainer className="max-h-[300px]">
-                <Table>
-                   <TableHeader className="sticky top-0 bg-white">
-                      <TableRow>
-                         <TableHead>Account #</TableHead>
-                         <TableHead>{mode === 'sync' ? "New Balance" : "Amount"}</TableHead>
-                         {mode === 'sync' && <TableHead>Reduction</TableHead>}
-                         <TableHead>Status</TableHead>
-                         <TableHead>Issues</TableHead>
-                      </TableRow>
-                   </TableHeader>
-                   <TableBody>
-                      {(mode === 'sync' ? syncSummary?.rows : summary?.rows)?.slice(0, 50).map((row, i) => (
-                        <TableRow key={i} className={cn(!row.valid && "bg-destructive/5")}>
-                           <TableCell className="text-xs font-mono">{row.data.accountNumber}</TableCell>
-                           <TableCell className="text-xs">{formatUGX(mode === 'sync' ? (row.data as any).totalDue : (row.data as any).amountPaid)}</TableCell>
-                           {mode === 'sync' && <TableCell className="text-xs text-green-600 font-bold">{(row as any).collection > 0 ? `+${formatUGX((row as any).collection)}` : '—'}</TableCell>}
-                           <TableCell>
-                              {row.valid ? <Badge variant="outline" className="text-green-600 bg-green-50">Valid</Badge> : <Badge variant="destructive">Error</Badge>}
-                           </TableCell>
-                           <TableCell className="text-[10px] text-destructive italic">
-                              {row.errors.join(", ")}
-                           </TableCell>
+               <ScrollableTableContainer className="max-h-[300px] border rounded-md">
+                  <Table>
+                     <TableHeader className="sticky top-0 bg-white z-10">
+                        <TableRow>
+                           <TableHead>Account #</TableHead>
+                           <TableHead>{mode === 'sync' ? "New Balance" : "Amount"}</TableHead>
+                           {mode === 'sync' && <TableHead>Reduction</TableHead>}
+                           <TableHead>Status</TableHead>
+                           <TableHead>Issues</TableHead>
                         </TableRow>
-                      ))}
-                   </TableBody>
-                </Table>
-             </ScrollableTableContainer>
+                     </TableHeader>
+                     <TableBody>
+                        {(mode === 'sync' ? syncSummary?.rows : summary?.rows)?.slice(0, 50).map((row, i) => (
+                          <TableRow key={i} className={cn(!row.valid && "bg-destructive/5")}>
+                             <TableCell className="text-xs font-mono">{row.data.accountNumber}</TableCell>
+                             <TableCell className="text-xs">{formatUGX(mode === 'sync' ? (row.data as any).totalDue : (row.data as any).amountPaid)}</TableCell>
+                             {mode === 'sync' && <TableCell className="text-xs text-green-600 font-bold">{(row as any).collection > 0 ? `+${formatUGX((row as any).collection)}` : '—'}</TableCell>}
+                             <TableCell>
+                                {row.valid ? <Badge variant="outline" className="text-green-600 bg-green-50">Valid</Badge> : <Badge variant="destructive">Error</Badge>}
+                             </TableCell>
+                             <TableCell className="text-[10px] text-destructive italic">
+                                {row.errors.join(", ")}
+                             </TableCell>
+                          </TableRow>
+                        ))}
+                     </TableBody>
+                  </Table>
+               </ScrollableTableContainer>
+            </div>
 
-             <div className="flex justify-between gap-3 pt-4">
-                <Button variant="outline" className="h-11" onClick={() => setStep("setup")}>Back</Button>
-                <Button className="h-11" disabled={((mode === 'sync' ? syncSummary?.validRecords : summary?.validRecords) || 0) === 0 || isProcessing} onClick={() => setStep("confirm")}>
-                   Confirm Totals <ChevronRight className="ml-2 h-4 w-4" />
-                </Button>
-             </div>
-          </div>
+            <DialogFooter className="sm:justify-between">
+              <Button variant="outline" className="h-11" onClick={() => setStep("setup")}>Back</Button>
+              <Button className="h-11" disabled={((mode === 'sync' ? syncSummary?.validRecords : summary?.validRecords) || 0) === 0 || isProcessing} onClick={() => setStep("confirm")}>
+                 Confirm Totals <ChevronRight className="ml-2 h-4 w-4" />
+              </Button>
+            </DialogFooter>
+          </>
         )}
 
         {step === "confirm" && (summary || syncSummary) && (
-          <div className="space-y-6 py-6">
-             <div className="text-center space-y-2">
-                <div className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary mb-2">
-                   <AlertCircle className="h-6 w-6" />
-                </div>
-                <h3 className="text-lg font-bold">Ready to Sync?</h3>
-                <p className="text-sm text-muted-foreground">
-                  You are about to process <strong>{mode === 'sync' ? syncSummary?.validRecords : summary?.validRecords}</strong> records.
-                  {mode === 'sync' ? ' Customer balances will be updated and' : ''} <strong>{formatUGX(mode === 'sync' ? syncSummary?.totalCollection || 0 : summary?.totalAmount || 0)}</strong> will be registered as confirmed bank collections.
-                </p>
-             </div>
+          <>
+            <div className="space-y-6 py-6">
+               <div className="text-center space-y-2">
+                  <div className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary mb-2">
+                     <AlertCircle className="h-6 w-6" />
+                  </div>
+                  <h3 className="text-lg font-bold">Ready to Sync?</h3>
+                  <p className="text-sm text-muted-foreground px-6">
+                    You are about to process <strong>{mode === 'sync' ? syncSummary?.validRecords : summary?.validRecords}</strong> records.
+                    {mode === 'sync' ? ' Customer balances will be updated and' : ''} <strong>{formatUGX(mode === 'sync' ? syncSummary?.totalCollection || 0 : summary?.totalAmount || 0)}</strong> will be registered as confirmed bank collections.
+                  </p>
+               </div>
+            </div>
 
-             <div className="flex flex-col gap-2">
-                <Button className="w-full h-12 text-lg" disabled={isProcessing} onClick={handleConfirm}>
-                   {isProcessing ? <Loader2 className="h-5 w-5 animate-spin mr-2" /> : "Process Sync Now"}
-                </Button>
-                <Button variant="ghost" className="h-11" disabled={isProcessing} onClick={() => setStep("preview")}>
-                   Review Records Again
-                </Button>
-             </div>
-          </div>
+            <DialogFooter className="flex-col sm:flex-col gap-2">
+              <Button className="w-full h-12 text-lg" disabled={isProcessing} onClick={handleConfirm}>
+                 {isProcessing ? <Loader2 className="h-5 w-5 animate-spin mr-2" /> : "Process Sync Now"}
+              </Button>
+              <Button variant="ghost" className="h-11" disabled={isProcessing} onClick={() => setStep("preview")}>
+                 Review Records Again
+              </Button>
+            </DialogFooter>
+          </>
         )}
 
         {step === "complete" && (summary || syncSummary) && (
