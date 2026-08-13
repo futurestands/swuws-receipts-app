@@ -6,7 +6,8 @@ import {
   dailyCollectionRecord,
   user as userTable,
   customer,
-  billingPeriod
+  billingPeriod,
+  billingRecord
 } from "@/lib/db/schema"
 import { requireUser } from "@/lib/session"
 import { canUploadBilling } from "@/lib/permissions"
@@ -337,27 +338,90 @@ export async function commitDailyBalanceSync(summary: DailySyncSummary) {
           FROM (VALUES ${valuesList}) AS v(id, new_balance)
           WHERE c.id = v.id
         `)
+
+        // CRITICAL FIX: Also update the billingRecord snapshot so the dashboard math sees the recovery
+        await tx.execute(sql`
+          UPDATE billing_record AS br
+          SET "totalDue" = v.new_balance, "updatedAt" = now()
+          FROM (VALUES ${valuesList}) AS v(id, new_balance)
+          WHERE br."customerId" = v.id
+          AND br."billingPeriodId" = ${activePeriod?.id || ''}
+        `)
       }
 
-      // 4. Register Collections (only for rows where collection > 0)
-      const collectionsToInsert = validRows
-        .filter(r => r.collection > 0 && custMap.has(r.data.accountNumber.toLowerCase().trim()))
-        .map((r, index) => {
-          const cust = custMap.get(r.data.accountNumber.toLowerCase().trim())!
-          return {
-            id: randomUUID(),
-            batchId: importId,
-            accountNumber: r.data.accountNumber,
-            customerName: cust.name,
-            amount: r.collection,
-            paymentDate: new Date(),
-            // FIXED: Ensure each reference is unique within the batch to prevent index violation
-            externalReference: `SYNC-${importId.slice(0, 8)}-${(index + 1).toString().padStart(4, '0')}`,
-            paymentChannel: "EBS Balance Sync",
-            importStatus: 'matched' as const,
-          }
-        })
+      // 4. Register Collections (Individual Customer-Level Split)
+      const collectionsToInsert: any[] = []
+      const billUpdates: any[] = []
 
+      for (let i = 0; i < validRows.length; i++) {
+        const row = validRows[i]
+        const collection = row.collection
+        if (collection <= 0) continue
+
+        const cust = custMap.get(row.data.accountNumber.toLowerCase().trim())
+        if (!cust) continue
+
+        // Logic: Split collection between Arrears and Current Bill for this specific customer
+        // We look for their active bill in the current period
+        const [activeBill] = await tx
+          .select()
+          .from(billingRecord)
+          .where(and(
+            eq(billingRecord.customerId, cust.id),
+            eq(billingRecord.billingPeriodId, activePeriod?.id || "")
+          ))
+          .limit(1)
+
+        let arrearsRecovery = 0
+        let currentRecovery = 0
+
+        if (activeBill) {
+          const totalArrears = Number(activeBill.arrears)
+          arrearsRecovery = Math.min(collection, totalArrears)
+          currentRecovery = Math.max(0, collection - arrearsRecovery)
+
+          // Queue bill status update
+          const newTotalRecovery = Number(activeBill.recoveryAmount) + currentRecovery
+          const newArrearsRecovery = Number(activeBill.arrearsRecovery) + arrearsRecovery
+          const remainingBill = Number(activeBill.billAmount) - newTotalRecovery
+
+          billUpdates.push({
+            id: activeBill.id,
+            recoveryAmount: newTotalRecovery.toString(),
+            arrearsRecovery: newArrearsRecovery.toString(),
+            status: remainingBill <= 0 ? 'paid' : (newTotalRecovery > 0 ? 'partially_paid' : activeBill.status)
+          })
+        } else {
+          // If no active bill found, treat all as Arrears Recovery (Historical)
+          arrearsRecovery = collection
+        }
+
+        collectionsToInsert.push({
+          id: randomUUID(),
+          batchId: importId,
+          accountNumber: row.data.accountNumber,
+          customerName: cust.name,
+          amount: collection,
+          paymentDate: new Date(),
+          externalReference: `SYNC-${importId.slice(0, 8)}-${(i + 1).toString().padStart(4, '0')}`,
+          paymentChannel: "EBS Balance Sync",
+          importStatus: 'matched' as const,
+        })
+      }
+
+      // Execute Bill Updates
+      for (const update of billUpdates) {
+        await tx.update(billingRecord)
+          .set({
+            recoveryAmount: update.recoveryAmount,
+            arrearsRecovery: update.arrearsRecovery,
+            status: update.status,
+            updatedAt: new Date()
+          })
+          .where(eq(billingRecord.id, update.id))
+      }
+
+      // Execute Collection Inserts
       if (collectionsToInsert.length > 0) {
         for (let i = 0; i < collectionsToInsert.length; i += CHUNK_SIZE) {
           await tx.insert(dailyCollectionRecord).values(collectionsToInsert.slice(i, i + CHUNK_SIZE))

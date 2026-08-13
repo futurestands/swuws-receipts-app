@@ -306,7 +306,7 @@ export async function getDashboardStats(params: {
   }
   if (customerScope) verifiedConditions.push(customerScope)
 
-  // EXECUTE: Aggregate Daily Collections from EBS Syncs
+  // EXECUTE: Aggregate Daily Collections
   const [dailyStats] = await db
     .select({
       totalCollected: sum(dailyCollectionRecord.amount),
@@ -316,7 +316,14 @@ export async function getDashboardStats(params: {
     .innerJoin(customer, eq(dailyCollectionRecord.accountNumber, customer.customerAccount))
     .leftJoin(waterScheme, eq(customer.waterSchemeId, waterScheme.id))
     .leftJoin(branch, eq(waterScheme.branchId, branch.id))
-    .where(and(...verifiedConditions))
+    .where(and(
+      eq(dailyCollectionRecord.importStatus, 'matched'),
+      activePeriodId && activePeriodId !== 'all'
+        ? eq(dailyCollectionImport.billingPeriodId, activePeriodId)
+        : sql`true`,
+      params.schemeId && params.schemeId !== "all" ? eq(customer.waterSchemeId, params.schemeId) : sql`true`,
+      params.branchId && params.branchId !== "all" ? eq(waterScheme.branchId, params.branchId) : sql`true`
+    ))
 
   // 4. OPERATIONAL CASH (Source: All Issued Receipts)
   const receiptConditions = []
