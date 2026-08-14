@@ -269,6 +269,24 @@ export async function getDashboardStats(params: {
         totalBilled: sum(meterReading.billedAmount),
         totalArrearsBilled: sum(meterReading.previousBalanceSnapshot),
         totalCurrentBilled: sum(meterReading.billedAmount),
+        // FIELD RECOVERY MATH (Forensic Audit #3 Fix)
+        // Arrears recovery = MIN(Starting Arrears, (Starting Demand - Current Balance))
+        verifiedArrears: sum(sql`
+          least(
+            greatest(0, coalesce(${meterReading.previousBalanceSnapshot}, 0)::numeric),
+            greatest(0, (coalesce(${meterReading.previousBalanceSnapshot}, 0)::numeric + coalesce(${meterReading.billedAmount}, 0)::numeric) - coalesce(${customer.accountBalance}, 0)::numeric)
+          )
+        `),
+        // Current recovery = (Starting Demand - Current Balance) - Arrears recovery
+        verifiedCurrent: sum(sql`
+          greatest(0,
+            greatest(0, (coalesce(${meterReading.previousBalanceSnapshot}, 0)::numeric + coalesce(${meterReading.billedAmount}, 0)::numeric) - coalesce(${customer.accountBalance}, 0)::numeric) -
+            least(
+              greatest(0, coalesce(${meterReading.previousBalanceSnapshot}, 0)::numeric),
+              greatest(0, (coalesce(${meterReading.previousBalanceSnapshot}, 0)::numeric + coalesce(${meterReading.billedAmount}, 0)::numeric) - coalesce(${customer.accountBalance}, 0)::numeric)
+            )
+          )
+        `),
         billedCount: count(meterReading.id),
       })
       .from(meterReading)
@@ -298,7 +316,8 @@ export async function getDashboardStats(params: {
   }
   if (customerScope) verifiedConditions.push(customerScope)
 
-  // EXECUTE: Aggregate Daily Collections
+  // EXECUTE: Aggregate Daily Collections (ONLY for customers WITHOUT a current billing record)
+  // NOTE: If they HAVE a billing record, their recovery is already captured via importStats math.
   const [dailyStats] = await db
     .select({
       totalCollected: sum(dailyCollectionRecord.amount),
@@ -309,7 +328,13 @@ export async function getDashboardStats(params: {
     .leftJoin(waterScheme, eq(customer.waterSchemeId, waterScheme.id))
     .leftJoin(branch, eq(waterScheme.branchId, branch.id))
     .where(and(
-      ...verifiedConditions
+      ...verifiedConditions,
+      // CRITICAL: Exclusion to prevent double-counting (Forensic Audit #1 Fix)
+      sql`NOT EXISTS (
+        SELECT 1 FROM billing_record
+        WHERE "customerId" = ${customer.id}
+        AND "billingPeriodId" = ${activePeriodId || ''}
+      )`
     ))
 
   // 4. OPERATIONAL CASH (Source: All Issued Receipts)
@@ -350,13 +375,23 @@ export async function getDashboardStats(params: {
   const totalBilled = currentBilled + arrearsBilled
 
   // COMPREHENSIVE RECOVERY LOGIC (Arrears First):
-  // Business Rule: Standardized Math across all import types.
+  // Business Rule: Harmonize Monthly Imports, Field Meter Readings, and Daily Sync Orphans.
 
   const dailyOrphanCollected = Number(dailyStats?.totalCollected || 0)
-  const verifiedArrears = Number(importStats?.verifiedArrears || 0) + dailyOrphanCollected
-  const verifiedCurrent = Number(importStats?.verifiedCurrent || 0) + Number(importStats?.verifiedUpfront || 0)
 
-  // Bank Verified Total (Sum of ALL confirmed recovery: Arrears + Current)
+  // 1. Arrears Recovery
+  const verifiedArrears =
+    Number(importStats?.verifiedArrears || 0) +
+    Number(fieldStats?.verifiedArrears || 0) +
+    dailyOrphanCollected
+
+  // 2. Current Month Recovery (Including Upfront/Advance Consumption)
+  const verifiedCurrent =
+    Number(importStats?.verifiedCurrent || 0) +
+    Number(importStats?.verifiedUpfront || 0) +
+    Number(fieldStats?.verifiedCurrent || 0)
+
+  // 3. Bank Verified Total
   const verifiedTotal = verifiedArrears + verifiedCurrent
 
   const totalHarmonizedCollected = verifiedTotal
