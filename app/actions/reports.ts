@@ -316,8 +316,8 @@ export async function getDashboardStats(params: {
   }
   if (customerScope) verifiedConditions.push(customerScope)
 
-  // EXECUTE: Aggregate Daily Collections (ONLY for customers WITHOUT a current billing record)
-  // NOTE: If they HAVE a billing record, their recovery is already captured via importStats math.
+  // EXECUTE: Aggregate Daily Collections (ONLY for customers WITHOUT a current billing record or meter reading)
+  // NOTE: If they HAVE a billing record or reading, their recovery is already captured via derived math.
   const [dailyStats] = await db
     .select({
       totalCollected: sum(dailyCollectionRecord.amount),
@@ -329,9 +329,15 @@ export async function getDashboardStats(params: {
     .leftJoin(branch, eq(waterScheme.branchId, branch.id))
     .where(and(
       ...verifiedConditions,
-      // CRITICAL: Exclusion to prevent double-counting (Forensic Audit #1 Fix)
+      activePeriodId && activePeriodId !== 'all' ? eq(dailyCollectionImport.billingPeriodId, activePeriodId) : sql`true`,
+      // CRITICAL: Triple-Exclusion to prevent double-counting (Forensic Audit #1 Fix)
       sql`NOT EXISTS (
         SELECT 1 FROM billing_record
+        WHERE "customerId" = ${customer.id}
+        AND "billingPeriodId" = ${activePeriodId || ''}
+      )`,
+      sql`NOT EXISTS (
+        SELECT 1 FROM meter_reading
         WHERE "customerId" = ${customer.id}
         AND "billingPeriodId" = ${activePeriodId || ''}
       )`

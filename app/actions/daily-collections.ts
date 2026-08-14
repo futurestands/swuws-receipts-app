@@ -339,18 +339,16 @@ export async function commitDailyBalanceSync(summary: DailySyncSummary) {
           WHERE c.id = v.id
         `)
 
-        // CRITICAL FIX: Also update the billingRecord snapshot so the dashboard math sees the recovery
-        // We update the LATEST bill for this customer, even if the period lookup is slightly off.
+        // CRITICAL FIX: Synchronize billing snapshot with live ledger (Forensic Audit #1 & #4 Fix)
+        // We target the current active period to ensure recovery math on the dashboard is correct
+        // and to prevent accidental corruption of closed periods during rollover.
+        const targetPeriodId = activePeriod?.id || "";
         await tx.execute(sql`
           UPDATE billing_record
           SET "totalDue" = v.new_balance, "updatedAt" = now()
           FROM (VALUES ${valuesList}) AS v(id, new_balance)
           WHERE billing_record."customerId" = v.id
-          AND billing_record.id = (
-            SELECT id FROM billing_record
-            WHERE "customerId" = v.id
-            ORDER BY "createdAt" DESC LIMIT 1
-          )
+          AND billing_record."billingPeriodId" = ${targetPeriodId}
         `)
       }
 

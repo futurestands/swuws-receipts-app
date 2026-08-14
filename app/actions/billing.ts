@@ -911,19 +911,6 @@ export async function getCollectionSummary() {
   `)
   const customersImported = Number(customerStats.rows[0]?.count || 0)
 
-  // OFFICIAL COLLECTIONS: Confirmed via External Billing System (EBS)
-  // Sum of matched records for THIS billing period
-  const [ebsStats] = await db
-    .select({
-      totalConfirmed: sum(dailyCollectionRecord.amount),
-    })
-    .from(dailyCollectionRecord)
-    .innerJoin(dailyCollectionImport, eq(dailyCollectionRecord.batchId, dailyCollectionImport.id))
-    .where(and(
-      eq(dailyCollectionImport.billingPeriodId, displayPeriod.id),
-      eq(dailyCollectionRecord.importStatus, 'matched')
-    ))
-
   // OPERATIONAL CASH: Receipts printed but not yet necessarily confirmed by bank
   // Exclude voided receipts
   const voidedIdsSubquery = db
@@ -958,21 +945,41 @@ export async function getCollectionSummary() {
     .orderBy(desc(billingRun.uploadedAt)).limit(100)
 
   // Arrears & Upfront Snapshot (Global)
-  const [arrearsSnapshot] = await db
-    .select({
-      totalArrears: sql<number>`sum(case when ${customer.accountBalance} > 0 then ${customer.accountBalance} else 0 end)::numeric`,
-      totalUpfront: sql<number>`sum(case when ${customer.accountBalance} < 0 then abs(${customer.accountBalance}) else 0 end)::numeric`,
-    })
-    .from(customer)
+  const [arrearsSnapshot, ebsStats] = await Promise.all([
+    db
+      .select({
+        totalArrears: sql<number>`sum(case when ${customer.accountBalance} > 0 then ${customer.accountBalance} else 0 end)::numeric`,
+        totalUpfront: sql<number>`sum(case when ${customer.accountBalance} < 0 then abs(${customer.accountBalance}) else 0 end)::numeric`,
+      })
+      .from(customer)
+      .then(rows => rows[0]),
+    // OFFICIAL COLLECTIONS: Confirmed via External Billing System (EBS)
+    // We include matched payments for customers who DON'T have a bill/reading record (Orphans).
+    db
+      .select({
+        totalOrphanConfirmed: sum(dailyCollectionRecord.amount),
+      })
+      .from(dailyCollectionRecord)
+      .innerJoin(dailyCollectionImport, eq(dailyCollectionRecord.batchId, dailyCollectionImport.id))
+      .innerJoin(customer, eq(dailyCollectionRecord.accountNumber, customer.customerAccount))
+      .where(and(
+        eq(dailyCollectionImport.billingPeriodId, displayPeriod.id),
+        eq(dailyCollectionRecord.importStatus, 'matched'),
+        sql`NOT EXISTS (SELECT 1 FROM billing_record WHERE "customerId" = ${customer.id} AND "billingPeriodId" = ${displayPeriod.id})`,
+        sql`NOT EXISTS (SELECT 1 FROM meter_reading WHERE "customerId" = ${customer.id} AND "billingPeriodId" = ${displayPeriod.id})`
+      ))
+      .then(rows => rows[0])
+  ])
 
   const totalBilled = Number(importStats?.totalMonthlyBilled || 0) +
                      Number(readingStats?.totalMonthlyBilled || 0) +
                      Number(importStats?.totalArrearsBilled || 0) +
                      Number(readingStats?.totalArrearsBilled || 0)
 
-  // Official Collection (Combined Truth from Derived Ledger)
+  // Official Collection (Combined Truth: Derived Snapshots + Orphan Daily Records)
   const totalCollected = Number(importStats?.totalRecovered || 0) +
-                         Number(readingStats?.totalRecovered || 0)
+                         Number(readingStats?.totalRecovered || 0) +
+                         Number(ebsStats?.totalOrphanConfirmed || 0)
 
   const cashInHand = Number(cashStats?.totalCashInHand || 0)
   const outstanding = Math.max(0, totalBilled - totalCollected)
