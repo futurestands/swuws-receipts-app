@@ -350,20 +350,12 @@ export async function getDashboardStats(params: {
   const totalBilled = currentBilled + arrearsBilled
 
   // COMPREHENSIVE RECOVERY LOGIC (Arrears First):
-  // As per Business Rule: Use Excel Balance Reductions for Recovery Distribution.
+  // Business Rule: Standardized Math across all import types.
 
-  const excelArrearsCollected = Number(importStats?.verifiedArrears || 0)
-  const excelCurrentCollected = Number(importStats?.verifiedCurrent || 0)
-  const dailyOrphanCollected = Number(dailyStats?.totalCollected || 0)
+  const verifiedArrears = Number(importStats?.verifiedArrears || 0)
+  const verifiedCurrent = Number(importStats?.verifiedCurrent || 0)
 
-  // 1. Arrears Recovery (Portion that cleared old debt)
-  // Combine Monthly Arrears Recovery + Daily Syncs for customers WITHOUT a current bill.
-  const verifiedArrears = excelArrearsCollected + dailyOrphanCollected
-
-  // 2. Current Month Recovery (Portion that cleared current month bill)
-  const verifiedCurrent = excelCurrentCollected
-
-  // 3. Bank Verified Total (Sum of ALL confirmed recovery: Arrears + Current)
+  // Bank Verified Total (Sum of ALL confirmed recovery: Arrears + Current)
   const verifiedTotal = verifiedArrears + verifiedCurrent
 
   const totalHarmonizedCollected = verifiedTotal
