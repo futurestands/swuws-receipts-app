@@ -868,17 +868,18 @@ export async function getCollectionSummary() {
    * - Over-Collection Reporting
    */
 
-  // Period Metrics (Unified: Imports + Field Readings)
+  // Period Metrics (Unified: Derived from Current Snapshot vs Original Demand)
   const [importStats, readingStats] = await Promise.all([
     db
       .select({
         totalBills: count(billingRecord.id),
         totalMonthlyBilled: sum(billingRecord.billAmount),
         totalArrearsBilled: sum(billingRecord.arrears),
-        // PRIORITY LOGIC: Collected money only counts as "Current Collected" AFTER Arrears are fully cleared.
-        // CurrentCollected = LEAST(BillAmount, MAX(0, TotalRecovered - Arrears))
-        totalCurrentCollected: sum(billingRecord.recoveryAmount),
-        totalArrearsRecovered: sum(billingRecord.arrearsRecovery),
+        // DERIVED COLLECTION LOGIC: (Corrected per Forensic Audit #1)
+        // We now calculate truth by comparing current snapshots to starting charges.
+        totalRecovered: sum(sql`
+          greatest(0, (coalesce(${billingRecord.arrears}, 0)::numeric + coalesce(${billingRecord.billAmount}, 0)::numeric) - coalesce(${billingRecord.totalDue}, 0)::numeric)
+        `),
       })
       .from(billingRecord)
       .where(eq(billingRecord.billingPeriodId, displayPeriod.id))
@@ -888,10 +889,13 @@ export async function getCollectionSummary() {
         totalReadings: count(meterReading.id),
         totalMonthlyBilled: sum(meterReading.billedAmount),
         totalArrearsBilled: sum(meterReading.previousBalanceSnapshot),
-        // Field Readings are effectively 100% current billing (no manual arrears split yet)
-        totalCurrentCollected: sql<number>`0`, // Collected later via receipts
+        // FIELD RECOVERY: Now correctly derived for field-billed customers (Forensic Audit #2)
+        totalRecovered: sum(sql`
+          greatest(0, (coalesce(${meterReading.previousBalanceSnapshot}, 0)::numeric + coalesce(${meterReading.billedAmount}, 0)::numeric) - coalesce(${customer.accountBalance}, 0)::numeric)
+        `),
       })
       .from(meterReading)
+      .innerJoin(customer, eq(meterReading.customerId, customer.id))
       .where(eq(meterReading.billingPeriodId, displayPeriod.id))
       .then(rows => rows[0]),
   ])
@@ -966,9 +970,9 @@ export async function getCollectionSummary() {
                      Number(importStats?.totalArrearsBilled || 0) +
                      Number(readingStats?.totalArrearsBilled || 0)
 
-  // Official Collection (Arrears + Current)
-  const totalCollected = Number(importStats?.totalCurrentCollected || 0) +
-                         Number(importStats?.totalArrearsRecovered || 0)
+  // Official Collection (Combined Truth from Derived Ledger)
+  const totalCollected = Number(importStats?.totalRecovered || 0) +
+                         Number(readingStats?.totalRecovered || 0)
 
   const cashInHand = Number(cashStats?.totalCashInHand || 0)
   const outstanding = Math.max(0, totalBilled - totalCollected)

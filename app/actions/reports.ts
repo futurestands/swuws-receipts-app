@@ -352,8 +352,9 @@ export async function getDashboardStats(params: {
   // COMPREHENSIVE RECOVERY LOGIC (Arrears First):
   // Business Rule: Standardized Math across all import types.
 
-  const verifiedArrears = Number(importStats?.verifiedArrears || 0)
-  const verifiedCurrent = Number(importStats?.verifiedCurrent || 0)
+  const dailyOrphanCollected = Number(dailyStats?.totalCollected || 0)
+  const verifiedArrears = Number(importStats?.verifiedArrears || 0) + dailyOrphanCollected
+  const verifiedCurrent = Number(importStats?.verifiedCurrent || 0) + Number(importStats?.verifiedUpfront || 0)
 
   // Bank Verified Total (Sum of ALL confirmed recovery: Arrears + Current)
   const verifiedTotal = verifiedArrears + verifiedCurrent
