@@ -231,7 +231,7 @@ export async function getDashboardStats(params: {
         totalBilled: sum(billingRecord.totalDue),
         totalArrearsBilled: sum(billingRecord.arrears),
         totalCurrentBilled: sum(billingRecord.billAmount),
-        // ULTIMATE RECOVERY MATH (New Money Only)
+        // ULTIMATE RECOVERY MATH (New Money + Upfront Consumption)
         // 1. Total NEW money recovered = (Old Balance + Bill) - New Balance
         totalMoneyRecovered: sum(sql`
           greatest(0, (coalesce(${billingRecord.arrears}, 0)::numeric + coalesce(${billingRecord.billAmount}, 0)::numeric) - coalesce(${billingRecord.totalDue}, 0)::numeric)
@@ -243,18 +243,10 @@ export async function getDashboardStats(params: {
             greatest(0, (coalesce(${billingRecord.arrears}, 0)::numeric + coalesce(${billingRecord.billAmount}, 0)::numeric) - coalesce(${billingRecord.totalDue}, 0)::numeric)
           )
         `),
-        // 3. Applied to Current Bill next
+        // 3. Current Month recovery (Total Satisfied Bill = Bill Amount - Unpaid portion of Bill)
+        // This includes portions paid by consumed advances/upfronts.
         verifiedCurrent: sum(sql`
-          least(
-            coalesce(${billingRecord.billAmount}, 0)::numeric,
-            greatest(0,
-              greatest(0, (coalesce(${billingRecord.arrears}, 0)::numeric + coalesce(${billingRecord.billAmount}, 0)::numeric) - coalesce(${billingRecord.totalDue}, 0)::numeric) -
-              least(
-                greatest(0, coalesce(${billingRecord.arrears}, 0)::numeric),
-                greatest(0, (coalesce(${billingRecord.arrears}, 0)::numeric + coalesce(${billingRecord.billAmount}, 0)::numeric) - coalesce(${billingRecord.totalDue}, 0)::numeric)
-              )
-            )
-          )
+          greatest(0, coalesce(${billingRecord.billAmount}, 0)::numeric - greatest(0, coalesce(${billingRecord.totalDue}, 0)::numeric))
         `),
         // 4. Upfront portion = New credit generated
         verifiedUpfront: sum(sql`
@@ -317,12 +309,7 @@ export async function getDashboardStats(params: {
     .leftJoin(waterScheme, eq(customer.waterSchemeId, waterScheme.id))
     .leftJoin(branch, eq(waterScheme.branchId, branch.id))
     .where(and(
-      eq(dailyCollectionRecord.importStatus, 'matched'),
-      activePeriodId && activePeriodId !== 'all'
-        ? eq(dailyCollectionImport.billingPeriodId, activePeriodId)
-        : sql`true`,
-      params.schemeId && params.schemeId !== "all" ? eq(customer.waterSchemeId, params.schemeId) : sql`true`,
-      params.branchId && params.branchId !== "all" ? eq(waterScheme.branchId, params.branchId) : sql`true`
+      ...verifiedConditions
     ))
 
   // 4. OPERATIONAL CASH (Source: All Issued Receipts)
@@ -367,16 +354,16 @@ export async function getDashboardStats(params: {
 
   const excelArrearsCollected = Number(importStats?.verifiedArrears || 0)
   const excelCurrentCollected = Number(importStats?.verifiedCurrent || 0)
-  const dailyTotalCollected = Number(dailyStats?.totalCollected || 0)
+  const dailyOrphanCollected = Number(dailyStats?.totalCollected || 0)
 
   // 1. Arrears Recovery (Portion that cleared old debt)
-  // Combine Monthly Arrears Recovery + Daily Balance Sync Recovery
-  const verifiedArrears = excelArrearsCollected + dailyTotalCollected
+  // Combine Monthly Arrears Recovery + Daily Syncs for customers WITHOUT a current bill.
+  const verifiedArrears = excelArrearsCollected + dailyOrphanCollected
 
   // 2. Current Month Recovery (Portion that cleared current month bill)
   const verifiedCurrent = excelCurrentCollected
 
-  // 3. Bank Verified Total (Sum of ALL confirmed recovery from Excel: Arrears + Current)
+  // 3. Bank Verified Total (Sum of ALL confirmed recovery: Arrears + Current)
   const verifiedTotal = verifiedArrears + verifiedCurrent
 
   const totalHarmonizedCollected = verifiedTotal

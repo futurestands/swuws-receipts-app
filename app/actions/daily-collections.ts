@@ -340,12 +340,17 @@ export async function commitDailyBalanceSync(summary: DailySyncSummary) {
         `)
 
         // CRITICAL FIX: Also update the billingRecord snapshot so the dashboard math sees the recovery
+        // We update the LATEST bill for this customer, even if the period lookup is slightly off.
         await tx.execute(sql`
-          UPDATE billing_record AS br
+          UPDATE billing_record
           SET "totalDue" = v.new_balance, "updatedAt" = now()
           FROM (VALUES ${valuesList}) AS v(id, new_balance)
-          WHERE br."customerId" = v.id
-          AND br."billingPeriodId" = ${activePeriod?.id || ''}
+          WHERE billing_record."customerId" = v.id
+          AND billing_record.id = (
+            SELECT id FROM billing_record
+            WHERE "customerId" = v.id
+            ORDER BY "createdAt" DESC LIMIT 1
+          )
         `)
       }
 
