@@ -365,6 +365,8 @@ export async function getReceipts(limit = 100) {
     .groupBy(receiptPrintHistory.receiptId)
     .as("print_counts")
 
+  // SECURITY/UI HARDENING: Exclude voided/deleted receipts from normal lists.
+  // They remain in the database for audit integrity but "disappear" from the UI.
   return db
     .select({
       ...getTableColumns(receipt),
@@ -372,7 +374,12 @@ export async function getReceipts(limit = 100) {
     })
     .from(receipt)
     .leftJoin(printCounts, eq(receipt.id, printCounts.receiptId))
-    .where(scope)
+    // Optimized exclusion check
+    .leftJoin(auditLog, and(eq(receipt.id, auditLog.entityId), eq(auditLog.action, 'receipt.void')))
+    .where(and(
+      scope,
+      sql`${auditLog.id} IS NULL`
+    ))
     .orderBy(desc(receipt.createdAt))
     .limit(limit)
 }
@@ -563,7 +570,16 @@ export async function getDailyTotals(dateISO?: string) {
     end.setHours(23, 59, 59, 999)
 
     const scope = applyReceiptScope(current)
-    const conditions = [gte(receipt.createdAt, start), lte(receipt.createdAt, end)]
+    const voidedIdsSubquery = db
+      .select({ id: auditLog.entityId })
+      .from(auditLog)
+      .where(eq(auditLog.action, 'receipt.void'))
+
+    const conditions = [
+      gte(receipt.createdAt, start),
+      lte(receipt.createdAt, end),
+      sql`${receipt.id} NOT IN (${voidedIdsSubquery})`
+    ]
     if (scope) conditions.push(scope)
 
     const [totals] = await db

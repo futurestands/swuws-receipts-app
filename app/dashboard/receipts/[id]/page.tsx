@@ -138,11 +138,11 @@ export default async function ReceiptDetailPage({ params }: { params: Promise<{ 
             </div>
           </div>
 
-          <dl className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm mb-6">
+          <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3 text-sm mb-6">
             {rows.map(([label, value]) => (
-              <div key={label} className="contents">
-                <dt className="text-muted-foreground">{label}</dt>
-                <dd className="font-medium">{value}</dd>
+              <div key={label} className="flex flex-col sm:contents">
+                <dt className="text-muted-foreground text-[10px] sm:text-sm uppercase sm:normal-case font-bold sm:font-normal">{label}</dt>
+                <dd className="font-medium border-b sm:border-0 pb-1 sm:pb-0">{value}</dd>
               </div>
             ))}
           </dl>

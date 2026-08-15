@@ -18,7 +18,7 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { requestReceiptVoid } from "@/app/actions/receipts"
 import { toast } from "sonner"
-import { Ban } from "lucide-react"
+import { Trash2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 export function VoidReceiptButton({
@@ -41,7 +41,7 @@ export function VoidReceiptButton({
 
   function handleVoid() {
     if (!reason.trim()) {
-      toast.error("A reason is required to void a receipt.")
+      toast.error("A reason is required to delete a receipt.")
       return
     }
 
@@ -49,7 +49,7 @@ export function VoidReceiptButton({
       try {
         const result = await requestReceiptVoid(receiptId, reason)
         if (result.ok) {
-          toast.success("Receipt successfully voided. Customer balance restored.")
+          toast.success("Receipt successfully deleted. Customer balance restored.")
           setOpen(false)
           router.refresh()
         } else {
@@ -71,9 +71,9 @@ export function VoidReceiptButton({
             size="icon"
             className="h-8 w-8 text-destructive hover:bg-destructive/10"
             disabled={disabled}
-            title="Void Receipt"
+            title="Delete Receipt"
           >
-            <Ban className="size-4" />
+            <Trash2 className="size-4" />
           </Button>
         ) : (
           <Button
@@ -81,21 +81,21 @@ export function VoidReceiptButton({
             className="text-destructive hover:bg-destructive/5 gap-2"
             disabled={disabled}
           >
-            <Ban className="size-4" /> Void Receipt
+            <Trash2 className="size-4" /> Delete Receipt
           </Button>
         )}
       </AlertDialogTrigger>
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>Void Receipt?</AlertDialogTitle>
+          <AlertDialogTitle>Delete Receipt?</AlertDialogTitle>
           <AlertDialogDescription>
             This will permanently reverse the payment and restore the customer&apos;s balance.
-            This action cannot be undone and will be recorded in the audit trail.
+            The receipt will be removed from all active lists but preserved in the audit trail.
           </AlertDialogDescription>
         </AlertDialogHeader>
 
         <div className="space-y-2 py-4">
-          <Label htmlFor="void-reason" className="text-xs font-bold uppercase">Reason for voiding</Label>
+          <Label htmlFor="void-reason" className="text-xs font-bold uppercase">Reason for deletion</Label>
           <Textarea
             id="void-reason"
             placeholder="e.g. Error in amount entered, customer changed mind..."
@@ -115,7 +115,7 @@ export function VoidReceiptButton({
             className="bg-destructive hover:bg-destructive/90"
             disabled={pending || !reason.trim()}
           >
-            {pending ? "Processing..." : "Confirm Void"}
+            {pending ? "Processing..." : "Confirm Delete"}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

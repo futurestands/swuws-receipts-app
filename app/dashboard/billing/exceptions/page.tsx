@@ -2,12 +2,12 @@ import { getBillingDiscrepancies } from "@/app/actions/billing-engine"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
 import { formatUGX, formatDateTime } from "@/lib/format"
 import { User, AlertCircle, CheckCircle2 } from "lucide-react"
 import { PageHeader } from "@/components/ui/page-header"
 import { ScrollableTableContainer } from "@/components/ui/responsive-table"
 import { EmptyState } from "@/components/ui/empty-state"
+import { DiscrepancyResolutionCell } from "./discrepancy-resolution-cell"
 
 export default async function BillingExceptionsPage() {
   const discrepancies = await getBillingDiscrepancies()
@@ -80,9 +80,11 @@ export default async function BillingExceptionsPage() {
                         {d.reason}
                       </TableCell>
                       <TableCell className="text-right">
-                        <Button variant="outline" size="sm" className="h-8">
-                          Investigate
-                        </Button>
+                        {d.status === 'open' ? (
+                          <DiscrepancyResolutionCell id={d.id} customerName={d.customerName} />
+                        ) : (
+                          <Badge variant="secondary" className="capitalize">{d.status}</Badge>
+                        )}
                       </TableCell>
                     </TableRow>
                   ))}

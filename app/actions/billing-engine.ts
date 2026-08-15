@@ -391,6 +391,67 @@ export async function deleteTariff(id: string) {
   return { ok: true }
 }
 
+/**
+ * Resolves a reported billing discrepancy.
+ * Actions: 'accept' (overwrites bill with field data) or 'reject' (keeps original).
+ */
+export async function resolveBillingDiscrepancy(id: string, action: 'accept' | 'reject', notes: string) {
+  const current = await requireUser()
+  if (current.role !== ROLES.SYSTEM_ADMIN) throw new Error("Forbidden")
+
+  const [discrepancy] = await db
+    .select()
+    .from(billingDiscrepancy)
+    .where(eq(billingDiscrepancy.id, id))
+    .limit(1)
+
+  if (!discrepancy) throw new Error("Discrepancy not found")
+
+  await db.transaction(async (tx) => {
+    if (action === 'accept') {
+      // 1. Find the customer and current balance
+      const [cust] = await tx.select({ balance: customer.accountBalance }).from(customer).where(eq(customer.id, discrepancy.customerId)).limit(1)
+      if (cust) {
+        // 2. Overwrite the customer's live balance with the agent's field value
+        // Note: AttemptedValue in field_reading represents the actual meter amount.
+        await tx.update(customer)
+          .set({ accountBalance: String(discrepancy.attemptedValue), updatedAt: new Date() })
+          .where(eq(customer.id, discrepancy.customerId))
+
+        // 3. Update the specific billing record snapshot for this period
+        await tx.update(billingRecord)
+          .set({ totalDue: String(discrepancy.attemptedValue), updatedAt: new Date() })
+          .where(and(
+            eq(billingRecord.customerId, discrepancy.customerId),
+            eq(billingRecord.billingPeriodId, discrepancy.billingPeriodId)
+          ))
+      }
+    }
+
+    // 4. Close the discrepancy record
+    await tx.update(billingDiscrepancy)
+      .set({
+        status: action === 'accept' ? 'resolved' : 'ignored',
+        resolutionNotes: notes,
+        resolvedById: current.id,
+        resolvedAt: new Date(),
+        updatedAt: new Date()
+      })
+      .where(eq(billingDiscrepancy.id, id))
+
+    await writeAudit({
+      user: current,
+      action: action === 'accept' ? "billing.discrepancy.resolved" : "billing.discrepancy.ignored",
+      entityType: "billing_discrepancy",
+      entityId: id,
+      details: { action, customerId: discrepancy.customerId, notes }
+    }, tx)
+  })
+
+  revalidatePath("/dashboard/billing/exceptions")
+  return { ok: true }
+}
+
 export async function getRecentMeterReadings(limit = 20) {
   const user = await requireUser()
   if (!canIssueReceipt(user)) throw new Error("Forbidden")

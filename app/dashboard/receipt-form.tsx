@@ -368,12 +368,12 @@ export function ReceiptForm({
                </div>
 
                {/* Live Balance Tracker */}
-               <div className="grid grid-cols-2 gap-4">
+               <div className="flex flex-col sm:flex-row justify-between gap-4">
                   <div className="space-y-1">
                     <p className="text-[10px] font-bold uppercase text-muted-foreground">Current Arrears</p>
                     <p className="text-lg font-black">{formatUGX(Number(selectedCustomer.accountBalance))}</p>
                   </div>
-                  <div className="space-y-1 text-right">
+                  <div className="space-y-1 sm:text-right border-t sm:border-0 pt-2 sm:pt-0">
                     <p className="text-[10px] font-bold uppercase text-muted-foreground">Resulting Balance</p>
                     <p className={cn(
                       "text-xl font-black",
@@ -414,20 +414,19 @@ export function ReceiptForm({
               <SelectContent>
                 {bills.map((b) => (
                   <SelectItem key={b.id} value={b.id}>
-                    {b.periodName} - {formatUGX(Number(b.totalDue))} (Due:{" "}
-                    {new Date(b.dueDate).toLocaleDateString()})
+                    {b.periodName} - {formatUGX(Number(b.totalDue))}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
             {selectedCustomer && bills.length === 0 && (
-              <p className="text-xs text-muted-foreground">
-                This customer has no open bills. You can still record a general payment.
+              <p className="text-[10px] text-muted-foreground mt-1">
+                This customer has no open bills. Recording general payment.
               </p>
             )}
           </FormField>
 
-          <ResponsiveFormLayout columns={2}>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <FormField label="Billing Period" htmlFor="billingPeriodTrigger" required>
               <Select
                 value={form.billingPeriodId}
@@ -468,19 +467,19 @@ export function ReceiptForm({
                 </SelectContent>
               </Select>
             </FormField>
-          </ResponsiveFormLayout>
+          </div>
 
           <FormField label="Account number" htmlFor="customerAccount">
             <Input
               id="customerAccount"
               value={form.customerAccount}
               onChange={(e) => set("customerAccount", e.target.value)}
-              className="h-11"
+              className="h-11 font-mono text-sm"
               readOnly={!!selectedCustomer}
             />
           </FormField>
 
-          <ResponsiveFormLayout columns={2}>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <FormField label="Phone" htmlFor="customerPhone">
               <Input
                 id="customerPhone"
@@ -499,9 +498,9 @@ export function ReceiptForm({
                 readOnly={!!selectedCustomer}
               />
             </FormField>
-          </ResponsiveFormLayout>
+          </div>
 
-          <ResponsiveFormLayout columns={2}>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {editableFields.amount && (
               <FormField label="Amount paid (UGX)" htmlFor="amount" required>
                 <Input
@@ -520,7 +519,7 @@ export function ReceiptForm({
                        set("outstandingBalance", String(currentBalance - amountPaid))
                     }
                   }}
-                  className="h-11"
+                  className="h-11 font-bold text-lg"
                 />
               </FormField>
             )}
@@ -532,44 +531,46 @@ export function ReceiptForm({
                 step="1"
                 value={form.outstandingBalance}
                 onChange={(e) => set("outstandingBalance", e.target.value)}
-                className="h-11"
+                className="h-11 font-mono"
               />
             </FormField>
-          </ResponsiveFormLayout>
+          </div>
 
-          {editableFields.paymentMethod && (
-            <FormField label="Payment method" htmlFor="paymentMethodTrigger" required>
-              <Select value={form.paymentMethod} onValueChange={(v) => set("paymentMethod", v ?? "")}>
-                <SelectTrigger id="paymentMethodTrigger" className="w-full h-11">
-                  <SelectValue placeholder="Select a method" />
-                </SelectTrigger>
-                <SelectContent>
-                  {paymentMethods.map((m) => (
-                    <SelectItem key={m.id} value={m.code}>
-                      {m.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </FormField>
-          )}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {editableFields.paymentMethod && (
+              <FormField label="Payment method" htmlFor="paymentMethodTrigger" required>
+                <Select value={form.paymentMethod} onValueChange={(v) => set("paymentMethod", v ?? "")}>
+                  <SelectTrigger id="paymentMethodTrigger" className="w-full h-11">
+                    <SelectValue placeholder="Select a method" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {paymentMethods.map((m) => (
+                      <SelectItem key={m.id} value={m.code}>
+                        {m.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </FormField>
+            )}
 
-          {branches.length > 0 && (
-            <FormField label="Branch" htmlFor="branchTrigger">
-              <Select value={form.branchId} onValueChange={(v) => set("branchId", v ?? "")}>
-                <SelectTrigger id="branchTrigger" className="w-full h-11">
-                  <SelectValue placeholder="Select a branch" />
-                </SelectTrigger>
-                <SelectContent>
-                  {branches.map((b) => (
-                    <SelectItem key={b.id} value={b.id}>
-                      {b.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </FormField>
-          )}
+            {branches.length > 0 && (
+              <FormField label="Branch" htmlFor="branchTrigger">
+                <Select value={form.branchId} onValueChange={(v) => set("branchId", v ?? "")}>
+                  <SelectTrigger id="branchTrigger" className="w-full h-11">
+                    <SelectValue placeholder="Select a branch" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {branches.map((b) => (
+                      <SelectItem key={b.id} value={b.id}>
+                        {b.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </FormField>
+            )}
+          </div>
 
           {editableFields.paymentReference && (
             <FormField label="Payment reference" htmlFor="paymentReference">
