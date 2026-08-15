@@ -15,7 +15,7 @@ class SQLiteService {
       this.db = await this.sqlite.createConnection(DB_NAME, false, 'no-encryption', 1, false);
       await this.db.open();
 
-      // Define Schema (Phase 1 & 2)
+      // Define Schema (Phase 1, 2 & 3)
       const schema = `
         CREATE TABLE IF NOT EXISTS local_customers (
           id TEXT PRIMARY KEY,
@@ -43,7 +43,8 @@ class SQLiteService {
         CREATE TABLE IF NOT EXISTS sync_meta (
           deviceId TEXT PRIMARY KEY,
           lastSuccessfulPullAt TEXT,
-          scopedAgentId TEXT
+          scopedAgentId TEXT,
+          activePeriodId TEXT
         );
 
         CREATE TABLE IF NOT EXISTS local_receipt_queue (
@@ -57,6 +58,18 @@ class SQLiteService {
           paymentDate TEXT,
           status TEXT DEFAULT 'queued',
           serverReceiptId TEXT,
+          error TEXT,
+          createdAt TEXT DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS local_meter_readings (
+          id TEXT PRIMARY KEY,
+          customerId TEXT,
+          billingPeriodId TEXT,
+          previousReading INTEGER,
+          currentReading INTEGER,
+          notes TEXT,
+          status TEXT DEFAULT 'queued',
           error TEXT,
           createdAt TEXT DEFAULT CURRENT_TIMESTAMP
         );
@@ -106,8 +119,8 @@ class SQLiteService {
 
       // Update sync meta
       await this.db.run(
-        `INSERT OR REPLACE INTO sync_meta (deviceId, lastSuccessfulPullAt, scopedAgentId) VALUES (?, ?, ?)`,
-        [deviceId, data.timestamp, data.agentId]
+        `INSERT OR REPLACE INTO sync_meta (deviceId, lastSuccessfulPullAt, scopedAgentId, activePeriodId) VALUES (?, ?, ?, ?)`,
+        [deviceId, data.timestamp, data.agentId, data.activePeriodId]
       );
 
       await this.db.execute('COMMIT;');
@@ -191,6 +204,47 @@ class SQLiteService {
   async removeSyncedReceipts(): Promise<void> {
     if (!this.db) return;
     await this.db.execute(`DELETE FROM local_receipt_queue WHERE status = 'synced'`);
+  }
+
+  async enqueueMeterReading(data: {
+    id: string;
+    customerId: string;
+    billingPeriodId: string;
+    previousReading: number;
+    currentReading: number;
+    notes?: string;
+  }): Promise<void> {
+    if (!this.db) return;
+    await this.db.run(
+      `INSERT INTO local_meter_readings (id, customerId, billingPeriodId, previousReading, currentReading, notes)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [data.id, data.customerId, data.billingPeriodId, data.previousReading, data.currentReading, data.notes || null]
+    );
+  }
+
+  async getQueuedMeterReadings() {
+    if (!this.db) return [];
+    const res = await this.db.query(`
+      SELECT q.*, c.name as customerName, c.customerAccount
+      FROM local_meter_readings q
+      LEFT JOIN local_customers c ON q.customerId = c.id
+      WHERE q.status != 'synced'
+      ORDER BY q.createdAt ASC;
+    `);
+    return res.values || [];
+  }
+
+  async updateQueuedReadingStatus(id: string, status: 'queued' | 'syncing' | 'synced' | 'failed', error?: string): Promise<void> {
+    if (!this.db) return;
+    await this.db.run(
+      `UPDATE local_meter_readings SET status = ?, error = ? WHERE id = ?`,
+      [status, error || null, id]
+    );
+  }
+
+  async removeSyncedReadings(): Promise<void> {
+    if (!this.db) return;
+    await this.db.execute(`DELETE FROM local_meter_readings WHERE status = 'synced'`);
   }
 }
 

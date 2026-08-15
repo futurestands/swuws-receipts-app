@@ -1,17 +1,18 @@
 "use client"
 
-import { useEffect, useState, useTransition } from "react"
+import { useEffect, useState } from "react"
 import { sqliteService } from "@/lib/offline/sqlite-service"
 import { getAgentOfflineData } from "@/app/actions/offline-sync"
-import { syncOfflineReceiptBatch } from "@/app/actions/offline-upload"
+import { syncOfflineReceiptBatch, syncOfflineMeterReadingBatch } from "@/app/actions/offline-upload"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { toast } from "sonner"
 import { formatUGX } from "@/lib/format"
-import { Search, RefreshCw, Wifi, WifiOff, AlertCircle, Banknote, Clock, CheckCircle2, AlertTriangle } from "lucide-react"
+import { Search, RefreshCw, Wifi, WifiOff, AlertCircle, Banknote, Clock, Calculator, AlertTriangle } from "lucide-react"
 import { isNative } from "@/lib/mobile-hardware"
 import { OfflineReceiptForm } from "./OfflineReceiptForm"
+import { OfflineMeterReadingForm } from "./OfflineMeterReadingForm"
 
 export function OfflineSearchClient({ agentId }: { agentId: string }) {
   const [query, setQuery] = useState("")
@@ -21,7 +22,9 @@ export function OfflineSearchClient({ agentId }: { agentId: string }) {
   const [syncing, setSyncing] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [queuedReceipts, setQueuedReceipts] = useState<any[]>([])
+  const [queuedReadings, setQueuedReadings] = useState<any[]>([])
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null)
+  const [selectedCustomerIdForReading, setSelectedCustomerIdForReading] = useState<string | null>(null)
 
   useEffect(() => {
     // Initial load
@@ -51,14 +54,16 @@ export function OfflineSearchClient({ agentId }: { agentId: string }) {
   }, [query])
 
   const refreshData = async () => {
-    const [custs, meta, queue] = await Promise.all([
+    const [custs, meta, queue, readings] = await Promise.all([
       sqliteService.searchCustomers(query),
       sqliteService.getSyncMeta(),
-      sqliteService.getQueuedReceipts()
+      sqliteService.getQueuedReceipts(),
+      sqliteService.getQueuedMeterReadings()
     ])
     setCustomers(custs)
     setSyncMeta(meta)
     setQueuedReceipts(queue)
+    setQueuedReadings(readings)
   }
 
   const handleSyncPull = async () => {
@@ -86,49 +91,63 @@ export function OfflineSearchClient({ agentId }: { agentId: string }) {
 
   const handleSyncPush = async () => {
     if (!isOnline) {
-      toast.error("You must be online to upload receipts")
+      toast.error("You must be online to upload data")
       return
     }
 
-    const pending = queuedReceipts.filter(r => r.status === 'queued' || r.status === 'failed')
-    if (pending.length === 0) return
+    const pendingReceipts = queuedReceipts.filter(r => r.status === 'queued' || r.status === 'failed')
+    const pendingReadings = queuedReadings.filter(r => r.status === 'queued' || r.status === 'failed')
+
+    if (pendingReceipts.length === 0 && pendingReadings.length === 0) return
 
     setUploading(true)
     try {
-      const batch = pending.map(r => ({
-        tempId: r.id,
-        data: {
-          billingRecordId: r.billingRecordId || undefined,
-          customerId: r.customerId,
-          customerName: r.customerName,
-          amount: r.amount,
-          paymentMethod: r.paymentMethod,
-          paymentReference: r.paymentReference || undefined,
-          notes: r.notes || undefined,
-          paymentDate: r.paymentDate || undefined
+      // 1. Sync Receipts
+      if (pendingReceipts.length > 0) {
+        const batch = pendingReceipts.map(r => ({
+          tempId: r.id,
+          data: {
+            billingRecordId: r.billingRecordId || undefined,
+            customerId: r.customerId,
+            customerName: r.customerName,
+            amount: r.amount,
+            paymentMethod: r.paymentMethod,
+            paymentReference: r.paymentReference || undefined,
+            notes: r.notes || undefined,
+            paymentDate: r.paymentDate || undefined
+          }
+        }))
+
+        const results = await syncOfflineReceiptBatch(batch)
+        for (const res of results) {
+          await sqliteService.updateQueuedReceiptStatus(res.tempId, res.success ? 'synced' : 'failed', res.serverId, res.error)
         }
-      }))
+      }
 
-      const results = await syncOfflineReceiptBatch(batch)
+      // 2. Sync Readings
+      if (pendingReadings.length > 0) {
+        const batch = pendingReadings.map(r => ({
+          tempId: r.id,
+          data: {
+            customerId: r.customerId,
+            billingPeriodId: r.billingPeriodId,
+            currentReading: r.currentReading,
+            previousReading: r.previousReading,
+            notes: r.notes || undefined
+          }
+        }))
 
-      for (const res of results) {
-        await sqliteService.updateQueuedReceiptStatus(
-          res.tempId,
-          res.success ? 'synced' : 'failed',
-          res.serverId,
-          res.error
-        )
+        const results = await syncOfflineMeterReadingBatch(batch)
+        for (const res of results) {
+          await sqliteService.updateQueuedReadingStatus(res.tempId, res.success ? 'synced' : 'failed', res.error)
+        }
       }
 
       await refreshData()
-      const successCount = results.filter(r => r.success).length
-      if (successCount === batch.length) {
-        toast.success(`Successfully uploaded ${successCount} receipts`)
-        await sqliteService.removeSyncedReceipts()
-        await refreshData()
-      } else {
-        toast.warning(`Uploaded ${successCount} receipts. ${batch.length - successCount} failed.`)
-      }
+      await sqliteService.removeSyncedReceipts()
+      await sqliteService.removeSyncedReadings()
+      await refreshData()
+      toast.success("Push sync completed")
     } catch (err) {
       console.error(err)
       toast.error("Upload failed")
@@ -165,13 +184,31 @@ export function OfflineSearchClient({ agentId }: { agentId: string }) {
     )
   }
 
+  if (selectedCustomerIdForReading) {
+    return (
+      <div className="max-w-lg mx-auto">
+        <OfflineMeterReadingForm
+          customerId={selectedCustomerIdForReading}
+          onSuccess={() => {
+            setSelectedCustomerIdForReading(null)
+            refreshData()
+          }}
+          onCancel={() => setSelectedCustomerIdForReading(null)}
+        />
+      </div>
+    )
+  }
+
+  const totalQueued = queuedReceipts.filter(r => r.status !== 'synced').length +
+                      queuedReadings.filter(r => r.status !== 'synced').length
+
   return (
     <div className="space-y-6 pb-20">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-primary">Offline Mode</h1>
           <p className="text-muted-foreground">
-            Issue receipts in areas with poor connectivity.
+            Issue receipts and capture readings while disconnected.
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -193,13 +230,13 @@ export function OfflineSearchClient({ agentId }: { agentId: string }) {
       </div>
 
       {/* Sync Queue Card */}
-      {queuedReceipts.length > 0 && (
+      {totalQueued > 0 && (
         <Card className="border-orange-200 bg-orange-50/30 overflow-hidden">
           <CardHeader className="py-3 px-4 border-b border-orange-100 bg-orange-100/50 flex flex-row items-center justify-between space-y-0">
             <div>
               <CardTitle className="text-sm font-bold text-orange-800">Pending Sync Queue</CardTitle>
               <CardDescription className="text-orange-700/70 text-xs">
-                {queuedReceipts.filter(r => r.status !== 'synced').length} receipts waiting to be uploaded.
+                {totalQueued} items waiting to be uploaded.
               </CardDescription>
             </div>
             <Button
@@ -222,19 +259,24 @@ export function OfflineSearchClient({ agentId }: { agentId: string }) {
                     </div>
                     <div>
                       <p className="font-bold">{r.customerName}</p>
-                      <p className="text-xs text-muted-foreground">{formatUGX(r.amount)} · {r.paymentMethod}</p>
+                      <p className="text-xs text-muted-foreground">Receipt · {formatUGX(r.amount)}</p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    {r.status === 'queued' && <div className="flex items-center gap-1 text-orange-600 font-medium text-xs"><Clock className="h-3 w-3" /> Queued</div>}
-                    {r.status === 'syncing' && <div className="flex items-center gap-1 text-blue-600 font-medium text-xs"><RefreshCw className="h-3 w-3 animate-spin" /> Syncing</div>}
-                    {r.status === 'failed' && (
-                      <div className="flex items-center gap-1 text-destructive font-medium text-xs">
-                        <AlertTriangle className="h-3 w-3" /> Failed
-                        <span className="text-[10px] bg-destructive/10 px-1 rounded ml-1" title={r.error}>Info</span>
-                      </div>
-                    )}
+                  <StatusBadge status={r.status} error={r.error} />
+                </div>
+              ))}
+              {queuedReadings.map(r => (
+                <div key={r.id} className="p-3 flex items-center justify-between text-sm">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-blue-100 rounded-full">
+                      <Calculator className="h-4 w-4 text-blue-600" />
+                    </div>
+                    <div>
+                      <p className="font-bold">{r.customerName}</p>
+                      <p className="text-xs text-muted-foreground">Reading · {r.currentReading} m³</p>
+                    </div>
                   </div>
+                  <StatusBadge status={r.status} error={r.error} />
                 </div>
               ))}
             </div>
@@ -279,14 +321,25 @@ export function OfflineSearchClient({ agentId }: { agentId: string }) {
                     </p>
                   </div>
                 </div>
-                <Button
-                  size="sm"
-                  onClick={() => setSelectedCustomerId(c.id)}
-                  className="gap-2 h-10 px-4"
-                >
-                  <Banknote className="h-4 w-4" />
-                  Collect
-                </Button>
+                <div className="flex gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setSelectedCustomerIdForReading(c.id)}
+                    className="gap-2 h-10 px-3"
+                  >
+                    <Calculator className="h-4 w-4" />
+                    Reading
+                  </Button>
+                  <Button
+                    size="sm"
+                    onClick={() => setSelectedCustomerId(c.id)}
+                    className="gap-2 h-10 px-3"
+                  >
+                    <Banknote className="h-4 w-4" />
+                    Collect
+                  </Button>
+                </div>
               </div>
             </CardContent>
           </Card>
@@ -308,4 +361,16 @@ export function OfflineSearchClient({ agentId }: { agentId: string }) {
       </div>
     </div>
   )
+}
+
+function StatusBadge({ status, error }: { status: string, error?: string }) {
+  if (status === 'queued') return <div className="flex items-center gap-1 text-orange-600 font-medium text-xs"><Clock className="h-3 w-3" /> Queued</div>
+  if (status === 'syncing') return <div className="flex items-center gap-1 text-blue-600 font-medium text-xs"><RefreshCw className="h-3 w-3 animate-spin" /> Syncing</div>
+  if (status === 'failed') return (
+    <div className="flex items-center gap-1 text-destructive font-medium text-xs">
+      <AlertTriangle className="h-3 w-3" /> Failed
+      <span className="text-[10px] bg-destructive/10 px-1 rounded ml-1" title={error}>Info</span>
+    </div>
+  )
+  return null
 }
