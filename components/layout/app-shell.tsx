@@ -10,8 +10,6 @@ import { SidebarNav } from "@/components/layout/sidebar-nav"
 import { NotificationCenter } from "@/components/notifications/notification-center"
 import { SignOutButton } from "@/components/sign-out-button"
 import type { NavSection } from "@/lib/nav-config"
-import { SplashScreen } from "@capacitor/splash-screen"
-import { StatusBar, Style } from "@capacitor/status-bar"
 import { isNative } from "@/lib/mobile-hardware"
 import { SyncStatus } from "./SyncStatus"
 import { Badge } from "@/components/ui/badge"
@@ -57,11 +55,16 @@ export function AppShell({
   useEffect(() => {
     if (isNative()) {
       setNative(true)
-      SplashScreen.hide().catch(err => console.warn('Could not hide splash screen', err))
 
-      // Fix Status Bar collision
-      StatusBar.setStyle({ style: Style.Light }) // White text for Dark background
-      StatusBar.setBackgroundColor({ color: '#0B2A4A' }) // Deep blue theme
+      // Dynamic imports for Capacitor plugins to prevent Vercel SSR panics
+      import("@capacitor/splash-screen").then(({ SplashScreen }) => {
+        SplashScreen.hide().catch(err => console.warn('Could not hide splash screen', err))
+      })
+
+      import("@capacitor/status-bar").then(({ StatusBar, Style }) => {
+        StatusBar.setStyle({ style: Style.Light })
+        StatusBar.setBackgroundColor({ color: '#0B2A4A' })
+      })
     }
   }, [])
 

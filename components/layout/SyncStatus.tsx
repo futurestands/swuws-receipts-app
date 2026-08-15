@@ -14,8 +14,10 @@ export function SyncStatus({ agentId }: { agentId: string }) {
   const [pendingCount, setPendingTotal] = useState(0)
   const [lastSync, setLastSync] = useState<Date | null>(null)
   const [isOnline, setIsOnline] = useState(true)
+  const [mounted, setMounted] = useState(false)
 
   useEffect(() => {
+    setMounted(true)
     if (!isNative()) return;
 
     // 1. Initialize Sync Manager
@@ -45,7 +47,7 @@ export function SyncStatus({ agentId }: { agentId: string }) {
     return () => clearInterval(interval)
   }, [agentId])
 
-  if (!isNative()) return null
+  if (!mounted || !isNative()) return null
 
   return (
     <Link
