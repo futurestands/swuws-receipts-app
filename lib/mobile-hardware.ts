@@ -3,13 +3,17 @@ import { Haptics, ImpactStyle } from '@capacitor/haptics';
 
 /**
  * UNIFIED MOBILE HARDWARE BRIDGE
- *
- * Provides detection and common patterns for interacting with physical
- * device hardware (Scanner, Printer, GPS).
  */
 
-export const isNative = () => Capacitor.isNativePlatform();
-export const isAndroid = () => Capacitor.getPlatform() === 'android';
+export const isNative = () => {
+  if (typeof window === 'undefined') return false;
+  return Capacitor.isNativePlatform();
+};
+
+export const isAndroid = () => {
+  if (typeof window === 'undefined') return false;
+  return Capacitor.getPlatform() === 'android';
+};
 
 let vibrationEnabled = true;
 
