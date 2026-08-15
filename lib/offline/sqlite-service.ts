@@ -15,7 +15,7 @@ class SQLiteService {
       this.db = await this.sqlite.createConnection(DB_NAME, false, 'no-encryption', 1, false);
       await this.db.open();
 
-      // Define Schema (Phase 1)
+      // Define Schema (Phase 1 & 2)
       const schema = `
         CREATE TABLE IF NOT EXISTS local_customers (
           id TEXT PRIMARY KEY,
@@ -44,6 +44,21 @@ class SQLiteService {
           deviceId TEXT PRIMARY KEY,
           lastSuccessfulPullAt TEXT,
           scopedAgentId TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS local_receipt_queue (
+          id TEXT PRIMARY KEY,
+          customerId TEXT,
+          billingRecordId TEXT,
+          amount REAL,
+          paymentMethod TEXT,
+          paymentReference TEXT,
+          notes TEXT,
+          paymentDate TEXT,
+          status TEXT DEFAULT 'queued',
+          serverReceiptId TEXT,
+          error TEXT,
+          createdAt TEXT DEFAULT CURRENT_TIMESTAMP
         );
       `;
 
@@ -132,6 +147,50 @@ class SQLiteService {
     const bill = billRes.values?.[0];
 
     return { customer: cust, bill };
+  }
+
+  async enqueueReceipt(data: {
+    id: string;
+    customerId: string;
+    billingRecordId?: string;
+    amount: number;
+    paymentMethod: string;
+    paymentReference?: string;
+    notes?: string;
+    paymentDate: string;
+  }): Promise<void> {
+    if (!this.db) return;
+    await this.db.run(
+      `INSERT INTO local_receipt_queue (id, customerId, billingRecordId, amount, paymentMethod, paymentReference, notes, paymentDate)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [data.id, data.customerId, data.billingRecordId || null, data.amount, data.paymentMethod, data.paymentReference || null, data.notes || null, data.paymentDate]
+    );
+  }
+
+  async getQueuedReceipts() {
+    if (!this.db) return [];
+    // Join with customer name for display
+    const res = await this.db.query(`
+      SELECT q.*, c.name as customerName, c.customerAccount
+      FROM local_receipt_queue q
+      LEFT JOIN local_customers c ON q.customerId = c.id
+      WHERE q.status != 'synced'
+      ORDER BY q.createdAt ASC;
+    `);
+    return res.values || [];
+  }
+
+  async updateQueuedReceiptStatus(id: string, status: 'queued' | 'syncing' | 'synced' | 'failed', serverReceiptId?: string, error?: string): Promise<void> {
+    if (!this.db) return;
+    await this.db.run(
+      `UPDATE local_receipt_queue SET status = ?, serverReceiptId = ?, error = ? WHERE id = ?`,
+      [status, serverReceiptId || null, error || null, id]
+    );
+  }
+
+  async removeSyncedReceipts(): Promise<void> {
+    if (!this.db) return;
+    await this.db.execute(`DELETE FROM local_receipt_queue WHERE status = 'synced'`);
   }
 }
 

@@ -24,6 +24,7 @@ import {
   TrendingUp,
   Calculator,
   AlertCircle,
+  WifiOff,
   type LucideIcon
 } from "lucide-react"
 
@@ -51,6 +52,7 @@ export const ICON_MAP = {
   TrendingUp,
   Calculator,
   AlertCircle,
+  WifiOff,
 } as const
 
 export type IconName = keyof typeof ICON_MAP
