@@ -246,7 +246,9 @@ export function CustomerSearchBar({
             </Label>
             <Select value={branchId} onValueChange={(v) => handleBranchChange(v)}>
               <SelectTrigger className="h-11">
-                <SelectValue placeholder="All Branches" />
+                <SelectValue placeholder="All Branches">
+                  {branchId === "all" ? "All Branches" : branches.find(b => b.id === branchId)?.name}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Branches</SelectItem>
@@ -265,7 +267,9 @@ export function CustomerSearchBar({
             </Label>
             <Select value={schemeId} onValueChange={(v) => handleSchemeChange(v)}>
               <SelectTrigger className="h-11">
-                <SelectValue placeholder="All Schemes" />
+                <SelectValue placeholder="All Schemes">
+                  {schemeId === "all" ? "All Schemes" : schemes.find(s => s.id === schemeId)?.name}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Schemes</SelectItem>

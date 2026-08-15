@@ -71,7 +71,7 @@ export default async function AdminPage() {
       <div>
         <h1 className="text-xl font-semibold">Admin console</h1>
         <p className="text-sm text-muted-foreground">
-          Manage agents, branches, payment methods, branding, and review the audit trail.
+          Manage users, branches, payment methods, branding, and review the audit trail.
         </p>
       </div>
       <AdminTabs

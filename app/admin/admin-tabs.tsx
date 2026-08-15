@@ -96,7 +96,7 @@ export function AdminTabs({
           {permissions.canViewReports && <TabsTrigger value="overview" className="shrink-0">Overview</TabsTrigger>}
           {permissions.canViewReports && <TabsTrigger value="commercial" className="shrink-0">Commercial</TabsTrigger>}
           {permissions.canViewReports && <TabsTrigger value="printing" className="shrink-0">Printing</TabsTrigger>}
-          {permissions.canManageUsers && <TabsTrigger value="agents" className="shrink-0">Agents</TabsTrigger>}
+          {permissions.canManageUsers && <TabsTrigger value="agents" className="shrink-0">Users</TabsTrigger>}
           {permissions.canManageIAM && <TabsTrigger value="iam" className="shrink-0">IAM</TabsTrigger>}
           {permissions.canConfigureSystem && <TabsTrigger value="tariffs" className="shrink-0">Tariffs</TabsTrigger>}
           {permissions.canConfigureSystem && <TabsTrigger value="templates" className="shrink-0">Templates</TabsTrigger>}

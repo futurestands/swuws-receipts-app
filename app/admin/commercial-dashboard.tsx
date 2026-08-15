@@ -72,7 +72,11 @@ export function CommercialDashboard({
         <div className="space-y-2">
           <label className="text-xs font-medium text-muted-foreground">Billing Period</label>
           <Select value={filters.periodId} onValueChange={(v) => setFilters(f => ({ ...f, periodId: v ?? "all" }))}>
-            <SelectTrigger><SelectValue placeholder="All periods" /></SelectTrigger>
+            <SelectTrigger>
+              <SelectValue placeholder="All periods">
+                {filters.periodId === "all" ? "All periods" : periods.find(p => p.id === filters.periodId)?.periodName}
+              </SelectValue>
+            </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All periods</SelectItem>
               {periods.map(p => <SelectItem key={p.id} value={p.id}>{p.periodName}</SelectItem>)}
@@ -83,7 +87,11 @@ export function CommercialDashboard({
         <div className="space-y-2">
           <label className="text-xs font-medium text-muted-foreground">Cluster</label>
           <Select value={filters.clusterId} onValueChange={(v) => setFilters(f => ({ ...f, clusterId: v ?? "all", branchId: "all", schemeId: "all" }))}>
-            <SelectTrigger><SelectValue placeholder="All Clusters" /></SelectTrigger>
+            <SelectTrigger>
+              <SelectValue placeholder="All Clusters">
+                {filters.clusterId === "all" ? "All Clusters" : clusters.find(c => c.id === filters.clusterId)?.name}
+              </SelectValue>
+            </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Clusters</SelectItem>
               {clusters.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
@@ -94,7 +102,11 @@ export function CommercialDashboard({
         <div className="space-y-2">
           <label className="text-xs font-medium text-muted-foreground">Area (Branch)</label>
           <Select value={filters.branchId} onValueChange={(v) => setFilters(f => ({ ...f, branchId: v ?? "all", schemeId: "all" }))}>
-            <SelectTrigger><SelectValue placeholder="All Areas" /></SelectTrigger>
+            <SelectTrigger>
+              <SelectValue placeholder="All Areas">
+                {filters.branchId === "all" ? "All Areas" : branches.find(b => b.id === filters.branchId)?.name}
+              </SelectValue>
+            </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Areas</SelectItem>
               {filteredBranches.map(b => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}
@@ -105,7 +117,11 @@ export function CommercialDashboard({
         <div className="space-y-2">
           <label className="text-xs font-medium text-muted-foreground">Water Scheme</label>
           <Select value={filters.schemeId} onValueChange={(v) => setFilters(f => ({ ...f, schemeId: v ?? "all" }))}>
-            <SelectTrigger><SelectValue placeholder="All Schemes" /></SelectTrigger>
+            <SelectTrigger>
+              <SelectValue placeholder="All Schemes">
+                {filters.schemeId === "all" ? "All Schemes" : schemes.find(s => s.id === filters.schemeId)?.name}
+              </SelectValue>
+            </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Schemes</SelectItem>
               {filteredSchemes.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}

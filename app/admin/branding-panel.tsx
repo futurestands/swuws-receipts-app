@@ -39,7 +39,7 @@ export function BrandingPanel({ settings }: { settings: OrgSettings }) {
     startTransition(async () => {
       const result = await updateLatestAppVersion(appVersion)
       if (result.ok) {
-        toast.success("App version updated. Agents have been notified.")
+        toast.success("App version updated. Users have been notified.")
       } else {
         toast.error("Failed to update app version")
       }
@@ -169,7 +169,7 @@ export function BrandingPanel({ settings }: { settings: OrgSettings }) {
           </CardTitle>
           <CardDescription>
             Manage the official version of the SWUWS Android app.
-            Changing the version here triggers a notification for all field agents.
+            Changing the version here triggers a notification for all field users.
           </CardDescription>
         </CardHeader>
         <CardContent>

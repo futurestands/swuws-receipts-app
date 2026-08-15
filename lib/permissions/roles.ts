@@ -54,5 +54,5 @@ export const ROLE_LABELS: Record<Role, string> = {
   [ROLES.FINANCE_OFFICER]: "Finance Officer",
   [ROLES.CLUSTER_MANAGER]: "Cluster Manager",
   [ROLES.COMMERCIAL_OFFICER]: "Commercial Officer",
-  [ROLES.PLUMBER]: "Plumber (Agent)",
+  [ROLES.PLUMBER]: "Plumber (User)",
 }

@@ -18,7 +18,7 @@ export function StatsPanel({
       <div className="grid gap-4 sm:grid-cols-3">
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Agents</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">Users</CardTitle>
           </CardHeader>
           <CardContent>
             <p className="text-2xl font-semibold">{stats.agentCount}</p>
@@ -48,7 +48,7 @@ export function StatsPanel({
 
       <Card>
         <CardHeader>
-          <CardTitle>Today&apos;s collections by agent</CardTitle>
+          <CardTitle>Today&apos;s collections by user</CardTitle>
         </CardHeader>
         <CardContent>
           {collections.perAgent.length === 0 ? (
@@ -57,7 +57,7 @@ export function StatsPanel({
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Agent</TableHead>
+                  <TableHead>User</TableHead>
                   <TableHead>Receipts</TableHead>
                   <TableHead>Total</TableHead>
                 </TableRow>

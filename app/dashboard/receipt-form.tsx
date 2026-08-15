@@ -409,7 +409,14 @@ export function ReceiptForm({
               <SelectTrigger id="activeBillTrigger" className="w-full h-11">
                 <SelectValue
                   placeholder={selectedCustomer ? (bills.length > 0 ? "Select a bill" : "No open bills found") : "Search for a customer first"}
-                />
+                >
+                  {form.billingRecordId ? (
+                    (() => {
+                      const b = bills.find(b => b.id === form.billingRecordId)
+                      return b ? `${b.periodName} - ${formatUGX(Number(b.totalDue))}` : ""
+                    })()
+                  ) : undefined}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 {bills.map((b) => (
@@ -456,7 +463,9 @@ export function ReceiptForm({
                 disabled={!!form.billingRecordId}
               >
                 <SelectTrigger id="schemeTrigger" className="w-full h-11">
-                  <SelectValue placeholder="Select scheme" />
+                  <SelectValue placeholder="Select scheme">
+                    {form.schemeId ? schemes.find(s => s.id === form.schemeId)?.name : "Select scheme"}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {schemes.map((s) => (

@@ -239,7 +239,7 @@ export function AgentsPanel({
   async function handleDelete(agentId: string) {
     const result = await deleteAgent(agentId)
     if (result.ok) {
-      toast.success("Agent account deleted")
+      toast.success("User account deleted")
       setAgents(prev => prev.filter(a => a.id !== agentId))
     } else {
       toast.error(result.error)
@@ -299,7 +299,7 @@ export function AgentsPanel({
 
       <Card>
         <CardHeader>
-          <CardTitle>Add agent or admin</CardTitle>
+          <CardTitle>Add user or admin</CardTitle>
           <CardDescription>Creates a new account with an initial password.</CardDescription>
         </CardHeader>
         <CardContent className="pt-6">
@@ -355,7 +355,9 @@ export function AgentsPanel({
                 <Label>System Role</Label>
                 <Select value={selectedIamRoleId || "none"} onValueChange={(v) => setSelectedIamRoleId(v === "none" ? null : v)}>
                   <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Select Role" />
+                    <SelectValue placeholder="Select Role">
+                      {selectedIamRoleId === null ? "No Role" : iamRoles.find(r => r.id === selectedIamRoleId)?.name}
+                    </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="none">No Role</SelectItem>
@@ -380,7 +382,11 @@ export function AgentsPanel({
                     setSelectedBranchId(null)
                     setSelectedSchemeId(null)
                   }}>
-                    <SelectTrigger className="bg-background"><SelectValue placeholder="No Cluster" /></SelectTrigger>
+                    <SelectTrigger className="bg-background">
+                      <SelectValue placeholder="No Cluster">
+                        {selectedClusterId === null ? "No Cluster" : clusters.find(c => c.id === selectedClusterId)?.name}
+                      </SelectValue>
+                    </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="none">No Cluster</SelectItem>
                       {clusters.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
@@ -394,7 +400,11 @@ export function AgentsPanel({
                     setSelectedBranchId(id)
                     setSelectedSchemeId(null)
                   }}>
-                    <SelectTrigger className="bg-background"><SelectValue placeholder="No Area" /></SelectTrigger>
+                    <SelectTrigger className="bg-background">
+                      <SelectValue placeholder="No Area">
+                        {selectedBranchId === null ? "No Area" : branches.find(b => b.id === selectedBranchId)?.name}
+                      </SelectValue>
+                    </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="none">No Area</SelectItem>
                       {availableBranches.map(b => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}
@@ -404,7 +414,11 @@ export function AgentsPanel({
                 <div className="space-y-2">
                   <Label className="text-[10px] uppercase text-muted-foreground">Scheme</Label>
                   <Select value={selectedSchemeId || "none"} onValueChange={(v) => setSelectedSchemeId(v === "none" ? null : v)}>
-                    <SelectTrigger className="bg-background"><SelectValue placeholder="No Scheme" /></SelectTrigger>
+                    <SelectTrigger className="bg-background">
+                      <SelectValue placeholder="No Scheme">
+                        {selectedSchemeId === null ? "No Scheme" : schemes.find(s => s.id === selectedSchemeId)?.name}
+                      </SelectValue>
+                    </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="none">No Scheme</SelectItem>
                       {availableSchemes.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
@@ -424,7 +438,7 @@ export function AgentsPanel({
                     <div className="size-4 rounded-full border-2 border-white/30 border-t-white animate-spin" />
                     Creating...
                   </div>
-                ) : "Create Agent Account"}
+                ) : "Create User Account"}
               </Button>
             </div>
           </form>
@@ -434,7 +448,7 @@ export function AgentsPanel({
       <Card>
         <CardHeader className="gap-4">
           <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-            <CardTitle>Agents &amp; admins</CardTitle>
+            <CardTitle>Users &amp; admins</CardTitle>
             <span className="text-sm text-muted-foreground">{total} total</span>
           </div>
           <form onSubmit={handleSearchSubmit} className="flex gap-2">
@@ -453,7 +467,7 @@ export function AgentsPanel({
           <Table>
             <TableHeader className="bg-muted/50">
               <TableRow>
-                <TableHead className="pl-6 w-[250px]">Agent Details</TableHead>
+                <TableHead className="pl-6 w-[250px]">User Details</TableHead>
                 <TableHead>System Role</TableHead>
                 <TableHead>Hierarchy Access</TableHead>
                 <TableHead className="text-center">Status</TableHead>
@@ -570,10 +584,10 @@ export function AgentsPanel({
                           </AlertDialogTrigger>
                           <AlertDialogContent>
                             <AlertDialogHeader>
-                              <AlertDialogTitle>Delete Agent Account?</AlertDialogTitle>
+                              <AlertDialogTitle>Delete User Account?</AlertDialogTitle>
                               <AlertDialogDescription>
                                 This will permanently remove <strong>{agent.name}</strong> from the system.
-                                Agents who have issued receipts cannot be deleted and must be deactivated instead.
+                                Users who have issued receipts cannot be deleted and must be deactivated instead.
                               </AlertDialogDescription>
                             </AlertDialogHeader>
                             <AlertDialogFooter>
@@ -681,7 +695,7 @@ function EditAgentDialog({
         return
       }
 
-      toast.success("Agent updated successfully")
+      toast.success("User updated successfully")
       onUpdated({
         ...agent,
         name,
@@ -706,7 +720,7 @@ function EditAgentDialog({
       </DialogTrigger>
       <DialogContent className="sm:max-w-[500px]">
         <DialogHeader>
-          <DialogTitle>Edit Agent: {agent.name}</DialogTitle>
+          <DialogTitle>Edit User: {agent.name}</DialogTitle>
           <DialogDescription>Update profile details, permissions, and regional access.</DialogDescription>
         </DialogHeader>
         <div className="space-y-4 py-4">
@@ -728,7 +742,11 @@ function EditAgentDialog({
           <div className="space-y-2">
             <Label>System Role</Label>
             <Select value={iamRoleId} onValueChange={(v) => setIamRoleId(v || "none")}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectTrigger>
+                <SelectValue>
+                  {iamRoleId === "none" ? "No Role Assigned" : iamRoles.find(r => r.id === iamRoleId)?.name}
+                </SelectValue>
+              </SelectTrigger>
               <SelectContent>
                 <SelectItem value="none">No Role Assigned</SelectItem>
                 {iamRoles.map(r => <SelectItem key={r.id} value={r.id}>{r.name}</SelectItem>)}
@@ -742,7 +760,11 @@ function EditAgentDialog({
                 <div className="space-y-1">
                    <Label className="text-[9px] uppercase">Cluster</Label>
                    <Select value={clusterId} onValueChange={(v) => { setClusterId(v || "none"); setBranchId("none"); setSchemeId("none"); }}>
-                      <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                      <SelectTrigger className="h-8 text-xs">
+                        <SelectValue>
+                          {clusterId === "none" ? "None" : clusters.find(c => c.id === clusterId)?.name}
+                        </SelectValue>
+                      </SelectTrigger>
                       <SelectContent>
                          <SelectItem value="none">None</SelectItem>
                          {clusters.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
@@ -752,7 +774,11 @@ function EditAgentDialog({
                 <div className="space-y-1">
                    <Label className="text-[9px] uppercase">Area</Label>
                    <Select value={branchId} onValueChange={(v) => { setBranchId(v || "none"); setSchemeId("none"); }}>
-                      <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                      <SelectTrigger className="h-8 text-xs">
+                        <SelectValue>
+                          {branchId === "none" ? "None" : branches.find(b => b.id === branchId)?.name}
+                        </SelectValue>
+                      </SelectTrigger>
                       <SelectContent>
                          <SelectItem value="none">None</SelectItem>
                          {availableBranches.map(b => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}
@@ -762,7 +788,11 @@ function EditAgentDialog({
                 <div className="space-y-1">
                    <Label className="text-[9px] uppercase">Scheme</Label>
                    <Select value={schemeId} onValueChange={(v) => setSchemeId(v || "none")}>
-                      <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                      <SelectTrigger className="h-8 text-xs">
+                        <SelectValue>
+                          {schemeId === "none" ? "None" : schemes.find(s => s.id === schemeId)?.name}
+                        </SelectValue>
+                      </SelectTrigger>
                       <SelectContent>
                          <SelectItem value="none">None</SelectItem>
                          {availableSchemes.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
