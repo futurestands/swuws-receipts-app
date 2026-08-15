@@ -12,6 +12,8 @@ import { SignOutButton } from "@/components/sign-out-button"
 import type { NavSection } from "@/lib/nav-config"
 import { SplashScreen } from "@capacitor/splash-screen"
 import { isNative } from "@/lib/mobile-hardware"
+import { SyncStatus } from "./SyncStatus"
+import { Badge } from "@/components/ui/badge"
 
 const COLLAPSE_KEY = "swuws:sidebar-collapsed"
 
@@ -26,6 +28,7 @@ export function AppShell({
   brand = "SWUWS Collection Portal",
   brandHref = "/dashboard",
   children,
+  agentId,
 }: {
   sections: NavSection[]
   userName: string
@@ -37,6 +40,7 @@ export function AppShell({
   brand?: string
   brandHref?: string
   children: React.ReactNode
+  agentId: string
 }) {
   const [collapsed, setCollapsed] = useState(() => {
     if (typeof window !== "undefined") {
@@ -47,12 +51,24 @@ export function AppShell({
   })
   const [mobileOpen, setMobileOpen] = useState(false)
   const [imgError, setImgError] = useState(false)
+  const [native, setNative] = useState(false)
 
   useEffect(() => {
     if (isNative()) {
+      setNative(true)
       SplashScreen.hide().catch(err => console.warn('Could not hide splash screen', err))
     }
   }, [])
+
+  // Filter out minimalist items from sidebar to keep it clean (WhatsApp-style)
+  // These are now accessed via the Dashboard (Field Mode) or Account (Printer Settings)
+  const filteredSections = sections.map(section => ({
+    ...section,
+    items: section.items.filter(item => {
+      const isHiddenFromSidebar = item.href.includes('/offline') || item.href.includes('/printer')
+      return !isHiddenFromSidebar
+    })
+  })).filter(section => section.items.length > 0)
 
   function toggleCollapsed() {
     setCollapsed((prev) => {
@@ -123,7 +139,7 @@ export function AppShell({
           </Button>
         </div>
         <div className="flex-1 overflow-y-auto">
-          <SidebarNav sections={sections} collapsed={collapsed} />
+          <SidebarNav sections={filteredSections} collapsed={collapsed} />
         </div>
         <div className={cn(
           "shrink-0 border-t border-sidebar-border p-3 text-center transition-opacity duration-200",
@@ -147,7 +163,7 @@ export function AppShell({
             </SheetTitle>
           </SheetHeader>
           <div className="flex-1 overflow-y-auto">
-            <SidebarNav sections={sections} onNavigate={() => setMobileOpen(false)} />
+            <SidebarNav sections={filteredSections} onNavigate={() => setMobileOpen(false)} />
           </div>
         </SheetContent>
       </Sheet>
@@ -171,13 +187,19 @@ export function AppShell({
             </Link>
           </div>
 
-          <div className="hidden md:flex items-center flex-1 px-20 min-w-0 justify-center">
+          <div className="hidden md:flex items-center flex-1 px-20 min-w-0 justify-center gap-2">
             <p className="text-[10px] md:text-sm lg:text-base xl:text-lg font-black text-brand-blue tracking-[0.15em] text-center font-serif uppercase whitespace-nowrap">
               {orgName}
             </p>
+            {native && (
+               <Badge variant="outline" className="text-[8px] h-4 px-1.5 font-black uppercase bg-primary text-white border-none shadow-sm">
+                  Mobile App
+               </Badge>
+            )}
           </div>
 
           <div className="ml-auto flex items-center gap-2 sm:gap-3">
+            <SyncStatus agentId={agentId} />
             <NotificationCenter />
             <span className="hidden truncate border-l pl-3 text-sm text-muted-foreground md:inline">
               {userName} · {userRoleLabel}

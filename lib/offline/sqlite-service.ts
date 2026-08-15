@@ -73,6 +73,41 @@ class SQLiteService {
           error TEXT,
           createdAt TEXT DEFAULT CURRENT_TIMESTAMP
         );
+
+        CREATE TABLE IF NOT EXISTS printer_settings (
+          id INTEGER PRIMARY KEY CHECK (id = 1),
+          type TEXT DEFAULT 'auto',
+          deviceId TEXT,
+          deviceName TEXT,
+          paperWidth TEXT DEFAULT '58mm',
+          networkIp TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS local_print_logs (
+          id TEXT PRIMARY KEY,
+          receiptId TEXT,
+          printerType TEXT,
+          status TEXT, -- 'success', 'failed'
+          error TEXT,
+          createdAt TEXT DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS local_sync_logs (
+          id TEXT PRIMARY KEY,
+          action TEXT, -- 'pull', 'push'
+          status TEXT, -- 'success', 'failed', 'partial'
+          details TEXT, -- JSON string
+          error TEXT,
+          createdAt TEXT DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS local_notifications (
+          id TEXT PRIMARY KEY,
+          title TEXT,
+          message TEXT,
+          read INTEGER DEFAULT 0,
+          createdAt TEXT DEFAULT CURRENT_TIMESTAMP
+        );
       `;
 
       await this.db.execute(schema);
@@ -245,6 +280,76 @@ class SQLiteService {
   async removeSyncedReadings(): Promise<void> {
     if (!this.db) return;
     await this.db.execute(`DELETE FROM local_meter_readings WHERE status = 'synced'`);
+  }
+
+  async getPrinterSettings() {
+    if (!this.db) return null;
+    const res = await this.db.query('SELECT * FROM printer_settings WHERE id = 1;');
+    return res.values?.[0] || { type: 'auto', paperWidth: '58mm' };
+  }
+
+  async updatePrinterSettings(settings: { type: string, deviceId?: string | null, deviceName?: string | null, paperWidth?: string, networkIp?: string | null }) {
+    if (!this.db) return;
+    await this.db.run(
+      `INSERT OR REPLACE INTO printer_settings (id, type, deviceId, deviceName, paperWidth, networkIp) VALUES (1, ?, ?, ?, ?, ?)`,
+      [settings.type, settings.deviceId || null, settings.deviceName || null, settings.paperWidth || '58mm', settings.networkIp || null]
+    );
+  }
+
+  async logPrint(data: { receiptId: string, printerType: string, status: 'success' | 'failed', error?: string }) {
+    if (!this.db) return;
+    const id = window.crypto.randomUUID();
+    await this.db.run(
+      `INSERT INTO local_print_logs (id, receiptId, printerType, status, error) VALUES (?, ?, ?, ?, ?)`,
+      [id, data.receiptId, data.printerType, data.status, data.error || null]
+    );
+  }
+
+  async getPrintLogs() {
+    if (!this.db) return [];
+    const res = await this.db.query('SELECT * FROM local_print_logs ORDER BY createdAt DESC LIMIT 100;');
+    return res.values || [];
+  }
+
+  async logSync(data: { action: 'pull' | 'push', status: 'success' | 'failed' | 'partial', details?: any, error?: string }) {
+    if (!this.db) return;
+    const id = window.crypto.randomUUID();
+    await this.db.run(
+      `INSERT INTO local_sync_logs (id, action, status, details, error) VALUES (?, ?, ?, ?, ?)`,
+      [id, data.action, data.status, data.details ? JSON.stringify(data.details) : null, data.error || null]
+    );
+  }
+
+  async getSyncLogs() {
+    if (!this.db) return [];
+    const res = await this.db.query('SELECT * FROM local_sync_logs ORDER BY createdAt DESC LIMIT 50;');
+    return res.values || [];
+  }
+
+  async addNotification(data: { title: string, message: string }) {
+    if (!this.db) return;
+    const id = window.crypto.randomUUID();
+    await this.db.run(
+      `INSERT INTO local_notifications (id, title, message) VALUES (?, ?, ?)`,
+      [id, data.title, data.message]
+    );
+  }
+
+  async getNotifications() {
+    if (!this.db) return [];
+    const res = await this.db.query('SELECT * FROM local_notifications ORDER BY createdAt DESC LIMIT 50;');
+    return res.values || [];
+  }
+
+  async markNotificationRead(id: string) {
+    if (!this.db) return;
+    await this.db.run(`UPDATE local_notifications SET read = 1 WHERE id = ?`, [id]);
+  }
+
+  async getUnreadNotificationCount() {
+    if (!this.db) return 0;
+    const res = await this.db.query('SELECT count(*) as count FROM local_notifications WHERE read = 0;');
+    return res.values?.[0]?.count || 0;
   }
 }
 

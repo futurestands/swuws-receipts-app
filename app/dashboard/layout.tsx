@@ -29,6 +29,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
       orgName={settings.orgName}
       logoUrl={settings.logoUrl}
       receiptPrefix={settings.receiptPrefix}
+      agentId={current.id}
     >
       {children}
     </AppShell>

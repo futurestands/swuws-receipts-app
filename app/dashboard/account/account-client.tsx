@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { toast } from "sonner"
-import { ShieldCheck, Lock, User, Smartphone, Download, Zap, RefreshCw, ExternalLink } from "lucide-react"
+import { ShieldCheck, Lock, User, Smartphone, Download, Zap, RefreshCw, ExternalLink, Printer } from "lucide-react"
 import { CURRENT_APP_VERSION } from "@/lib/version"
 import { setVibrationPreference, isNative } from "@/lib/mobile-hardware"
 import { updateUserPreferences } from "@/app/actions/account"
@@ -16,6 +16,7 @@ import { useEffect } from "react"
 import { cn } from "@/lib/utils"
 import type { OrgSettings } from "@/lib/db/schema"
 import { Browser } from "@capacitor/browser"
+import Link from "next/link"
 
 type UserProfile = {
   id: string
@@ -148,6 +149,23 @@ export function AccountClient({ user, settings, siteUrl }: { user: UserProfile, 
                    disabled={isUpdatingPrefs}
                 />
              </div>
+
+             {isNative() && (
+               <>
+                 <div className="h-px bg-emerald-800/10" />
+                 <div className="flex items-center justify-between">
+                    <div className="space-y-0.5">
+                       <Label className="text-sm font-bold">Hardware Printing</Label>
+                       <p className="text-xs text-muted-foreground">Configure Bluetooth or USB thermal printers.</p>
+                    </div>
+                    <Button variant="outline" size="sm" asChild className="gap-2 border-emerald-800/20 text-emerald-800">
+                       <Link href="/dashboard/settings/printer">
+                          <Printer className="h-3.5 w-3.5" /> Configure
+                       </Link>
+                    </Button>
+                 </div>
+               </>
+             )}
           </CardContent>
           <CardFooter className="pt-0">
              <p className="text-[10px] text-muted-foreground italic">Note: Only works on Android devices.</p>

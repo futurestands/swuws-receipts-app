@@ -28,6 +28,7 @@ export function getNavSections(current: UserPermissionsContext): NavSection[] {
 
   if (canIssueReceipt(current)) {
     primary.push({ href: "/dashboard/offline", label: "Offline Search", icon: "WifiOff" })
+    primary.push({ href: "/dashboard/settings/printer", label: "Printer Settings", icon: "Printer" })
   }
 
   // customers/page.tsx calls searchCustomers(), which requires reports.view -

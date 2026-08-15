@@ -7,19 +7,25 @@ import { syncOfflineReceiptBatch, syncOfflineMeterReadingBatch } from "@/app/act
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
 import { toast } from "sonner"
 import { formatUGX } from "@/lib/format"
+import { cn } from "@/lib/utils"
 import { Search, RefreshCw, Wifi, WifiOff, AlertCircle, Banknote, Clock, Calculator, AlertTriangle, Printer } from "lucide-react"
 import { isNative } from "@/lib/mobile-hardware"
 import { OfflineReceiptForm } from "./OfflineReceiptForm"
 import { OfflineMeterReadingForm } from "./OfflineMeterReadingForm"
-import { bluetoothPrinter } from "@/lib/offline/bluetooth-printer"
+import { bluetoothLePrinter } from "@/lib/offline/bluetooth-printer"
+import { printerManager } from "@/lib/offline/printer-manager"
+import { searchCustomers } from "@/app/actions/customers"
 
 export function OfflineSearchClient({ agentId }: { agentId: string }) {
   const [query, setQuery] = useState("")
-  const [customers, setCustomers] = useState<any[]>([])
+  const [localCustomers, setLocalCustomers] = useState<any[]>([])
+  const [serverCustomers, setServerCustomers] = useState<any[]>([])
   const [syncMeta, setSyncMeta] = useState<any>(null)
   const [isOnline, setIsOnline] = useState(true)
+  const [searchingServer, setSearchingServer] = useState(false)
   const [syncing, setSyncing] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [queuedReceipts, setQueuedReceipts] = useState<any[]>([])
@@ -49,22 +55,45 @@ export function OfflineSearchClient({ agentId }: { agentId: string }) {
 
   useEffect(() => {
     const timer = setTimeout(() => {
-      refreshData()
+      handleSearch()
     }, 300)
     return () => clearTimeout(timer)
-  }, [query])
+  }, [query, isOnline])
 
   const refreshData = async () => {
-    const [custs, meta, queue, readings] = await Promise.all([
-      sqliteService.searchCustomers(query),
+    const [meta, queue, readings] = await Promise.all([
       sqliteService.getSyncMeta(),
       sqliteService.getQueuedReceipts(),
       sqliteService.getQueuedMeterReadings()
     ])
-    setCustomers(custs)
     setSyncMeta(meta)
     setQueuedReceipts(queue)
     setQueuedReadings(readings)
+    await handleSearch()
+  }
+
+  const handleSearch = async () => {
+    // Always search local SQLite
+    const local = await sqliteService.searchCustomers(query)
+    setLocalCustomers(local)
+
+    // If online, search server
+    if (isOnline && query.trim().length >= 2) {
+      setSearchingServer(true)
+      try {
+        const res = await searchCustomers({ query })
+        // Filter out customers already in local results
+        const localIds = new Set(local.map(c => c.id))
+        const filteredServer = res.customers.filter(c => !localIds.has(c.id))
+        setServerCustomers(filteredServer)
+      } catch (err) {
+        console.warn('Server search failed', err)
+      } finally {
+        setSearchingServer(false)
+      }
+    } else {
+      setServerCustomers([])
+    }
   }
 
   const handleSyncPull = async () => {
@@ -92,7 +121,7 @@ export function OfflineSearchClient({ agentId }: { agentId: string }) {
 
   const handlePrintOffline = async (r: any) => {
     try {
-      await bluetoothPrinter.printReceipt({
+      await printerManager.print({
         receiptNumber: r.id.slice(0, 8).toUpperCase(), // Provisional #
         customerName: r.customerName,
         amount: r.amount,
@@ -331,63 +360,87 @@ export function OfflineSearchClient({ agentId }: { agentId: string }) {
       )}
 
       <div className="grid grid-cols-1 gap-3">
-        {customers.map((c) => (
-          <Card key={c.id} className="overflow-hidden border-muted-foreground/10 hover:border-primary/30 transition-colors shadow-sm">
-            <CardContent className="p-4">
-              <div className="flex justify-between items-center">
-                <div className="space-y-1">
-                  <h3 className="font-bold text-base leading-none mb-1">{c.name}</h3>
-                  <div className="flex flex-wrap gap-x-2 gap-y-1 text-[10px] text-muted-foreground uppercase font-bold tracking-tight">
-                    <span className="bg-muted px-1 rounded">{c.customerAccount || 'No Account'}</span>
-                    <span>{c.phone || 'No Phone'}</span>
-                  </div>
-                  <div className="flex items-center gap-2 mt-2">
-                    <p className="text-xs font-bold text-muted-foreground uppercase">Arrears:</p>
-                    <p className={`text-sm font-black ${Number(c.accountBalance) > 0 ? 'text-destructive' : 'text-primary'}`}>
-                      {formatUGX(Math.abs(Number(c.accountBalance)))}
-                      {Number(c.accountBalance) < 0 && " (CR)"}
-                    </p>
-                  </div>
-                </div>
-                <div className="flex gap-2">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => setSelectedCustomerIdForReading(c.id)}
-                    className="gap-2 h-10 px-3"
-                  >
-                    <Calculator className="h-4 w-4" />
-                    Reading
-                  </Button>
-                  <Button
-                    size="sm"
-                    onClick={() => setSelectedCustomerId(c.id)}
-                    className="gap-2 h-10 px-3"
-                  >
-                    <Banknote className="h-4 w-4" />
-                    Collect
-                  </Button>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+        {localCustomers.map((c) => (
+          <CustomerCard key={c.id} customer={c} onCollect={() => setSelectedCustomerId(c.id)} onReading={() => setSelectedCustomerIdForReading(c.id)} isLocal={true} />
         ))}
 
-        {customers.length === 0 && (
+        {searchingServer && (
+          <div className="flex items-center justify-center gap-2 py-4 text-xs text-muted-foreground animate-pulse">
+            <RefreshCw className="h-3 w-3 animate-spin" />
+            Searching server...
+          </div>
+        )}
+
+        {serverCustomers.map((c) => (
+          <CustomerCard key={c.id} customer={c} onCollect={() => setSelectedCustomerId(c.id)} onReading={() => setSelectedCustomerIdForReading(c.id)} isLocal={false} />
+        ))}
+
+        {localCustomers.length === 0 && serverCustomers.length === 0 && !searchingServer && (
           <div className="py-12 text-center border-2 border-dashed rounded-xl bg-muted/30">
             <Search className="mx-auto h-8 w-8 text-muted-foreground/50 mb-3" />
             <p className="text-muted-foreground">
-              {query ? 'No matching customers in local cache.' : 'Use the search bar to find customers.'}
+              {query ? 'No matching customers found.' : 'Use the search bar to find customers.'}
             </p>
             {!syncMeta && (
               <p className="text-xs text-primary font-bold mt-2 animate-pulse">
-                Connect to internet and tap "Sync Cache" to begin.
+                App is warming up. Please stay on this page to sync.
               </p>
             )}
           </div>
         )}
       </div>
     </div>
+  )
+}
+
+function CustomerCard({ customer, onCollect, onReading, isLocal }: { customer: any, onCollect: () => void, onReading: () => void, isLocal: boolean }) {
+  return (
+    <Card className={cn(
+      "overflow-hidden transition-colors shadow-sm",
+      isLocal ? "border-muted-foreground/10 hover:border-primary/30" : "border-dashed border-primary/20 bg-primary/5"
+    )}>
+      <CardContent className="p-4">
+        <div className="flex justify-between items-center">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <h3 className="font-bold text-base leading-none">{customer.name}</h3>
+              {!isLocal && <Badge variant="outline" className="text-[8px] h-3.5 px-1 uppercase border-primary/30 text-primary bg-white">Remote</Badge>}
+            </div>
+            <div className="flex flex-wrap gap-x-2 gap-y-1 text-[10px] text-muted-foreground uppercase font-bold tracking-tight">
+              <span className="bg-muted px-1 rounded">{customer.customerAccount || 'No Account'}</span>
+              <span>{customer.phone || 'No Phone'}</span>
+            </div>
+            <div className="flex items-center gap-2 mt-2">
+              <p className="text-xs font-bold text-muted-foreground uppercase">Arrears:</p>
+              <p className={`text-sm font-black ${Number(customer.accountBalance) > 0 ? 'text-destructive' : 'text-primary'}`}>
+                {formatUGX(Math.abs(Number(customer.accountBalance)))}
+                {Number(customer.accountBalance) < 0 && " (CR)"}
+              </p>
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={onReading}
+              className="gap-2 h-10 px-3"
+              disabled={!isLocal} // Reading requires local cache for previous values
+            >
+              <Calculator className="h-4 w-4" />
+              Reading
+            </Button>
+            <Button
+              size="sm"
+              onClick={onCollect}
+              className="gap-2 h-10 px-3"
+            >
+              <Banknote className="h-4 w-4" />
+              Collect
+            </Button>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
   )
 }
 

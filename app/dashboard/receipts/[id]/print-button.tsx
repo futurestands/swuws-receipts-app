@@ -1,10 +1,11 @@
 "use client"
 
 import { Button } from "@/components/ui/button"
-import { recordReceiptPrint } from "@/app/actions/receipts"
+import { recordReceiptPrint, getReceiptById } from "@/app/actions/receipts"
 import { useState } from "react"
 import { toast } from "sonner"
-import { isNative, printReceiptNative } from "@/lib/mobile-hardware"
+import { isNative } from "@/lib/mobile-hardware"
+import { printerManager } from "@/lib/offline/printer-manager"
 
 export function PrintButton({ receiptId }: { receiptId: string }) {
   const [loading, setLoading] = useState(false)
@@ -15,7 +16,22 @@ export function PrintButton({ receiptId }: { receiptId: string }) {
       const result = await recordReceiptPrint(receiptId)
       if (result.ok) {
         if (isNative()) {
-          await printReceiptNative(receiptId)
+          const r = await getReceiptById(receiptId)
+          if (r) {
+            await printerManager.print({
+              orgName: r.orgNameSnapshot || undefined,
+              orgPhone: r.orgPhoneSnapshot || undefined,
+              receiptNumber: r.receiptNumber,
+              customerName: r.customerName,
+              customerAccount: r.customerAccount || undefined,
+              amount: Number(r.amount),
+              paymentMethod: r.paymentMethod,
+              paymentDate: r.paymentDate.toISOString(),
+              agentName: r.agentName,
+              isProvisional: false
+            })
+            toast.success("Receipt sent to printer")
+          }
         } else {
           // Small delay to ensure any server-side revalidation updates have
           // propagated to the DOM before the print preview takes a snapshot.

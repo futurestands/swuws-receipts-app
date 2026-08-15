@@ -2,11 +2,15 @@ const CACHE_NAME = 'swuws-cache-v2';
 const STATIC_CACHE_NAME = 'swuws-static-v2';
 
 const OFFLINE_URL = '/dashboard/offline';
+const LOGS_URL = '/dashboard/offline/logs';
+const SETTINGS_URL = '/dashboard/settings/printer';
 
 // Core assets that MUST be cached during installation
 const PRECACHE_ASSETS = [
   '/',
   OFFLINE_URL,
+  LOGS_URL,
+  SETTINGS_URL,
   '/globals.css',
   '/manifest.webmanifest',
   '/icon.svg',

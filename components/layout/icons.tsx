@@ -25,6 +25,10 @@ import {
   Calculator,
   AlertCircle,
   WifiOff,
+  Printer,
+  Usb,
+  Bluetooth,
+  Settings2,
   type LucideIcon
 } from "lucide-react"
 
@@ -53,6 +57,10 @@ export const ICON_MAP = {
   Calculator,
   AlertCircle,
   WifiOff,
+  Printer,
+  Usb,
+  Bluetooth,
+  Settings2,
 } as const
 
 export type IconName = keyof typeof ICON_MAP

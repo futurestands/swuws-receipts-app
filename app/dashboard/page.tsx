@@ -9,6 +9,7 @@ import { CollectionSummaryCard } from "@/components/dashboard/collection-summary
 import { PageHeader } from "@/components/ui/page-header"
 import { StatCard, StatCardGrid } from "@/components/ui/stat-card"
 import { Receipt, Wallet } from "lucide-react"
+import { FieldOperationsCard } from "@/components/dashboard/FieldOperationsCard"
 
 import { canViewAllData, canIssueReceipt } from "@/lib/permissions"
 
@@ -35,6 +36,8 @@ export default async function DashboardPage() {
         title={canViewAll ? "All receipts" : "My receipts"}
         description={`Welcome back, ${current?.name.split(" ")[0]}.`}
       />
+
+      <FieldOperationsCard />
 
       <CollectionSummaryCard summary={collectionSummary} />
 

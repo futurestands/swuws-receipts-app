@@ -26,6 +26,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
       orgName={settings.orgName}
       logoUrl={settings.logoUrl}
       receiptPrefix={settings.receiptPrefix}
+      agentId={current.id}
     >
       {children}
     </AppShell>
