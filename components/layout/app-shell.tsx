@@ -11,6 +11,7 @@ import { NotificationCenter } from "@/components/notifications/notification-cent
 import { SignOutButton } from "@/components/sign-out-button"
 import type { NavSection } from "@/lib/nav-config"
 import { SplashScreen } from "@capacitor/splash-screen"
+import { StatusBar, Style } from "@capacitor/status-bar"
 import { isNative } from "@/lib/mobile-hardware"
 import { SyncStatus } from "./SyncStatus"
 import { Badge } from "@/components/ui/badge"
@@ -57,6 +58,10 @@ export function AppShell({
     if (isNative()) {
       setNative(true)
       SplashScreen.hide().catch(err => console.warn('Could not hide splash screen', err))
+
+      // Fix Status Bar collision
+      StatusBar.setStyle({ style: Style.Light }) // White text for Dark background
+      StatusBar.setBackgroundColor({ color: '#0B2A4A' }) // Deep blue theme
     }
   }, [])
 
@@ -170,7 +175,10 @@ export function AppShell({
 
       {/* Main column */}
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center gap-3 border-b bg-card/95 px-3 backdrop-blur supports-backdrop-filter:bg-card/80 sm:px-4 md:px-6 no-print">
+        <header className={cn(
+          "sticky top-0 z-30 flex h-14 shrink-0 items-center gap-3 border-b bg-card/95 px-3 backdrop-blur supports-backdrop-filter:bg-card/80 sm:px-4 md:px-6 no-print",
+          native && "pt-3 h-auto min-h-14"
+        )}>
           <Button
             variant="ghost"
             size="icon-sm"
