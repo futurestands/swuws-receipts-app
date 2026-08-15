@@ -102,9 +102,23 @@ export async function submitMeterReading(data: {
   notes?: string
   phoneNumber?: string
   sendSms?: boolean
+  idempotencyKey?: string
 }) {
   const user = await requireUser()
   if (!canIssueReceipt(user)) throw new Error("Forbidden")
+
+  // 0. Idempotency Guard
+  if (data.idempotencyKey) {
+    const [existing] = await db
+      .select({ id: meterReading.id })
+      .from(meterReading)
+      .where(eq(meterReading.idempotencyKey, data.idempotencyKey))
+      .limit(1)
+
+    if (existing) {
+      return { ok: true, readingId: existing.id }
+    }
+  }
 
   // Finding 2 Fix: Verify Active Billing Period in the action
   const [period] = await db
@@ -197,6 +211,7 @@ export async function submitMeterReading(data: {
       meterRefSnapshot: cust.meterRef,
       recordedById: user.id,
       notes: data.notes,
+      idempotencyKey: data.idempotencyKey || null,
     })
 
     await tx

@@ -78,6 +78,8 @@ export const receipt = pgTable(
     footerSnapshot: text("footerSnapshot").notNull(),
     logoUrlSnapshot: text("logoUrlSnapshot"),
 
+    idempotencyKey: text("idempotencyKey"),
+
     // -----------------------------------------------------------------------
     // LEGACY PRINTING COLUMNS (DO NOT USE)
     // These are no longer updated because the receipt table is immutable.
@@ -102,6 +104,7 @@ export const receipt = pgTable(
     reconStatusIdx: index("receipt_recon_status_idx").on(table.reconciliationStatus),
     billingRecordIdx: index("receipt_billing_record_idx").on(table.billingRecordId),
     billingPeriodIdx: index("receipt_billing_period_idx").on(table.billingPeriodId),
+    idempotencyKeyIdx: uniqueIndex("receipt_idempotency_key_idx").on(table.idempotencyKey),
   }),
 )
 

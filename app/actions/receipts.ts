@@ -43,9 +43,22 @@ async function assertPaymentMethodAllowed(code: string) {
   return Boolean(row)
 }
 
-export async function createReceipt(input: CreateReceiptInput) {
+export async function createReceipt(input: CreateReceiptInput & { idempotencyKey?: string }) {
   const current = await requireUser()
   if (!canIssueReceipt(current)) throw new Error("Forbidden")
+
+  // 0. Idempotency Guard (Check if this receipt already exists)
+  if (input.idempotencyKey) {
+    const [existing] = await db
+      .select({ id: receipt.id, receiptNumber: receipt.receiptNumber })
+      .from(receipt)
+      .where(eq(receipt.idempotencyKey, input.idempotencyKey))
+      .limit(1)
+
+    if (existing) {
+      return { ok: true as const, receipt: existing }
+    }
+  }
 
   // Organizational Scope Validation:
   // Ensure the user is issuing a receipt for their assigned Area (Branch).
@@ -286,6 +299,7 @@ export async function createReceipt(input: CreateReceiptInput) {
           disclaimerSnapshot: settings.disclaimer,
           footerSnapshot: settings.footerText,
           logoUrlSnapshot: settings.logoUrl,
+          idempotencyKey: input.idempotencyKey || null,
         })
         .returning()
 

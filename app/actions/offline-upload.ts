@@ -17,7 +17,7 @@ export type OfflineSyncResult = {
 /**
  * Batch processes receipts issued while offline.
  */
-export async function syncOfflineReceiptBatch(batch: { tempId: string; data: CreateReceiptInput }[]) {
+export async function syncOfflineReceiptBatch(batch: { tempId: string; data: CreateReceiptInput & { idempotencyKey?: string } }[]) {
   const current = await requireUser()
   if (!canIssueReceipt(current)) throw new Error("Forbidden")
 
@@ -49,6 +49,7 @@ export async function syncOfflineMeterReadingBatch(batch: {
     currentReading: number;
     previousReading: number;
     notes?: string;
+    idempotencyKey?: string;
   }
 }[]) {
   const current = await requireUser()
@@ -65,6 +66,9 @@ export async function syncOfflineMeterReadingBatch(batch: {
 
       if (res.ok) {
         results.push({ tempId: item.tempId, success: true, serverId: res.readingId })
+      } else {
+        // @ts-expect-error - Fix silent drop bug
+        results.push({ tempId: item.tempId, success: false, error: res.error || "Reading failed" })
       }
     } catch (err: any) {
       results.push({ tempId: item.tempId, success: false, error: err.message || "Reading sync failed" })

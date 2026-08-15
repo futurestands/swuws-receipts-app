@@ -1,9 +1,5 @@
-import { Network } from '@capacitor/network';
-import { BackgroundTask } from '@capawesome/capacitor-background-task';
-import { LocalNotifications } from '@capacitor/local-notifications';
 import { sqliteService } from './sqlite-service';
 import { getAgentOfflineData } from '@/app/actions/offline-sync';
-import { syncOfflineReceiptBatch, syncOfflineMeterReadingBatch } from '@/app/actions/offline-upload';
 import { isNative } from '../mobile-hardware';
 
 /**
@@ -16,6 +12,8 @@ class SyncManager {
 
   async initialize(agentId: string) {
     if (!isNative()) return;
+
+    const { Network } = await import('@capacitor/network');
 
     // 1. Listen for network changes
     Network.addListener('networkStatusChange', async (status) => {
@@ -38,6 +36,7 @@ class SyncManager {
   private async setupPeriodicSync(agentId: string) {
     if (this.syncInterval) clearInterval(this.syncInterval);
 
+    const { Network } = await import('@capacitor/network');
     const status = await Network.getStatus();
     if (!status.connected) return;
 
@@ -54,6 +53,8 @@ class SyncManager {
   async autoSync(agentId: string) {
     if (this.isSyncing) return;
     this.isSyncing = true;
+
+    const { BackgroundTask } = await import('@capawesome/capacitor-background-task');
 
     // Use BackgroundTask to ensure it finishes even if app is minimized
     let taskId: string | null = null;
@@ -81,7 +82,7 @@ class SyncManager {
       const totalPending = pendingReceipts.length + pendingReadings.length;
 
       if (totalPending > 0) {
-        // Sync Receipts
+        // Sync Receipts via API Route
         if (pendingReceipts.length > 0) {
           const batch = pendingReceipts.map(r => ({
             tempId: r.id,
@@ -93,10 +94,20 @@ class SyncManager {
               paymentMethod: r.paymentMethod,
               paymentReference: r.paymentReference || undefined,
               notes: r.notes || undefined,
-              paymentDate: r.paymentDate || undefined
+              paymentDate: r.paymentDate || undefined,
+              idempotencyKey: r.idempotencyKey
             }
           }));
-          const results = await syncOfflineReceiptBatch(batch);
+
+          const response = await fetch('/api/sync/receipts', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ batch })
+          });
+
+          if (!response.ok) throw new Error(`Receipt sync API error: ${response.statusText}`);
+          const results = await response.json();
+
           for (const res of results) {
             await sqliteService.updateQueuedReceiptStatus(res.tempId, res.success ? 'synced' : 'failed', res.serverId, res.error);
             if (res.success) pushResults.receipts++;
@@ -105,7 +116,7 @@ class SyncManager {
           await sqliteService.removeSyncedReceipts();
         }
 
-        // Sync Readings
+        // Sync Readings via API Route
         if (pendingReadings.length > 0) {
           const batch = pendingReadings.map(r => ({
             tempId: r.id,
@@ -114,10 +125,20 @@ class SyncManager {
               billingPeriodId: r.billingPeriodId,
               currentReading: r.currentReading,
               previousReading: r.previousReading,
-              notes: r.notes || undefined
+              notes: r.notes || undefined,
+              idempotencyKey: r.idempotencyKey
             }
           }));
-          const results = await syncOfflineMeterReadingBatch(batch);
+
+          const response = await fetch('/api/sync/readings', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ batch })
+          });
+
+          if (!response.ok) throw new Error(`Reading sync API error: ${response.statusText}`);
+          const results = await response.json();
+
           for (const res of results) {
             await sqliteService.updateQueuedReadingStatus(res.tempId, res.success ? 'synced' : 'failed', res.error);
             if (res.success) pushResults.readings++;
@@ -160,6 +181,7 @@ class SyncManager {
     await sqliteService.addNotification({ title, message });
 
     if (isNative()) {
+      const { LocalNotifications } = await import('@capacitor/local-notifications');
       await LocalNotifications.schedule({
         notifications: [{
           id: Math.floor(Math.random() * 10000),

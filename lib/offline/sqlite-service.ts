@@ -56,6 +56,7 @@ class SQLiteService {
           paymentReference TEXT,
           notes TEXT,
           paymentDate TEXT,
+          idempotencyKey TEXT,
           status TEXT DEFAULT 'queued',
           serverReceiptId TEXT,
           error TEXT,
@@ -69,6 +70,7 @@ class SQLiteService {
           previousReading INTEGER,
           currentReading INTEGER,
           notes TEXT,
+          idempotencyKey TEXT,
           status TEXT DEFAULT 'queued',
           error TEXT,
           createdAt TEXT DEFAULT CURRENT_TIMESTAMP
@@ -208,10 +210,11 @@ class SQLiteService {
     paymentDate: string;
   }): Promise<void> {
     if (!this.db) return;
+    const idempotencyKey = window.crypto.randomUUID();
     await this.db.run(
-      `INSERT INTO local_receipt_queue (id, customerId, billingRecordId, amount, paymentMethod, paymentReference, notes, paymentDate)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      [data.id, data.customerId, data.billingRecordId || null, data.amount, data.paymentMethod, data.paymentReference || null, data.notes || null, data.paymentDate]
+      `INSERT INTO local_receipt_queue (id, customerId, billingRecordId, amount, paymentMethod, paymentReference, notes, paymentDate, idempotencyKey)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [data.id, data.customerId, data.billingRecordId || null, data.amount, data.paymentMethod, data.paymentReference || null, data.notes || null, data.paymentDate, idempotencyKey]
     );
   }
 
@@ -250,10 +253,11 @@ class SQLiteService {
     notes?: string;
   }): Promise<void> {
     if (!this.db) return;
+    const idempotencyKey = window.crypto.randomUUID();
     await this.db.run(
-      `INSERT INTO local_meter_readings (id, customerId, billingPeriodId, previousReading, currentReading, notes)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-      [data.id, data.customerId, data.billingPeriodId, data.previousReading, data.currentReading, data.notes || null]
+      `INSERT INTO local_meter_readings (id, customerId, billingPeriodId, previousReading, currentReading, notes, idempotencyKey)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [data.id, data.customerId, data.billingPeriodId, data.previousReading, data.currentReading, data.notes || null, idempotencyKey]
     );
   }
 

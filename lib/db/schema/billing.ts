@@ -210,6 +210,7 @@ export const meterReading = pgTable(
     isNotified: boolean("isNotified").notNull().default(false), // SMS status
     notifiedAt: timestamp("notifiedAt"),
     notes: text("notes"),
+    idempotencyKey: text("idempotencyKey"),
     createdAt: timestamp("createdAt").notNull().defaultNow(),
     updatedAt: timestamp("updatedAt").notNull().defaultNow(),
   },
@@ -220,6 +221,7 @@ export const meterReading = pgTable(
     ),
     customerIdx: index("meter_reading_customer_idx").on(table.customerId),
     periodIdx: index("meter_reading_period_idx").on(table.billingPeriodId),
+    idempotencyKeyIdx: uniqueIndex("meter_reading_idempotency_key_idx").on(table.idempotencyKey),
   }),
 )
 
