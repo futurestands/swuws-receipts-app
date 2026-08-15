@@ -12,11 +12,16 @@ import 'dotenv/config';
 // for its own canonical URL (see lib/site-url.ts), rather than a second
 // one-off variable — one place to update when the domain changes. Falls
 // back to the current Vercel URL if unset, so nothing breaks today.
-const serverUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://swuws-receipts-app-q2z9.vercel.app';
+const DEFAULT_FALLBACK = 'https://swuws-receipts-app-q2z9.vercel.app';
+const serverUrl = process.env.NEXT_PUBLIC_APP_URL || DEFAULT_FALLBACK;
 
-if (process.env.NODE_ENV === 'production' && !process.env.NEXT_PUBLIC_APP_URL) {
-  console.warn('\x1b[33m%s\x1b[0m', 'WARNING: Production build detected but NEXT_PUBLIC_APP_URL is not set.');
-  console.warn('\x1b[33m%s\x1b[0m', 'Defaulting to: ' + serverUrl);
+if (process.env.NODE_ENV === 'production') {
+  if (!process.env.NEXT_PUBLIC_APP_URL) {
+    console.error('\x1b[31m%s\x1b[0m', 'CRITICAL WARNING: Production build detected but NEXT_PUBLIC_APP_URL is not set.');
+    console.error('\x1b[31m%s\x1b[0m', 'The app will talk to the STALE fallback URL: ' + DEFAULT_FALLBACK);
+  } else if (process.env.NEXT_PUBLIC_APP_URL === DEFAULT_FALLBACK) {
+    console.warn('\x1b[33m%s\x1b[0m', 'WARNING: Production URL matches the fallback. Ensure this is the correct domain.');
+  }
 }
 
 const config: CapacitorConfig = {

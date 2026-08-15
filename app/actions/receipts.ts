@@ -180,6 +180,8 @@ export async function createReceipt(input: CreateReceiptInput) {
         newStatus = outstandingAfter <= 0 ? "pending_bank_confirmation" : "partially_paid"
 
         // Update Billing Record Status
+        // Note: We only update status to 'partially_paid' or 'pending_bank_confirmation'
+        // to track operational progress. Final 'paid' status requires bank sync.
         await tx
           .update(billingRecord)
           .set({ status: newStatus, updatedAt: new Date() })
@@ -759,7 +761,7 @@ export async function requestReceiptVoid(receiptId: string, reason: string) {
 
   try {
     await db.transaction(async (tx) => {
-      // 1. Idempotency Check: Verify if already voided
+      // 2. IDEMPOTENCY CHECK: Verify if already voided
       const [existingVoid] = await tx
         .select({ id: auditLog.id })
         .from(auditLog)
@@ -767,31 +769,15 @@ export async function requestReceiptVoid(receiptId: string, reason: string) {
         .limit(1)
 
       if (existingVoid) {
-        throw new Error("This receipt has already been voided.")
+        throw new Error("This receipt has already been deleted.")
       }
 
-      // 2. Lock customer for update
-      if (target.customerId) {
-        const lockResult = await tx.execute<{ accountBalance: string }>(
-          sql`SELECT "accountBalance" FROM "customer" WHERE id = ${target.customerId} FOR UPDATE`,
-        )
-        const cust = lockResult.rows[0]
-        if (!cust) throw new Error("Customer profile not found")
+      // NOTE: We DO NOT update the customerTable.accountBalance here.
+      // Under our current architecture, receipt creation does not reduce the balance,
+      // therefore receipt deletion does not need to increase it.
+      // Financial truth is only updated via official EBS imports.
 
-        // 2. Reverse Financials: Increase balance (add back the amount taken)
-        const newBalance = Number(cust.accountBalance) + Number(target.amount)
-        await tx
-          .update(customerTable)
-          .set({ accountBalance: String(newBalance), updatedAt: new Date() })
-          .where(eq(customerTable.id, target.customerId))
-      }
-
-      // 3. Mark Receipt as Exception/Voided (using reconciliationStatus as a proxy)
-      // Note: We can't UPDATE the receipt if the trigger is active.
-      // Wait, 0002_immutability.sql says "BEFORE UPDATE/DELETE triggers unconditionally raise an exception".
-      // This means I CANNOT update the receipt record at all.
-
-      // 4. insert Audit Log
+      // 3. insert Audit Log
       await writeAudit(
         {
           user: current,

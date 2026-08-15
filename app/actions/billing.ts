@@ -1140,6 +1140,22 @@ export async function deleteBillingRun(runId: string) {
     throw new Error(`Cannot delete a run from a ${run.status} period.`)
   }
 
+  // FORENSIC AUDIT B2 FIX: Check for payment interference.
+  // If any customer in this run has received a payment reduction (Daily Sync),
+  // we must block absolute deletion to prevent debt resurrection.
+  const [interference] = await db
+    .select({ id: billingRecord.id })
+    .from(billingRecord)
+    .where(and(
+      eq(billingRecord.billingRunId, runId),
+      sql`CAST(${billingRecord.totalDue} AS NUMERIC) < (CAST(${billingRecord.arrears} AS NUMERIC) + CAST(${billingRecord.billAmount} AS NUMERIC))`
+    ))
+    .limit(1)
+
+  if (interference) {
+    throw new Error("Cannot delete this run. Payments have already been synced against these customers. Overwrite with a new import instead.")
+  }
+
   try {
     await db.transaction(async (tx) => {
       // 1. Fetch all records to get the rollback values (the 'arrears' field stores the previous balance)
@@ -1199,6 +1215,20 @@ export async function bulkDeleteBillingRuns(runIds: string[]) {
   const current = await requireUser()
   if (!canUploadBilling(current)) throw new Error("Forbidden")
   if (!runIds.length) return { ok: true }
+
+  // FORENSIC AUDIT B2 FIX: Check for payment interference.
+  const [interference] = await db
+    .select({ id: billingRecord.id })
+    .from(billingRecord)
+    .where(and(
+      inArray(billingRecord.billingRunId, runIds),
+      sql`CAST(${billingRecord.totalDue} AS NUMERIC) < (CAST(${billingRecord.arrears} AS NUMERIC) + CAST(${billingRecord.billAmount} AS NUMERIC))`
+    ))
+    .limit(1)
+
+  if (interference) {
+    throw new Error("Cannot delete these runs. Payments have already been synced against some of these customers. Overwrite with a new import instead.")
+  }
 
   try {
     await db.transaction(async (tx) => {

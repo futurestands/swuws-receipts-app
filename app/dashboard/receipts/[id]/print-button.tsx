@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button"
 import { recordReceiptPrint } from "@/app/actions/receipts"
 import { useState } from "react"
 import { toast } from "sonner"
+import { isNative, printReceiptNative } from "@/lib/mobile-hardware"
 
 export function PrintButton({ receiptId }: { receiptId: string }) {
   const [loading, setLoading] = useState(false)
@@ -13,9 +14,13 @@ export function PrintButton({ receiptId }: { receiptId: string }) {
     try {
       const result = await recordReceiptPrint(receiptId)
       if (result.ok) {
-        // Small delay to ensure any server-side revalidation updates have
-        // propagated to the DOM before the print preview takes a snapshot.
-        setTimeout(() => window.print(), 200)
+        if (isNative()) {
+          await printReceiptNative(receiptId)
+        } else {
+          // Small delay to ensure any server-side revalidation updates have
+          // propagated to the DOM before the print preview takes a snapshot.
+          setTimeout(() => window.print(), 200)
+        }
       } else {
         toast.error("Failed to record print event.")
       }
