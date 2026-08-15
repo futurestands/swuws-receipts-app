@@ -1,5 +1,5 @@
 import type { IconName } from "@/components/layout/icons"
-import { canAccessAdminConsole, canUploadBilling, canViewReports } from "@/lib/permissions"
+import { canAccessAdminConsole, canIssueReceipt, canUploadBilling, canViewReports } from "@/lib/permissions"
 import type { UserPermissionsContext } from "@/lib/permissions"
 
 export type NavItem = {
@@ -25,6 +25,10 @@ export function getNavSections(current: UserPermissionsContext): NavSection[] {
     { href: "/dashboard", label: "Dashboard", icon: "LayoutDashboard" },
     { href: "/dashboard/account", label: "My Account", icon: "User" },
   ]
+
+  if (canIssueReceipt(current)) {
+    primary.push({ href: "/dashboard/offline", label: "Offline Search", icon: "WifiOff" })
+  }
 
   // customers/page.tsx calls searchCustomers(), which requires reports.view -
   // this must match exactly, or a user without that permission would see a
