@@ -354,10 +354,10 @@ export function AgentsPanel({
               <div className="space-y-2">
                 <Label>System Role</Label>
                 <Select value={selectedIamRoleId || "none"} onValueChange={(v) => setSelectedIamRoleId(v === "none" ? null : v)}>
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Select Role">
-                      {selectedIamRoleId === null ? "No Role" : iamRoles.find(r => r.id === selectedIamRoleId)?.name}
-                    </SelectValue>
+                  <SelectTrigger className="w-full h-11">
+                    <span className="flex-1 text-left truncate">
+                      {selectedIamRoleId === null ? "No Role" : (iamRoles.find(r => r.id === selectedIamRoleId)?.name || selectedIamRoleId)}
+                    </span>
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="none">No Role</SelectItem>
@@ -382,10 +382,10 @@ export function AgentsPanel({
                     setSelectedBranchId(null)
                     setSelectedSchemeId(null)
                   }}>
-                    <SelectTrigger className="bg-background">
-                      <SelectValue placeholder="No Cluster">
-                        {selectedClusterId === null ? "No Cluster" : clusters.find(c => c.id === selectedClusterId)?.name}
-                      </SelectValue>
+                    <SelectTrigger className="bg-background w-full h-11">
+                      <span className="flex-1 text-left truncate">
+                        {selectedClusterId === null ? "No Cluster" : (clusters.find(c => c.id === selectedClusterId)?.name || selectedClusterId)}
+                      </span>
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="none">No Cluster</SelectItem>
@@ -400,10 +400,10 @@ export function AgentsPanel({
                     setSelectedBranchId(id)
                     setSelectedSchemeId(null)
                   }}>
-                    <SelectTrigger className="bg-background">
-                      <SelectValue placeholder="No Area">
-                        {selectedBranchId === null ? "No Area" : branches.find(b => b.id === selectedBranchId)?.name}
-                      </SelectValue>
+                    <SelectTrigger className="bg-background w-full h-11">
+                      <span className="flex-1 text-left truncate">
+                        {selectedBranchId === null ? "No Area" : (branches.find(b => b.id === selectedBranchId)?.name || selectedBranchId)}
+                      </span>
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="none">No Area</SelectItem>
@@ -414,10 +414,10 @@ export function AgentsPanel({
                 <div className="space-y-2">
                   <Label className="text-[10px] uppercase text-muted-foreground">Scheme</Label>
                   <Select value={selectedSchemeId || "none"} onValueChange={(v) => setSelectedSchemeId(v === "none" ? null : v)}>
-                    <SelectTrigger className="bg-background">
-                      <SelectValue placeholder="No Scheme">
-                        {selectedSchemeId === null ? "No Scheme" : schemes.find(s => s.id === selectedSchemeId)?.name}
-                      </SelectValue>
+                    <SelectTrigger className="bg-background w-full h-11">
+                      <span className="flex-1 text-left truncate">
+                        {selectedSchemeId === null ? "No Scheme" : (schemes.find(s => s.id === selectedSchemeId)?.name || selectedSchemeId)}
+                      </span>
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="none">No Scheme</SelectItem>
@@ -742,10 +742,10 @@ function EditAgentDialog({
           <div className="space-y-2">
             <Label>System Role</Label>
             <Select value={iamRoleId} onValueChange={(v) => setIamRoleId(v || "none")}>
-              <SelectTrigger>
-                <SelectValue>
-                  {iamRoleId === "none" ? "No Role Assigned" : iamRoles.find(r => r.id === iamRoleId)?.name}
-                </SelectValue>
+              <SelectTrigger className="w-full h-11">
+                <span className="flex-1 text-left truncate">
+                  {iamRoleId === "none" ? "No Role Assigned" : (iamRoles.find(r => r.id === iamRoleId)?.name || iamRoleId)}
+                </span>
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="none">No Role Assigned</SelectItem>
@@ -760,10 +760,10 @@ function EditAgentDialog({
                 <div className="space-y-1">
                    <Label className="text-[9px] uppercase">Cluster</Label>
                    <Select value={clusterId} onValueChange={(v) => { setClusterId(v || "none"); setBranchId("none"); setSchemeId("none"); }}>
-                      <SelectTrigger className="h-8 text-xs">
-                        <SelectValue>
-                          {clusterId === "none" ? "None" : clusters.find(c => c.id === clusterId)?.name}
-                        </SelectValue>
+                      <SelectTrigger className="h-8 text-xs w-full">
+                        <span className="flex-1 text-left truncate">
+                          {clusterId === "none" ? "None" : (clusters.find(c => c.id === clusterId)?.name || clusterId)}
+                        </span>
                       </SelectTrigger>
                       <SelectContent>
                          <SelectItem value="none">None</SelectItem>
@@ -774,10 +774,10 @@ function EditAgentDialog({
                 <div className="space-y-1">
                    <Label className="text-[9px] uppercase">Area</Label>
                    <Select value={branchId} onValueChange={(v) => { setBranchId(v || "none"); setSchemeId("none"); }}>
-                      <SelectTrigger className="h-8 text-xs">
-                        <SelectValue>
-                          {branchId === "none" ? "None" : branches.find(b => b.id === branchId)?.name}
-                        </SelectValue>
+                      <SelectTrigger className="h-8 text-xs w-full">
+                        <span className="flex-1 text-left truncate">
+                          {branchId === "none" ? "None" : (branches.find(b => b.id === branchId)?.name || branchId)}
+                        </span>
                       </SelectTrigger>
                       <SelectContent>
                          <SelectItem value="none">None</SelectItem>
@@ -788,10 +788,10 @@ function EditAgentDialog({
                 <div className="space-y-1">
                    <Label className="text-[9px] uppercase">Scheme</Label>
                    <Select value={schemeId} onValueChange={(v) => setSchemeId(v || "none")}>
-                      <SelectTrigger className="h-8 text-xs">
-                        <SelectValue>
-                          {schemeId === "none" ? "None" : schemes.find(s => s.id === schemeId)?.name}
-                        </SelectValue>
+                      <SelectTrigger className="h-8 text-xs w-full">
+                        <span className="flex-1 text-left truncate">
+                          {schemeId === "none" ? "None" : (schemes.find(s => s.id === schemeId)?.name || schemeId)}
+                        </span>
                       </SelectTrigger>
                       <SelectContent>
                          <SelectItem value="none">None</SelectItem>

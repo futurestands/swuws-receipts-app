@@ -407,16 +407,14 @@ export function ReceiptForm({
               disabled={!selectedCustomer}
             >
               <SelectTrigger id="activeBillTrigger" className="w-full h-11">
-                <SelectValue
-                  placeholder={selectedCustomer ? (bills.length > 0 ? "Select a bill" : "No open bills found") : "Search for a customer first"}
-                >
+                <span className="flex-1 text-left truncate">
                   {form.billingRecordId ? (
                     (() => {
                       const b = bills.find(b => b.id === form.billingRecordId)
-                      return b ? `${b.periodName} - ${formatUGX(Number(b.totalDue))}` : ""
+                      return b ? `${b.periodName} - ${formatUGX(Number(b.totalDue))}` : form.billingRecordId
                     })()
-                  ) : undefined}
-                </SelectValue>
+                  ) : (selectedCustomer ? (bills.length > 0 ? "Select a bill" : "No open bills found") : "Search for a customer first")}
+                </span>
               </SelectTrigger>
               <SelectContent>
                 {bills.map((b) => (
@@ -441,11 +439,11 @@ export function ReceiptForm({
                 disabled={!!form.billingRecordId}
               >
                 <SelectTrigger id="billingPeriodTrigger" className="w-full h-11">
-                  <SelectValue>
+                  <span className="flex-1 text-left truncate">
                     {form.billingPeriodId
-                      ? billingPeriods.find(p => p.id === form.billingPeriodId)?.periodName || "Select period"
+                      ? (billingPeriods.find(p => p.id === form.billingPeriodId)?.periodName || form.billingPeriodId)
                       : "Select period"}
-                  </SelectValue>
+                  </span>
                 </SelectTrigger>
                 <SelectContent>
                   {billingPeriods.map((p) => (
@@ -463,9 +461,9 @@ export function ReceiptForm({
                 disabled={!!form.billingRecordId}
               >
                 <SelectTrigger id="schemeTrigger" className="w-full h-11">
-                  <SelectValue placeholder="Select scheme">
-                    {form.schemeId ? schemes.find(s => s.id === form.schemeId)?.name : "Select scheme"}
-                  </SelectValue>
+                  <span className="flex-1 text-left truncate">
+                    {form.schemeId ? (schemes.find(s => s.id === form.schemeId)?.name || form.schemeId) : "Select scheme"}
+                  </span>
                 </SelectTrigger>
                 <SelectContent>
                   {schemes.map((s) => (

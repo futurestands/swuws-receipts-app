@@ -72,10 +72,10 @@ export function CommercialDashboard({
         <div className="space-y-2">
           <label className="text-xs font-medium text-muted-foreground">Billing Period</label>
           <Select value={filters.periodId} onValueChange={(v) => setFilters(f => ({ ...f, periodId: v ?? "all" }))}>
-            <SelectTrigger>
-              <SelectValue placeholder="All periods">
-                {filters.periodId === "all" ? "All periods" : periods.find(p => p.id === filters.periodId)?.periodName}
-              </SelectValue>
+            <SelectTrigger className="h-9 w-full">
+              <span className="flex-1 text-left truncate">
+                {filters.periodId === "all" ? "All periods" : (periods.find(p => p.id === filters.periodId)?.periodName || filters.periodId)}
+              </span>
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All periods</SelectItem>
@@ -87,10 +87,10 @@ export function CommercialDashboard({
         <div className="space-y-2">
           <label className="text-xs font-medium text-muted-foreground">Cluster</label>
           <Select value={filters.clusterId} onValueChange={(v) => setFilters(f => ({ ...f, clusterId: v ?? "all", branchId: "all", schemeId: "all" }))}>
-            <SelectTrigger>
-              <SelectValue placeholder="All Clusters">
-                {filters.clusterId === "all" ? "All Clusters" : clusters.find(c => c.id === filters.clusterId)?.name}
-              </SelectValue>
+            <SelectTrigger className="h-9 w-full">
+              <span className="flex-1 text-left truncate">
+                {filters.clusterId === "all" ? "All Clusters" : (clusters.find(c => c.id === filters.clusterId)?.name || filters.clusterId)}
+              </span>
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Clusters</SelectItem>
@@ -102,10 +102,10 @@ export function CommercialDashboard({
         <div className="space-y-2">
           <label className="text-xs font-medium text-muted-foreground">Area (Branch)</label>
           <Select value={filters.branchId} onValueChange={(v) => setFilters(f => ({ ...f, branchId: v ?? "all", schemeId: "all" }))}>
-            <SelectTrigger>
-              <SelectValue placeholder="All Areas">
-                {filters.branchId === "all" ? "All Areas" : branches.find(b => b.id === filters.branchId)?.name}
-              </SelectValue>
+            <SelectTrigger className="h-9 w-full">
+              <span className="flex-1 text-left truncate">
+                {filters.branchId === "all" ? "All Areas" : (branches.find(b => b.id === filters.branchId)?.name || filters.branchId)}
+              </span>
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Areas</SelectItem>
@@ -117,10 +117,10 @@ export function CommercialDashboard({
         <div className="space-y-2">
           <label className="text-xs font-medium text-muted-foreground">Water Scheme</label>
           <Select value={filters.schemeId} onValueChange={(v) => setFilters(f => ({ ...f, schemeId: v ?? "all" }))}>
-            <SelectTrigger>
-              <SelectValue placeholder="All Schemes">
-                {filters.schemeId === "all" ? "All Schemes" : schemes.find(s => s.id === filters.schemeId)?.name}
-              </SelectValue>
+            <SelectTrigger className="h-9 w-full">
+              <span className="flex-1 text-left truncate">
+                {filters.schemeId === "all" ? "All Schemes" : (schemes.find(s => s.id === filters.schemeId)?.name || filters.schemeId)}
+              </span>
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Schemes</SelectItem>

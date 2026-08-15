@@ -245,10 +245,10 @@ export function CustomerSearchBar({
               Branch
             </Label>
             <Select value={branchId} onValueChange={(v) => handleBranchChange(v)}>
-              <SelectTrigger className="h-11">
-                <SelectValue placeholder="All Branches">
-                  {branchId === "all" ? "All Branches" : branches.find(b => b.id === branchId)?.name}
-                </SelectValue>
+              <SelectTrigger className="h-11 w-full">
+                <span className="flex-1 text-left truncate">
+                  {branchId === "all" ? "All Branches" : (branches.find(b => b.id === branchId)?.name || branchId)}
+                </span>
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Branches</SelectItem>
@@ -266,10 +266,10 @@ export function CustomerSearchBar({
               Water Scheme
             </Label>
             <Select value={schemeId} onValueChange={(v) => handleSchemeChange(v)}>
-              <SelectTrigger className="h-11">
-                <SelectValue placeholder="All Schemes">
-                  {schemeId === "all" ? "All Schemes" : schemes.find(s => s.id === schemeId)?.name}
-                </SelectValue>
+              <SelectTrigger className="h-11 w-full">
+                <span className="flex-1 text-left truncate">
+                  {schemeId === "all" ? "All Schemes" : (schemes.find(s => s.id === schemeId)?.name || schemeId)}
+                </span>
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Schemes</SelectItem>
