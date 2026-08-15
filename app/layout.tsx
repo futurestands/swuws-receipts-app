@@ -3,6 +3,7 @@ import type { Metadata, Viewport } from 'next'
 import { Toaster } from '@/components/ui/sonner'
 import './globals.css'
 import { getSettings } from './actions/settings'
+import { SWRegistration } from '@/components/SWRegistration'
 
 export async function generateMetadata(): Promise<Metadata> {
   const settings = await getSettings()
@@ -11,6 +12,7 @@ export async function generateMetadata(): Promise<Metadata> {
   return {
     title: 'SWUWS Collection Portal',
     description: 'Revenue Assurance and Payment Tracking System — Southwestern Umbrella of Water and Sanitation',
+    manifest: '/manifest.webmanifest',
     icons: {
       icon: iconUrl,
       shortcut: iconUrl,
@@ -41,6 +43,7 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body className="antialiased" suppressHydrationWarning>
+        <SWRegistration />
         {children}
         <Toaster />
         {process.env.NODE_ENV === 'production' && <Analytics />}

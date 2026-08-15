@@ -10,6 +10,8 @@ import { SidebarNav } from "@/components/layout/sidebar-nav"
 import { NotificationCenter } from "@/components/notifications/notification-center"
 import { SignOutButton } from "@/components/sign-out-button"
 import type { NavSection } from "@/lib/nav-config"
+import { SplashScreen } from "@capacitor/splash-screen"
+import { isNative } from "@/lib/mobile-hardware"
 
 const COLLAPSE_KEY = "swuws:sidebar-collapsed"
 
@@ -45,6 +47,12 @@ export function AppShell({
   })
   const [mobileOpen, setMobileOpen] = useState(false)
   const [imgError, setImgError] = useState(false)
+
+  useEffect(() => {
+    if (isNative()) {
+      SplashScreen.hide().catch(err => console.warn('Could not hide splash screen', err))
+    }
+  }, [])
 
   function toggleCollapsed() {
     setCollapsed((prev) => {

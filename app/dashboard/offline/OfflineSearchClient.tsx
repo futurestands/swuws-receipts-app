@@ -9,10 +9,11 @@ import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { toast } from "sonner"
 import { formatUGX } from "@/lib/format"
-import { Search, RefreshCw, Wifi, WifiOff, AlertCircle, Banknote, Clock, Calculator, AlertTriangle } from "lucide-react"
+import { Search, RefreshCw, Wifi, WifiOff, AlertCircle, Banknote, Clock, Calculator, AlertTriangle, Printer } from "lucide-react"
 import { isNative } from "@/lib/mobile-hardware"
 import { OfflineReceiptForm } from "./OfflineReceiptForm"
 import { OfflineMeterReadingForm } from "./OfflineMeterReadingForm"
+import { bluetoothPrinter } from "@/lib/offline/bluetooth-printer"
 
 export function OfflineSearchClient({ agentId }: { agentId: string }) {
   const [query, setQuery] = useState("")
@@ -86,6 +87,22 @@ export function OfflineSearchClient({ agentId }: { agentId: string }) {
       toast.error("Sync failed. Check your connection.")
     } finally {
       setSyncing(false)
+    }
+  }
+
+  const handlePrintOffline = async (r: any) => {
+    try {
+      await bluetoothPrinter.printReceipt({
+        receiptNumber: r.id.slice(0, 8).toUpperCase(), // Provisional #
+        customerName: r.customerName,
+        amount: r.amount,
+        paymentMethod: r.paymentMethod,
+        paymentDate: r.paymentDate,
+        isProvisional: true
+      })
+      toast.success("Printing receipt...")
+    } catch (err: any) {
+      toast.error(err.message || "Printing failed")
     }
   }
 
@@ -262,7 +279,18 @@ export function OfflineSearchClient({ agentId }: { agentId: string }) {
                       <p className="text-xs text-muted-foreground">Receipt · {formatUGX(r.amount)}</p>
                     </div>
                   </div>
-                  <StatusBadge status={r.status} error={r.error} />
+                  <div className="flex items-center gap-3">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-8 w-8 p-0 text-orange-600 hover:bg-orange-100"
+                      onClick={() => handlePrintOffline(r)}
+                      title="Print Provisional Receipt"
+                    >
+                      <Printer className="h-4 w-4" />
+                    </Button>
+                    <StatusBadge status={r.status} error={r.error} />
+                  </div>
                 </div>
               ))}
               {queuedReadings.map(r => (
