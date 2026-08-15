@@ -10,9 +10,17 @@ android {
 apply from: "../capacitor-cordova-android-plugins/cordova.variables.gradle"
 dependencies {
     implementation project(':capacitor-community-bluetooth-le')
+    implementation project(':capacitor-community-sqlite')
     implementation project(':capacitor-barcode-scanner')
+    implementation project(':capacitor-browser')
+    implementation project(':capacitor-device')
     implementation project(':capacitor-haptics')
+    implementation project(':capacitor-local-notifications')
+    implementation project(':capacitor-network')
     implementation project(':capacitor-splash-screen')
+    implementation project(':capacitor-status-bar')
+    implementation project(':capawesome-capacitor-background-task')
+    implementation project(':capacitor-tcp-socket')
 
 }
 
