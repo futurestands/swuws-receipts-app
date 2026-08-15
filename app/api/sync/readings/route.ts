@@ -58,13 +58,6 @@ export async function POST(req: Request) {
             success: true,
             serverId: res.readingId
           })
-        } else {
-          // Fix silent drop bug: ensure error is returned
-          results.push({
-            tempId: item.tempId,
-            success: false,
-            error: res.error || "Submission failed"
-          })
         }
       } catch (err: any) {
         results.push({
