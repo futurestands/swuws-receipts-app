@@ -38,7 +38,7 @@ const config: CapacitorConfig = {
   plugins: {
     SplashScreen: {
       launchShowDuration: 3000,
-      launchAutoHide: false, // Wait for app to signal readiness
+      launchAutoHide: true, // Show logo for 3s then show the app
       backgroundColor: "#ffffff",
       androidScaleType: "CENTER_CROP",
       showSpinner: true,
