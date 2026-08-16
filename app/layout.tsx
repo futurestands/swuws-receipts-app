@@ -4,6 +4,7 @@ import { Toaster } from '@/components/ui/sonner'
 import './globals.css'
 import { getSettings } from './actions/settings'
 import { SWRegistration } from '@/components/SWRegistration'
+import { NativeBridge } from '@/components/NativeBridge'
 
 export async function generateMetadata(): Promise<Metadata> {
   const settings = await getSettings()
@@ -43,6 +44,7 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body className="antialiased" suppressHydrationWarning>
+        <NativeBridge />
         <SWRegistration />
         {children}
         <Toaster />

@@ -55,16 +55,6 @@ export function AppShell({
   useEffect(() => {
     if (isNative()) {
       setNative(true)
-
-      // Dynamic imports for Capacitor plugins to prevent Vercel SSR panics
-      import("@capacitor/splash-screen").then(({ SplashScreen }) => {
-        SplashScreen.hide().catch(err => console.warn('Could not hide splash screen', err))
-      })
-
-      import("@capacitor/status-bar").then(({ StatusBar, Style }) => {
-        StatusBar.setStyle({ style: Style.Light })
-        StatusBar.setBackgroundColor({ color: '#0B2A4A' })
-      })
     }
   }, [])
 
