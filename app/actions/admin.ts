@@ -37,8 +37,8 @@ import {
   canViewReports,
   canAudit,
   canConfigureSystem,
-  canCreateRole,
 } from "@/lib/permissions"
+import { canCreateRole } from "@/lib/permissions/server"
 import { applyReceiptScope, applyUserScope, validateWriteScope } from "@/lib/scopes"
 import { canAssignIamRole } from "@/lib/iam"
 

@@ -3,7 +3,7 @@ dotenv.config()
 
 import { db } from "../lib/db/index"
 import { iamRole, user } from "../lib/db/schema"
-import { canCreateRole } from "../lib/permissions/index"
+import { canCreateRole } from "../lib/permissions/server"
 import { eq } from "drizzle-orm"
 
 async function run() {
