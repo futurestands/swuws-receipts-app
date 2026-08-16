@@ -11,7 +11,10 @@ import { Role, ROLES, ROLE_RANK } from "./roles"
  * the interface but will be fully implemented in Phase 1 - Task 2.2.
  */
 
-import { PermissionGrant } from "../iam"
+import { PermissionGrant, getOwnRoleLevel } from "../iam"
+import { db } from "../db"
+import { iamRole } from "../db/schema"
+import { eq } from "drizzle-orm"
 
 export interface UserPermissionsContext {
   role: string | null | undefined
@@ -52,19 +55,32 @@ export function canManageUsers(user: UserPermissionsContext) {
  * permission like `users.create` had real financial-authorization impact,
  * not just a cosmetic label.
  */
-export function canCreateRole(currentUser: UserPermissionsContext, targetRoleCode: string) {
+export async function canCreateRole(currentUser: UserPermissionsContext, targetRoleCode: string) {
   const hasCreatePermission =
     currentUser.permissions?.includes("roles.manage") ||
     currentUser.permissions?.includes("users.create")
   if (!hasCreatePermission) return false
 
   const targetRank = ROLE_RANK[targetRoleCode as Role]
-  if (targetRank === undefined) return false // unrecognized role — reject rather than assume safe
 
-  const currentRole = getRole(currentUser)
-  const currentRank = currentRole ? ROLE_RANK[currentRole] : 0
+  if (targetRank !== undefined) {
+    const currentRole = getRole(currentUser)
+    const currentRank = currentRole ? ROLE_RANK[currentRole] : 0
+    return targetRank <= currentRank
+  }
 
-  return targetRank <= currentRank
+  // Fallback: Check dynamic IAM roles by code
+  const [targetIamRole] = await db
+    .select({ level: iamRole.level })
+    .from(iamRole)
+    .where(eq(iamRole.code, targetRoleCode))
+    .limit(1)
+
+  if (!targetIamRole) return false
+
+  const currentLevel = currentUser.iamRoleId ? (await getOwnRoleLevel(currentUser.iamRoleId)) : 0
+
+  return targetIamRole.level <= currentLevel
 }
 
 /**

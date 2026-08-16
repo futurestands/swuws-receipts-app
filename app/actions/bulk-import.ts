@@ -116,7 +116,7 @@ export async function validateBulkUsers(formData: FormData): Promise<{ ok: true;
     if (!targetRole) {
       errors.push(`Invalid role: ${mappedRow.role}`)
     } else {
-      if (!canCreateRole(current, targetRole)) {
+      if (!(await canCreateRole(current, targetRole))) {
         errors.push(`You are not authorized to create a ${mappedRow.role} account`)
       }
     }

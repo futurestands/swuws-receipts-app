@@ -144,7 +144,7 @@ export async function canAssignIamRole(user: SessionUser, targetRoleId: string |
   return targetRole.level <= currentLevel
 }
 
-const getOwnRoleLevel = cache(async (roleId: string): Promise<number> => {
+export const getOwnRoleLevel = cache(async (roleId: string): Promise<number> => {
   const [row] = await db.select({ level: iamRole.level }).from(iamRole).where(eq(iamRole.id, roleId)).limit(1)
   return row?.level ?? 0
 })

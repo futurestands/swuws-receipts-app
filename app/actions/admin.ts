@@ -136,7 +136,7 @@ export async function createAgent(input: {
   // paths (billing-engine.ts's meter-reading cancel check, approval.ts's
   // approver lookup) treat that legacy role string as full authority
   // regardless of the account's actual IAM permissions.
-  if (!canCreateRole(current, input.role)) {
+  if (!(await canCreateRole(current, input.role))) {
     return { ok: false as const, error: "You are not authorized to assign this role" }
   }
 
@@ -252,7 +252,7 @@ export async function setAgentRole(userId: string, role: string, iamRoleId?: str
   // ANY role, including System Administrator. See canCreateRole for why
   // that legacy role string carries real authority independent of IAM
   // permissions.
-  if (!canCreateRole(current, role)) {
+  if (!(await canCreateRole(current, role))) {
     return { ok: false as const, error: "You are not authorized to assign this role" }
   }
 
