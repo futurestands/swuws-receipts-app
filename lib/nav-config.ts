@@ -1,6 +1,7 @@
 import type { IconName } from "@/components/layout/icons"
-import { canAccessAdminConsole, canIssueReceipt, canUploadBilling, canViewReports } from "@/lib/permissions"
+import { canAccessAdminConsole, canIssueReceipt, canUploadBilling, canViewReports, canViewControlCenter, canViewExecutiveReports } from "@/lib/permissions"
 import type { UserPermissionsContext } from "@/lib/permissions"
+import { ROLES } from "@/lib/permissions/roles"
 
 export type NavItem = {
   href: string
@@ -41,41 +42,37 @@ export function getNavSections(current: UserPermissionsContext): NavSection[] {
 
   const sections: NavSection[] = [{ items: primary }]
 
+  const finance: NavItem[] = []
+
   if (canUploadBilling(current)) {
-    const billing: NavItem[] = []
-
-    if (current.permissions?.includes("billing.view") || current.permissions?.includes("billing.import")) {
-       billing.push({ href: "/dashboard/billing", label: "Billing", icon: "Wallet", activeMatch: "/dashboard/billing" })
+    if (current.permissions?.includes("billing.view") || current.permissions?.includes("billing.import") || current.role === ROLES.SYSTEM_ADMIN) {
+       finance.push({ href: "/dashboard/billing", label: "Billing", icon: "Wallet", activeMatch: "/dashboard/billing" })
     }
 
-    if (current.permissions?.includes("meter_readings.view")) {
-       billing.push({ href: "/dashboard/billing/readings", label: "Meter Readings", icon: "Calculator", activeMatch: "/dashboard/billing/readings" })
-    }
-
-    if (current.permissions?.includes("reports.view")) {
-       billing.push({ href: "/dashboard/billing/daily", label: "Daily Collections", icon: "ListChecks", activeMatch: "/dashboard/billing/daily" })
-    }
-
-    if (current.permissions?.includes("billing.exceptions.view")) {
-       billing.push({ href: "/dashboard/billing/exceptions", label: "Billing Exceptions", icon: "AlertCircle", activeMatch: "/dashboard/billing/exceptions" })
-    }
-
-    if (current.permissions?.includes("reconciliation.view")) {
-       billing.push({ href: "/dashboard/reconciliation/exceptions", label: "Recon Exceptions", icon: "AlertTriangle", activeMatch: "/dashboard/reconciliation/exceptions" })
+    if (current.permissions?.includes("meter_readings.view") || current.role === ROLES.SYSTEM_ADMIN) {
+       finance.push({ href: "/dashboard/billing/readings", label: "Meter Readings", icon: "Calculator", activeMatch: "/dashboard/billing/readings" })
     }
 
     if (canViewReports(current)) {
-      if (current.permissions?.includes("reconciliation.view")) {
-        billing.push({ href: "/dashboard/reconciliation/stats", label: "Control Center", icon: "Gauge", activeMatch: "/dashboard/reconciliation" })
-      }
-      if (current.permissions?.includes("reports.executive")) {
-        billing.push({ href: "/dashboard/reports/catalog", label: "Executive Reports", icon: "FileBarChart", activeMatch: "/dashboard/reports/catalog" })
-      }
+       finance.push({ href: "/dashboard/billing/daily", label: "Daily Collections", icon: "ListChecks", activeMatch: "/dashboard/billing/daily" })
     }
 
-    if (billing.length > 0) {
-      sections.push({ label: "Finance", items: billing })
+    if (current.permissions?.includes("billing.exceptions.view") || current.role === ROLES.SYSTEM_ADMIN) {
+       finance.push({ href: "/dashboard/billing/exceptions", label: "Billing Exceptions", icon: "AlertCircle", activeMatch: "/dashboard/billing/exceptions" })
     }
+  }
+
+  if (canViewControlCenter(current)) {
+     finance.push({ href: "/dashboard/reconciliation/exceptions", label: "Recon Exceptions", icon: "AlertTriangle", activeMatch: "/dashboard/reconciliation/exceptions" })
+     finance.push({ href: "/dashboard/reconciliation/stats", label: "Control Center", icon: "Gauge", activeMatch: "/dashboard/reconciliation" })
+  }
+
+  if (canViewExecutiveReports(current)) {
+    finance.push({ href: "/dashboard/reports/catalog", label: "Executive Reports", icon: "FileBarChart", activeMatch: "/dashboard/reports/catalog" })
+  }
+
+  if (finance.length > 0) {
+    sections.push({ label: "Finance", items: finance })
   }
 
   if (canAccessAdminConsole(current)) {

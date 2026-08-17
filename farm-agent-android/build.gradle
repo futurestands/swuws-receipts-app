@@ -1,0 +1,14 @@
+// Root build.gradle — minimal. Configure plugin versions in Android Studio as needed.
+buildscript {
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+
+allprojects {
+    repositories {
+        google()
+        mavenCentral()
+    }
+}

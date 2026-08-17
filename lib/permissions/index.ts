@@ -200,6 +200,16 @@ export function canManageClusters(user: UserPermissionsContext) {
 }
 
 /**
+ * Control Center: Who can access the collection reconciliation Gauge/Stats.
+ */
+export function canViewControlCenter(user: UserPermissionsContext) {
+  return (
+    user.role === ROLES.SYSTEM_ADMIN ||
+    user.permissions?.includes("reconciliation.view")
+  ) ?? false
+}
+
+/**
  * Reports: Who can view performance and collection reports.
  */
 export function canViewReports(user: UserPermissionsContext) {
@@ -207,6 +217,16 @@ export function canViewReports(user: UserPermissionsContext) {
     user.role === ROLES.SYSTEM_ADMIN ||
     user.permissions?.includes("reports.view") ||
     user.permissions?.includes("dashboard.view")
+  ) ?? false
+}
+
+/**
+ * Reports: Who can access high-level Executive / Catalog reports.
+ */
+export function canViewExecutiveReports(user: UserPermissionsContext) {
+  return (
+    user.role === ROLES.SYSTEM_ADMIN ||
+    user.permissions?.includes("reports.executive")
   ) ?? false
 }
 

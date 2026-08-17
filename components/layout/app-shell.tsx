@@ -10,7 +10,7 @@ import { SidebarNav } from "@/components/layout/sidebar-nav"
 import { NotificationCenter } from "@/components/notifications/notification-center"
 import { SignOutButton } from "@/components/sign-out-button"
 import type { NavSection } from "@/lib/nav-config"
-import { isNative } from "@/lib/mobile-hardware"
+import { isNative, setupStatusBar } from "@/lib/mobile-hardware"
 import { SyncStatus } from "./SyncStatus"
 import { Badge } from "@/components/ui/badge"
 
@@ -55,6 +55,8 @@ export function AppShell({
   useEffect(() => {
     if (isNative()) {
       setNative(true)
+      // Initialize system status bar for native app
+      setupStatusBar()
     }
   }, [])
 
