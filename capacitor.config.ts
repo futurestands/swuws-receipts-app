@@ -12,15 +12,15 @@ import 'dotenv/config';
 // for its own canonical URL (see lib/site-url.ts), rather than a second
 // one-off variable — one place to update when the domain changes. Falls
 // back to the current Vercel URL if unset, so nothing breaks today.
-const DEFAULT_FALLBACK = 'https://swuws-receipts-app-q2z9.vercel.app';
-const serverUrl = process.env.NEXT_PUBLIC_APP_URL || DEFAULT_FALLBACK;
+const PRODUCTION_DOMAIN = 'https://swuws-receipts-app-q2z9.vercel.app';
+
+// HARD-LOCKED FOR PRODUCTION: We always use the production Vercel URL
+// in the Android shell to prevent "localhost" leakages.
+const serverUrl = PRODUCTION_DOMAIN;
 
 if (process.env.NODE_ENV === 'production') {
   if (!process.env.NEXT_PUBLIC_APP_URL) {
-    console.error('\x1b[31m%s\x1b[0m', 'CRITICAL WARNING: Production build detected but NEXT_PUBLIC_APP_URL is not set.');
-    console.error('\x1b[31m%s\x1b[0m', 'The app will talk to the STALE fallback URL: ' + DEFAULT_FALLBACK);
-  } else if (process.env.NEXT_PUBLIC_APP_URL === DEFAULT_FALLBACK) {
-    console.warn('\x1b[33m%s\x1b[0m', 'WARNING: Production URL matches the fallback. Ensure this is the correct domain.');
+    console.warn('\x1b[33m%s\x1b[0m', 'Capacitor: Production mode active. Forcing server.url to: ' + PRODUCTION_DOMAIN);
   }
 }
 
