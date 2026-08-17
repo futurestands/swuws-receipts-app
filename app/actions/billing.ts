@@ -26,7 +26,8 @@ import {
   canActivateCollectionPeriod,
   canArchiveCollectionPeriod,
   canIssueReceipt,
-  canViewReports
+  canViewReports,
+  canViewAllData
 } from "@/lib/permissions"
 import { validateWriteScope, applyCustomerScope, applyReceiptScope, applyBillingRecordScope, applyMeterReadingScope, applyBillingScope } from "@/lib/scopes"
 import { and, eq, sql, desc, or, count, sum, inArray } from "drizzle-orm"
@@ -804,12 +805,6 @@ export async function downloadBillingTemplate() {
 
 export async function getCollectionSummary() {
   const current = await requireUser()
-
-  // 0. Resolve User Scopes for calculation
-  const brScope = applyBillingRecordScope(current)
-  const mrScope = applyMeterReadingScope(current)
-  const rScope = applyReceiptScope(current)
-  const cScope = applyCustomerScope(current)
 
   // Get active period, or the most recent one if none is active
   // Join with users for the timeline

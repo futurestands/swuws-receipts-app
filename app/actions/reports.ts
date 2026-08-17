@@ -17,7 +17,7 @@ import {
 import { requireUser } from "@/lib/session"
 import { applyReceiptScope, applyCustomerScope } from "@/lib/scopes"
 import { and, eq, sql, desc, sum, count, gte, inArray, or, ilike } from "drizzle-orm"
-import { canViewReports, canUploadBilling } from "@/lib/permissions"
+import { canViewReports, canUploadBilling, canViewAllData } from "@/lib/permissions"
 import { ROLES } from "@/lib/permissions/roles"
 
 /**

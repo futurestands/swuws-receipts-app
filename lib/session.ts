@@ -5,7 +5,7 @@ import { user } from "@/lib/db/schema"
 import { eq } from "drizzle-orm"
 import { headers } from "next/headers"
 import { cache } from "react"
-import { getEffectivePermissions, PermissionGrant } from "@/lib/iam"
+import { getEffectivePermissions, getOwnRoleLevel, PermissionGrant } from "@/lib/iam"
 
 export type SessionUser = {
   id: string
