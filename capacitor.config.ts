@@ -12,10 +12,16 @@ import 'dotenv/config';
 // for its own canonical URL (see lib/site-url.ts), rather than a second
 // one-off variable — one place to update when the domain changes. Falls
 // back to the current Vercel URL if unset, so nothing breaks today.
+// HIERARCHY / DOMAIN WARNING:
+// This domain is now hard-coded for the native Android shell to prevent
+// accidents where a developer's local localhost:3000 gets baked into the APK.
+//
+// IMPORTANT: If the production Vercel URL changes, this string MUST be
+// manually updated and the APK MUST be rebuilt. Setting the
+// NEXT_PUBLIC_APP_URL environment variable alone will NOT update the
+// Android shell anymore.
 const PRODUCTION_DOMAIN = 'https://swuws-receipts-app-q2z9.vercel.app';
 
-// HARD-LOCKED FOR PRODUCTION: We always use the production Vercel URL
-// in the Android shell to prevent "localhost" leakages.
 const serverUrl = PRODUCTION_DOMAIN;
 
 if (process.env.NODE_ENV === 'production') {

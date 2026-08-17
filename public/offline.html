@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>SWUWS Offline Mode</title>
+    <style>
+        :root { --brand-blue: #2c4a5e; --bg-gray: #f8fafc; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background: var(--bg-gray); margin: 0; color: #1e293b; display: flex; flex-direction: column; height: 100vh; }
+        .header { background: var(--brand-blue); color: white; padding: 1.5rem 1rem; text-align: center; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .status-bar { background: #fee2e2; color: #991b1b; padding: 0.5rem; text-align: center; font-size: 0.75rem; font-weight: bold; border-bottom: 1px solid #fecaca; }
+        .content { flex: 1; padding: 1rem; overflow-y: auto; }
+        .card { background: white; border-radius: 0.75rem; padding: 1rem; margin-bottom: 1rem; border: 1px solid #e2e8f0; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+        .btn { background: var(--brand-blue); color: white; border: none; padding: 0.75rem 1rem; border-radius: 0.5rem; font-weight: 600; width: 100%; cursor: pointer; margin-top: 1rem; }
+        .search-box { width: 100%; padding: 0.75rem; border-radius: 0.5rem; border: 1px solid #cbd5e1; box-sizing: border-box; font-size: 1rem; }
+        .customer-item { padding: 0.75rem 0; border-bottom: 1px solid #f1f5f9; }
+        .customer-item:last-child { border-bottom: none; }
+        .customer-name { font-weight: bold; margin: 0; }
+        .customer-meta { font-size: 0.85rem; color: #64748b; margin-top: 0.25rem; }
+        .empty { text-align: center; color: #94a3b8; padding: 2rem 0; }
+        .retry-container { padding: 1rem; background: white; border-top: 1px solid #e2e8f0; }
+    </style>
+</head>
+<body>
+    <div class="status-bar">📴 OFFLINE MODE: Connection to server failed</div>
+    <header class="header">
+        <h1 style="margin: 0; font-size: 1.25rem;">SWUWS Portal</h1>
+        <p style="margin: 0.25rem 0 0; font-size: 0.85rem; opacity: 0.8;">Regional Field Operations</p>
+    </header>
+
+    <main class="content">
+        <div class="card">
+            <h3 style="margin-top: 0;">Offline Search</h3>
+            <p style="font-size: 0.85rem; color: #64748b; margin-bottom: 1rem;">Access customers you synced while online.</p>
+            <input type="text" id="search" class="search-box" placeholder="Search by name or account..." oninput="handleSearch()">
+
+            <div id="results" class="results-container">
+                <div class="empty">Type to search local database...</div>
+            </div>
+        </div>
+
+        <div class="card" id="sync-card">
+            <h3 style="margin-top: 0;">Pending Uploads</h3>
+            <div id="queue-status" class="customer-meta">Checking queue...</div>
+        </div>
+    </main>
+
+    <div class="retry-container">
+        <button class="btn" onclick="window.location.reload()">Try Reconnect to Live Server</button>
+        <p style="text-align: center; font-size: 0.7rem; color: #94a3b8; margin-top: 1rem;">v1.1 (True Offline Shell)</p>
+    </div>
+
+    <!-- Capacitor Plugins -->
+    <script src="cordova.js"></script>
+    <script>
+        // Emergency Offline Logic
+        async function handleSearch() {
+            const query = document.getElementById('search').value;
+            const resultsDiv = document.getElementById('results');
+
+            if (query.length < 2) {
+                resultsDiv.innerHTML = '<div class="empty">Type at least 2 characters...</div>';
+                return;
+            }
+
+            try {
+                // This is where we talk to the real SQLite plugin
+                // Note: In pure HTML, we use the Capacitor window object
+                const CapacitorSQLite = window.Capacitor.Plugins.CapacitorSQLite;
+
+                // Fetch from the exact same table Next.js uses
+                const res = await CapacitorSQLite.query({
+                    database: "swuws_offline.db",
+                    statement: "SELECT * FROM local_customers WHERE name LIKE ? OR customerAccount LIKE ? LIMIT 20;",
+                    values: [`%${query}%`, `%${query}%`]
+                });
+
+                if (res.values.length === 0) {
+                    resultsDiv.innerHTML = '<div class="empty">No local matches found.</div>';
+                    return;
+                }
+
+                resultsDiv.innerHTML = res.values.map(c => `
+                    <div class="customer-item">
+                        <p class="customer-name">${c.name}</p>
+                        <p class="customer-meta">${c.customerAccount || 'No Account'} | Balance: UGX ${c.accountBalance}</p>
+                    </div>
+                `).join('');
+
+            } catch (err) {
+                resultsDiv.innerHTML = '<div class="empty">Offline Database not ready yet.</div>';
+            }
+        }
+
+        // Initialize Native Bridge
+        document.addEventListener('deviceready', () => {
+            console.log('Native Shell Ready');
+            checkQueue();
+        }, false);
+
+        async function checkQueue() {
+            try {
+                const CapacitorSQLite = window.Capacitor.Plugins.CapacitorSQLite;
+                const res = await CapacitorSQLite.query({
+                    database: "swuws_offline.db",
+                    statement: "SELECT COUNT(*) as count FROM local_receipt_queue WHERE status != 'synced';"
+                });
+                const count = res.values[0].count;
+                document.getElementById('queue-status').innerText = `${count} receipts waiting to be uploaded.`;
+            } catch (e) {
+                document.getElementById('queue-status').innerText = "Syncing not initialized.";
+            }
+        }
+    </script>
+</body>
+</html>
