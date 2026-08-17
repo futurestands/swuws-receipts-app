@@ -210,10 +210,8 @@ export async function getDashboardStats(params: {
   // HIERARCHY FORCING (Universal): Every regional user is strictly trapped in their assignment.
   // We apply this to the condition arrays before they are summed or counted.
   const forceHierarchy = (conds: any[]) => {
-    if (current.role === ROLES.SYSTEM_ADMIN) return;
-
-    // If they have no hierarchy assigned, they are Head Office (Global) - no forcing.
-    if (!current.clusterId && !current.branchId && !current.schemeId) return;
+    // If they can view all data (e.g. System Admin or Head Office with permission), do not force.
+    if (canViewAllData(current)) return;
 
     if (current.branchId) conds.push(eq(waterScheme.branchId, current.branchId))
     else if (current.clusterId) conds.push(eq(branch.clusterId, current.clusterId))

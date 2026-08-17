@@ -91,33 +91,51 @@ export function DailyImportWizard() {
     formData.append("file", file)
 
     startTransition(async () => {
-      const response = mode === "sync"
-        ? await validateDailyBalanceSync(formData)
-        : await validateDailyCollectionImport(formData)
+      try {
+        const response = mode === "sync"
+          ? await validateDailyBalanceSync(formData)
+          : await validateDailyCollectionImport(formData)
 
-      if (response.ok) {
-        setSummary(response.summary)
-        setStep("preview")
-        toast.success("File analyzed successfully")
-      } else {
-        toast.error(response.error)
+        if (response.ok) {
+          setSummary(response.summary)
+          setStep("preview")
+          toast.success("File analyzed successfully")
+        } else {
+          toast.error(response.error)
+        }
+      } catch (err) {
+        console.error("UI Validation Error:", err)
+        toast.error("Failed to analyze the file. It may be too large or have an invalid format.")
       }
     })
   }
 
   async function handleConfirm() {
-    if (!summary) return
-    startTransition(async () => {
-      const response = mode === "sync"
-        ? await commitDailyBalanceSync(summary)
-        : await commitDailyCollectionImport(summary)
+    if (!file) {
+      toast.error("File is missing. Please restart the upload process.")
+      setStep("setup")
+      return
+    }
 
-      if (response.ok) {
-        setStep("complete")
-        toast.success("Success!")
-        router.refresh()
-      } else {
-        toast.error("Import failed. Please check the file for duplicates or errors.")
+    const formData = new FormData()
+    formData.append("file", file)
+
+    startTransition(async () => {
+      try {
+        const response = mode === "sync"
+          ? await commitDailyBalanceSync(formData)
+          : await commitDailyCollectionImport(formData)
+
+        if (response.ok) {
+          setStep("complete")
+          toast.success("Success!")
+          router.refresh()
+        } else {
+          toast.error(response.error || "Import failed. Please check the file for duplicates or errors.")
+        }
+      } catch (err) {
+        console.error("UI Commit Error:", err)
+        toast.error("A network or server error occurred. The operation might still be processing. Please check the import history in a few minutes.")
       }
     })
   }
@@ -250,7 +268,7 @@ export function DailyImportWizard() {
                            </TableRow>
                         </TableHeader>
                         <TableBody>
-                           {summary.rows?.slice(0, 50).map((row: any, i: number) => (
+                           {summary.previewRows?.map((row: any, i: number) => (
                              <TableRow key={i} className={cn(!row.valid && "bg-destructive/5")}>
                                 <TableCell className="text-[11px] font-mono font-medium">{row.data.accountNumber}</TableCell>
                                 <TableCell className="text-[11px] font-medium">{formatUGX(mode === 'sync' ? row.data.totalDue : row.data.amountPaid)}</TableCell>
@@ -260,6 +278,13 @@ export function DailyImportWizard() {
                                 </TableCell>
                              </TableRow>
                            ))}
+                           {summary.totalRecords > 100 && (
+                             <TableRow>
+                               <TableCell colSpan={mode === 'sync' ? 4 : 3} className="text-center py-4 text-muted-foreground text-[10px] italic">
+                                 ... and {summary.totalRecords - 100} more records ...
+                               </TableCell>
+                             </TableRow>
+                           )}
                         </TableBody>
                      </Table>
                   </ScrollableTableContainer>

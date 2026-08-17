@@ -17,6 +17,7 @@ export interface UserPermissionsContext {
   branchId?: string | null
   schemeId?: string | null
   iamRoleId?: string | null
+  roleLevel?: number
   permissions?: string[]
   grants?: PermissionGrant[]
 }
@@ -74,7 +75,7 @@ export function canAccessAdminConsole(user: UserPermissionsContext) {
 export function canViewAllData(user: UserPermissionsContext) {
   return (
     user.role === ROLES.SYSTEM_ADMIN ||
-    (!user.clusterId && !user.branchId && !user.schemeId)
+    (user.roleLevel ?? 0) >= 8 // Senior management / Head Office tier
   ) ?? false
 }
 
@@ -221,10 +222,10 @@ export function canExportReports(user: UserPermissionsContext) {
 
 /**
  * Security: Who can trigger password resets for other users.
- * HARD-LOCKED: System Admin only.
+ * HARD-LOCKED: System Admin only (Legacy role or Level 10).
  */
 export function canResetPasswords(user: UserPermissionsContext) {
-  return user.role === ROLES.SYSTEM_ADMIN
+  return user.role === ROLES.SYSTEM_ADMIN || (user.roleLevel ?? 0) >= 10
 }
 
 /**
@@ -259,48 +260,48 @@ export function canReprintReceipt(user: UserPermissionsContext) {
 
 /**
  * Audit: Who can review the full system audit log.
- * HARD-LOCKED: System Admin only.
+ * HARD-LOCKED: System Admin only (Legacy role or Level 10).
  */
 export function canAudit(user: UserPermissionsContext) {
-  return user.role === ROLES.SYSTEM_ADMIN
+  return user.role === ROLES.SYSTEM_ADMIN || (user.roleLevel ?? 0) >= 10
 }
 
 /**
  * IAM: Who can manage Roles and Permissions.
- * HARD-LOCKED: System Admin only.
+ * HARD-LOCKED: System Admin only (Legacy role or Level 10).
  */
 export function canManageIAM(user: UserPermissionsContext) {
-  return user.role === ROLES.SYSTEM_ADMIN
+  return user.role === ROLES.SYSTEM_ADMIN || (user.roleLevel ?? 0) >= 10
 }
 
 /**
  * System Settings: Who can change branding, disclaimer, and global config.
- * HARD-LOCKED: System Admin only.
+ * HARD-LOCKED: System Admin only (Legacy role or Level 10).
  */
 export function canConfigureSystem(user: UserPermissionsContext) {
-  return user.role === ROLES.SYSTEM_ADMIN
+  return user.role === ROLES.SYSTEM_ADMIN || (user.roleLevel ?? 0) >= 10
 }
 
 /**
  * Tariffs: Who can manage billing rates.
- * HARD-LOCKED: System Admin only.
+ * HARD-LOCKED: System Admin only (Legacy role or Level 10).
  */
 export function canManageTariffs(user: UserPermissionsContext) {
-  return user.role === ROLES.SYSTEM_ADMIN
+  return user.role === ROLES.SYSTEM_ADMIN || (user.roleLevel ?? 0) >= 10
 }
 
 /**
  * Templates: Who can manage SMS and Receipt templates.
- * HARD-LOCKED: System Admin only.
+ * HARD-LOCKED: System Admin only (Legacy role or Level 10).
  */
 export function canManageTemplates(user: UserPermissionsContext) {
-  return user.role === ROLES.SYSTEM_ADMIN
+  return user.role === ROLES.SYSTEM_ADMIN || (user.roleLevel ?? 0) >= 10
 }
 
 /**
  * Maintenance: Who can toggle system maintenance mode.
- * HARD-LOCKED: System Admin only.
+ * HARD-LOCKED: System Admin only (Legacy role or Level 10).
  */
 export function canManageMaintenance(user: UserPermissionsContext) {
-  return user.role === ROLES.SYSTEM_ADMIN
+  return user.role === ROLES.SYSTEM_ADMIN || (user.roleLevel ?? 0) >= 10
 }

@@ -18,8 +18,10 @@ function getScope(user: UserPermissionsContext, permissionCode: string): Scope |
   const grant = user.grants?.find(g => g.code === permissionCode)
   let scope = (grant?.scope as Scope) || null
 
-  // HIERARCHY OVERRIDE 1: No assigned hierarchy = Global Authority
-  if (!user.clusterId && !user.branchId && !user.schemeId) {
+  // HIERARCHY OVERRIDE 1: Global Authority check
+  // ONLY grant "global" if explicitly assigned or if the user passes the formal permission check.
+  // Never infer seniority merely from the absence of organizational fields.
+  if (canViewAllData(user)) {
     return "global"
   }
 
