@@ -4,11 +4,12 @@ import { db } from "@/lib/db"
 import { orgSettings, branch, paymentMethod, waterScheme, cluster, notification, user, type EditableFields } from "@/lib/db/schema"
 import { getCurrentUser, requireUser } from "@/lib/session"
 import { writeAudit } from "@/lib/audit"
-import { eq } from "drizzle-orm"
+import { eq, inArray } from "drizzle-orm"
 import { put } from "@vercel/blob"
 import { revalidatePath, unstable_cache } from "next/cache"
 import { randomUUID } from "crypto"
 import { isUniqueViolation } from "@/lib/db/errors"
+import { ROLES } from "@/lib/permissions/roles"
 import { logEvent } from "@/lib/logger"
 import fs from "fs/promises"
 import path from "path"
@@ -86,11 +87,20 @@ export async function uploadLogo(formData: FormData) {
 
 export async function listClusters() {
   const current = await requireUser(); if (!canAccessAdminConsole(current)) throw new Error("Forbidden")
-  return db.select().from(cluster).orderBy(cluster.name)
+  const baseQuery = db.select().from(cluster).orderBy(cluster.name)
+
+  if (current.role === ROLES.SYSTEM_ADMIN || (!current.clusterId && !current.branchId && !current.schemeId)) {
+    return baseQuery
+  }
+
+  return baseQuery.where(eq(cluster.id, current.clusterId || 'none'))
 }
 
 export async function listBranches() {
   const current = await requireUser(); if (!canAccessAdminConsole(current)) throw new Error("Forbidden")
+
+  // Requirement: Allow viewing all global branches in the Admin Console,
+  // but write access is restricted elsewhere.
   return db.select().from(branch).orderBy(branch.name)
 }
 
@@ -133,6 +143,9 @@ export async function setPaymentMethodActive(id: string, active: boolean) {
 
 export async function listWaterSchemes() {
   const current = await requireUser(); if (!canAccessAdminConsole(current)) throw new Error("Forbidden")
+
+  // Requirement: Allow viewing all global schemes in the Admin Console,
+  // but write access is restricted elsewhere.
   return db.select().from(waterScheme).orderBy(waterScheme.name)
 }
 

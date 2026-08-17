@@ -1,5 +1,20 @@
+import { execSync } from "child_process"
+
+let commitHash = "dev"
+try {
+  commitHash = execSync("git rev-parse --short HEAD").toString().trim()
+} catch (e) {
+  commitHash = process.env.VERCEL_GIT_COMMIT_SHA?.substring(0, 7) || "unknown"
+}
+
+const buildTime = new Date().toISOString()
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  env: {
+    NEXT_PUBLIC_BUILD_SHA: commitHash,
+    NEXT_PUBLIC_BUILD_TIME: buildTime,
+  },
   // Increase payload limit for large Excel/CSV imports
   experimental: {
     serverActions: {

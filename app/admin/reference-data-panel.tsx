@@ -35,11 +35,13 @@ export function ReferenceDataPanel({
   methods: initialMethods,
   schemes: initialSchemes,
   clusters: initialClusters,
+  isAdmin = false,
 }: {
   branches: Branch[]
   methods: PaymentMethod[]
   schemes: WaterScheme[]
   clusters: Cluster[]
+  isAdmin?: boolean
 }) {
   const [branches, setBranches] = useState(initialBranches)
   const [methods, setMethods] = useState(initialMethods)
@@ -145,33 +147,37 @@ export function ReferenceDataPanel({
           <Button variant="outline" size="sm" onClick={handleExportSchemes}>
             <FileSpreadsheet className="h-4 w-4 mr-2" /> Download List
           </Button>
-          <Button variant="outline" size="sm" asChild>
-            <Link href="/admin/bulkhierarchy">
-              <FileUp className="h-4 w-4 mr-2" /> Bulk Import
-            </Link>
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={async () => {
-              const base64 = await downloadUnifiedHierarchyTemplate()
-              const byteCharacters = atob(base64)
-              const byteNumbers = new Array(byteCharacters.length)
-              for (let i = 0; i < byteCharacters.length; i++) {
-                byteNumbers[i] = byteCharacters.charCodeAt(i)
-              }
-              const byteArray = new Uint8Array(byteNumbers)
-              const blob = new Blob([byteArray], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" })
-              const url = window.URL.createObjectURL(blob)
-              const a = document.createElement("a")
-              a.href = url
-              a.download = `unified-hierarchy-template.xlsx`
-              a.click()
-              window.URL.revokeObjectURL(url)
-            }}
-          >
-            <Download className="h-4 w-4 mr-2" /> One-Row Template
-          </Button>
+          {isAdmin && (
+            <>
+              <Button variant="outline" size="sm" asChild>
+                <Link href="/admin/bulkhierarchy">
+                  <FileUp className="h-4 w-4 mr-2" /> Bulk Import
+                </Link>
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={async () => {
+                  const base64 = await downloadUnifiedHierarchyTemplate()
+                  const byteCharacters = atob(base64)
+                  const byteNumbers = new Array(byteCharacters.length)
+                  for (let i = 0; i < byteCharacters.length; i++) {
+                    byteNumbers[i] = byteCharacters.charCodeAt(i)
+                  }
+                  const byteArray = new Uint8Array(byteNumbers)
+                  const blob = new Blob([byteArray], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" })
+                  const url = window.URL.createObjectURL(blob)
+                  const a = document.createElement("a")
+                  a.href = url
+                  a.download = `unified-hierarchy-template.xlsx`
+                  a.click()
+                  window.URL.revokeObjectURL(url)
+                }}
+              >
+                <Download className="h-4 w-4 mr-2" /> One-Row Template
+              </Button>
+            </>
+          )}
         </div>
       </div>
 
@@ -185,54 +191,56 @@ export function ReferenceDataPanel({
           <CardDescription>Manage your organization&apos;s regions, area offices, and water schemes in one place.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
-          <form onSubmit={handleAddScheme} className="grid gap-4 sm:grid-cols-5 items-end p-4 bg-muted/20 rounded-lg border border-dashed">
-            <div className="space-y-2 sm:col-span-1">
-              <Label htmlFor="scheme-name">Scheme Name</Label>
-              <Input
-                id="scheme-name"
-                required
-                placeholder="e.g. Kabere"
-                value={schemeName}
-                onChange={(e) => setSchemeName(e.target.value)}
-              />
-            </div>
-            <div className="space-y-2 sm:col-span-1">
-              <Label htmlFor="scheme-code">Scheme Code (Optional)</Label>
-              <Input
-                id="scheme-code"
-                placeholder="Auto-generated if blank"
-                value={schemeCode}
-                onChange={(e) => setSchemeCode(e.target.value)}
-              />
-            </div>
-            <div className="space-y-2 sm:col-span-1">
-              <Label>Area Office</Label>
-              <Select value={schemeBranchId} onValueChange={(v) => setSchemeBranchId(v ?? "")}>
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Select Area Office..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {branches.map((b) => (
-                    <SelectItem key={b.id} value={b.id}>
-                      {b.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2 sm:col-span-1">
-              <Label htmlFor="scheme-area">Service Area Description</Label>
-              <Input
-                id="scheme-area"
-                placeholder="e.g. South Sector"
-                value={schemeArea}
-                onChange={(e) => setSchemeArea(e.target.value)}
-              />
-            </div>
-            <Button type="submit" disabled={pending} className="sm:col-span-1">
-              Add New Scheme
-            </Button>
-          </form>
+          {isAdmin && (
+            <form onSubmit={handleAddScheme} className="grid gap-4 sm:grid-cols-5 items-end p-4 bg-muted/20 rounded-lg border border-dashed">
+              <div className="space-y-2 sm:col-span-1">
+                <Label htmlFor="scheme-name">Scheme Name</Label>
+                <Input
+                  id="scheme-name"
+                  required
+                  placeholder="e.g. Kabere"
+                  value={schemeName}
+                  onChange={(e) => setSchemeName(e.target.value)}
+                />
+              </div>
+              <div className="space-y-2 sm:col-span-1">
+                <Label htmlFor="scheme-code">Scheme Code (Optional)</Label>
+                <Input
+                  id="scheme-code"
+                  placeholder="Auto-generated if blank"
+                  value={schemeCode}
+                  onChange={(e) => setSchemeCode(e.target.value)}
+                />
+              </div>
+              <div className="space-y-2 sm:col-span-1">
+                <Label>Area Office</Label>
+                <Select value={schemeBranchId} onValueChange={(v) => setSchemeBranchId(v ?? "")}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Select Area Office..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {branches.map((b) => (
+                      <SelectItem key={b.id} value={b.id}>
+                        {b.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2 sm:col-span-1">
+                <Label htmlFor="scheme-area">Service Area Description</Label>
+                <Input
+                  id="scheme-area"
+                  placeholder="e.g. South Sector"
+                  value={schemeArea}
+                  onChange={(e) => setSchemeArea(e.target.value)}
+                />
+              </div>
+              <Button type="submit" disabled={pending} className="sm:col-span-1">
+                Add New Scheme
+              </Button>
+            </form>
+          )}
 
           <Table>
             <TableHeader>
@@ -269,6 +277,7 @@ export function ReferenceDataPanel({
                       <TableCell className="text-center">
                         <Switch
                           checked={s.active}
+                          disabled={!isAdmin}
                           onCheckedChange={() =>
                             startTransition(async () => {
                               const result = await setWaterSchemeActive(s.id, !s.active)
@@ -297,29 +306,31 @@ export function ReferenceDataPanel({
           <CardTitle>Payment Methods</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <form onSubmit={handleAddMethod} className="flex items-end gap-2">
-            <div className="space-y-2 flex-1">
-              <Label htmlFor="method-name">Method Name</Label>
-              <Input
-                id="method-name"
-                required
-                value={methodName}
-                onChange={(e) => setMethodName(e.target.value)}
-              />
-            </div>
-            <div className="space-y-2 flex-1">
-              <Label htmlFor="method-code">System Code</Label>
-              <Input
-                id="method-code"
-                required
-                value={methodCode}
-                onChange={(e) => setMethodCode(e.target.value)}
-              />
-            </div>
-            <Button type="submit" disabled={pending}>
-              Add Method
-            </Button>
-          </form>
+          {isAdmin && (
+            <form onSubmit={handleAddMethod} className="flex items-end gap-2">
+              <div className="space-y-2 flex-1">
+                <Label htmlFor="method-name">Method Name</Label>
+                <Input
+                  id="method-name"
+                  required
+                  value={methodName}
+                  onChange={(e) => setMethodName(e.target.value)}
+                />
+              </div>
+              <div className="space-y-2 flex-1">
+                <Label htmlFor="method-code">System Code</Label>
+                <Input
+                  id="method-code"
+                  required
+                  value={methodCode}
+                  onChange={(e) => setMethodCode(e.target.value)}
+                />
+              </div>
+              <Button type="submit" disabled={pending}>
+                Add Method
+              </Button>
+            </form>
+          )}
           <Table>
             <TableHeader>
               <TableRow>
@@ -336,6 +347,7 @@ export function ReferenceDataPanel({
                   <TableCell className="text-center">
                     <Switch
                       checked={m.active}
+                      disabled={!isAdmin}
                       onCheckedChange={() =>
                         startTransition(async () => {
                           const result = await setPaymentMethodActive(m.id, !m.active)

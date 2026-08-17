@@ -45,6 +45,9 @@ export function AdminTabs({
   allPermissions,
   tariffs,
   templates,
+  allClusters = [],
+  allBranches = [],
+  allSchemes = [],
 }: {
   agents: Agent[]
   agentsTotal: number
@@ -71,14 +74,23 @@ export function AdminTabs({
     canAudit: boolean
     canViewReports: boolean
     canManageIAM: boolean
+    canEditUser: boolean
+    canDeleteUser: boolean
+    canCreateUser: boolean
+    canResetPassword: boolean
   }
   periods: BillingPeriod[]
   iamRoles: IamRole[]
   allPermissions: IamPermission[]
   tariffs: any[]
   templates: any[]
+  allClusters?: Cluster[]
+  allBranches?: Branch[]
+  allSchemes?: WaterScheme[]
 }) {
-  const defaultTab = permissions.canViewReports ? "overview" : "agents"
+  const defaultTab = permissions.canViewReports
+    ? (permissions.canManageIAM ? "overview" : "commercial")
+    : (permissions.canManageUsers ? "agents" : "reference")
 
   return (
     <Tabs defaultValue={defaultTab}>
@@ -98,12 +110,12 @@ export function AdminTabs({
           {permissions.canViewReports && <TabsTrigger value="printing" className="shrink-0">Printing</TabsTrigger>}
           {permissions.canManageUsers && <TabsTrigger value="agents" className="shrink-0">Users</TabsTrigger>}
           {permissions.canManageIAM && <TabsTrigger value="iam" className="shrink-0">IAM</TabsTrigger>}
-          {permissions.canConfigureSystem && <TabsTrigger value="tariffs" className="shrink-0">Tariffs</TabsTrigger>}
-          {permissions.canConfigureSystem && <TabsTrigger value="templates" className="shrink-0">Templates</TabsTrigger>}
+          {permissions.canManageIAM && <TabsTrigger value="tariffs" className="shrink-0">Tariffs</TabsTrigger>}
+          {permissions.canManageIAM && <TabsTrigger value="templates" className="shrink-0">Templates</TabsTrigger>}
           {permissions.canManageHierarchy && <TabsTrigger value="reference" className="shrink-0">Branches &amp; schemes</TabsTrigger>}
-          {permissions.canConfigureSystem && <TabsTrigger value="branding" className="shrink-0">Branding</TabsTrigger>}
-          {permissions.canAudit && <TabsTrigger value="audit" className="shrink-0">Audit log</TabsTrigger>}
-          {permissions.canConfigureSystem && <TabsTrigger value="maintenance" className="shrink-0 text-destructive font-bold">Maintenance</TabsTrigger>}
+          {permissions.canManageIAM && <TabsTrigger value="branding" className="shrink-0">Branding</TabsTrigger>}
+          {permissions.canManageIAM && <TabsTrigger value="audit" className="shrink-0">Audit log</TabsTrigger>}
+          {permissions.canManageIAM && <TabsTrigger value="maintenance" className="shrink-0 text-destructive font-bold">Maintenance</TabsTrigger>}
         </TabsList>
       </div>
 
@@ -142,6 +154,12 @@ export function AdminTabs({
             branches={branches}
             schemes={schemes}
             iamRoles={iamRoles}
+            permissions={{
+              canEdit: permissions.canEditUser,
+              canDelete: permissions.canDeleteUser,
+              canCreate: permissions.canCreateUser,
+              canResetPassword: permissions.canResetPassword
+            }}
           />
         </TabsContent>
       )}
@@ -166,7 +184,13 @@ export function AdminTabs({
 
       {permissions.canManageHierarchy && (
         <TabsContent value="reference" className="mt-4">
-          <ReferenceDataPanel branches={branches} methods={methods} schemes={schemes} clusters={clusters} />
+          <ReferenceDataPanel
+            branches={allBranches}
+            methods={methods}
+            schemes={allSchemes}
+            clusters={allClusters}
+            isAdmin={permissions.canManageIAM} // Using canManageIAM as a proxy for System Admin rights here
+          />
         </TabsContent>
       )}
 

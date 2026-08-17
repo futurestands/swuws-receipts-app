@@ -10,6 +10,7 @@ import { revalidatePath } from "next/cache"
 import * as XLSX from "xlsx"
 import { z } from "zod"
 import { isUniqueViolation } from "@/lib/db/errors"
+import { ROLES } from "@/lib/permissions/roles"
 import {
   canCreateCustomer,
   canEditCustomer,
@@ -256,11 +257,18 @@ export async function searchCustomers(params: {
       ),
     )
   }
-  if (params.waterSchemeId) {
-    conditions.push(eq(customer.waterSchemeId, params.waterSchemeId))
-  }
-  if (params.branchId) {
+  if (params.branchId && params.branchId !== "all") {
     conditions.push(eq(waterScheme.branchId, params.branchId))
+  } else if (current.role !== ROLES.SYSTEM_ADMIN && current.branchId) {
+    conditions.push(eq(waterScheme.branchId, current.branchId))
+  } else if (current.role !== ROLES.SYSTEM_ADMIN && current.clusterId) {
+    conditions.push(eq(branch.clusterId, current.clusterId))
+  }
+
+  if (params.waterSchemeId && params.waterSchemeId !== "all") {
+    conditions.push(eq(customer.waterSchemeId, params.waterSchemeId))
+  } else if (current.role !== ROLES.SYSTEM_ADMIN && current.schemeId) {
+    conditions.push(eq(customer.waterSchemeId, current.schemeId))
   }
   if (params.category && params.category !== 'all') {
     conditions.push(eq(customer.category, params.category))
@@ -276,7 +284,7 @@ export async function searchCustomers(params: {
   }
   const where = conditions.length > 0 ? and(...conditions) : undefined
 
-  const [rows, [{ count }]] = await Promise.all([
+  const [rows, countRes] = await Promise.all([
     db
       .select({
         ...getTableColumns(customer),
@@ -293,8 +301,12 @@ export async function searchCustomers(params: {
     db
       .select({ count: sql<number>`count(*)::int` })
       .from(customer)
+      .leftJoin(waterScheme, eq(customer.waterSchemeId, waterScheme.id))
+      .leftJoin(branch, eq(waterScheme.branchId, branch.id))
       .where(where),
   ])
+
+  const count = countRes[0]?.count ?? 0
 
   return {
     customers: rows,

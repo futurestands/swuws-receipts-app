@@ -4,13 +4,14 @@ import { db } from "@/lib/db"
 import { iamRole, iamPermission, iamRolePermission, user as userTable, type IamRole } from "@/lib/db/schema"
 import { requireUser } from "@/lib/session"
 import { writeAudit } from "@/lib/audit"
-import { hasPermission } from "@/lib/iam"
-import { eq, and, sql, desc, asc, not } from "drizzle-orm"
+import { hasPermission, getOwnRoleLevel } from "@/lib/iam"
+import { eq, and, sql, desc, asc, not, lte } from "drizzle-orm"
 import { randomUUID } from "crypto"
 import { revalidatePath } from "next/cache"
 import { z } from "zod"
 import { roleSchema } from "@/lib/iam-schemas"
 import type { Scope } from "@/lib/iam"
+import { ROLES } from "@/lib/permissions/roles"
 
 /**
  * List all roles, ordered by level and name.
@@ -19,7 +20,18 @@ export async function listRoles() {
   const current = await requireUser()
   if (!await hasPermission(current, "roles.view")) throw new Error("Forbidden")
 
-  return db.select().from(iamRole).orderBy(desc(iamRole.level), asc(iamRole.name))
+  if (current.role === ROLES.SYSTEM_ADMIN) {
+    return db.select().from(iamRole).orderBy(desc(iamRole.level), asc(iamRole.name))
+  }
+
+  // Non-system admins can only see roles at or below their own level
+  const ownLevel = current.iamRoleId ? (await getOwnRoleLevel(current.iamRoleId)) : 0
+
+  return db
+    .select()
+    .from(iamRole)
+    .where(lte(iamRole.level, ownLevel))
+    .orderBy(desc(iamRole.level), asc(iamRole.name))
 }
 
 /**

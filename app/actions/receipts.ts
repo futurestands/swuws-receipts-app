@@ -20,6 +20,7 @@ import { randomUUID } from "crypto"
 import { revalidatePath, revalidateTag } from "next/cache"
 import { put } from "@vercel/blob"
 import { checkRateLimit } from "@/lib/rate-limit"
+import { ROLES } from "@/lib/permissions/roles"
 import { canViewAllData, canIssueReceipt, canPrintReceipt, canReprintReceipt } from "@/lib/permissions"
 import { applyReceiptScope, validateWriteScope } from "@/lib/scopes"
 import { hasPermission } from "@/lib/iam"
@@ -626,8 +627,22 @@ export async function listActivePaymentMethods() {
 }
 
 export async function listActiveBranches() {
-  await requireUser()
-  return db.select().from(branchTable).where(eq(branchTable.active, true)).orderBy(branchTable.name)
+  const current = await requireUser()
+  const conditions = [eq(branchTable.active, true)]
+
+  if (current.role !== ROLES.SYSTEM_ADMIN && (current.clusterId || current.branchId || current.schemeId)) {
+    if (current.branchId) {
+      conditions.push(eq(branchTable.id, current.branchId))
+    } else if (current.clusterId) {
+      conditions.push(eq(branchTable.clusterId, current.clusterId))
+    }
+  }
+
+  return db
+    .select()
+    .from(branchTable)
+    .where(and(...conditions))
+    .orderBy(branchTable.name)
 }
 
 export async function recordReceiptPrint(receiptId: string) {

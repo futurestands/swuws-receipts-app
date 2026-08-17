@@ -9,15 +9,19 @@ import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { formatUGX, formatDateTime, formatDate } from "@/lib/format"
 import { ArrowUpRight, ArrowDownLeft } from "lucide-react"
+import { canEditCustomer } from "@/lib/permissions"
+import { requireUser } from "@/lib/session"
 
 export default async function CustomerDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
+  const current = await requireUser()
   const [statement, schemes] = await Promise.all([
     getCustomerStatement(id),
     listActiveWaterSchemesForPicker(),
   ])
 
   const { customer, bills, receipts, ledger, summary, lastReading } = statement
+  const canEdit = canEditCustomer(current)
 
   return (
     <div className="space-y-6">
@@ -69,7 +73,7 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
 
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="lg:col-span-1">
-          <EditCustomerForm key={customer.id} customer={customer} schemes={schemes} />
+          <EditCustomerForm key={customer.id} customer={customer} schemes={schemes} canEdit={canEdit} />
         </div>
 
         <div className="lg:col-span-2 space-y-6">

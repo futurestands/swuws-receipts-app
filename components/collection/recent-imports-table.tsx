@@ -32,9 +32,10 @@ import {
 
 interface RecentImportsTableProps {
   uploads: any[]
+  canDelete?: boolean
 }
 
-export function RecentImportsTable({ uploads }: RecentImportsTableProps) {
+export function RecentImportsTable({ uploads, canDelete = false }: RecentImportsTableProps) {
   const [selectedIds, setSelectedIds] = useState<string[]>([])
   const [isDeleting, setIsDeleting] = useState(false)
   const [isConfirmOpen, setIsConfirmOpen] = useState(false)
@@ -125,36 +126,40 @@ export function RecentImportsTable({ uploads }: RecentImportsTableProps) {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="w-[80px] px-0">
-                <div className="flex flex-col items-center justify-center gap-1 min-w-[80px]">
-                  <Checkbox
-                    checked={selectedIds.length === uploads.length && uploads.length > 0}
-                    onCheckedChange={toggleAll}
-                    aria-label="Select all"
-                  />
-                  <span className="text-[10px] uppercase font-bold text-muted-foreground leading-none">All</span>
-                </div>
-              </TableHead>
+              {canDelete && (
+                <TableHead className="w-[80px] px-0">
+                  <div className="flex flex-col items-center justify-center gap-1 min-w-[80px]">
+                    <Checkbox
+                      checked={selectedIds.length === uploads.length && uploads.length > 0}
+                      onCheckedChange={toggleAll}
+                      aria-label="Select all"
+                    />
+                    <span className="text-[10px] uppercase font-bold text-muted-foreground leading-none">All</span>
+                  </div>
+                </TableHead>
+              )}
               <TableHead>Scheme</TableHead>
               <TableHead>Date</TableHead>
               <TableHead>Customers</TableHead>
               <TableHead>Total Amount</TableHead>
               <TableHead>Status</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
+              {canDelete && <TableHead className="text-right">Actions</TableHead>}
             </TableRow>
           </TableHeader>
           <TableBody>
             {uploads.map((run) => (
               <TableRow key={run.id} className={selectedIds.includes(run.id) ? "bg-muted/50" : ""}>
-                <TableCell className="w-[80px] px-0">
-                  <div className="flex items-center justify-center min-w-[80px]">
-                    <Checkbox
-                      checked={selectedIds.includes(run.id)}
-                      onCheckedChange={() => toggleOne(run.id)}
-                      aria-label={`Select ${run.schemeName}`}
-                    />
-                  </div>
-                </TableCell>
+                {canDelete && (
+                  <TableCell className="w-[80px] px-0">
+                    <div className="flex items-center justify-center min-w-[80px]">
+                      <Checkbox
+                        checked={selectedIds.includes(run.id)}
+                        onCheckedChange={() => toggleOne(run.id)}
+                        aria-label={`Select ${run.schemeName}`}
+                      />
+                    </div>
+                  </TableCell>
+                )}
                 <TableCell className="font-medium">{run.schemeName}</TableCell>
                 <TableCell className="text-sm text-muted-foreground">
                   {formatDateTime(run.uploadedAt)}
@@ -166,9 +171,11 @@ export function RecentImportsTable({ uploads }: RecentImportsTableProps) {
                     {run.status}
                   </Badge>
                 </TableCell>
-                <TableCell className="text-right">
-                  <DeleteRunButton runId={run.id} schemeName={run.schemeName} />
-                </TableCell>
+                {canDelete && (
+                  <TableCell className="text-right">
+                    <DeleteRunButton runId={run.id} schemeName={run.schemeName} />
+                  </TableCell>
+                )}
               </TableRow>
             ))}
           </TableBody>

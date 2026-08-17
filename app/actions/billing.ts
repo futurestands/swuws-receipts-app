@@ -25,9 +25,10 @@ import {
   canManageCollectionPeriods,
   canActivateCollectionPeriod,
   canArchiveCollectionPeriod,
-  canIssueReceipt
+  canIssueReceipt,
+  canViewReports
 } from "@/lib/permissions"
-import { validateWriteScope, applyCustomerScope } from "@/lib/scopes"
+import { validateWriteScope, applyCustomerScope, applyReceiptScope, applyBillingRecordScope, applyMeterReadingScope, applyBillingScope } from "@/lib/scopes"
 import { and, eq, sql, desc, or, count, sum, inArray } from "drizzle-orm"
 import * as XLSX from "xlsx"
 import { z } from "zod"
@@ -38,6 +39,7 @@ import { processExcelImport, getImportMapping, type ImportSummary } from "@/lib/
 import { DEFAULT_BILLING_IMPORT_MAPPING } from "@/lib/import-mappings"
 import { billingImportSchema, type BillingImportRow } from "@/lib/import-schemas"
 import { logEvent, logFinancial } from "@/lib/logger"
+import { ROLES } from "@/lib/permissions/roles"
 
 export type BillingImportSummary = ImportSummary<BillingImportRow> & {
   schemeId: string
@@ -49,44 +51,34 @@ export type BillingImportSummary = ImportSummary<BillingImportRow> & {
  */
 export async function getAuthorizedSchemes() {
   const current = await requireUser()
-  const allSchemes = await db
+  const conditions = [eq(waterScheme.active, true)]
+
+  if (current.role !== ROLES.SYSTEM_ADMIN && (current.clusterId || current.branchId || current.schemeId)) {
+    if (current.schemeId) {
+      conditions.push(eq(waterScheme.id, current.schemeId))
+    } else if (current.branchId) {
+      conditions.push(eq(waterScheme.branchId, current.branchId))
+    } else if (current.clusterId) {
+      const clusterBranches = await db
+        .select({ id: branch.id })
+        .from(branch)
+        .where(eq(branch.clusterId, current.clusterId || "none"))
+
+      const branchIds = clusterBranches.map(b => b.id)
+      if (branchIds.length === 0) return []
+      conditions.push(inArray(waterScheme.branchId, branchIds))
+    }
+  }
+
+  return db
     .select({
       id: waterScheme.id,
       name: waterScheme.name,
       branchId: waterScheme.branchId,
     })
     .from(waterScheme)
-    .where(eq(waterScheme.active, true))
+    .where(and(...conditions))
     .orderBy(waterScheme.name)
-
-  // Optimization: Filter in-memory to avoid N database queries in validateWriteScope
-  const grants = current.grants || []
-  const grant = grants.find(g => g.code === "system.settings.manage")
-  const scope = grant?.scope
-
-  if (!scope) return []
-  if (scope === "global") return allSchemes
-
-  if (scope === "scheme") {
-    return allSchemes.filter(s => s.id === current.schemeId)
-  }
-
-  if (scope === "area") {
-    return allSchemes.filter(s => s.branchId === current.branchId)
-  }
-
-  if (scope === "cluster") {
-    // For cluster scope, we still need to know which branches belong to the user's cluster
-    const clusterBranches = await db
-      .select({ id: branch.id })
-      .from(branch)
-      .where(eq(branch.clusterId, current.clusterId || "none"))
-
-    const branchIds = new Set(clusterBranches.map(b => b.id))
-    return allSchemes.filter(s => s.branchId && branchIds.has(s.branchId))
-  }
-
-  return []
 }
 
 /**
@@ -811,7 +803,13 @@ export async function downloadBillingTemplate() {
 }
 
 export async function getCollectionSummary() {
-  await requireUser()
+  const current = await requireUser()
+
+  // 0. Resolve User Scopes for calculation
+  const brScope = applyBillingRecordScope(current)
+  const mrScope = applyMeterReadingScope(current)
+  const rScope = applyReceiptScope(current)
+  const cScope = applyCustomerScope(current)
 
   // Get active period, or the most recent one if none is active
   // Join with users for the timeline
@@ -869,47 +867,44 @@ export async function getCollectionSummary() {
    */
 
   // Period Metrics (Unified: Derived from Current Snapshot vs Original Demand)
-  const [importStats, readingStats] = await Promise.all([
+  const [importStats, readingStats, brCustomers, mrCustomers] = await Promise.all([
     db
       .select({
         totalBills: count(billingRecord.id),
         totalMonthlyBilled: sum(billingRecord.billAmount),
         totalArrearsBilled: sum(billingRecord.arrears),
-        // DERIVED COLLECTION LOGIC: (Corrected per Forensic Audit #1)
-        // We now calculate truth by comparing current snapshots to starting charges.
         totalRecovered: sum(sql`
           greatest(0, (coalesce(${billingRecord.arrears}, 0)::numeric + coalesce(${billingRecord.billAmount}, 0)::numeric) - coalesce(${billingRecord.totalDue}, 0)::numeric)
         `),
       })
       .from(billingRecord)
-      .where(eq(billingRecord.billingPeriodId, displayPeriod.id))
-      .then(rows => rows[0]),
+      .where(and(eq(billingRecord.billingPeriodId, displayPeriod.id), brScope))
+      .then(rows => rows[0])
+      .catch(() => ({ totalBills: 0, totalMonthlyBilled: "0", totalArrearsBilled: "0", totalRecovered: "0" })),
     db
       .select({
         totalReadings: count(meterReading.id),
         totalMonthlyBilled: sum(meterReading.billedAmount),
         totalArrearsBilled: sum(meterReading.previousBalanceSnapshot),
-        // FIELD RECOVERY: Now correctly derived for field-billed customers (Forensic Audit #2)
         totalRecovered: sum(sql`
           greatest(0, (coalesce(${meterReading.previousBalanceSnapshot}, 0)::numeric + coalesce(${meterReading.billedAmount}, 0)::numeric) - coalesce(${customer.accountBalance}, 0)::numeric)
         `),
       })
       .from(meterReading)
       .innerJoin(customer, eq(meterReading.customerId, customer.id))
-      .where(eq(meterReading.billingPeriodId, displayPeriod.id))
-      .then(rows => rows[0]),
+      .where(and(eq(meterReading.billingPeriodId, displayPeriod.id), mrScope))
+      .then(rows => rows[0])
+      .catch(() => ({ totalReadings: 0, totalMonthlyBilled: "0", totalArrearsBilled: "0", totalRecovered: "0" })),
+    // Fetch unique customer IDs for combined count (Safer than raw SQL UNION in some environments)
+    db.select({ id: billingRecord.customerId }).from(billingRecord).where(and(eq(billingRecord.billingPeriodId, displayPeriod.id), brScope)).catch(() => []),
+    db.select({ id: meterReading.customerId }).from(meterReading).where(and(eq(meterReading.billingPeriodId, displayPeriod.id), mrScope)).catch(() => [])
   ])
 
-  // Distinct Customers Across Both Sources
-  const customerStats = await db.execute(sql`
-    SELECT count(DISTINCT customer_id)::int as count
-    FROM (
-      SELECT "customerId" as customer_id FROM "billing_record" WHERE "billingPeriodId" = ${displayPeriod.id}
-      UNION
-      SELECT "customerId" as customer_id FROM "meter_reading" WHERE "billingPeriodId" = ${displayPeriod.id}
-    ) as combined_customers
-  `)
-  const customersImported = Number(customerStats.rows[0]?.count || 0)
+  const combinedCustomerIds = new Set([
+    ...brCustomers.map(r => r.id),
+    ...mrCustomers.map(r => r.id)
+  ])
+  const customersImported = combinedCustomerIds.size
 
   // OPERATIONAL CASH: Receipts printed but not yet necessarily confirmed by bank
   // Exclude voided receipts
@@ -927,8 +922,10 @@ export async function getCollectionSummary() {
     .from(receipt)
     .where(and(
       eq(receipt.billingPeriodId, displayPeriod.id),
+      rScope,
       sql`${receipt.id} NOT IN (${voidedIdsSubquery})`
     ))
+    .catch(() => [{ totalCashInHand: "0", receiptsToday: 0, customersPaidToday: 0 }])
 
   const recentUploads = await db
     .select({
@@ -941,8 +938,9 @@ export async function getCollectionSummary() {
     })
     .from(billingRun)
     .innerJoin(waterScheme, eq(billingRun.schemeId, waterScheme.id))
-    .where(eq(billingRun.billingPeriodId, displayPeriod.id))
+    .where(and(eq(billingRun.billingPeriodId, displayPeriod.id), applyBillingScope(current)))
     .orderBy(desc(billingRun.uploadedAt)).limit(100)
+    .catch(() => [])
 
   // Arrears & Upfront Snapshot (Global)
   const [arrearsSnapshot, ebsStats] = await Promise.all([
@@ -952,7 +950,9 @@ export async function getCollectionSummary() {
         totalUpfront: sql<number>`sum(case when ${customer.accountBalance} < 0 then abs(${customer.accountBalance}) else 0 end)::numeric`,
       })
       .from(customer)
-      .then(rows => rows[0]),
+      .where(cScope)
+      .then(rows => rows[0])
+      .catch(() => ({ totalArrears: 0, totalUpfront: 0 })),
     // OFFICIAL COLLECTIONS: Confirmed via External Billing System (EBS)
     // We include matched payments for customers who DON'T have a bill/reading record (Orphans).
     db
@@ -965,10 +965,12 @@ export async function getCollectionSummary() {
       .where(and(
         eq(dailyCollectionImport.billingPeriodId, displayPeriod.id),
         eq(dailyCollectionRecord.importStatus, 'matched'),
+        cScope,
         sql`NOT EXISTS (SELECT 1 FROM billing_record WHERE "customerId" = ${customer.id} AND "billingPeriodId" = ${displayPeriod.id})`,
         sql`NOT EXISTS (SELECT 1 FROM meter_reading WHERE "customerId" = ${customer.id} AND "billingPeriodId" = ${displayPeriod.id})`
       ))
       .then(rows => rows[0])
+      .catch(() => ({ totalOrphanConfirmed: 0 }))
   ])
 
   const totalBilled = Number(importStats?.totalMonthlyBilled || 0) +

@@ -18,9 +18,14 @@ export default async function LoginLayout({
         </div>
         {children}
         {settings.developerCredit && (
-          <p className="mt-8 text-center text-xs text-muted-foreground">
-            &copy; {new Date().getFullYear()} {settings.developerCredit}
-          </p>
+          <div className="mt-8 text-center space-y-1">
+            <p className="text-xs text-muted-foreground">
+              &copy; {new Date().getFullYear()} {settings.developerCredit}
+            </p>
+            <p className="text-[10px] text-muted-foreground/60 font-mono">
+              Build: {process.env.NEXT_PUBLIC_BUILD_SHA} &middot; {process.env.NEXT_PUBLIC_BUILD_TIME ? new Date(process.env.NEXT_PUBLIC_BUILD_TIME).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : 'Unknown'}
+            </p>
+          </div>
         )}
       </div>
     </div>

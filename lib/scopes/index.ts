@@ -1,7 +1,7 @@
 import { eq, and, or, sql, inArray } from "drizzle-orm"
 import { ROLES } from "../permissions/roles"
 import { UserPermissionsContext, canViewAllData } from "../permissions"
-import { receipt, customer, branch, waterScheme, billingPeriod, billingRun, billingRecord, user as userTable } from "../db/schema"
+import { receipt, customer, branch, waterScheme, billingPeriod, billingRun, billingRecord, meterReading, user as userTable } from "../db/schema"
 import { Scope } from "../iam"
 import { db } from "../db"
 
@@ -16,7 +16,23 @@ export type { UserPermissionsContext }
 
 function getScope(user: UserPermissionsContext, permissionCode: string): Scope | null {
   const grant = user.grants?.find(g => g.code === permissionCode)
-  return (grant?.scope as Scope) || null
+  let scope = (grant?.scope as Scope) || null
+
+  // HIERARCHY OVERRIDE 1: No assigned hierarchy = Global Authority
+  if (!user.clusterId && !user.branchId && !user.schemeId) {
+    return "global"
+  }
+
+  // HIERARCHY OVERRIDE 2: Force-cap scope based on assigned hierarchy level
+  // This ensures an Area Manager can never accidentally see "Global" data
+  // even if their permission was misconfigured in the DB.
+  if (scope === "global") {
+     if (user.clusterId) scope = "cluster"
+     else if (user.branchId) scope = "area"
+     else if (user.schemeId) scope = "scheme"
+  }
+
+  return scope
 }
 
 /**
@@ -29,19 +45,29 @@ export function applyUserScope(user: UserPermissionsContext) {
   if (scope === "global") return undefined
 
   if (scope === "cluster" && user.clusterId) {
-    return eq(userTable.clusterId, user.clusterId)
+    return or(
+      eq(userTable.clusterId, user.clusterId),
+      inArray(
+        userTable.branchId,
+        sql`(SELECT id FROM branch WHERE "clusterId" = ${user.clusterId})`
+      )
+    )
   }
 
   if (scope === "area" && user.branchId) {
-    return eq(userTable.branchId, user.branchId)
+    return or(
+      eq(userTable.branchId, user.branchId),
+      inArray(
+        userTable.schemeId,
+        sql`(SELECT id FROM water_scheme WHERE "branchId" = ${user.branchId})`
+      )
+    )
   }
 
   if (scope === "scheme" && user.schemeId) {
     return eq(userTable.schemeId, user.schemeId)
   }
 
-  // Fallback: Agents usually can't 'see' other users in 'own' scope unless
-  // they are looking at themselves.
   return eq(userTable.id, user.id)
 }
 
@@ -49,8 +75,8 @@ export function applyUserScope(user: UserPermissionsContext) {
  * Applies organizational scope to Receipt queries.
  */
 export function applyReceiptScope(user: UserPermissionsContext) {
-  const scope = getScope(user, "receipts.view")
-  if (!scope) return sql`1 = 0` // Deny if no permission
+  const scope = getScope(user, "receipts.view") || getScope(user, "dashboard.metrics.view")
+  if (!scope) return sql`1 = 0`
 
   if (scope === "global") return undefined
 
@@ -69,7 +95,12 @@ export function applyReceiptScope(user: UserPermissionsContext) {
     return eq(receipt.schemeId, user.schemeId)
   }
 
-  // Fallback: Default to 'own' isolation for safety.
+  if (scope === "own") {
+    if (user.branchId) return eq(receipt.branchId, user.branchId)
+    if (user.schemeId) return eq(receipt.schemeId, user.schemeId)
+    return eq(receipt.agentId, user.id)
+  }
+
   return eq(receipt.agentId, user.id)
 }
 
@@ -85,7 +116,7 @@ export function applyCustomerScope(user: UserPermissionsContext) {
   if (scope === "cluster" && user.clusterId) {
     return inArray(
       customer.waterSchemeId,
-      sql`(SELECT ws.id FROM water_scheme ws JOIN branch b ON ws."branchId" = b.id WHERE b."clusterId" = ${user.clusterId})`
+      sql`(SELECT id FROM water_scheme WHERE "branchId" IN (SELECT id FROM branch WHERE "clusterId" = ${user.clusterId}))`
     )
   }
 
@@ -100,8 +131,6 @@ export function applyCustomerScope(user: UserPermissionsContext) {
     return eq(customer.waterSchemeId, user.schemeId)
   }
 
-  // Customers usually aren't 'owned' by individual agents in a meaningful way for list view,
-  // but if scope is 'own', we might show customers the user created.
   return eq(customer.createdById, user.id)
 }
 
@@ -109,7 +138,7 @@ export function applyCustomerScope(user: UserPermissionsContext) {
  * Applies organizational scope to Billing queries.
  */
 export function applyBillingScope(user: UserPermissionsContext) {
-  const scope = getScope(user, "billing.history.view")
+  const scope = getScope(user, "billing.history.view") || getScope(user, "reports.view")
   if (!scope) return sql`1 = 0`
 
   if (scope === "global") return undefined
@@ -117,7 +146,7 @@ export function applyBillingScope(user: UserPermissionsContext) {
   if (scope === "cluster" && user.clusterId) {
     return inArray(
       billingRun.schemeId,
-      sql`(SELECT ws.id FROM water_scheme ws JOIN branch b ON ws."branchId" = b.id WHERE b."clusterId" = ${user.clusterId})`
+      sql`(SELECT id FROM water_scheme WHERE "branchId" IN (SELECT id FROM branch WHERE "clusterId" = ${user.clusterId}))`
     )
   }
 
@@ -128,7 +157,89 @@ export function applyBillingScope(user: UserPermissionsContext) {
     )
   }
 
+  if (scope === "scheme" && user.schemeId) {
+    return eq(billingRun.schemeId, user.schemeId)
+  }
+
   return sql`1 = 0`
+}
+
+/**
+ * Applies organizational scope to individual Billing Record queries.
+ */
+export function applyBillingRecordScope(user: UserPermissionsContext) {
+  const scope = getScope(user, "reports.view") || getScope(user, "billing.view") || getScope(user, "dashboard.metrics.view")
+  if (!scope) return sql`1 = 0`
+
+  if (scope === "global") return undefined
+
+  if (scope === "cluster" && user.clusterId) {
+    return inArray(
+      billingRecord.customerId,
+      sql`(SELECT id FROM customer WHERE "waterSchemeId" IN (SELECT id FROM water_scheme WHERE "branchId" IN (SELECT id FROM branch WHERE "clusterId" = ${user.clusterId})))`
+    )
+  }
+
+  if (scope === "area" && user.branchId) {
+    return inArray(
+      billingRecord.customerId,
+      sql`(SELECT id FROM customer WHERE "waterSchemeId" IN (SELECT id FROM water_scheme WHERE "branchId" = ${user.branchId}))`
+    )
+  }
+
+  if (scope === "scheme" && user.schemeId) {
+    return inArray(
+      billingRecord.customerId,
+      sql`(SELECT id FROM customer WHERE "waterSchemeId" = ${user.schemeId})`
+    )
+  }
+
+  // Fallback for 'own' scope: If they have dashboard metrics view, show them data for their hierarchy level anyway
+  if (scope === "own") {
+    if (user.branchId) return inArray(billingRecord.customerId, sql`(SELECT id FROM customer WHERE "waterSchemeId" IN (SELECT id FROM water_scheme WHERE "branchId" = ${user.branchId}))`)
+    if (user.schemeId) return inArray(billingRecord.customerId, sql`(SELECT id FROM customer WHERE "waterSchemeId" = ${user.schemeId})`)
+  }
+
+  return sql`1 = 0`
+}
+
+/**
+ * Applies organizational scope to Meter Reading queries.
+ */
+export function applyMeterReadingScope(user: UserPermissionsContext) {
+  const scope = getScope(user, "reports.view") || getScope(user, "meter_readings.view") || getScope(user, "dashboard.metrics.view")
+  if (!scope) return sql`1 = 0`
+
+  if (scope === "global") return undefined
+
+  if (scope === "cluster" && user.clusterId) {
+     return inArray(
+       meterReading.customerId,
+       sql`(SELECT id FROM customer WHERE "waterSchemeId" IN (SELECT id FROM water_scheme WHERE "branchId" IN (SELECT id FROM branch WHERE "clusterId" = ${user.clusterId})))`
+     )
+  }
+
+  if (scope === "area" && user.branchId) {
+    return inArray(
+      meterReading.customerId,
+      sql`(SELECT id FROM customer WHERE "waterSchemeId" IN (SELECT id FROM water_scheme WHERE "branchId" = ${user.branchId}))`
+    )
+  }
+
+  if (scope === "scheme" && user.schemeId) {
+    return inArray(
+      meterReading.customerId,
+      sql`(SELECT id FROM customer WHERE "waterSchemeId" = ${user.schemeId})`
+    )
+  }
+
+  if (scope === "own") {
+    if (user.branchId) return inArray(meterReading.customerId, sql`(SELECT id FROM customer WHERE "waterSchemeId" IN (SELECT id FROM water_scheme WHERE "branchId" = ${user.branchId}))`)
+    if (user.schemeId) return inArray(meterReading.customerId, sql`(SELECT id FROM customer WHERE "waterSchemeId" = ${user.schemeId})`)
+    return eq(meterReading.recordedById, user.id)
+  }
+
+  return eq(meterReading.recordedById, user.id)
 }
 
 /**

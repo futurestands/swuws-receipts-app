@@ -300,6 +300,18 @@ export function AccountClient({ user, settings, siteUrl }: { user: UserProfile, 
           </div>
         </CardContent>
       </Card>
+
+      {/* Build Info */}
+      <div className="flex flex-col items-center justify-center pt-4 space-y-1">
+        <p className="text-[10px] text-muted-foreground/60 font-mono">
+          Web Build: {process.env.NEXT_PUBLIC_BUILD_SHA} ({process.env.NEXT_PUBLIC_BUILD_TIME ? new Date(process.env.NEXT_PUBLIC_BUILD_TIME).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : 'Unknown'})
+        </p>
+        {isNative() && (
+          <p className="text-[10px] text-muted-foreground/60 font-mono">
+            Native Shell: v{CURRENT_APP_VERSION}
+          </p>
+        )}
+      </div>
     </div>
   )
 }

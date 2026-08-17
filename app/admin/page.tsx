@@ -6,6 +6,7 @@ import { getCurrentUser } from "@/lib/session"
 import { listRoles, listAllPermissions, seedV12Permissions } from "@/app/actions/iam"
 import { listAllTariffs } from "@/app/actions/billing-engine"
 import { listTemplates, seedSystemTemplates } from "@/app/actions/template-actions"
+import { ROLES } from "@/lib/permissions/roles"
 import {
   canManageUsers,
   canManageSchemes,
@@ -13,7 +14,11 @@ import {
   canConfigureSystem,
   canAudit,
   canViewReports,
-  canAccessAdminConsole
+  canAccessAdminConsole,
+  canManageIAM,
+  canEditUser,
+  canDeleteUser,
+  canResetPasswords
 } from "@/lib/permissions"
 
 export default async function AdminPage() {
@@ -35,7 +40,11 @@ export default async function AdminPage() {
   const canViewReportsVal = current ? canViewReports(current) : false
   const canManageHierarchyVal = current ? (canManageSchemes(current) || canManageAreas(current)) : false
   const canConfigureSystemVal = current ? canConfigureSystem(current) : false
-  const canManageIAMVal = current ? (current.permissions?.includes("roles.view") || current.permissions?.includes("permissions.view")) : false
+  const canManageIAMVal = current ? canManageIAM(current) : false
+  const canEditUserVal = current ? canEditUser(current) : false
+  const canDeleteUserVal = current ? canDeleteUser(current) : false
+  const canCreateUserVal = current ? (current.permissions?.includes("users.create") || current.role === ROLES.SYSTEM_ADMIN) : false
+  const canResetPasswordVal = current ? canResetPasswords(current) : false
 
   const [agentsResult, auditLogs, stats, collections, printingStats, clusters, branches, methods, schemes, settings, periods, iamRoles, allPermissions, tariffs, templates] = await Promise.all([
     canManageUsersVal
@@ -45,10 +54,10 @@ export default async function AdminPage() {
     canViewReportsVal ? getSystemStats().catch(() => ({ agentCount: 0, receiptCount: 0, receiptTotal: 0 })) : Promise.resolve({ agentCount: 0, receiptCount: 0, receiptTotal: 0 }),
     canViewReportsVal ? getCollectionsSummary().catch(() => ({ perAgent: [], totalCount: 0, totalAmount: 0 })) : Promise.resolve({ perAgent: [], totalCount: 0, totalAmount: 0 }),
     canViewReportsVal ? getPrintingReports().catch(() => ({ mostReprinted: [], byUser: [], byBranch: [], dailySummary: [], byScheme: [], recentPrints: [] })) : Promise.resolve({ mostReprinted: [], byUser: [], byBranch: [], dailySummary: [], byScheme: [], recentPrints: [] }),
-    canManageHierarchyVal ? listClusters().catch(() => []) : Promise.resolve([]),
-    canManageHierarchyVal ? listBranches().catch(() => []) : Promise.resolve([]),
+    listClusters().catch(() => []),
+    listBranches().catch(() => []),
     canConfigureSystemVal ? listPaymentMethods().catch(() => []) : Promise.resolve([]),
-    canManageHierarchyVal ? listWaterSchemes().catch(() => []) : Promise.resolve([]),
+    listWaterSchemes().catch(() => []),
     getSettings(), // Settings is readable by all for branding
     getCollectionPeriods().catch(() => []),
     canManageIAMVal ? listRoles().catch(() => []) : Promise.resolve([]),
@@ -57,6 +66,15 @@ export default async function AdminPage() {
     canConfigureSystemVal ? listTemplates().catch(() => []) : Promise.resolve([]),
   ])
 
+  // HIERARCHY FILTERING: Ensure UI dropdowns match the user's assigned scope.
+  // Global/Head Office users (no assigned hierarchy) see all options.
+  const isGlobal = !current?.clusterId && !current?.branchId && !current?.schemeId
+  const isSystemAdmin = current?.role === ROLES.SYSTEM_ADMIN
+
+  const filteredClusters = (isSystemAdmin || isGlobal) ? clusters : clusters.filter(c => c.id === current?.clusterId)
+  const filteredBranches = (isSystemAdmin || isGlobal) ? branches : branches.filter(b => b.id === current?.branchId || b.clusterId === current?.clusterId)
+  const filteredSchemes = (isSystemAdmin || isGlobal) ? schemes : schemes.filter(s => s.id === current?.schemeId || s.branchId === current?.branchId)
+
   const permissions = {
     canManageUsers: canManageUsersVal,
     canManageHierarchy: canManageHierarchyVal,
@@ -64,6 +82,10 @@ export default async function AdminPage() {
     canAudit: canAuditVal,
     canViewReports: canViewReportsVal,
     canManageIAM: canManageIAMVal,
+    canEditUser: canEditUserVal,
+    canDeleteUser: canDeleteUserVal,
+    canCreateUser: canCreateUserVal,
+    canResetPassword: canResetPasswordVal,
   }
 
   return (
@@ -84,10 +106,15 @@ export default async function AdminPage() {
         stats={stats}
         collections={collections}
         printingStats={printingStats}
-        clusters={clusters}
-        branches={branches}
+        // FILTERED HIERARCHY: Used for the "Add User" dropdowns (Strict context)
+        clusters={filteredClusters}
+        branches={filteredBranches}
         methods={methods}
-        schemes={schemes}
+        schemes={filteredSchemes}
+        // GLOBAL HIERARCHY: Used for the "Branches & schemes" list (View-only for non-admins)
+        allClusters={clusters}
+        allBranches={branches}
+        allSchemes={schemes}
         settings={settings}
         permissions={permissions}
         periods={periods}

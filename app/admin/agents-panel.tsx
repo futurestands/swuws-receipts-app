@@ -79,6 +79,7 @@ export function AgentsPanel({
   branches,
   schemes,
   iamRoles = [],
+  permissions = { canEdit: false, canDelete: false, canCreate: false, canResetPassword: false }
 }: {
   agents: Agent[]
   agentsTotal: number
@@ -89,6 +90,12 @@ export function AgentsPanel({
   branches: Branch[]
   schemes: WaterScheme[]
   iamRoles?: IamRole[]
+  permissions?: {
+    canEdit: boolean,
+    canDelete: boolean,
+    canCreate: boolean,
+    canResetPassword: boolean
+  }
 }) {
   const [agents, setAgents] = useState(initialAgents)
   const [pending, startTransition] = useTransition()
@@ -267,183 +274,190 @@ export function AgentsPanel({
       <div className="flex flex-wrap items-center justify-between gap-4">
         <h2 className="text-lg font-medium">User Management</h2>
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" asChild>
-            <Link href="/admin/bulkusers">
-              <FileUp className="h-4 w-4 mr-2" /> Bulk Import
-            </Link>
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={async () => {
-              const base64 = await downloadBulkImportTemplate("xlsx")
-              const byteCharacters = atob(base64)
-              const byteNumbers = new Array(byteCharacters.length)
-              for (let i = 0; i < byteCharacters.length; i++) {
-                byteNumbers[i] = byteCharacters.charCodeAt(i)
-              }
-              const byteArray = new Uint8Array(byteNumbers)
-              const blob = new Blob([byteArray], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" })
-              const url = window.URL.createObjectURL(blob)
-              const a = document.createElement("a")
-              a.href = url
-              a.download = `user-import-template.xlsx`
-              a.click()
-              window.URL.revokeObjectURL(url)
-            }}
-          >
-            <Download className="h-4 w-4 mr-2" /> Template
-          </Button>
+          {permissions.canCreate && (
+            <>
+              <Button variant="outline" size="sm" asChild>
+                <Link href="/admin/bulkusers">
+                  <FileUp className="h-4 w-4 mr-2" /> Bulk Import
+                </Link>
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={async () => {
+                  const base64 = await downloadBulkImportTemplate("xlsx")
+                  const byteCharacters = atob(base64)
+                  const byteNumbers = new Array(byteCharacters.length)
+                  for (let i = 0; i < byteCharacters.length; i++) {
+                    byteNumbers[i] = byteCharacters.charCodeAt(i)
+                  }
+                  const byteArray = new Uint8Array(byteNumbers)
+                  const blob = new Blob([byteArray], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" })
+                  const url = window.URL.createObjectURL(blob)
+                  const a = document.createElement("a")
+                  a.href = url
+                  a.download = `user-import-template.xlsx`
+                  a.click()
+                  window.URL.revokeObjectURL(url)
+                }}
+              >
+                <Download className="h-4 w-4 mr-2" /> Template
+              </Button>
+            </>
+          )}
         </div>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Add user or admin</CardTitle>
-          <CardDescription>Creates a new account with an initial password.</CardDescription>
-        </CardHeader>
-        <CardContent className="pt-6">
-          <form onSubmit={handleCreate} className="space-y-6">
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              <div className="space-y-2">
-                <Label htmlFor="agent-name">Full Name</Label>
-                <Input
-                  id="agent-name"
-                  required
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="e.g. John Doe"
-                  autoComplete="off"
-                />
+      {permissions.canCreate && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Add user or admin</CardTitle>
+            <CardDescription>Creates a new account with an initial password.</CardDescription>
+          </CardHeader>
+          <CardContent className="pt-6">
+            <form onSubmit={handleCreate} className="space-y-6">
+              {/* ... form fields ... */}
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                <div className="space-y-2">
+                  <Label htmlFor="agent-name">Full Name</Label>
+                  <Input
+                    id="agent-name"
+                    required
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder="e.g. John Doe"
+                    autoComplete="off"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="agent-email">Email Address</Label>
+                  <Input
+                    id="agent-email"
+                    type="email"
+                    required
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="john@example.com"
+                    autoComplete="off"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="agent-phone">Phone (Optional)</Label>
+                  <Input
+                    id="agent-phone"
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
+                    placeholder="256..."
+                    autoComplete="off"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="agent-password">Initial Password</Label>
+                  <Input
+                    id="agent-password"
+                    type="password"
+                    required
+                    minLength={8}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="Min 8 characters"
+                    autoComplete="new-password"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>System Role</Label>
+                  <Select value={selectedIamRoleId || "none"} onValueChange={(v) => setSelectedIamRoleId(v === "none" ? null : v)}>
+                    <SelectTrigger className="w-full h-11">
+                      <span className="flex-1 text-left truncate">
+                        {selectedIamRoleId === null ? "No Role" : (iamRoles.find(r => r.id === selectedIamRoleId)?.name || selectedIamRoleId)}
+                      </span>
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">No Role</SelectItem>
+                      {iamRoles.map((r) => (
+                        <SelectItem key={r.id} value={r.id}>
+                          {r.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="agent-email">Email Address</Label>
-                <Input
-                  id="agent-email"
-                  type="email"
-                  required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="john@example.com"
-                  autoComplete="off"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="agent-phone">Phone (Optional)</Label>
-                <Input
-                  id="agent-phone"
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                  placeholder="256..."
-                  autoComplete="off"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="agent-password">Initial Password</Label>
-                <Input
-                  id="agent-password"
-                  type="password"
-                  required
-                  minLength={8}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Min 8 characters"
-                  autoComplete="new-password"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>System Role</Label>
-                <Select value={selectedIamRoleId || "none"} onValueChange={(v) => setSelectedIamRoleId(v === "none" ? null : v)}>
-                  <SelectTrigger className="w-full h-11">
-                    <span className="flex-1 text-left truncate">
-                      {selectedIamRoleId === null ? "No Role" : (iamRoles.find(r => r.id === selectedIamRoleId)?.name || selectedIamRoleId)}
-                    </span>
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">No Role</SelectItem>
-                    {iamRoles.map((r) => (
-                      <SelectItem key={r.id} value={r.id}>
-                        {r.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
 
-            <div className="p-4 rounded-lg bg-muted/30 border border-muted-foreground/10 space-y-4">
-              <p className="text-xs font-bold uppercase text-muted-foreground tracking-widest">Organizational Assignment</p>
-              <div className="grid gap-4 sm:grid-cols-3">
-                <div className="space-y-2">
-                  <Label className="text-[10px] uppercase text-muted-foreground">Cluster</Label>
-                  <Select value={selectedClusterId || "none"} onValueChange={(v) => {
-                    const id = v === "none" ? null : v
-                    setSelectedClusterId(id)
-                    setSelectedBranchId(null)
-                    setSelectedSchemeId(null)
-                  }}>
-                    <SelectTrigger className="bg-background w-full h-11">
-                      <span className="flex-1 text-left truncate">
-                        {selectedClusterId === null ? "No Cluster" : (clusters.find(c => c.id === selectedClusterId)?.name || selectedClusterId)}
-                      </span>
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">No Cluster</SelectItem>
-                      {clusters.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label className="text-[10px] uppercase text-muted-foreground">Area (Branch)</Label>
-                  <Select value={selectedBranchId || "none"} onValueChange={(v) => {
-                    const id = v === "none" ? null : v
-                    setSelectedBranchId(id)
-                    setSelectedSchemeId(null)
-                  }}>
-                    <SelectTrigger className="bg-background w-full h-11">
-                      <span className="flex-1 text-left truncate">
-                        {selectedBranchId === null ? "No Area" : (branches.find(b => b.id === selectedBranchId)?.name || selectedBranchId)}
-                      </span>
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">No Area</SelectItem>
-                      {availableBranches.map(b => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label className="text-[10px] uppercase text-muted-foreground">Scheme</Label>
-                  <Select value={selectedSchemeId || "none"} onValueChange={(v) => setSelectedSchemeId(v === "none" ? null : v)}>
-                    <SelectTrigger className="bg-background w-full h-11">
-                      <span className="flex-1 text-left truncate">
-                        {selectedSchemeId === null ? "No Scheme" : (schemes.find(s => s.id === selectedSchemeId)?.name || selectedSchemeId)}
-                      </span>
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">No Scheme</SelectItem>
-                      {availableSchemes.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-            </div>
-
-            {createError && (
-              <p className="text-sm text-destructive font-medium">{createError}</p>
-            )}
-            <div className="flex justify-end">
-              <Button type="submit" disabled={pending} className="min-w-[200px] h-11 font-bold">
-                {pending ? (
-                  <div className="flex items-center gap-2">
-                    <div className="size-4 rounded-full border-2 border-white/30 border-t-white animate-spin" />
-                    Creating...
+              <div className="p-4 rounded-lg bg-muted/30 border border-muted-foreground/10 space-y-4">
+                <p className="text-xs font-bold uppercase text-muted-foreground tracking-widest">Organizational Assignment</p>
+                <div className="grid gap-4 sm:grid-cols-3">
+                  <div className="space-y-2">
+                    <Label className="text-[10px] uppercase text-muted-foreground">Cluster</Label>
+                    <Select value={selectedClusterId || "none"} onValueChange={(v) => {
+                      const id = v === "none" ? null : v
+                      setSelectedClusterId(id)
+                      setSelectedBranchId(null)
+                      setSelectedSchemeId(null)
+                    }}>
+                      <SelectTrigger className="bg-background w-full h-11">
+                        <span className="flex-1 text-left truncate">
+                          {selectedClusterId === null ? "No Cluster" : (clusters.find(c => c.id === selectedClusterId)?.name || selectedClusterId)}
+                        </span>
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">No Cluster</SelectItem>
+                        {clusters.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
                   </div>
-                ) : "Create User Account"}
-              </Button>
-            </div>
-          </form>
-        </CardContent>
-      </Card>
+                  <div className="space-y-2">
+                    <Label className="text-[10px] uppercase text-muted-foreground">Area (Branch)</Label>
+                    <Select value={selectedBranchId || "none"} onValueChange={(v) => {
+                      const id = v === "none" ? null : v
+                      setSelectedBranchId(id)
+                      setSelectedSchemeId(null)
+                    }}>
+                      <SelectTrigger className="bg-background w-full h-11">
+                        <span className="flex-1 text-left truncate">
+                          {selectedBranchId === null ? "No Area" : (branches.find(b => b.id === selectedBranchId)?.name || selectedBranchId)}
+                        </span>
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">No Area</SelectItem>
+                        {availableBranches.map(b => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-[10px] uppercase text-muted-foreground">Scheme</Label>
+                    <Select value={selectedSchemeId || "none"} onValueChange={(v) => setSelectedSchemeId(v === "none" ? null : v)}>
+                      <SelectTrigger className="bg-background w-full h-11">
+                        <span className="flex-1 text-left truncate">
+                          {selectedSchemeId === null ? "No Scheme" : (schemes.find(s => s.id === selectedSchemeId)?.name || selectedSchemeId)}
+                        </span>
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">No Scheme</SelectItem>
+                        {availableSchemes.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              </div>
+
+              {createError && (
+                <p className="text-sm text-destructive font-medium">{createError}</p>
+              )}
+              <div className="flex justify-end">
+                <Button type="submit" disabled={pending} className="min-w-[200px] h-11 font-bold">
+                  {pending ? (
+                    <div className="flex items-center gap-2">
+                      <div className="size-4 rounded-full border-2 border-white/30 border-t-white animate-spin" />
+                      Creating...
+                    </div>
+                  ) : "Create User Account"}
+                </Button>
+              </div>
+            </form>
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader className="gap-4">
@@ -517,6 +531,7 @@ export function AgentsPanel({
                       <div className="flex justify-center">
                         <Switch
                           checked={agent.active}
+                          disabled={!permissions.canEdit}
                           onCheckedChange={() => toggleActive(agent)}
                           className="data-[state=checked]:bg-brand-blue scale-75"
                         />
@@ -528,76 +543,82 @@ export function AgentsPanel({
                     <TableCell className="pr-6 text-right">
                       <div className="flex items-center justify-end gap-1">
                         {/* Edit Action */}
-                        <EditAgentDialog
-                          agent={agent}
-                          clusters={clusters}
-                          branches={branches}
-                          schemes={schemes}
-                          iamRoles={iamRoles}
-                          onUpdated={(updated) => {
-                            setAgents(prev => prev.map(a => a.id === updated.id ? { ...a, ...updated } : a))
-                          }}
-                        />
+                        {permissions.canEdit && (
+                          <EditAgentDialog
+                            agent={agent}
+                            clusters={clusters}
+                            branches={branches}
+                            schemes={schemes}
+                            iamRoles={iamRoles}
+                            onUpdated={(updated) => {
+                              setAgents(prev => prev.map(a => a.id === updated.id ? { ...a, ...updated } : a))
+                            }}
+                          />
+                        )}
 
                         {/* Reset Password Action */}
-                        <Dialog
-                          open={resetTarget?.id === agent.id}
-                          onOpenChange={(open) => {
-                            if (!open) {
-                              setResetTarget(null)
-                              setNewPassword("")
-                              setResetError(null)
-                            }
-                          }}
-                        >
-                          <DialogTrigger asChild>
-                            <Button size="icon-sm" variant="ghost" className="h-8 w-8" onClick={() => setResetTarget(agent)}>
-                              <Key className="size-4" />
-                            </Button>
-                          </DialogTrigger>
-                          <DialogContent>
-                            <DialogHeader>
-                              <DialogTitle>Reset password for {agent.name}</DialogTitle>
-                              <DialogDescription>Sets a new password immediately. Share it with them securely.</DialogDescription>
-                            </DialogHeader>
-                            <form onSubmit={handleResetPassword} className="space-y-4 pt-2">
-                              <div className="space-y-2">
-                                <Label htmlFor="new-password">New password</Label>
-                                <Input id="new-password" type="password" minLength={8} required value={newPassword} onChange={(e) => setNewPassword(e.target.value)} autoComplete="new-password" />
-                              </div>
-                              {resetError && <p className="text-sm text-destructive font-medium">{resetError}</p>}
-                              <DialogFooter>
-                                <Button type="submit" disabled={pending} className="w-full font-bold">
-                                  {pending ? "Saving…" : "Confirm Password Reset"}
-                                </Button>
-                              </DialogFooter>
-                            </form>
-                          </DialogContent>
-                        </Dialog>
+                        {permissions.canResetPassword && (
+                          <Dialog
+                            open={resetTarget?.id === agent.id}
+                            onOpenChange={(open) => {
+                              if (!open) {
+                                setResetTarget(null)
+                                setNewPassword("")
+                                setResetError(null)
+                              }
+                            }}
+                          >
+                            <DialogTrigger asChild>
+                              <Button size="icon-sm" variant="ghost" className="h-8 w-8" onClick={() => setResetTarget(agent)}>
+                                <Key className="size-4" />
+                              </Button>
+                            </DialogTrigger>
+                            <DialogContent>
+                              <DialogHeader>
+                                <DialogTitle>Reset password for {agent.name}</DialogTitle>
+                                <DialogDescription>Sets a new password immediately. Share it with them securely.</DialogDescription>
+                              </DialogHeader>
+                              <form onSubmit={handleResetPassword} className="space-y-4 pt-2">
+                                <div className="space-y-2">
+                                  <Label htmlFor="new-password">New password</Label>
+                                  <Input id="new-password" type="password" minLength={8} required value={newPassword} onChange={(e) => setNewPassword(e.target.value)} autoComplete="new-password" />
+                                </div>
+                                {resetError && <p className="text-sm text-destructive font-medium">{resetError}</p>}
+                                <DialogFooter>
+                                  <Button type="submit" disabled={pending} className="w-full font-bold">
+                                    {pending ? "Saving…" : "Confirm Password Reset"}
+                                  </Button>
+                                </DialogFooter>
+                              </form>
+                            </DialogContent>
+                          </Dialog>
+                        )}
 
                         {/* Delete Action */}
-                        <AlertDialog>
-                          <AlertDialogTrigger asChild>
-                            <Button size="icon-sm" variant="ghost" className="h-8 w-8 text-destructive hover:bg-destructive/10">
-                              <Trash2 className="size-4" />
-                            </Button>
-                          </AlertDialogTrigger>
-                          <AlertDialogContent>
-                            <AlertDialogHeader>
-                              <AlertDialogTitle>Delete User Account?</AlertDialogTitle>
-                              <AlertDialogDescription>
-                                This will permanently remove <strong>{agent.name}</strong> from the system.
-                                Users who have issued receipts cannot be deleted and must be deactivated instead.
-                              </AlertDialogDescription>
-                            </AlertDialogHeader>
-                            <AlertDialogFooter>
-                              <AlertDialogCancel>Cancel</AlertDialogCancel>
-                              <AlertDialogAction onClick={() => handleDelete(agent.id)} className="bg-destructive hover:bg-destructive/90">
-                                Delete Account
-                              </AlertDialogAction>
-                            </AlertDialogFooter>
-                          </AlertDialogContent>
-                        </AlertDialog>
+                        {permissions.canDelete && (
+                          <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                              <Button size="icon-sm" variant="ghost" className="h-8 w-8 text-destructive hover:bg-destructive/10">
+                                <Trash2 className="size-4" />
+                              </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                              <AlertDialogHeader>
+                                <AlertDialogTitle>Delete User Account?</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                  This will permanently remove <strong>{agent.name}</strong> from the system.
+                                  Users who have issued receipts cannot be deleted and must be deactivated instead.
+                                </AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                <AlertDialogAction onClick={() => handleDelete(agent.id)} className="bg-destructive hover:bg-destructive/90">
+                                  Delete Account
+                                </AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
+                        )}
                       </div>
                     </TableCell>
                   </TableRow>

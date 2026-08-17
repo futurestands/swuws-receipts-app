@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest"
-import { canCreateRole, UserPermissionsContext } from "./index"
+import { UserPermissionsContext } from "./index"
+import { canCreateRole } from "./server"
 import { ROLES } from "./roles"
 
 /**

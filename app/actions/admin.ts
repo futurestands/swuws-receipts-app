@@ -495,7 +495,20 @@ export async function getAuditLogs(limit = 200) {
   const current = await requireUser()
   if (!canAudit(current)) throw new Error("Forbidden")
 
-  return db.select().from(auditLog).orderBy(desc(auditLog.createdAt)).limit(limit)
+  const scope = applyReceiptScope(current)
+
+  if (current.role === ROLES.SYSTEM_ADMIN) {
+    return db.select().from(auditLog).orderBy(desc(auditLog.createdAt)).limit(limit)
+  }
+
+  // Filter audit logs based on the user's scope if they are not System Admin
+  // (Simplified scope: only show logs for entities the user can see)
+  return db
+    .select()
+    .from(auditLog)
+    .where(sql`"actorId" = ${current.id}`) // Non-admins can only see their OWN trail
+    .orderBy(desc(auditLog.createdAt))
+    .limit(limit)
 }
 
 export async function getCollectionsSummary(dateISO?: string) {

@@ -42,22 +42,40 @@ export function getNavSections(current: UserPermissionsContext): NavSection[] {
   const sections: NavSection[] = [{ items: primary }]
 
   if (canUploadBilling(current)) {
-    const billing: NavItem[] = [
-      { href: "/dashboard/billing", label: "Billing", icon: "Wallet", activeMatch: "/dashboard/billing" },
-      { href: "/dashboard/billing/readings", label: "Meter Readings", icon: "Calculator", activeMatch: "/dashboard/billing/readings" },
-      { href: "/dashboard/billing/daily", label: "Daily Collections", icon: "ListChecks", activeMatch: "/dashboard/billing/daily" },
-      { href: "/dashboard/billing/exceptions", label: "Billing Exceptions", icon: "AlertCircle", activeMatch: "/dashboard/billing/exceptions" },
-      { href: "/dashboard/reconciliation/exceptions", label: "Recon Exceptions", icon: "AlertTriangle", activeMatch: "/dashboard/reconciliation/exceptions" },
-    ]
+    const billing: NavItem[] = []
 
-    if (canViewReports(current)) {
-      billing.push(
-        { href: "/dashboard/reconciliation/stats", label: "Control Center", icon: "Gauge", activeMatch: "/dashboard/reconciliation" },
-        { href: "/dashboard/reports/catalog", label: "Executive Reports", icon: "FileBarChart", activeMatch: "/dashboard/reports/catalog" }
-      )
+    if (current.permissions?.includes("billing.view") || current.permissions?.includes("billing.import")) {
+       billing.push({ href: "/dashboard/billing", label: "Billing", icon: "Wallet", activeMatch: "/dashboard/billing" })
     }
 
-    sections.push({ label: "Finance", items: billing })
+    if (current.permissions?.includes("meter_readings.view")) {
+       billing.push({ href: "/dashboard/billing/readings", label: "Meter Readings", icon: "Calculator", activeMatch: "/dashboard/billing/readings" })
+    }
+
+    if (current.permissions?.includes("reports.view")) {
+       billing.push({ href: "/dashboard/billing/daily", label: "Daily Collections", icon: "ListChecks", activeMatch: "/dashboard/billing/daily" })
+    }
+
+    if (current.permissions?.includes("billing.exceptions.view")) {
+       billing.push({ href: "/dashboard/billing/exceptions", label: "Billing Exceptions", icon: "AlertCircle", activeMatch: "/dashboard/billing/exceptions" })
+    }
+
+    if (current.permissions?.includes("reconciliation.view")) {
+       billing.push({ href: "/dashboard/reconciliation/exceptions", label: "Recon Exceptions", icon: "AlertTriangle", activeMatch: "/dashboard/reconciliation/exceptions" })
+    }
+
+    if (canViewReports(current)) {
+      if (current.permissions?.includes("reconciliation.view")) {
+        billing.push({ href: "/dashboard/reconciliation/stats", label: "Control Center", icon: "Gauge", activeMatch: "/dashboard/reconciliation" })
+      }
+      if (current.permissions?.includes("reports.executive")) {
+        billing.push({ href: "/dashboard/reports/catalog", label: "Executive Reports", icon: "FileBarChart", activeMatch: "/dashboard/reports/catalog" })
+      }
+    }
+
+    if (billing.length > 0) {
+      sections.push({ label: "Finance", items: billing })
+    }
   }
 
   if (canAccessAdminConsole(current)) {

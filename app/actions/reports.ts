@@ -18,6 +18,7 @@ import { requireUser } from "@/lib/session"
 import { applyReceiptScope, applyCustomerScope } from "@/lib/scopes"
 import { and, eq, sql, desc, sum, count, gte, inArray, or, ilike } from "drizzle-orm"
 import { canViewReports, canUploadBilling } from "@/lib/permissions"
+import { ROLES } from "@/lib/permissions/roles"
 
 /**
  * CUSTOMER STATEMENT (Phase 2, Objective 3)
@@ -206,6 +207,20 @@ export async function getDashboardStats(params: {
     ))
   }
 
+  // HIERARCHY FORCING (Universal): Every regional user is strictly trapped in their assignment.
+  // We apply this to the condition arrays before they are summed or counted.
+  const forceHierarchy = (conds: any[]) => {
+    if (current.role === ROLES.SYSTEM_ADMIN) return;
+
+    // If they have no hierarchy assigned, they are Head Office (Global) - no forcing.
+    if (!current.clusterId && !current.branchId && !current.schemeId) return;
+
+    if (current.branchId) conds.push(eq(waterScheme.branchId, current.branchId))
+    else if (current.clusterId) conds.push(eq(branch.clusterId, current.clusterId))
+    else if (current.schemeId) conds.push(eq(customer.waterSchemeId, current.schemeId))
+  }
+
+  forceHierarchy(billingConditions)
   if (customerScope) billingConditions.push(customerScope)
 
   // 1. BILLING AGGREGATION (Unified: Imports + Field Readings)
@@ -223,6 +238,7 @@ export async function getDashboardStats(params: {
     ))
   }
 
+  forceHierarchy(readingConditions)
   if (customerScope) readingConditions.push(customerScope)
 
   const [importStats, fieldStats] = await Promise.all([
@@ -314,6 +330,8 @@ export async function getDashboardStats(params: {
     )
     if (queryCondition) verifiedConditions.push(queryCondition)
   }
+
+  forceHierarchy(verifiedConditions)
   if (customerScope) verifiedConditions.push(customerScope)
 
   // EXECUTE: Aggregate Daily Collections (ONLY for customers WITHOUT a current billing record or meter reading)
@@ -345,7 +363,6 @@ export async function getDashboardStats(params: {
 
   // 4. OPERATIONAL CASH (Source: All Issued Receipts)
   const receiptConditions = []
-  if (receiptScope) receiptConditions.push(receiptScope)
   if (params.schemeId && params.schemeId !== "all") receiptConditions.push(eq(customer.waterSchemeId, params.schemeId))
   if (params.branchId && params.branchId !== "all") receiptConditions.push(eq(waterScheme.branchId, params.branchId))
   if (params.clusterId && params.clusterId !== "all") receiptConditions.push(eq(branch.clusterId, params.clusterId))
@@ -356,6 +373,9 @@ export async function getDashboardStats(params: {
     const cond = or(ilike(customer.name, q), ilike(customer.customerAccount, q))
     if (cond) receiptConditions.push(cond)
   }
+
+  forceHierarchy(receiptConditions)
+  if (receiptScope) receiptConditions.push(receiptScope)
 
   const [receiptStats] = await db
     .select({
@@ -419,6 +439,8 @@ export async function getDashboardStats(params: {
     const cond = or(ilike(customer.name, q), ilike(customer.customerAccount, q))
     if (cond) arrearsConditions.push(cond)
   }
+
+  forceHierarchy(arrearsConditions)
   if (customerScope) arrearsConditions.push(customerScope)
 
   // Optimization: Direct customer query for debt snapshot (fewer joins)
