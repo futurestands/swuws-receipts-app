@@ -20,13 +20,18 @@ import 'dotenv/config';
 // manually updated and the APK MUST be rebuilt. Setting the
 // NEXT_PUBLIC_APP_URL environment variable alone will NOT update the
 // Android shell anymore.
-const PRODUCTION_DOMAIN = 'https://swuws-receipts-app-q2z9.vercel.app';
+const PRODUCTION_FALLBACK = 'https://swuws-receipts-app-q2z9.vercel.app';
 
-const serverUrl = PRODUCTION_DOMAIN;
+// DYNAMIC URL RESOLUTION:
+// 1. Prioritize environment variable (for future domain changes)
+// 2. SAFETY: If the env var is 'localhost' or missing during a production
+//    sync, we force it to the known Vercel fallback to prevent the white screen.
+let serverUrl = process.env.NEXT_PUBLIC_APP_URL || PRODUCTION_FALLBACK;
 
-if (process.env.NODE_ENV === 'production') {
-  if (!process.env.NEXT_PUBLIC_APP_URL) {
-    console.warn('\x1b[33m%s\x1b[0m', 'Capacitor: Production mode active. Forcing server.url to: ' + PRODUCTION_DOMAIN);
+if (process.env.NODE_ENV === 'production' || !process.env.NEXT_PUBLIC_APP_URL) {
+  if (serverUrl.includes('localhost')) {
+    console.warn('\x1b[33m%s\x1b[0m', 'Capacitor: Localhost detected in production build. Forcing fallback to: ' + PRODUCTION_FALLBACK);
+    serverUrl = PRODUCTION_FALLBACK;
   }
 }
 
