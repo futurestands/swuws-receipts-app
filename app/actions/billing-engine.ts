@@ -468,38 +468,45 @@ export async function resolveBillingDiscrepancy(id: string, action: 'accept' | '
 }
 
 export async function getRecentMeterReadings(limit = 20) {
-  const user = await requireUser()
-  if (!canIssueReceipt(user)) throw new Error("Forbidden")
+  try {
+    const user = await requireUser()
+    if (!canIssueReceipt(user)) throw new Error("Forbidden")
 
-  const rows = await db
-    .select({
-      id: meterReading.id,
-      customerName: meterReading.customerNameSnapshot,
-      meterRef: meterReading.meterRefSnapshot,
-      previousReading: meterReading.previousReading,
-      currentReading: meterReading.currentReading,
-      consumption: meterReading.consumption,
-      billedAmount: meterReading.billedAmount,
-      previousBalance: meterReading.previousBalanceSnapshot,
-      totalDue: meterReading.totalDueSnapshot,
-      createdAt: meterReading.createdAt,
-      periodName: billingPeriod.periodName,
-      recordedById: meterReading.recordedById, // Needed for permission check in UI
-      phone: meterReading.phoneSnapshot,
-      isNotified: meterReading.isNotified,
-    })
-    .from(meterReading)
-    .innerJoin(billingPeriod, eq(meterReading.billingPeriodId, billingPeriod.id))
-    .where(eq(meterReading.recordedById, user.id))
-    .orderBy(desc(meterReading.createdAt))
-    .limit(limit)
+    const rows = await db
+      .select({
+        id: meterReading.id,
+        customerName: meterReading.customerNameSnapshot,
+        meterRef: meterReading.meterRefSnapshot,
+        previousReading: meterReading.previousReading,
+        currentReading: meterReading.currentReading,
+        consumption: meterReading.consumption,
+        billedAmount: meterReading.billedAmount,
+        previousBalance: meterReading.previousBalanceSnapshot,
+        totalDue: meterReading.totalDueSnapshot,
+        createdAt: meterReading.createdAt,
+        periodName: billingPeriod.periodName,
+        recordedById: meterReading.recordedById, // Needed for permission check in UI
+        phone: meterReading.phoneSnapshot,
+        isNotified: meterReading.isNotified,
+      })
+      .from(meterReading)
+      .innerJoin(billingPeriod, eq(meterReading.billingPeriodId, billingPeriod.id))
+      .where(eq(meterReading.recordedById, user.id))
+      .orderBy(desc(meterReading.createdAt))
+      .limit(limit)
 
-  return rows.map(r => ({
-    ...r,
-    billedAmount: Number(r.billedAmount),
-    previousBalance: Number(r.previousBalance),
-    totalDue: Number(r.totalDue)
-  }))
+    if (!rows) return []
+
+    return rows.map(r => ({
+      ...r,
+      billedAmount: Number(r.billedAmount || 0),
+      previousBalance: Number(r.previousBalance || 0),
+      totalDue: Number(r.totalDue || 0)
+    }))
+  } catch (err) {
+    console.error("getRecentMeterReadings failed:", err)
+    return [] // Return empty array instead of crashing the page
+  }
 }
 
 export async function cancelMeterReading(readingId: string) {

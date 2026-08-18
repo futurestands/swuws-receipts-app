@@ -85,6 +85,7 @@ export function canViewAllData(user: UserPermissionsContext) {
 export function canIssueReceipt(user: UserPermissionsContext) {
   return (
     user.role === ROLES.SYSTEM_ADMIN ||
+    (user.roleLevel ?? 0) >= 10 ||
     user.permissions?.includes("receipts.create")
   ) ?? false
 }
@@ -95,6 +96,7 @@ export function canIssueReceipt(user: UserPermissionsContext) {
 export function canManageCollectionPeriods(user: UserPermissionsContext) {
   return (
     user.role === ROLES.SYSTEM_ADMIN ||
+    (user.roleLevel ?? 0) >= 10 ||
     user.permissions?.includes("collection.view")
   ) ?? false
 }
@@ -105,6 +107,7 @@ export function canManageCollectionPeriods(user: UserPermissionsContext) {
 export function canActivateCollectionPeriod(user: UserPermissionsContext) {
   return (
     user.role === ROLES.SYSTEM_ADMIN ||
+    (user.roleLevel ?? 0) >= 10 ||
     user.permissions?.includes("collection.activate")
   ) ?? false
 }
@@ -115,6 +118,7 @@ export function canActivateCollectionPeriod(user: UserPermissionsContext) {
 export function canArchiveCollectionPeriod(user: UserPermissionsContext) {
   return (
     user.role === ROLES.SYSTEM_ADMIN ||
+    (user.roleLevel ?? 0) >= 10 ||
     user.permissions?.includes("collection.archive")
   ) ?? false
 }
@@ -125,6 +129,7 @@ export function canArchiveCollectionPeriod(user: UserPermissionsContext) {
 export function canUploadBilling(user: UserPermissionsContext) {
   return (
     user.role === ROLES.SYSTEM_ADMIN ||
+    (user.roleLevel ?? 0) >= 10 ||
     user.permissions?.includes("billing.import")
   ) ?? false
 }
@@ -135,6 +140,7 @@ export function canUploadBilling(user: UserPermissionsContext) {
 export function canDeleteBilling(user: UserPermissionsContext) {
   return (
     user.role === ROLES.SYSTEM_ADMIN ||
+    (user.roleLevel ?? 0) >= 10 ||
     user.permissions?.includes("billing.delete")
   ) ?? false
 }
@@ -145,6 +151,7 @@ export function canDeleteBilling(user: UserPermissionsContext) {
 export function canCreateCustomer(user: UserPermissionsContext) {
   return (
     user.role === ROLES.SYSTEM_ADMIN ||
+    (user.roleLevel ?? 0) >= 10 ||
     user.permissions?.includes("customers.create")
   ) ?? false
 }
@@ -155,6 +162,7 @@ export function canCreateCustomer(user: UserPermissionsContext) {
 export function canEditCustomer(user: UserPermissionsContext) {
   return (
     user.role === ROLES.SYSTEM_ADMIN ||
+    (user.roleLevel ?? 0) >= 10 ||
     user.permissions?.includes("customers.edit")
   ) ?? false
 }
@@ -165,6 +173,7 @@ export function canEditCustomer(user: UserPermissionsContext) {
 export function canUploadCustomers(user: UserPermissionsContext) {
   return (
     user.role === ROLES.SYSTEM_ADMIN ||
+    (user.roleLevel ?? 0) >= 10 ||
     user.permissions?.includes("customers.import")
   ) ?? false
 }
@@ -175,6 +184,7 @@ export function canUploadCustomers(user: UserPermissionsContext) {
 export function canManageSchemes(user: UserPermissionsContext) {
   return (
     user.role === ROLES.SYSTEM_ADMIN ||
+    (user.roleLevel ?? 0) >= 10 ||
     user.permissions?.includes("system.settings.manage")
   ) ?? false
 }
@@ -185,6 +195,7 @@ export function canManageSchemes(user: UserPermissionsContext) {
 export function canManageAreas(user: UserPermissionsContext) {
   return (
     user.role === ROLES.SYSTEM_ADMIN ||
+    (user.roleLevel ?? 0) >= 10 ||
     user.permissions?.includes("system.settings.manage")
   ) ?? false
 }
@@ -195,6 +206,7 @@ export function canManageAreas(user: UserPermissionsContext) {
 export function canManageClusters(user: UserPermissionsContext) {
   return (
     user.role === ROLES.SYSTEM_ADMIN ||
+    (user.roleLevel ?? 0) >= 10 ||
     user.permissions?.includes("system.settings.manage")
   ) ?? false
 }
@@ -254,6 +266,7 @@ export function canResetPasswords(user: UserPermissionsContext) {
 export function canViewReceipts(user: UserPermissionsContext) {
   return (
     user.role === ROLES.SYSTEM_ADMIN ||
+    (user.roleLevel ?? 0) >= 10 ||
     user.permissions?.includes("receipts.view")
   ) ?? false
 }
@@ -264,6 +277,7 @@ export function canViewReceipts(user: UserPermissionsContext) {
 export function canPrintReceipt(user: UserPermissionsContext) {
   return (
     user.role === ROLES.SYSTEM_ADMIN ||
+    (user.roleLevel ?? 0) >= 10 ||
     user.permissions?.includes("receipts.print")
   ) ?? false
 }
@@ -274,6 +288,7 @@ export function canPrintReceipt(user: UserPermissionsContext) {
 export function canReprintReceipt(user: UserPermissionsContext) {
   return (
     user.role === ROLES.SYSTEM_ADMIN ||
+    (user.roleLevel ?? 0) >= 10 ||
     user.permissions?.includes("receipts.reprint")
   ) ?? false
 }

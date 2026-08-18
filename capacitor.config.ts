@@ -29,7 +29,7 @@ const PRODUCTION_FALLBACK = 'https://swuws-receipts-app-q2z9.vercel.app';
 let serverUrl = process.env.NEXT_PUBLIC_APP_URL || PRODUCTION_FALLBACK;
 
 if (process.env.NODE_ENV === 'production' || !process.env.NEXT_PUBLIC_APP_URL) {
-  if (serverUrl.includes('localhost')) {
+  if (serverUrl.includes('localhost') || serverUrl.includes('127.0.0.1')) {
     console.warn('\x1b[33m%s\x1b[0m', 'Capacitor: Localhost detected in production build. Forcing fallback to: ' + PRODUCTION_FALLBACK);
     serverUrl = PRODUCTION_FALLBACK;
   }
@@ -41,7 +41,8 @@ const config: CapacitorConfig = {
   webDir: 'out',
   server: {
     url: serverUrl,
-    cleartext: false
+    cleartext: false,
+    errorPath: 'offline.html'
   },
   android: {
     allowMixedContent: false

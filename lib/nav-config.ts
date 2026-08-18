@@ -42,14 +42,14 @@ export function getNavSections(current: UserPermissionsContext): NavSection[] {
 
   const sections: NavSection[] = [{ items: primary }]
 
-  const finance: NavItem[] = []
-
   if (canUploadBilling(current)) {
-    if (current.permissions?.includes("billing.view") || current.permissions?.includes("billing.import") || current.role === ROLES.SYSTEM_ADMIN) {
+    const finance: NavItem[] = []
+
+    if (current.permissions?.includes("billing.view") || current.permissions?.includes("billing.import") || current.role === ROLES.SYSTEM_ADMIN || (current.roleLevel ?? 0) >= 10) {
        finance.push({ href: "/dashboard/billing", label: "Billing", icon: "Wallet", activeMatch: "/dashboard/billing" })
     }
 
-    if (current.permissions?.includes("meter_readings.view") || current.role === ROLES.SYSTEM_ADMIN) {
+    if (current.permissions?.includes("meter_readings.view") || current.role === ROLES.SYSTEM_ADMIN || (current.roleLevel ?? 0) >= 10) {
        finance.push({ href: "/dashboard/billing/readings", label: "Meter Readings", icon: "Calculator", activeMatch: "/dashboard/billing/readings" })
     }
 
@@ -57,22 +57,22 @@ export function getNavSections(current: UserPermissionsContext): NavSection[] {
        finance.push({ href: "/dashboard/billing/daily", label: "Daily Collections", icon: "ListChecks", activeMatch: "/dashboard/billing/daily" })
     }
 
-    if (current.permissions?.includes("billing.exceptions.view") || current.role === ROLES.SYSTEM_ADMIN) {
+    if (current.permissions?.includes("billing.exceptions.view") || current.role === ROLES.SYSTEM_ADMIN || (current.roleLevel ?? 0) >= 10) {
        finance.push({ href: "/dashboard/billing/exceptions", label: "Billing Exceptions", icon: "AlertCircle", activeMatch: "/dashboard/billing/exceptions" })
     }
-  }
 
-  if (canViewControlCenter(current)) {
-     finance.push({ href: "/dashboard/reconciliation/exceptions", label: "Recon Exceptions", icon: "AlertTriangle", activeMatch: "/dashboard/reconciliation/exceptions" })
-     finance.push({ href: "/dashboard/reconciliation/stats", label: "Control Center", icon: "Gauge", activeMatch: "/dashboard/reconciliation" })
-  }
+    if (canViewControlCenter(current)) {
+       finance.push({ href: "/dashboard/reconciliation/exceptions", label: "Recon Exceptions", icon: "AlertTriangle", activeMatch: "/dashboard/reconciliation/exceptions" })
+       finance.push({ href: "/dashboard/reconciliation/stats", label: "Control Center", icon: "Gauge", activeMatch: "/dashboard/reconciliation" })
+    }
 
-  if (canViewExecutiveReports(current)) {
-    finance.push({ href: "/dashboard/reports/catalog", label: "Executive Reports", icon: "FileBarChart", activeMatch: "/dashboard/reports/catalog" })
-  }
+    if (canViewExecutiveReports(current)) {
+      finance.push({ href: "/dashboard/reports/catalog", label: "Executive Reports", icon: "FileBarChart", activeMatch: "/dashboard/reports/catalog" })
+    }
 
-  if (finance.length > 0) {
-    sections.push({ label: "Finance", items: finance })
+    if (finance.length > 0) {
+      sections.push({ label: "Finance", items: finance })
+    }
   }
 
   if (canAccessAdminConsole(current)) {

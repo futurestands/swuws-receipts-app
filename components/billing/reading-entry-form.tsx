@@ -97,8 +97,11 @@ export function ReadingEntryForm({
       const timer = setTimeout(() => {
         setCalculation(null)
         setCurrentReading("")
-        setManualPreviousReading(selectedCustomer.lastReading.toString())
-        setCustomerPhone(selectedCustomer.phone || "")
+        setManualPreviousReading(selectedCustomer.lastReading ? selectedCustomer.lastReading.toString() : "0")
+
+        // Sanitize phone: Filter out string "NULL" or empty values
+        const rawPhone = selectedCustomer.phone
+        setCustomerPhone((rawPhone && rawPhone.toUpperCase() !== "NULL") ? rawPhone : "")
       }, 0)
       return () => clearTimeout(timer)
     } else {
