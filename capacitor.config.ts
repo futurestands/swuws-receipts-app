@@ -2,45 +2,28 @@ import { CapacitorConfig } from '@capacitor/cli';
 import 'dotenv/config';
 
 // This is the ONE place that decides which backend the Android app talks
-// to. It used to be a hardcoded string here, which meant switching to a
-// real production domain later required someone to remember to edit this
-// exact file, rebuild, and get everyone to reinstall — easy to forget,
-// and nothing would error if it was missed; the app would just keep
-// silently talking to the old URL forever.
+// to. Reuses NEXT_PUBLIC_APP_URL, the same env var the web app already
+// uses for its own canonical URL, rather than a second one-off variable —
+// one place to update when the domain changes. Falls back to the current
+// Vercel URL if unset, so nothing breaks today.
 //
-// Reuses NEXT_PUBLIC_APP_URL, the same env var the web app already uses
-// for its own canonical URL (see lib/site-url.ts), rather than a second
-// one-off variable — one place to update when the domain changes. Falls
-// back to the current Vercel URL if unset, so nothing breaks today.
-// HIERARCHY / DOMAIN WARNING:
-// This domain is now hard-coded for the native Android shell to prevent
-// accidents where a developer's local localhost:3000 gets baked into the APK.
-//
-// IMPORTANT: If the production Vercel URL changes, this string MUST be
-// manually updated and the APK MUST be rebuilt. Setting the
-// NEXT_PUBLIC_APP_URL environment variable alone will NOT update the
-// Android shell anymore.
-// HIERARCHY / DOMAIN WARNING:
-// This domain is now hard-coded for the native Android shell to prevent
-// accidents where a developer's local localhost:3000 gets baked into the APK.
-//
-// IMPORTANT: If the production Vercel URL changes, this string MUST be
-// manually updated and the APK MUST be rebuilt. Setting the
-// NEXT_PUBLIC_APP_URL environment variable alone will NOT update the
-// Android shell anymore.
+// SAFETY: this check runs UNCONDITIONALLY — not gated behind
+// NODE_ENV === 'production'. `npx cap sync android` does NOT set
+// NODE_ENV=production on its own (only `next build` does), so a
+// production-only guard here would silently do nothing on a plain
+// `npx cap sync` run with a stray local .env still pointing at
+// localhost — which is exactly how this broke before. This must fail
+// no matter how or when the command is invoked, not just inside a
+// full production build.
 const PRODUCTION_FALLBACK = 'https://swuws-receipts-app-q2z9.vercel.app';
 
-// DYNAMIC URL RESOLUTION:
-// 1. Prioritize environment variable (for future domain changes)
-// 2. SAFETY: If the env var is 'localhost' during a production sync,
-//    we FAIL the build. We do not allow "Silent Fallbacks" for production shells.
 let serverUrl = process.env.NEXT_PUBLIC_APP_URL || PRODUCTION_FALLBACK;
 
-if (process.env.NODE_ENV === 'production' && serverUrl.includes('localhost')) {
-  console.error('\x1b[31m%s\x1b[0m', '❌ CRITICAL BUILD FAILURE:');
-  console.error('\x1b[31m%s\x1b[0m', 'You are attempting to build a PRODUCTION APK pointing to localhost.');
-  console.error('\x1b[31m%s\x1b[0m', 'Please set NEXT_PUBLIC_APP_URL to your production domain before syncing.');
-  throw new Error('Production build cannot point to localhost.');
+if (serverUrl.includes('localhost') || serverUrl.includes('127.0.0.1')) {
+  console.error('\x1b[31m%s\x1b[0m', '❌ CRITICAL: refusing to sync/build with a localhost server URL.');
+  console.error('\x1b[31m%s\x1b[0m', `Resolved NEXT_PUBLIC_APP_URL: ${serverUrl}`);
+  console.error('\x1b[31m%s\x1b[0m', 'Set NEXT_PUBLIC_APP_URL to your real production domain before running npx cap sync or next build.');
+  throw new Error('capacitor.config.ts: server URL resolved to localhost. Aborting.');
 }
 
 const config: CapacitorConfig = {

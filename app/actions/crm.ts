@@ -19,6 +19,8 @@ import {
   canSendBulkSms,
   canConfigureCrm
 } from "@/lib/permissions"
+import { applyCustomerScope } from "@/lib/scopes"
+import { canViewAllData } from "@/lib/permissions"
 import { randomUUID } from "crypto"
 import { revalidatePath } from "next/cache"
 import { writeAudit } from "@/lib/audit"
@@ -149,8 +151,16 @@ export async function listComplaints(params: {
     ))
   }
 
-  const [totalRes] = await db.select({ count: count() }).from(crmComplaint).where(and(...conds))
-  const rows = await db
+  // HIERARCHY SCOPING: without this, any user with crm.view sees every
+  // complaint org-wide regardless of branch/cluster/scheme assignment.
+  // Complaints with no linked customer (walk-in/anonymous) are excluded
+  // for non-global users by the inner join below — deny by default rather
+  // than assume they're safe to show broadly.
+  const customerScope = applyCustomerScope(user)
+  const needsCustomerJoin = !canViewAllData(user)
+  if (customerScope) conds.push(customerScope)
+
+  const baseQuery = db
     .select({
       ...getTableColumns(crmComplaint),
       categoryName: crmComplaintCategory.name,
@@ -161,10 +171,16 @@ export async function listComplaints(params: {
     .leftJoin(crmComplaintCategory, eq(crmComplaint.categoryId, crmComplaintCategory.id))
     .leftJoin(crmDepartment, eq(crmComplaint.assignedDepartmentId, crmDepartment.id))
     .leftJoin(userTable, eq(crmComplaint.assignedToId, userTable.id))
-    .where(and(...conds))
-    .orderBy(desc(crmComplaint.createdAt))
-    .limit(params.limit)
-    .offset(offset)
+
+  const countQuery = db.select({ count: count() }).from(crmComplaint)
+
+  const [totalRes] = needsCustomerJoin
+    ? await countQuery.innerJoin(customer, eq(crmComplaint.customerId, customer.id)).where(and(...conds))
+    : await countQuery.leftJoin(customer, eq(crmComplaint.customerId, customer.id)).where(and(...conds))
+
+  const rows = needsCustomerJoin
+    ? await baseQuery.innerJoin(customer, eq(crmComplaint.customerId, customer.id)).where(and(...conds)).orderBy(desc(crmComplaint.createdAt)).limit(params.limit).offset(offset)
+    : await baseQuery.leftJoin(customer, eq(crmComplaint.customerId, customer.id)).where(and(...conds)).orderBy(desc(crmComplaint.createdAt)).limit(params.limit).offset(offset)
 
   return {
     complaints: rows,
@@ -177,6 +193,21 @@ export async function listComplaints(params: {
 export async function resolveComplaint(id: string, notes: string) {
   const user = await requireUser()
   if (!canManageComplaints(user)) throw new Error("Forbidden")
+
+  // HIERARCHY SCOPING: canManageComplaints only checks module access, not
+  // which complaints this user is allowed to touch. Without this check, a
+  // regional user could resolve any complaint org-wide by guessing/enumerating
+  // IDs, not just complaints for customers in their own scope.
+  if (!canViewAllData(user)) {
+    const customerScope = applyCustomerScope(user)
+    const [existing] = await db
+      .select({ id: crmComplaint.id })
+      .from(crmComplaint)
+      .innerJoin(customer, eq(crmComplaint.customerId, customer.id))
+      .where(and(eq(crmComplaint.id, id), customerScope ?? sql`1=1`))
+      .limit(1)
+    if (!existing) throw new Error("Forbidden: complaint is outside your assigned scope")
+  }
 
   await db.update(crmComplaint)
     .set({
@@ -269,15 +300,31 @@ export async function getCrmStats() {
   const user = await requireUser()
   if (!canViewCrm(user)) throw new Error("Forbidden")
 
+  // HIERARCHY SCOPING: same rule as listComplaints — a regional user should
+  // only see complaint counts for their own scope, not org-wide totals.
+  const needsCustomerJoin = !canViewAllData(user)
+  const customerScope = applyCustomerScope(user)
+  const scopeCond = customerScope ?? sql`1=1`
+
   const [complaintStats, smsStats] = await Promise.all([
-    db
-      .select({
-        total: count(crmComplaint.id),
-        open: sql<number>`count(case when ${crmComplaint.status} = 'open' then 1 end)::int`,
-        resolved: sql<number>`count(case when ${crmComplaint.status} = 'resolved' then 1 end)::int`,
-      })
-      .from(crmComplaint)
-      .then(rows => rows[0]),
+    (needsCustomerJoin
+      ? db
+        .select({
+          total: count(crmComplaint.id),
+          open: sql<number>`count(case when ${crmComplaint.status} = 'open' then 1 end)::int`,
+          resolved: sql<number>`count(case when ${crmComplaint.status} = 'resolved' then 1 end)::int`,
+        })
+        .from(crmComplaint)
+        .innerJoin(customer, eq(crmComplaint.customerId, customer.id))
+        .where(scopeCond)
+      : db
+        .select({
+          total: count(crmComplaint.id),
+          open: sql<number>`count(case when ${crmComplaint.status} = 'open' then 1 end)::int`,
+          resolved: sql<number>`count(case when ${crmComplaint.status} = 'resolved' then 1 end)::int`,
+        })
+        .from(crmComplaint)
+    ).then(rows => rows[0]),
     db
       .select({
         totalBatches: count(crmSmsBatch.id),
