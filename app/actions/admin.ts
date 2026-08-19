@@ -506,7 +506,7 @@ export async function getAuditLogs(limit = 200) {
   return db
     .select()
     .from(auditLog)
-    .where(sql`"actorId" = ${current.id}`) // Non-admins can only see their OWN trail
+    .where(eq(auditLog.userId, current.id)) // Non-admins can only see their OWN trail
     .orderBy(desc(auditLog.createdAt))
     .limit(limit)
 }

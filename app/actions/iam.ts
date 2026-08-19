@@ -123,6 +123,11 @@ export async function seedV12Permissions() {
   const news = [
     { code: "templates.manage", name: "Manage Templates", module: "Administration", description: "Create and edit system templates" },
     { code: "templates.publish", name: "Publish Templates", module: "Administration", description: "Publish new versions to live" },
+    { code: "crm.view", name: "View CRM Dashboard", module: "CRM", description: "Access the CRM module and overview" },
+    { code: "crm.complaints.manage", name: "Manage Complaints", module: "CRM", description: "Register, edit, and resolve customer complaints" },
+    { code: "crm.complaints.assign", name: "Assign Complaints", module: "CRM", description: "Assign complaints to specific handlers or departments" },
+    { code: "crm.sms.send", name: "Send Bulk SMS", module: "CRM", description: "Create and send bulk SMS communication batches" },
+    { code: "crm.settings.manage", name: "Manage CRM Settings", module: "CRM", description: "Configure CRM departments and complaint categories" },
   ]
 
   for (const p of news) {

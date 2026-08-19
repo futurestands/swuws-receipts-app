@@ -34,6 +34,7 @@ export function getRole(user: UserPermissionsContext): Role | null {
 export function canManageUsers(user: UserPermissionsContext) {
   return (
     user.role === ROLES.SYSTEM_ADMIN ||
+    (user.roleLevel ?? 0) >= 10 ||
     user.permissions?.includes("users.view")
   ) ?? false
 }
@@ -44,6 +45,7 @@ export function canManageUsers(user: UserPermissionsContext) {
 export function canDeleteUser(user: UserPermissionsContext) {
   return (
     user.role === ROLES.SYSTEM_ADMIN ||
+    (user.roleLevel ?? 0) >= 10 ||
     user.permissions?.includes("users.delete")
   ) ?? false
 }
@@ -54,6 +56,7 @@ export function canDeleteUser(user: UserPermissionsContext) {
 export function canEditUser(user: UserPermissionsContext) {
   return (
     user.role === ROLES.SYSTEM_ADMIN ||
+    (user.roleLevel ?? 0) >= 10 ||
     user.permissions?.includes("users.edit")
   ) ?? false
 }
@@ -64,6 +67,7 @@ export function canEditUser(user: UserPermissionsContext) {
 export function canAccessAdminConsole(user: UserPermissionsContext) {
   return (
     user.role === ROLES.SYSTEM_ADMIN ||
+    (user.roleLevel ?? 0) >= 10 ||
     user.permissions?.includes("users.view") ||
     user.permissions?.includes("reports.view")
   ) ?? false
@@ -212,11 +216,45 @@ export function canManageClusters(user: UserPermissionsContext) {
 }
 
 /**
+ * Billing: Who can view historical billing runs.
+ */
+export function canViewBilling(user: UserPermissionsContext) {
+  return (
+    user.role === ROLES.SYSTEM_ADMIN ||
+    (user.roleLevel ?? 0) >= 10 ||
+    user.permissions?.includes("billing.view")
+  ) ?? false
+}
+
+/**
+ * Meter Readings: Who can view field meter readings.
+ */
+export function canViewMeterReadings(user: UserPermissionsContext) {
+  return (
+    user.role === ROLES.SYSTEM_ADMIN ||
+    (user.roleLevel ?? 0) >= 10 ||
+    user.permissions?.includes("meter_readings.view")
+  ) ?? false
+}
+
+/**
+ * Exceptions: Who can view billing calculation exceptions.
+ */
+export function canViewBillingExceptions(user: UserPermissionsContext) {
+  return (
+    user.role === ROLES.SYSTEM_ADMIN ||
+    (user.roleLevel ?? 0) >= 10 ||
+    user.permissions?.includes("billing.exceptions.view")
+  ) ?? false
+}
+
+/**
  * Control Center: Who can access the collection reconciliation Gauge/Stats.
  */
 export function canViewControlCenter(user: UserPermissionsContext) {
   return (
     user.role === ROLES.SYSTEM_ADMIN ||
+    (user.roleLevel ?? 0) >= 10 ||
     user.permissions?.includes("reconciliation.view")
   ) ?? false
 }
@@ -227,6 +265,7 @@ export function canViewControlCenter(user: UserPermissionsContext) {
 export function canViewReports(user: UserPermissionsContext) {
   return (
     user.role === ROLES.SYSTEM_ADMIN ||
+    (user.roleLevel ?? 0) >= 10 ||
     user.permissions?.includes("reports.view") ||
     user.permissions?.includes("dashboard.view")
   ) ?? false
@@ -238,6 +277,7 @@ export function canViewReports(user: UserPermissionsContext) {
 export function canViewExecutiveReports(user: UserPermissionsContext) {
   return (
     user.role === ROLES.SYSTEM_ADMIN ||
+    (user.roleLevel ?? 0) >= 10 ||
     user.permissions?.includes("reports.executive")
   ) ?? false
 }
@@ -248,6 +288,7 @@ export function canViewExecutiveReports(user: UserPermissionsContext) {
 export function canExportReports(user: UserPermissionsContext) {
   return (
     user.role === ROLES.SYSTEM_ADMIN ||
+    (user.roleLevel ?? 0) >= 10 ||
     user.permissions?.includes("reports.export")
   ) ?? false
 }
@@ -339,4 +380,59 @@ export function canManageTemplates(user: UserPermissionsContext) {
  */
 export function canManageMaintenance(user: UserPermissionsContext) {
   return user.role === ROLES.SYSTEM_ADMIN || (user.roleLevel ?? 0) >= 10
+}
+
+/**
+ * CRM: Who can access the CRM module dashboard.
+ */
+export function canViewCrm(user: UserPermissionsContext) {
+  return (
+    user.role === ROLES.SYSTEM_ADMIN ||
+    (user.roleLevel ?? 0) >= 10 ||
+    user.permissions?.includes("crm.view")
+  ) ?? false
+}
+
+/**
+ * CRM: Who can manage customer complaints.
+ */
+export function canManageComplaints(user: UserPermissionsContext) {
+  return (
+    user.role === ROLES.SYSTEM_ADMIN ||
+    (user.roleLevel ?? 0) >= 10 ||
+    user.permissions?.includes("crm.complaints.manage")
+  ) ?? false
+}
+
+/**
+ * CRM: Who can assign complaints to others.
+ */
+export function canAssignComplaints(user: UserPermissionsContext) {
+  return (
+    user.role === ROLES.SYSTEM_ADMIN ||
+    (user.roleLevel ?? 0) >= 10 ||
+    user.permissions?.includes("crm.complaints.assign")
+  ) ?? false
+}
+
+/**
+ * CRM: Who can send bulk SMS communications.
+ */
+export function canSendBulkSms(user: UserPermissionsContext) {
+  return (
+    user.role === ROLES.SYSTEM_ADMIN ||
+    (user.roleLevel ?? 0) >= 10 ||
+    user.permissions?.includes("crm.sms.send")
+  ) ?? false
+}
+
+/**
+ * CRM: Who can configure CRM departments and categories.
+ */
+export function canConfigureCrm(user: UserPermissionsContext) {
+  return (
+    user.role === ROLES.SYSTEM_ADMIN ||
+    (user.roleLevel ?? 0) >= 10 ||
+    user.permissions?.includes("crm.settings.manage")
+  ) ?? false
 }

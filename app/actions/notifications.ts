@@ -15,17 +15,21 @@ import type { PostgresJsQueryResultHKT } from "drizzle-orm/postgres-js"
  */
 
 export async function getNotifications(limit = 20) {
-  const current = await requireUser()
+  try {
+    const current = await requireUser()
 
-  return db
-    .select()
-    .from(notification)
-    .where(and(
-      eq(notification.userId, current.id),
-      eq(notification.status, 'unread')
-    ))
-    .orderBy(desc(notification.createdAt))
-    .limit(limit)
+    return db
+      .select()
+      .from(notification)
+      .where(and(
+        eq(notification.userId, current.id),
+        eq(notification.status, 'unread')
+      ))
+      .orderBy(desc(notification.createdAt))
+      .limit(limit)
+  } catch (e) {
+    return []
+  }
 }
 
 export async function getUnreadCount() {

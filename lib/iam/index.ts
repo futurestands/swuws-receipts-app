@@ -1,7 +1,7 @@
 import "server-only"
 import { db } from "@/lib/db"
 import { iamRole, iamPermission, iamRolePermission } from "@/lib/db/schema"
-import { eq, and, inArray } from "drizzle-orm"
+import { eq, and, inArray, sql } from "drizzle-orm"
 import { cache } from "react"
 import { SessionUser } from "@/lib/session"
 
@@ -13,54 +13,40 @@ export interface PermissionGrant {
 }
 
 /**
- * RECURSIVE PERMISSION RESOLVER
- * Fetches all permissions for a role, including those inherited from parent roles.
+ * EFFICIENT PERMISSION RESOLVER
+ * Fetches all permissions for a role, including those inherited from parent roles,
+ * using a single recursive database query.
  */
 export const resolvePermissions = cache(async (roleId: string): Promise<PermissionGrant[]> => {
-  return resolvePermissionsRecursive(roleId, new Set<string>())
+  try {
+    const result = await db.execute(sql`
+      WITH RECURSIVE role_hierarchy AS (
+        -- Base case: the start role
+        SELECT id, "parent_id"
+        FROM ${iamRole}
+        WHERE id = ${roleId}
+
+        UNION ALL
+
+        -- Recursive step: parents of the roles already found
+        SELECT r.id, r."parent_id"
+        FROM ${iamRole} r
+        INNER JOIN role_hierarchy rh ON r.id = rh."parent_id"
+      )
+      SELECT p.code, rp.scope
+      FROM ${iamRolePermission} rp
+      JOIN ${iamPermission} p ON rp."permission_id" = p.id
+      WHERE rp."role_id" IN (SELECT id FROM role_hierarchy)
+    `)
+
+    return result.rows as unknown as PermissionGrant[]
+  } catch (error) {
+    console.error("IAM: resolvePermissions failed", error)
+    return []
+  }
 })
 
-async function resolvePermissionsRecursive(roleId: string, visited: Set<string>): Promise<PermissionGrant[]> {
-  if (visited.has(roleId)) {
-    console.warn(`IAM: Circular role hierarchy detected for role ${roleId}. Breaking recursion.`)
-    return []
-  }
-  visited.add(roleId)
-
-  // Hard depth limit for safety
-  if (visited.size > 10) {
-    console.warn(`IAM: Max role depth reached for role ${roleId}. Breaking recursion.`)
-    return []
-  }
-
-  const grants: PermissionGrant[] = []
-
-  // 1. Fetch current role permissions
-  const directGrants = await db
-    .select({
-      code: iamPermission.code,
-      scope: iamRolePermission.scope,
-    })
-    .from(iamRolePermission)
-    .innerJoin(iamPermission, eq(iamRolePermission.permissionId, iamPermission.id))
-    .where(eq(iamRolePermission.roleId, roleId))
-
-  grants.push(...(directGrants as PermissionGrant[]))
-
-  // 2. Fetch parent role (for inheritance)
-  const [role] = await db
-    .select({ parentId: iamRole.parentId })
-    .from(iamRole)
-    .where(eq(iamRole.id, roleId))
-    .limit(1)
-
-  if (role?.parentId) {
-    const parentGrants = await resolvePermissionsRecursive(role.parentId, visited)
-    grants.push(...parentGrants)
-  }
-
-  return grants
-}
+// Deleted resolvePermissionsRecursive (redundant and slow)
 
 /**
  * Checks if a user has a specific permission and returns the most permissive scope.

@@ -1,5 +1,16 @@
 import type { IconName } from "@/components/layout/icons"
-import { canAccessAdminConsole, canIssueReceipt, canUploadBilling, canViewReports, canViewControlCenter, canViewExecutiveReports } from "@/lib/permissions"
+import {
+  canAccessAdminConsole,
+  canIssueReceipt,
+  canUploadBilling,
+  canViewReports,
+  canViewControlCenter,
+  canViewExecutiveReports,
+  canViewCrm,
+  canViewBilling,
+  canViewMeterReadings,
+  canViewBillingExceptions
+} from "@/lib/permissions"
 import type { UserPermissionsContext } from "@/lib/permissions"
 import { ROLES } from "@/lib/permissions/roles"
 
@@ -45,11 +56,11 @@ export function getNavSections(current: UserPermissionsContext): NavSection[] {
   if (canUploadBilling(current)) {
     const finance: NavItem[] = []
 
-    if (current.permissions?.includes("billing.view") || current.permissions?.includes("billing.import") || current.role === ROLES.SYSTEM_ADMIN || (current.roleLevel ?? 0) >= 10) {
+    if (canViewBilling(current) || current.permissions?.includes("billing.import")) {
        finance.push({ href: "/dashboard/billing", label: "Billing", icon: "Wallet", activeMatch: "/dashboard/billing" })
     }
 
-    if (current.permissions?.includes("meter_readings.view") || current.role === ROLES.SYSTEM_ADMIN || (current.roleLevel ?? 0) >= 10) {
+    if (canViewMeterReadings(current)) {
        finance.push({ href: "/dashboard/billing/readings", label: "Meter Readings", icon: "Calculator", activeMatch: "/dashboard/billing/readings" })
     }
 
@@ -57,7 +68,7 @@ export function getNavSections(current: UserPermissionsContext): NavSection[] {
        finance.push({ href: "/dashboard/billing/daily", label: "Daily Collections", icon: "ListChecks", activeMatch: "/dashboard/billing/daily" })
     }
 
-    if (current.permissions?.includes("billing.exceptions.view") || current.role === ROLES.SYSTEM_ADMIN || (current.roleLevel ?? 0) >= 10) {
+    if (canViewBillingExceptions(current)) {
        finance.push({ href: "/dashboard/billing/exceptions", label: "Billing Exceptions", icon: "AlertCircle", activeMatch: "/dashboard/billing/exceptions" })
     }
 
@@ -73,6 +84,13 @@ export function getNavSections(current: UserPermissionsContext): NavSection[] {
     if (finance.length > 0) {
       sections.push({ label: "Finance", items: finance })
     }
+  }
+
+  if (canViewCrm(current)) {
+    const crmItems: NavItem[] = [
+      { href: "/dashboard/crm", label: "CRM Hub", icon: "Users", activeMatch: "/dashboard/crm" },
+    ]
+    sections.push({ label: "Customer Relationship", items: crmItems })
   }
 
   if (canAccessAdminConsole(current)) {

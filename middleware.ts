@@ -23,6 +23,7 @@ const CSP = [
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' blob: data:",
   "font-src 'self'",
+  "media-src 'self' data:",
   "object-src 'none'",
   "base-uri 'self'",
   "form-action 'self'",
