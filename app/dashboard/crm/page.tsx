@@ -4,7 +4,7 @@ import { getCrmStats } from "@/app/actions/crm"
 import { PageHeader } from "@/components/ui/page-header"
 import { StatCard, StatCardGrid } from "@/components/ui/stat-card"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
-import { MessageSquare, Smartphone, CheckCircle2, AlertCircle, Clock } from "lucide-react"
+import { MessageSquare, Smartphone, CheckCircle2, AlertCircle, Clock, FileBarChart, List } from "lucide-react"
 
 import Link from "next/link"
 
@@ -22,38 +22,52 @@ export default async function CrmDashboardPage() {
         description="Manage customer relationships, complaints, and communications."
       />
 
-      <StatCardGrid className="sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard
-          label="Open Complaints"
-          value={stats.complaints.open}
-          icon={AlertCircle}
-        />
-        <StatCard
-          label="Resolved Cases"
-          value={stats.complaints.resolved}
-          icon={CheckCircle2}
-        />
-        <StatCard
-          label="SMS Batches"
-          value={stats.sms.totalBatches}
-          icon={Clock}
-        />
-        <StatCard
-          label="Messages Sent"
-          value={stats.sms.totalSentToday}
-          icon={Smartphone}
-        />
-      </StatCardGrid>
+      <div className="grid gap-6 md:grid-cols-3">
+        <Card className="border-t-4 border-t-sky-500 shadow-sm">
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs font-bold text-muted-foreground uppercase">Total SMS Lists</p>
+                <p className="text-2xl font-black text-sky-600">{stats.sms.totalLists}</p>
+              </div>
+              <List className="h-8 w-8 text-sky-200" />
+            </div>
+          </CardContent>
+        </Card>
 
-      <div className="grid gap-6 md:grid-cols-2">
+        <Card className="border-t-4 border-t-amber-500 shadow-sm">
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs font-bold text-muted-foreground uppercase">Pending Messages</p>
+                <p className="text-2xl font-black text-amber-600">{stats.sms.pendingMessages}</p>
+              </div>
+              <Clock className="h-8 w-8 text-amber-200" />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="border-t-4 border-t-emerald-500 shadow-sm">
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs font-bold text-muted-foreground uppercase">Sent Messages</p>
+                <p className="text-2xl font-black text-emerald-600">{stats.sms.sentMessages.toLocaleString()}</p>
+              </div>
+              <CheckCircle2 className="h-8 w-8 text-emerald-200" />
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="grid gap-6 md:grid-cols-3">
         <Link href="/dashboard/crm/complaints">
           <Card className="hover:shadow-md transition-shadow cursor-pointer border-l-4 border-l-primary h-full">
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <MessageSquare className="h-5 w-5 text-primary" />
+              <CardTitle className="flex items-center gap-2 text-sm uppercase">
+                <MessageSquare className="h-4 w-4 text-primary" />
                 Complaints Management
               </CardTitle>
-              <CardDescription>Register and track customer field issues and technical complaints.</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="space-y-2">
@@ -67,7 +81,6 @@ export default async function CrmDashboardPage() {
                     style={{ width: `${(stats.complaints.resolved / (stats.complaints.total || 1)) * 100}%` }}
                   />
                 </div>
-                <p className="text-[10px] text-muted-foreground italic">Target resolution time: 48 hours.</p>
               </div>
             </CardContent>
           </Card>
@@ -76,24 +89,38 @@ export default async function CrmDashboardPage() {
         <Link href="/dashboard/crm/sms">
           <Card className="hover:shadow-md transition-shadow cursor-pointer border-l-4 border-l-emerald-500 h-full">
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Smartphone className="h-5 w-5 text-emerald-500" />
+              <CardTitle className="flex items-center gap-2 text-sm uppercase">
+                <Smartphone className="h-4 w-4 text-emerald-500" />
                 SMS Communications
               </CardTitle>
-              <CardDescription>Send bill reminders, emergency alerts, and community updates.</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="space-y-2">
                 <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Batch Count:</span>
-                  <span className="font-bold">{stats.sms.totalBatches}</span>
+                  <span className="text-muted-foreground">Campaigns:</span>
+                  <span className="font-bold">{stats.sms.totalLists}</span>
                 </div>
                 <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Total Success:</span>
-                  <span className="font-bold text-emerald-600">{stats.sms.totalSentToday.toLocaleString()}</span>
+                  <span className="text-muted-foreground">Successful:</span>
+                  <span className="font-bold text-emerald-600">{stats.sms.sentMessages.toLocaleString()}</span>
                 </div>
-                <p className="text-[10px] text-muted-foreground italic">All messages are logged for audit compliance.</p>
               </div>
+            </CardContent>
+          </Card>
+        </Link>
+
+        <Link href="/dashboard/crm/reports">
+          <Card className="hover:shadow-md transition-shadow cursor-pointer border-l-4 border-l-amber-500 h-full">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-sm uppercase">
+                <FileBarChart className="h-4 w-4 text-amber-500" />
+                Call Center Reports
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                Analyze performance metrics, response times, and complaint categories.
+              </p>
             </CardContent>
           </Card>
         </Link>

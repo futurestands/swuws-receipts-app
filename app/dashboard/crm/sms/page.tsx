@@ -1,104 +1,191 @@
 import { requireUser } from "@/lib/session"
 import { canViewCrm } from "@/lib/permissions"
-import { listSmsBatches } from "@/app/actions/crm"
+import { listSmsBatches, getCrmStats } from "@/app/actions/crm"
 import { PageHeader } from "@/components/ui/page-header"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
 import { formatDateTime } from "@/lib/format"
 import { Button } from "@/components/ui/button"
-import { Send, Smartphone } from "lucide-react"
+import { Send, Smartphone, Search, List, Clock, CheckCircle2, MoreHorizontal } from "lucide-react"
+import { SmsImportModal } from "@/components/crm/sms-import-modal"
+import { Input } from "@/components/ui/input"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
-export default async function SmsHubPage() {
+export default async function SmsHubPage({
+  searchParams,
+}: {
+  searchParams: { [key: string]: string | string[] | undefined }
+}) {
   const user = await requireUser()
   if (!canViewCrm(user)) throw new Error("Forbidden")
 
-  const batches = await listSmsBatches()
+  const filters = {
+    startDate: typeof searchParams.from === 'string' ? searchParams.from : undefined,
+    endDate: typeof searchParams.till === 'string' ? searchParams.till : undefined,
+    category: typeof searchParams.category === 'string' ? searchParams.category : undefined,
+    status: typeof searchParams.status === 'string' ? searchParams.status : undefined,
+    search: typeof searchParams.q === 'string' ? searchParams.q : undefined,
+  }
+
+  const [batches, stats] = await Promise.all([
+    listSmsBatches(filters),
+    getCrmStats()
+  ])
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        title="SMS Hub"
-        description="Bulk communication engine for bill reminders and alerts."
-        actions={
-          <Button className="h-11 bg-emerald-600 hover:bg-emerald-700">
-            <Send className="mr-2 h-4 w-4" /> Create Contact List
-          </Button>
-        }
-      />
+      <div className="flex items-center justify-between gap-4">
+        <PageHeader
+          title="Customer SMS Communications"
+          description="Manage bulk messaging campaigns and delivery history."
+        />
+        <div className="flex items-center gap-2">
+           <SmsImportModal />
+        </div>
+      </div>
 
+      {/* Legacy-style Stats Row */}
       <div className="grid gap-6 md:grid-cols-3">
-        <Card className="md:col-span-1">
-          <CardHeader>
-            <CardTitle className="text-sm">Messaging Power</CardTitle>
-            <CardDescription>Status of your communication infrastructure.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-             <div className="p-4 bg-muted/50 rounded-xl space-y-1">
-                <p className="text-[10px] uppercase font-bold text-muted-foreground">Gateway Status</p>
-                <div className="flex items-center gap-2">
-                   <div className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
-                   <span className="font-bold text-sm">CONNECTED (EBS SYNC)</span>
-                </div>
-             </div>
-             <div className="p-4 bg-primary/5 border border-primary/10 rounded-xl space-y-1">
-                <p className="text-[10px] uppercase font-bold text-primary">SMS Balance</p>
-                <p className="text-xl font-black">Unlimited (Internal)</p>
-             </div>
+        <Card className="border-t-4 border-t-sky-500 shadow-sm">
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs font-bold text-muted-foreground uppercase">Total Lists</p>
+                <p className="text-2xl font-black text-sky-600">{stats.sms.totalLists}</p>
+              </div>
+              <List className="h-8 w-8 text-sky-200" />
+            </div>
           </CardContent>
         </Card>
 
-        <Card className="md:col-span-2">
-          <CardHeader>
-            <CardTitle>SMS Batch History</CardTitle>
-            <CardDescription>Track the delivery status of your recent mass communications.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="border rounded-lg overflow-hidden">
-              <Table>
-                <TableHeader>
-                  <TableRow className="bg-muted/50">
-                    <TableHead>Date</TableHead>
-                    <TableHead>Category</TableHead>
-                    <TableHead>Batch Name</TableHead>
-                    <TableHead className="text-right">Sent</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {batches.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={6} className="text-center py-8 text-muted-foreground italic">
-                        No SMS batches found.
-                      </TableCell>
-                    </TableRow>
-                  ) : (
-                    batches.map((b) => (
-                      <TableRow key={b.id}>
-                        <TableCell className="text-xs">{formatDateTime(b.createdAt)}</TableCell>
-                        <TableCell>
-                          <Badge variant="outline" className="text-[10px] uppercase">{b.category}</Badge>
-                        </TableCell>
-                        <TableCell className="font-medium text-sm">{b.name}</TableCell>
-                        <TableCell className="text-right font-mono font-bold">{b.sentMessages}</TableCell>
-                        <TableCell>
-                           <Badge className="text-[10px] bg-emerald-100 text-emerald-700 hover:bg-emerald-100 uppercase">
-                             {b.status}
-                           </Badge>
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <Button variant="ghost" size="sm">Details</Button>
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  )}
-                </TableBody>
-              </Table>
+        <Card className="border-t-4 border-t-amber-500 shadow-sm">
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs font-bold text-muted-foreground uppercase">Pending Messages</p>
+                <p className="text-2xl font-black text-amber-600">{stats.sms.pendingMessages}</p>
+              </div>
+              <Clock className="h-8 w-8 text-amber-200" />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="border-t-4 border-t-emerald-500 shadow-sm">
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs font-bold text-muted-foreground uppercase">Sent Messages</p>
+                <p className="text-2xl font-black text-emerald-600">{stats.sms.sentMessages.toLocaleString()}</p>
+              </div>
+              <Send className="h-8 w-8 text-emerald-200" />
             </div>
           </CardContent>
         </Card>
       </div>
+
+      {/* Legacy-style Filters */}
+      <Card className="shadow-sm border-none bg-slate-50/50">
+        <CardContent className="p-6">
+           <div className="grid gap-4 md:grid-cols-5 items-end">
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold uppercase text-muted-foreground ml-1">From</label>
+                <Input type="date" className="h-9 bg-white" />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold uppercase text-muted-foreground ml-1">Till</label>
+                <Input type="date" className="h-9 bg-white" />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold uppercase text-muted-foreground ml-1">Status</label>
+                <Select>
+                  <SelectTrigger className="h-9 bg-white">
+                    <SelectValue placeholder="All" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All</SelectItem>
+                    <SelectItem value="pending">Pending</SelectItem>
+                    <SelectItem value="completed">Completed</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold uppercase text-muted-foreground ml-1">Category</label>
+                <Select>
+                  <SelectTrigger className="h-9 bg-white">
+                    <SelectValue placeholder="All" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All</SelectItem>
+                    <SelectItem value="Bill Reminders">Bill Reminders</SelectItem>
+                    <SelectItem value="Alerts">Alerts</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex gap-2">
+                <Button className="h-9 w-full bg-sky-700 hover:bg-sky-800">
+                  <Search className="h-3.5 w-3.5 mr-2" /> Search
+                </Button>
+              </div>
+           </div>
+        </CardContent>
+      </Card>
+
+      <Card className="shadow-sm border-none">
+        <CardHeader className="border-b bg-slate-50/30">
+          <CardTitle className="text-xs font-bold uppercase text-slate-600">SMS Messages</CardTitle>
+        </CardHeader>
+        <CardContent className="p-0">
+          <Table>
+            <TableHeader>
+              <TableRow className="hover:bg-transparent bg-slate-50/50">
+                <TableHead className="w-[180px] text-[10px] font-bold uppercase">Date and time</TableHead>
+                <TableHead className="text-[10px] font-bold uppercase">Category</TableHead>
+                <TableHead className="text-[10px] font-bold uppercase">List name</TableHead>
+                <TableHead className="text-[10px] font-bold uppercase">Created by</TableHead>
+                <TableHead className="text-[10px] font-bold uppercase text-center">Numbers</TableHead>
+                <TableHead className="text-[10px] font-bold uppercase text-center">Status</TableHead>
+                <TableHead className="text-right text-[10px] font-bold uppercase pr-6">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {batches.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={7} className="text-center py-12 text-muted-foreground italic text-xs">
+                    No SMS messages found matching your criteria.
+                  </TableCell>
+                </TableRow>
+              ) : (
+                batches.map((b) => (
+                  <TableRow key={b.id} className="hover:bg-slate-50/80 transition-colors">
+                    <TableCell className="text-[11px] font-medium text-slate-500">{formatDateTime(b.createdAt)}</TableCell>
+                    <TableCell>
+                      <span className="text-[11px] font-bold text-slate-700">{b.category}</span>
+                    </TableCell>
+                    <TableCell>
+                      <span className="text-[11px] font-bold text-sky-700 uppercase">{b.name}</span>
+                    </TableCell>
+                    <TableCell className="text-[11px] uppercase text-slate-500">{b.createdByName || 'System'}</TableCell>
+                    <TableCell className="text-center">
+                       <span className="text-[11px] font-black">{b.totalMessages}</span>
+                    </TableCell>
+                    <TableCell className="text-center">
+                       <Badge className="h-5 px-1.5 text-[9px] bg-emerald-100 text-emerald-700 border-emerald-200 hover:bg-emerald-100 uppercase font-black">
+                         {b.status === 'completed' ? 'Sent Out' : b.status}
+                       </Badge>
+                    </TableCell>
+                    <TableCell className="text-right pr-6">
+                      <Button variant="outline" size="sm" className="h-7 text-[10px] font-bold bg-sky-50 text-sky-700 border-sky-100 hover:bg-sky-100 hover:text-sky-800">
+                        Details
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
     </div>
   )
 }

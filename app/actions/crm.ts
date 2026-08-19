@@ -10,7 +10,7 @@ import {
   customer,
   user as userTable
 } from "@/lib/db/schema"
-import { eq, and, desc, asc, sql, or, ilike, inArray, count, getTableColumns } from "drizzle-orm"
+import { eq, and, desc, asc, sql, or, ilike, inArray, count, getTableColumns, gte, lte } from "drizzle-orm"
 import { requireUser } from "@/lib/session"
 import {
   canViewCrm,
@@ -26,6 +26,8 @@ import { revalidatePath } from "next/cache"
 import { writeAudit } from "@/lib/audit"
 import { ROLES } from "@/lib/permissions/roles"
 import { createNotification } from "./notifications"
+import { smsImportSchema, smsImportMapping } from "@/lib/crm-schemas"
+import { processExcelImport } from "@/lib/import-engine"
 
 /**
  * DEPARTMENTS
@@ -84,6 +86,7 @@ export async function upsertCrmComplaintCategory(data: { id?: string; name: stri
  */
 export async function registerComplaint(data: {
   customerId?: string | null;
+  customerAccount?: string;
   complainantName: string;
   complainantPhone: string;
   complainantEmail?: string;
@@ -91,10 +94,19 @@ export async function registerComplaint(data: {
   area?: string;
   categoryId: string;
   details: string;
+  language?: string;
   priority?: "low" | "medium" | "high" | "critical";
 }) {
   const user = await requireUser()
   if (!canManageComplaints(user)) throw new Error("Forbidden")
+
+  let customerId = data.customerId
+
+  // Resolve customerId from account number if provided
+  if (!customerId && data.customerAccount) {
+    const [c] = await db.select({ id: customer.id }).from(customer).where(eq(customer.customerAccount, data.customerAccount)).limit(1)
+    if (c) customerId = c.id
+  }
 
   const id = randomUUID()
   const complaintNumber = `COMP-${Date.now().toString().slice(-6)}-${Math.floor(Math.random() * 1000).toString().padStart(3, '0')}`
@@ -105,7 +117,15 @@ export async function registerComplaint(data: {
   await db.insert(crmComplaint).values({
     id,
     complaintNumber,
-    ...data,
+    customerId,
+    complainantName: data.complainantName,
+    complainantPhone: data.complainantPhone,
+    complainantEmail: data.complainantEmail,
+    complainantAddress: data.complainantAddress,
+    area: data.area,
+    categoryId: data.categoryId,
+    details: data.details,
+    language: data.language || "English",
     assignedDepartmentId: category?.defaultHandlerDepartmentId,
     status: "open",
     updatedAt: new Date()
@@ -130,6 +150,12 @@ export async function listComplaints(params: {
   priority?: string;
   search?: string;
   departmentId?: string;
+  categoryId?: string;
+  area?: string;
+  staffId?: string;
+  from?: string;
+  till?: string;
+  complaintNumber?: string;
 }) {
   const user = await requireUser()
   if (!canViewCrm(user)) throw new Error("Forbidden")
@@ -140,6 +166,16 @@ export async function listComplaints(params: {
   if (params.status && params.status !== "all") conds.push(eq(crmComplaint.status, params.status))
   if (params.priority && params.priority !== "all") conds.push(eq(crmComplaint.priority, params.priority))
   if (params.departmentId && params.departmentId !== "all") conds.push(eq(crmComplaint.assignedDepartmentId, params.departmentId))
+  if (params.categoryId && params.categoryId !== "all") conds.push(eq(crmComplaint.categoryId, params.categoryId))
+  if (params.area && params.area !== "all") conds.push(eq(crmComplaint.area, params.area))
+  if (params.staffId && params.staffId !== "all") conds.push(eq(crmComplaint.assignedToId, params.staffId))
+  if (params.from) conds.push(gte(crmComplaint.createdAt, new Date(params.from)))
+  if (params.till) {
+     const end = new Date(params.till)
+     end.setHours(23, 59, 59, 999)
+     conds.push(lte(crmComplaint.createdAt, end))
+  }
+  if (params.complaintNumber) conds.push(ilike(crmComplaint.complaintNumber, `%${params.complaintNumber}%`))
 
   if (params.search) {
     const q = `%${params.search.toLowerCase()}%`
@@ -165,7 +201,8 @@ export async function listComplaints(params: {
       ...getTableColumns(crmComplaint),
       categoryName: crmComplaintCategory.name,
       departmentName: crmDepartment.name,
-      assignedToName: userTable.name
+      assignedToName: userTable.name,
+      customerAccount: customer.customerAccount
     })
     .from(crmComplaint)
     .leftJoin(crmComplaintCategory, eq(crmComplaint.categoryId, crmComplaintCategory.id))
@@ -188,6 +225,52 @@ export async function listComplaints(params: {
     page: params.page,
     totalPages: Math.ceil(Number(totalRes?.count || 0) / params.limit)
   }
+}
+
+/**
+ * COMPLAINTS REPORTING (Phase 6)
+ */
+export async function getComplaintReports(params: {
+  from?: string;
+  till?: string;
+  status?: string;
+  district?: string;
+  category?: string;
+  staff?: string;
+}) {
+  const user = await requireUser()
+  if (!canViewCrm(user)) throw new Error("Forbidden")
+
+  const conds = []
+  if (params.from) conds.push(gte(crmComplaint.createdAt, new Date(params.from)))
+  if (params.till) conds.push(lte(crmComplaint.createdAt, new Date(params.till)))
+  if (params.status && params.status !== "all") conds.push(eq(crmComplaint.status, params.status))
+  if (params.category && params.category !== "all") conds.push(eq(crmComplaint.categoryId, params.category))
+  if (params.staff && params.staff !== "all") conds.push(eq(crmComplaint.assignedToId, params.staff))
+
+  // District filtering depends on hierarchy (Area/Branch)
+  if (params.district && params.district !== "all") {
+    conds.push(eq(crmComplaint.area, params.district))
+  }
+
+  const customerScope = applyCustomerScope(user)
+  if (customerScope) conds.push(customerScope)
+
+  return db
+    .select({
+      ...getTableColumns(crmComplaint),
+      categoryName: crmComplaintCategory.name,
+      departmentName: crmDepartment.name,
+      assignedToName: userTable.name,
+      customerAccount: customer.customerAccount
+    })
+    .from(crmComplaint)
+    .leftJoin(crmComplaintCategory, eq(crmComplaint.categoryId, crmComplaintCategory.id))
+    .leftJoin(crmDepartment, eq(crmComplaint.assignedDepartmentId, crmDepartment.id))
+    .leftJoin(userTable, eq(crmComplaint.assignedToId, userTable.id))
+    .innerJoin(customer, eq(crmComplaint.customerId, customer.id))
+    .where(and(...conds))
+    .orderBy(desc(crmComplaint.createdAt))
 }
 
 export async function resolveComplaint(id: string, notes: string) {
@@ -234,9 +317,89 @@ export async function resolveComplaint(id: string, notes: string) {
 /**
  * SMS COMMUNICATION
  */
-export async function listSmsBatches(limit = 20) {
+export async function importSmsBatch(formData: FormData) {
+  const user = await requireUser()
+  if (!canSendBulkSms(user)) throw new Error("Forbidden")
+
+  const file = formData.get("file") as File
+  const name = formData.get("name") as string
+  const category = formData.get("category") as string
+  const templateId = formData.get("templateId") as string || undefined
+
+  if (!file) throw new Error("File is required")
+
+  const summary = await processExcelImport({
+    file,
+    schema: smsImportSchema,
+    mapping: smsImportMapping,
+    headerMode: "none"
+  })
+
+  if (summary.validRows === 0) {
+    throw new Error("No valid rows found in the imported file")
+  }
+
+  const batchId = randomUUID()
+
+  await db.transaction(async (tx) => {
+    await tx.insert(crmSmsBatch).values({
+      id: batchId,
+      name,
+      category,
+      templateId,
+      status: "pending",
+      totalMessages: summary.validRows,
+      createdById: user.id,
+      updatedAt: new Date()
+    })
+
+    const records = summary.rows
+      .filter(r => r.valid)
+      .map(r => ({
+        id: randomUUID(),
+        batchId,
+        phoneNumber: String(r.data.phoneNumber),
+        message: `Dear ${r.data.customerName || 'Customer'}, your bill for ${r.data.billingPeriod || 'the period'} is due. Balance: ${r.data.balance || 0}.`,
+        status: "queued" as const,
+        updatedAt: new Date()
+      }))
+
+    const CHUNK = 500
+    for (let i = 0; i < records.length; i += CHUNK) {
+      await tx.insert(crmSmsRecord).values(records.slice(i, i + CHUNK))
+    }
+  })
+
+  revalidatePath("/dashboard/crm/sms")
+  return { ok: true, batchId, summary: { total: summary.totalRows, valid: summary.validRows } }
+}
+
+export async function listSmsBatches(params: {
+  limit?: number;
+  startDate?: string;
+  endDate?: string;
+  category?: string;
+  status?: string;
+  search?: string;
+} = {}) {
   const user = await requireUser()
   if (!canViewCrm(user)) throw new Error("Forbidden")
+
+  const limit = params.limit ?? 20
+  const conds = []
+
+  if (params.startDate) conds.push(gte(crmSmsBatch.createdAt, new Date(params.startDate)))
+  if (params.endDate) conds.push(lte(crmSmsBatch.createdAt, new Date(params.endDate)))
+  if (params.category && params.category !== "all") conds.push(eq(crmSmsBatch.category, params.category))
+  if (params.status && params.status !== "all") conds.push(eq(crmSmsBatch.status, params.status))
+
+  if (params.search) {
+    const q = `%${params.search.toLowerCase()}%`
+    conds.push(or(
+      ilike(crmSmsBatch.name, q),
+      ilike(userTable.name, q)
+    ))
+  }
 
   return db
     .select({
@@ -245,6 +408,7 @@ export async function listSmsBatches(limit = 20) {
     })
     .from(crmSmsBatch)
     .leftJoin(userTable, eq(crmSmsBatch.createdById, userTable.id))
+    .where(and(...conds))
     .orderBy(desc(crmSmsBatch.createdAt))
     .limit(limit)
 }
@@ -312,7 +476,9 @@ export async function getCrmStats() {
         .select({
           total: count(crmComplaint.id),
           open: sql<number>`count(case when ${crmComplaint.status} = 'open' then 1 end)::int`,
+          assigned: sql<number>`count(case when ${crmComplaint.status} = 'assigned' then 1 end)::int`,
           resolved: sql<number>`count(case when ${crmComplaint.status} = 'resolved' then 1 end)::int`,
+          closed: sql<number>`count(case when ${crmComplaint.status} = 'closed' then 1 end)::int`,
         })
         .from(crmComplaint)
         .innerJoin(customer, eq(crmComplaint.customerId, customer.id))
@@ -321,7 +487,9 @@ export async function getCrmStats() {
         .select({
           total: count(crmComplaint.id),
           open: sql<number>`count(case when ${crmComplaint.status} = 'open' then 1 end)::int`,
+          assigned: sql<number>`count(case when ${crmComplaint.status} = 'assigned' then 1 end)::int`,
           resolved: sql<number>`count(case when ${crmComplaint.status} = 'resolved' then 1 end)::int`,
+          closed: sql<number>`count(case when ${crmComplaint.status} = 'closed' then 1 end)::int`,
         })
         .from(crmComplaint)
     ).then(rows => rows[0]),
@@ -329,6 +497,7 @@ export async function getCrmStats() {
       .select({
         totalBatches: count(crmSmsBatch.id),
         totalSent: sql<number>`coalesce(sum(${crmSmsBatch.sentMessages}), 0)::int`,
+        pendingCount: sql<number>`count(case when ${crmSmsBatch.status} = 'pending' then 1 end)::int`,
       })
       .from(crmSmsBatch)
       .then(rows => rows[0])
@@ -338,11 +507,14 @@ export async function getCrmStats() {
     complaints: {
       total: Number(complaintStats?.total || 0),
       open: Number(complaintStats?.open || 0),
+      assigned: Number(complaintStats?.assigned || 0),
       resolved: Number(complaintStats?.resolved || 0),
+      closed: Number(complaintStats?.closed || 0),
     },
     sms: {
-      totalBatches: Number(smsStats?.totalBatches || 0),
-      totalSentToday: Number(smsStats?.totalSent || 0),
+      totalLists: Number(smsStats?.totalBatches || 0),
+      pendingMessages: Number(smsStats?.pendingCount || 0),
+      sentMessages: Number(smsStats?.totalSent || 0),
     }
   }
 }

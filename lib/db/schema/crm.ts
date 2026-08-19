@@ -84,6 +84,7 @@ export const crmComplaint = pgTable("crm_complaint", {
   area: text("area"),
   categoryId: text("categoryId").references(() => crmComplaintCategory.id, { onDelete: "set null" }),
   details: text("details").notNull(),
+  language: text("language").notNull().default("English"), // English, Luganda, Runyankore-Rukiga
   status: text("status").notNull().default("open"), // open, assigned, in_progress, resolved, closed
   priority: text("priority").notNull().default("medium"), // low, medium, high, critical
   assignedToId: text("assignedToId").references(() => user.id, { onDelete: "set null" }),
