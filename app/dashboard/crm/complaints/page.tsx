@@ -25,6 +25,7 @@ type ComplaintRow = CrmComplaint & {
   categoryName?: string;
   assignedToName?: string;
   customerAccount?: string;
+  areaName?: string;
 }
 
 /**

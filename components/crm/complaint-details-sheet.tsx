@@ -29,9 +29,14 @@ import { cn } from "@/lib/utils"
 import type { CrmComplaint } from "@/lib/db/schema"
 
 interface ComplaintDetailsSheetProps {
-  complaint: CrmComplaint & { categoryName?: string; assignedToName?: string; customerAccount?: string }
-  open: boolean
-  onOpenChange: (open: boolean) => void
+  complaint: CrmComplaint & {
+    categoryName?: string;
+    assignedToName?: string;
+    customerAccount?: string;
+    areaName?: string;
+  }
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
 }
 
 export function ComplaintDetailsSheet({ complaint, open, onOpenChange }: ComplaintDetailsSheetProps) {
@@ -207,7 +212,7 @@ export function ComplaintDetailsSheet({ complaint, open, onOpenChange }: Complai
                     <div className="bg-emerald-600 rounded-2xl p-6 text-white shadow-xl shadow-emerald-900/20">
                        <p className="text-sm font-bold leading-relaxed whitespace-pre-wrap">{complaint.resolutionNotes}</p>
                        <div className="mt-4 pt-4 border-t border-white/10 flex items-center justify-between">
-                          <p className="text-[9px] font-black uppercase tracking-widest text-emerald-100">Resolved {formatDateTime(complaint.resolvedAt)}</p>
+                          <p className="text-[9px] font-black uppercase tracking-widest text-emerald-100">Resolved {complaint.resolvedAt ? formatDateTime(complaint.resolvedAt) : "N/A"}</p>
                           <CheckCircle2 className="h-4 w-4 text-emerald-200" />
                        </div>
                     </div>

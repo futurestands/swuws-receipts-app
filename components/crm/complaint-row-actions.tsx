@@ -6,7 +6,12 @@ import { ComplaintDetailsSheet } from "./complaint-details-sheet"
 import type { CrmComplaint } from "@/lib/db/schema"
 
 interface ComplaintRowActionsProps {
-  complaint: CrmComplaint & { categoryName?: string; assignedToName?: string; customerAccount?: string }
+  complaint: CrmComplaint & {
+    categoryName?: string;
+    assignedToName?: string;
+    customerAccount?: string;
+    areaName?: string;
+  }
 }
 
 export function ComplaintRowActions({ complaint }: ComplaintRowActionsProps) {
