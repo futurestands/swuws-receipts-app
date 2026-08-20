@@ -1,4 +1,6 @@
 import { cn } from "@/lib/utils"
+import { ArrowLeft } from "lucide-react"
+import Link from "next/link"
 
 /**
  * Top-of-page title block. Title + optional description on the left,
@@ -9,11 +11,13 @@ function PageHeader({
   title,
   description,
   actions,
+  backHref,
   className,
 }: {
   title: React.ReactNode
   description?: React.ReactNode
   actions?: React.ReactNode
+  backHref?: string
   className?: string
 }) {
   return (
@@ -25,11 +29,22 @@ function PageHeader({
       )}
     >
       <div className="min-w-0">
-        <h1 className="text-xl font-semibold tracking-tight text-foreground sm:text-2xl">
-          {title}
-        </h1>
+        <div className="flex items-center gap-3">
+          {backHref && (
+            <Link
+              href={backHref}
+              className="group flex h-9 w-9 shrink-0 items-center justify-center rounded-full border bg-background text-muted-foreground shadow-sm transition-colors hover:bg-accent hover:text-foreground"
+              title="Go back"
+            >
+              <ArrowLeft className="h-4 w-4 transition-transform group-hover:-translate-x-0.5" />
+            </Link>
+          )}
+          <h1 className="text-xl font-semibold tracking-tight text-foreground sm:text-2xl">
+            {title}
+          </h1>
+        </div>
         {description && (
-          <p className="mt-1 max-w-2xl text-sm text-muted-foreground">{description}</p>
+          <p className={cn("mt-1 max-w-2xl text-sm text-muted-foreground", backHref && "ml-12")}>{description}</p>
         )}
       </div>
       {actions && (

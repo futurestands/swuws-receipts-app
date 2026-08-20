@@ -8,7 +8,9 @@ import {
   crmSmsBatch,
   crmSmsRecord,
   customer,
-  user as userTable
+  user as userTable,
+  branch,
+  waterScheme
 } from "@/lib/db/schema"
 import { eq, and, desc, asc, sql, or, ilike, inArray, count, getTableColumns, gte, lte } from "drizzle-orm"
 import { requireUser } from "@/lib/session"
@@ -35,7 +37,54 @@ import { processExcelImport } from "@/lib/import-engine"
 export async function listCrmDepartments() {
   const user = await requireUser()
   if (!canViewCrm(user)) throw new Error("Forbidden")
-  return db.select().from(crmDepartment).orderBy(asc(crmDepartment.name))
+  return db.select().from(crmDepartment).where(eq(crmDepartment.active, true)).orderBy(asc(crmDepartment.name))
+}
+
+/**
+ * AREAS / BRANCHES
+ */
+export async function listCrmAreas() {
+  const user = await requireUser()
+  if (!canViewCrm(user)) throw new Error("Forbidden")
+  return db.select().from(branch).where(eq(branch.active, true)).orderBy(asc(branch.name))
+}
+
+/**
+ * USERS BY AREA
+ */
+export async function listUsersByArea(branchId: string) {
+  const user = await requireUser()
+  if (!canViewCrm(user)) throw new Error("Forbidden")
+
+  return db
+    .select({
+      id: userTable.id,
+      name: userTable.name,
+      role: userTable.role
+    })
+    .from(userTable)
+    .where(and(
+      eq(userTable.branchId, branchId),
+      eq(userTable.active, true)
+    ))
+    .orderBy(asc(userTable.name))
+}
+
+/**
+ * SCHEMES BY AREA
+ */
+export async function listSchemesByArea(branchId: string) {
+  const user = await requireUser()
+  if (!canViewCrm(user)) throw new Error("Forbidden")
+
+  return db
+    .select()
+    .from(waterScheme)
+    .where(and(
+      eq(waterScheme.branchId, branchId),
+      eq(waterScheme.active, true)
+    ))
+    .orderBy(asc(waterScheme.name))
 }
 
 export async function upsertCrmDepartment(data: { id?: string; name: string; description?: string; active?: boolean }) {
@@ -92,10 +141,13 @@ export async function registerComplaint(data: {
   complainantEmail?: string;
   complainantAddress?: string;
   area?: string;
+  schemeId?: string | null;
   categoryId: string;
   details: string;
   language?: string;
   priority?: "low" | "medium" | "high" | "critical";
+  assignedToId?: string | null;
+  assignedDepartmentId?: string | null;
 }) {
   const user = await requireUser()
   if (!canManageComplaints(user)) throw new Error("Forbidden")
@@ -111,8 +163,14 @@ export async function registerComplaint(data: {
   const id = randomUUID()
   const complaintNumber = `COMP-${Date.now().toString().slice(-6)}-${Math.floor(Math.random() * 1000).toString().padStart(3, '0')}`
 
-  // Find category to get default department
-  const [category] = await db.select().from(crmComplaintCategory).where(eq(crmComplaintCategory.id, data.categoryId)).limit(1)
+  // Find category to get default department if not provided
+  let deptId = data.assignedDepartmentId
+  if (!deptId) {
+    const [category] = await db.select().from(crmComplaintCategory).where(eq(crmComplaintCategory.id, data.categoryId)).limit(1)
+    deptId = category?.defaultHandlerDepartmentId
+  }
+
+  const status = data.assignedToId && data.assignedToId !== "unassigned" ? "assigned" : "open"
 
   await db.insert(crmComplaint).values({
     id,
@@ -123,20 +181,39 @@ export async function registerComplaint(data: {
     complainantEmail: data.complainantEmail,
     complainantAddress: data.complainantAddress,
     area: data.area,
+    schemeId: data.schemeId,
     categoryId: data.categoryId,
     details: data.details,
     language: data.language || "English",
-    assignedDepartmentId: category?.defaultHandlerDepartmentId,
-    status: "open",
+    assignedDepartmentId: deptId,
+    assignedToId: data.assignedToId === "unassigned" ? null : data.assignedToId,
+    status: status,
     updatedAt: new Date()
   })
+
+  // Create notification for assigned person if any
+  if (data.assignedToId && data.assignedToId !== "unassigned") {
+    try {
+      await createNotification({
+        userId: data.assignedToId,
+        type: "crm_complaint_assigned",
+        title: "New Complaint Assigned",
+        message: `You have been assigned complaint ${complaintNumber}: ${data.details.slice(0, 50)}...`,
+        priority: data.priority || "normal",
+        relatedEntityType: "crm_complaint",
+        relatedEntityId: id
+      })
+    } catch (err) {
+      console.warn("Failed to create assignment notification:", err)
+    }
+  }
 
   await writeAudit({
     user,
     action: "crm.complaint.register",
     entityType: "crm_complaint",
     entityId: id,
-    details: { complaintNumber }
+    details: { complaintNumber, assignedToId: data.assignedToId }
   })
 
   revalidatePath("/dashboard/crm/complaints")
@@ -308,6 +385,29 @@ export async function resolveComplaint(id: string, notes: string) {
     entityType: "crm_complaint",
     entityId: id,
     details: { notes }
+  })
+
+  revalidatePath("/dashboard/crm/complaints")
+  return { ok: true }
+}
+
+export async function closeComplaint(id: string) {
+  const user = await requireUser()
+  if (!canManageComplaints(user)) throw new Error("Forbidden")
+
+  await db.update(crmComplaint)
+    .set({
+      status: "closed",
+      updatedAt: new Date()
+    })
+    .where(eq(crmComplaint.id, id))
+
+  await writeAudit({
+    user,
+    action: "crm.complaint.close",
+    entityType: "crm_complaint",
+    entityId: id,
+    details: { status: "closed" }
   })
 
   revalidatePath("/dashboard/crm/complaints")

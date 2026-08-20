@@ -82,6 +82,7 @@ export const crmComplaint = pgTable("crm_complaint", {
   complainantEmail: text("complainantEmail"),
   complainantAddress: text("complainantAddress"),
   area: text("area"),
+  schemeId: text("schemeId").references(() => waterScheme.id, { onDelete: "set null" }),
   categoryId: text("categoryId").references(() => crmComplaintCategory.id, { onDelete: "set null" }),
   details: text("details").notNull(),
   language: text("language").notNull().default("English"), // English, Luganda, Runyankore-Rukiga

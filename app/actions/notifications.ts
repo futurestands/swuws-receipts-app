@@ -90,7 +90,9 @@ export async function createNotification(data: {
     (await hasPermission(current, "reconciliation.run")) ||
     (await hasPermission(current, "reconciliation.approve")) ||
     (await hasPermission(current, "branding.manage")) ||
-    (await hasPermission(current, "collection.view"))
+    (await hasPermission(current, "collection.view")) ||
+    (await hasPermission(current, "crm.view")) ||
+    (await hasPermission(current, "crm.complaints.manage"))
 
   if (!authorized) throw new Error("Forbidden")
 

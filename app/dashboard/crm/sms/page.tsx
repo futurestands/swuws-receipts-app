@@ -13,10 +13,11 @@ import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
 export default async function SmsHubPage({
-  searchParams,
+  searchParams: searchParamsPromise,
 }: {
-  searchParams: { [key: string]: string | string[] | undefined }
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>
 }) {
+  const searchParams = await searchParamsPromise
   const user = await requireUser()
   if (!canViewCrm(user)) throw new Error("Forbidden")
 
@@ -39,6 +40,7 @@ export default async function SmsHubPage({
         <PageHeader
           title="Customer SMS Communications"
           description="Manage bulk messaging campaigns and delivery history."
+          backHref="/dashboard/crm"
         />
         <div className="flex items-center gap-2">
            <SmsImportModal />

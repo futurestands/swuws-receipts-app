@@ -13,10 +13,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { cn } from "@/lib/utils"
 
 export default async function CrmReportsPage({
-  searchParams,
+  searchParams: searchParamsPromise,
 }: {
-  searchParams: { [key: string]: string | string[] | undefined }
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>
 }) {
+  const searchParams = await searchParamsPromise
   const user = await requireUser()
   if (!canViewCrm(user)) throw new Error("Forbidden")
 
@@ -39,6 +40,7 @@ export default async function CrmReportsPage({
       <PageHeader
         title="Call Center Reports"
         description="Comprehensive analysis of customer feedback and service delivery."
+        backHref="/dashboard/crm"
       />
 
       {/* Legacy-style Report Parameters */}

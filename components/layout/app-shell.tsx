@@ -41,18 +41,17 @@ export function AppShell({
   children: React.ReactNode
   agentId: string
 }) {
-  const [collapsed, setCollapsed] = useState(() => {
-    if (typeof window !== "undefined") {
-      const stored = window.localStorage.getItem(COLLAPSE_KEY)
-      return stored === "1"
-    }
-    return false
-  })
+  const [collapsed, setCollapsed] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
   const [imgError, setImgError] = useState(false)
   const [native, setNative] = useState(false)
 
   useEffect(() => {
+    // 1. Initial collapsed state from localStorage (prevents hydration mismatch)
+    const stored = window.localStorage.getItem(COLLAPSE_KEY)
+    if (stored === "1") setCollapsed(true)
+
+    // 2. Native hardware setup
     if (isNative()) {
       setNative(true)
       // Initialize system status bar for native app
