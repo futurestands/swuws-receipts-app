@@ -18,5 +18,13 @@ node_modules
 # IDE project files (Android Studio) — machine-specific, shouldn't be tracked
 .idea/
 
+# Android Build artifacts
+android/.kotlin/
+android/components/
+
+# Scratch & Forensic artifacts
+scratch/apk_test/
+scratch/test.zip
+
 # TypeScript incremental build cache — regenerated locally/in CI, not source
 tsconfig.tsbuildinfo
