@@ -71,6 +71,28 @@ export async function listUsersByArea(branchId: string) {
 }
 
 /**
+ * ALL CRM-ASSIGNABLE STAFF (org-wide, respects hierarchy scope)
+ * Used by the complaints filter bar's "Staff Assigned" dropdown, which
+ * needs a full list up front rather than one scoped to a single area.
+ */
+export async function listCrmStaff() {
+  const user = await requireUser()
+  if (!canViewCrm(user)) throw new Error("Forbidden")
+
+  const conds = [eq(userTable.active, true)]
+  if (!canViewAllData(user)) {
+    if (user.branchId) conds.push(eq(userTable.branchId, user.branchId))
+    else if (user.clusterId) conds.push(eq(userTable.clusterId, user.clusterId))
+  }
+
+  return db
+    .select({ id: userTable.id, name: userTable.name })
+    .from(userTable)
+    .where(and(...conds))
+    .orderBy(asc(userTable.name))
+}
+
+/**
  * SCHEMES BY AREA
  */
 export async function listSchemesByArea(branchId: string) {
@@ -285,12 +307,19 @@ export async function listComplaints(params: {
       categoryName: crmComplaintCategory.name,
       departmentName: crmDepartment.name,
       assignedToName: userTable.name,
-      customerAccount: customer.customerAccount
+      customerAccount: customer.customerAccount,
+      // crmComplaint.area is a plain text column storing a branch id (set
+      // from the registration form's area SelectItem, whose value is
+      // branch.id) -- resolve it to a real name here instead of every
+      // consumer having to display the raw id (which is exactly what
+      // complaint-details-sheet.tsx was doing: "Branch ID: {complaint.area}").
+      areaName: branch.name
     })
     .from(crmComplaint)
     .leftJoin(crmComplaintCategory, eq(crmComplaint.categoryId, crmComplaintCategory.id))
     .leftJoin(crmDepartment, eq(crmComplaint.assignedDepartmentId, crmDepartment.id))
     .leftJoin(userTable, eq(crmComplaint.assignedToId, userTable.id))
+    .leftJoin(branch, eq(crmComplaint.area, branch.id))
 
   const countQuery = db.select({ count: count() }).from(crmComplaint)
 
@@ -345,12 +374,14 @@ export async function getComplaintReports(params: {
       categoryName: crmComplaintCategory.name,
       departmentName: crmDepartment.name,
       assignedToName: userTable.name,
-      customerAccount: customer.customerAccount
+      customerAccount: customer.customerAccount,
+      areaName: branch.name
     })
     .from(crmComplaint)
     .leftJoin(crmComplaintCategory, eq(crmComplaint.categoryId, crmComplaintCategory.id))
     .leftJoin(crmDepartment, eq(crmComplaint.assignedDepartmentId, crmDepartment.id))
     .leftJoin(userTable, eq(crmComplaint.assignedToId, userTable.id))
+    .leftJoin(branch, eq(crmComplaint.area, branch.id))
     .innerJoin(customer, eq(crmComplaint.customerId, customer.id))
     .where(and(...conds))
     .orderBy(desc(crmComplaint.createdAt))

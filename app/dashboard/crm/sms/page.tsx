@@ -7,10 +7,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge"
 import { formatDateTime } from "@/lib/format"
 import { Button } from "@/components/ui/button"
-import { Send, Smartphone, Search, List, Clock, CheckCircle2, MoreHorizontal } from "lucide-react"
+import { Send, Smartphone, List, Clock, CheckCircle2, MoreHorizontal } from "lucide-react"
 import { SmsImportModal } from "@/components/crm/sms-import-modal"
-import { Input } from "@/components/ui/input"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { SmsFilterBar } from "@/components/crm/sms-filter-bar"
 
 export default async function SmsHubPage({
   searchParams: searchParamsPromise,
@@ -86,52 +85,7 @@ export default async function SmsHubPage({
         </Card>
       </div>
 
-      {/* Legacy-style Filters */}
-      <Card className="shadow-sm border-none bg-slate-50/50">
-        <CardContent className="p-6">
-           <div className="grid gap-4 md:grid-cols-5 items-end">
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-bold uppercase text-muted-foreground ml-1">From</label>
-                <Input type="date" className="h-9 bg-white" />
-              </div>
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-bold uppercase text-muted-foreground ml-1">Till</label>
-                <Input type="date" className="h-9 bg-white" />
-              </div>
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-bold uppercase text-muted-foreground ml-1">Status</label>
-                <Select>
-                  <SelectTrigger className="h-9 bg-white">
-                    <SelectValue placeholder="All" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All</SelectItem>
-                    <SelectItem value="pending">Pending</SelectItem>
-                    <SelectItem value="completed">Completed</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-bold uppercase text-muted-foreground ml-1">Category</label>
-                <Select>
-                  <SelectTrigger className="h-9 bg-white">
-                    <SelectValue placeholder="All" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All</SelectItem>
-                    <SelectItem value="Bill Reminders">Bill Reminders</SelectItem>
-                    <SelectItem value="Alerts">Alerts</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="flex gap-2">
-                <Button className="h-9 w-full bg-sky-700 hover:bg-sky-800">
-                  <Search className="h-3.5 w-3.5 mr-2" /> Search
-                </Button>
-              </div>
-           </div>
-        </CardContent>
-      </Card>
+      <SmsFilterBar />
 
       <Card className="shadow-sm border-none">
         <CardHeader className="border-b bg-slate-50/30">

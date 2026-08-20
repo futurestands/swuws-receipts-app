@@ -5,7 +5,8 @@ import {
   listCrmDepartments,
   listCrmComplaintCategories,
   getCrmStats,
-  listCrmAreas
+  listCrmAreas,
+  listCrmStaff
 } from "@/app/actions/crm"
 import { PageHeader } from "@/components/ui/page-header"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -13,12 +14,11 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge"
 import { formatDateTime } from "@/lib/format"
 import { Button } from "@/components/ui/button"
-import { Search, RotateCcw, Filter, User, PlayCircle, CheckCircle2, MessageSquare, ClipboardList } from "lucide-react"
+import { Filter, User, PlayCircle, CheckCircle2, MessageSquare, ClipboardList } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { RegisterComplaintModal } from "@/components/crm/register-complaint-modal"
 import { ComplaintRowActions } from "@/components/crm/complaint-row-actions"
-import { Input } from "@/components/ui/input"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { ComplaintsFilterBar } from "@/components/crm/complaints-filter-bar"
 import { ScrollableTableContainer } from "@/components/ui/responsive-table"
 
 /**
@@ -47,12 +47,13 @@ export default async function ComplaintsPage({
     complaintNumber: typeof searchParams.no === 'string' ? searchParams.no : undefined,
   }
 
-  const [complaintData, departments, categories, stats, areas] = await Promise.all([
+  const [complaintData, departments, categories, stats, areas, staff] = await Promise.all([
     listComplaints(filters),
     listCrmDepartments(),
     listCrmComplaintCategories(),
     getCrmStats(),
-    listCrmAreas()
+    listCrmAreas(),
+    listCrmStaff()
   ])
 
   return (
@@ -131,80 +132,7 @@ export default async function ComplaintsPage({
         </Card>
       </div>
 
-      {/* Advanced Filter Bar - High Density, Responsive */}
-      <Card className="shadow-sm border-none bg-white">
-        <CardHeader className="border-b py-3 bg-slate-50/50 px-6">
-          <div className="flex items-center gap-2">
-             <Filter className="h-3.5 w-3.5 text-slate-500" />
-             <CardTitle className="text-[10px] font-black uppercase text-slate-500 tracking-widest">Master Filter Engine</CardTitle>
-          </div>
-        </CardHeader>
-        <CardContent className="p-6">
-           <div className="grid gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6 items-end">
-              <div className="space-y-2">
-                <label className="text-[10px] font-bold uppercase text-slate-400 tracking-tight ml-1">Complaint Ref #</label>
-                <Input placeholder="Search ID..." className="h-10 bg-slate-50 border-slate-200" />
-              </div>
-              <div className="space-y-2">
-                <label className="text-[10px] font-bold uppercase text-slate-400 tracking-tight ml-1">Period From</label>
-                <Input type="date" className="h-10 bg-slate-50 border-slate-200" />
-              </div>
-              <div className="space-y-2">
-                <label className="text-[10px] font-bold uppercase text-slate-400 tracking-tight ml-1">Period Till</label>
-                <Input type="date" className="h-10 bg-slate-50 border-slate-200" />
-              </div>
-              <div className="space-y-2">
-                <label className="text-[10px] font-bold uppercase text-slate-400 tracking-tight ml-1">Current Status</label>
-                <Select>
-                  <SelectTrigger className="h-10 bg-slate-50 border-slate-200 text-xs font-bold uppercase">
-                    <SelectValue placeholder="All Status" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All</SelectItem>
-                    <SelectItem value="open">Open</SelectItem>
-                    <SelectItem value="assigned">Assigned</SelectItem>
-                    <SelectItem value="resolved">Resolved</SelectItem>
-                    <SelectItem value="closed">Closed</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <label className="text-[10px] font-bold uppercase text-slate-400 tracking-tight ml-1">Service Area</label>
-                <Select>
-                  <SelectTrigger className="h-10 bg-slate-50 border-slate-200 text-xs font-bold uppercase">
-                    <SelectValue placeholder="All Areas" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Areas</SelectItem>
-                    {areas.map(a => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <label className="text-[10px] font-bold uppercase text-slate-400 tracking-tight ml-1">Staff Assigned</label>
-                <Select>
-                  <SelectTrigger className="h-10 bg-slate-50 border-slate-200 text-xs font-bold uppercase">
-                    <SelectValue placeholder="All Staff" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Staff</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                 <Button className="h-10 w-full bg-[#0369a1] hover:bg-[#075985] text-xs font-black uppercase tracking-widest shadow-lg shadow-sky-900/10">
-                   <Search className="h-3.5 w-3.5 mr-2" /> Search
-                 </Button>
-              </div>
-              <div className="space-y-2">
-                 <Button variant="outline" className="h-10 w-full border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100 text-xs font-black uppercase tracking-widest">
-                    <RotateCcw className="h-3.5 w-3.5 mr-2" /> Reset
-                 </Button>
-              </div>
-           </div>
-        </CardContent>
-      </Card>
+      <ComplaintsFilterBar areas={areas} staff={staff} />
 
       <Card className="shadow-xl border-none overflow-hidden bg-white">
         <CardHeader className="border-b bg-slate-900 p-6">

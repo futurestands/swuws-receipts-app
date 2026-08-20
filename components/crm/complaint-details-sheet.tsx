@@ -197,7 +197,7 @@ export function ComplaintDetailsSheet({ complaint, open, onOpenChange }: Complai
                     </div>
                     <div className="text-right">
                        <p className="text-[9px] font-bold text-slate-400 uppercase leading-none">Operational Area</p>
-                       <p className="text-xs font-bold text-slate-600 mt-1.5 uppercase tracking-tighter">Branch ID: {complaint.area || 'N/A'}</p>
+                       <p className="text-xs font-bold text-slate-600 mt-1.5 uppercase tracking-tighter">{complaint.areaName || 'Unassigned'}</p>
                     </div>
                  </div>
               </div>
