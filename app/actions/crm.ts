@@ -194,12 +194,18 @@ export async function registerComplaint(data: {
   // Create notification for assigned person if any
   if (data.assignedToId && data.assignedToId !== "unassigned") {
     try {
+      // Complaint priority ("low"|"medium"|"high"|"critical") and notification
+      // priority ("low"|"normal"|"high"|"critical") are different vocabularies --
+      // map explicitly rather than passing complaint priority straight through
+      // (the previous code passed it through raw, which doesn't compile since
+      // "medium" isn't a valid notification priority).
+      const notificationPriority = data.priority === "medium" ? "normal" : (data.priority || "normal")
       await createNotification({
         userId: data.assignedToId,
         type: "crm_complaint_assigned",
         title: "New Complaint Assigned",
         message: `You have been assigned complaint ${complaintNumber}: ${data.details.slice(0, 50)}...`,
-        priority: data.priority || "normal",
+        priority: notificationPriority,
         relatedEntityType: "crm_complaint",
         relatedEntityId: id
       })
@@ -394,6 +400,19 @@ export async function resolveComplaint(id: string, notes: string) {
 export async function closeComplaint(id: string) {
   const user = await requireUser()
   if (!canManageComplaints(user)) throw new Error("Forbidden")
+
+  // Same rule as resolveComplaint: canManageComplaints only checks module
+  // access, not which complaints this user is allowed to touch.
+  if (!canViewAllData(user)) {
+    const customerScope = applyCustomerScope(user)
+    const [existing] = await db
+      .select({ id: crmComplaint.id })
+      .from(crmComplaint)
+      .innerJoin(customer, eq(crmComplaint.customerId, customer.id))
+      .where(and(eq(crmComplaint.id, id), customerScope ?? sql`1=1`))
+      .limit(1)
+    if (!existing) throw new Error("Forbidden: complaint is outside your assigned scope")
+  }
 
   await db.update(crmComplaint)
     .set({

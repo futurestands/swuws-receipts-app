@@ -49,7 +49,13 @@ export function RegisterComplaintModal({ categories, departments, areas, userNam
   const [loadingSchemes, setLoadingSchemes] = useState(false)
   const { toast } = useToast()
 
-  const form = useForm<z.infer<typeof formSchema>>({
+  // z.input, not z.infer/z.output: fields with .default() (like priority)
+  // are optional on the input side and required on the output side --
+  // useForm's generic needs the pre-validation (input) shape, since that's
+  // what the form actually holds before zodResolver parses it. Using
+  // z.infer here caused a real, build-breaking type mismatch between the
+  // form's Control/Resolver types and every FormField below it.
+  const form = useForm<z.input<typeof formSchema>>({
     resolver: zodResolver(formSchema),
     defaultValues: {
       complainantName: "",
@@ -101,7 +107,9 @@ export function RegisterComplaintModal({ categories, departments, areas, userNam
     fetchData()
   }, [selectedAreaId])
 
-  async function onSubmit(values: z.infer<typeof formSchema>) {
+  // z.input to match the form's own generic above -- values coming out of
+  // handleSubmit are checked against this type, not the parsed/output type.
+  async function onSubmit(values: z.input<typeof formSchema>) {
     setLoading(true)
     try {
       const res = await registerComplaint({
