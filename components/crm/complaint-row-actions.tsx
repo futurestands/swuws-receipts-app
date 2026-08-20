@@ -3,9 +3,10 @@
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { ComplaintDetailsSheet } from "./complaint-details-sheet"
+import type { CrmComplaint } from "@/lib/db/schema"
 
 interface ComplaintRowActionsProps {
-  complaint: any
+  complaint: CrmComplaint & { categoryName?: string; assignedToName?: string; customerAccount?: string }
 }
 
 export function ComplaintRowActions({ complaint }: ComplaintRowActionsProps) {

@@ -12,12 +12,11 @@ import {
   branch,
   waterScheme
 } from "@/lib/db/schema"
-import { eq, and, desc, asc, sql, or, ilike, inArray, count, getTableColumns, gte, lte } from "drizzle-orm"
+import { eq, and, desc, asc, sql, or, ilike, count, getTableColumns, gte, lte } from "drizzle-orm"
 import { requireUser } from "@/lib/session"
 import {
   canViewCrm,
   canManageComplaints,
-  canAssignComplaints,
   canSendBulkSms,
   canConfigureCrm
 } from "@/lib/permissions"
@@ -26,7 +25,6 @@ import { canViewAllData } from "@/lib/permissions"
 import { randomUUID } from "crypto"
 import { revalidatePath } from "next/cache"
 import { writeAudit } from "@/lib/audit"
-import { ROLES } from "@/lib/permissions/roles"
 import { createNotification } from "./notifications"
 import { smsImportSchema, smsImportMapping } from "@/lib/crm-schemas"
 import { processExcelImport } from "@/lib/import-engine"

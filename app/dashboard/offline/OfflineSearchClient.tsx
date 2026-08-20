@@ -33,45 +33,6 @@ export function OfflineSearchClient({ agentId }: { agentId: string }) {
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null)
   const [selectedCustomerIdForReading, setSelectedCustomerIdForReading] = useState<string | null>(null)
 
-  useEffect(() => {
-    // Initial load
-    const init = async () => {
-      await sqliteService.initialize()
-      await refreshData()
-    }
-    init()
-
-    // Online/Offline status
-    const updateOnlineStatus = () => setIsOnline(navigator.onLine)
-    window.addEventListener("online", updateOnlineStatus)
-    window.addEventListener("offline", updateOnlineStatus)
-    if (typeof navigator !== 'undefined') setIsOnline(navigator.onLine)
-
-    return () => {
-      window.removeEventListener("online", updateOnlineStatus)
-      window.removeEventListener("offline", updateOnlineStatus)
-    }
-  }, [])
-
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      handleSearch()
-    }, 300)
-    return () => clearTimeout(timer)
-  }, [query, isOnline])
-
-  const refreshData = async () => {
-    const [meta, queue, readings] = await Promise.all([
-      sqliteService.getSyncMeta(),
-      sqliteService.getQueuedReceipts(),
-      sqliteService.getQueuedMeterReadings()
-    ])
-    setSyncMeta(meta)
-    setQueuedReceipts(queue)
-    setQueuedReadings(readings)
-    await handleSearch()
-  }
-
   const handleSearch = async () => {
     // Always search local SQLite
     const local = await sqliteService.searchCustomers(query)
@@ -95,6 +56,42 @@ export function OfflineSearchClient({ agentId }: { agentId: string }) {
       setServerCustomers([])
     }
   }
+
+  const refreshData = async () => {
+    const [meta, queue, readings] = await Promise.all([
+      sqliteService.getSyncMeta(),
+      sqliteService.getQueuedReceipts(),
+      sqliteService.getQueuedMeterReadings()
+    ])
+    setSyncMeta(meta)
+    setQueuedReceipts(queue)
+    setQueuedReadings(readings)
+    await handleSearch()
+  }
+
+  useEffect(() => {
+    // Initial load
+    const init = async () => {
+      await sqliteService.initialize()
+      await refreshData()
+    }
+    init()
+
+    // Online/Offline status
+    const updateOnlineStatus = () => setIsOnline(navigator.onLine)
+    window.addEventListener("online", updateOnlineStatus)
+    window.addEventListener("offline", updateOnlineStatus)
+
+    // Avoid synchronous setState during render by doing this in useEffect
+    if (typeof navigator !== 'undefined') {
+      setIsOnline(navigator.onLine)
+    }
+
+    return () => {
+      window.removeEventListener("online", updateOnlineStatus)
+      window.removeEventListener("offline", updateOnlineStatus)
+    }
+  }, [])
 
   const handleSyncPull = async () => {
     if (!isOnline) {

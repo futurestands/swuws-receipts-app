@@ -6,7 +6,6 @@ import {
   SheetContent,
   SheetHeader,
   SheetTitle,
-  SheetDescription,
 } from "@/components/ui/sheet"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -16,14 +15,10 @@ import {
   Phone,
   Mail,
   MapPin,
-  Tag,
-  Clock,
   CheckCircle2,
-  AlertCircle,
   ClipboardList,
   ShieldCheck,
   MessageSquare,
-  Globe,
   Loader2,
   XCircle
 } from "lucide-react"
@@ -31,9 +26,10 @@ import { resolveComplaint, closeComplaint } from "@/app/actions/crm"
 import { useToast } from "@/hooks/use-toast"
 import { Textarea } from "@/components/ui/textarea"
 import { cn } from "@/lib/utils"
+import type { CrmComplaint } from "@/lib/db/schema"
 
 interface ComplaintDetailsSheetProps {
-  complaint: any
+  complaint: CrmComplaint & { categoryName?: string; assignedToName?: string; customerAccount?: string }
   open: boolean
   onOpenChange: (open: boolean) => void
 }
@@ -58,8 +54,8 @@ export function ComplaintDetailsSheet({ complaint, open, onOpenChange }: Complai
         toast({ title: "Success", description: "Complaint marked as resolved." })
         onOpenChange(false)
       }
-    } catch (err: any) {
-      toast({ title: "Error", description: err.message, variant: "destructive" })
+    } catch (err) {
+      toast({ title: "Error", description: err instanceof Error ? err.message : String(err), variant: "destructive" })
     } finally {
       setLoading(false)
     }
@@ -73,8 +69,8 @@ export function ComplaintDetailsSheet({ complaint, open, onOpenChange }: Complai
         toast({ title: "Success", description: "Complaint closed successfully." })
         onOpenChange(false)
       }
-    } catch (err: any) {
-      toast({ title: "Error", description: err.message, variant: "destructive" })
+    } catch (err) {
+      toast({ title: "Error", description: err instanceof Error ? err.message : String(err), variant: "destructive" })
     } finally {
       setLoading(false)
     }

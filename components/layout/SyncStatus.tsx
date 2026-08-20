@@ -18,7 +18,10 @@ export function SyncStatus({ agentId }: { agentId: string }) {
 
   useEffect(() => {
     setMounted(true)
-    if (!isNative()) return;
+  }, [])
+
+  useEffect(() => {
+    if (!mounted || !isNative()) return;
 
     // 1. Initialize Sync Manager
     syncManager.initialize(agentId)

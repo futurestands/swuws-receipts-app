@@ -2,7 +2,6 @@ import { requireUser } from "@/lib/session"
 import { canViewCrm } from "@/lib/permissions"
 import {
   listComplaints,
-  listCrmDepartments,
   listCrmComplaintCategories,
   getCrmStats,
   listCrmAreas,
@@ -20,6 +19,13 @@ import { RegisterComplaintModal } from "@/components/crm/register-complaint-moda
 import { ComplaintRowActions } from "@/components/crm/complaint-row-actions"
 import { ComplaintsFilterBar } from "@/components/crm/complaints-filter-bar"
 import { ScrollableTableContainer } from "@/components/ui/responsive-table"
+import type { CrmComplaint } from "@/lib/db/schema"
+
+type ComplaintRow = CrmComplaint & {
+  categoryName?: string;
+  assignedToName?: string;
+  customerAccount?: string;
+}
 
 /**
  * COMPLAINTS CENTER PAGE
@@ -47,9 +53,8 @@ export default async function ComplaintsPage({
     complaintNumber: typeof searchParams.no === 'string' ? searchParams.no : undefined,
   }
 
-  const [complaintData, departments, categories, stats, areas, staff] = await Promise.all([
+  const [complaintData, categories, stats, areas, staff] = await Promise.all([
     listComplaints(filters),
-    listCrmDepartments(),
     listCrmComplaintCategories(),
     getCrmStats(),
     listCrmAreas(),
@@ -67,7 +72,6 @@ export default async function ComplaintsPage({
         />
         <RegisterComplaintModal
            categories={categories}
-           departments={departments}
            areas={areas}
            userName={user.name}
         />
@@ -173,7 +177,7 @@ export default async function ComplaintsPage({
                     </TableCell>
                   </TableRow>
                 ) : (
-                  complaintData.complaints.map((c) => (
+                  (complaintData.complaints as ComplaintRow[]).map((c) => (
                     <TableRow key={c.id} className="hover:bg-slate-50/80 transition-colors group">
                       <TableCell className="text-[11px] font-bold text-slate-500 whitespace-nowrap px-6">
                          {formatDateTime(c.createdAt)}
@@ -189,14 +193,14 @@ export default async function ComplaintsPage({
                       </TableCell>
                       <TableCell className="text-[11px] font-bold text-slate-600">{c.complainantPhone}</TableCell>
                       <TableCell>
-                         <span className="text-[11px] font-bold text-slate-700 uppercase tracking-tighter">{(c as any).categoryName}</span>
+                         <span className="text-[11px] font-bold text-slate-700 uppercase tracking-tighter">{c.categoryName}</span>
                       </TableCell>
                       <TableCell>
                          <div className="flex items-center gap-2">
                             <div className="h-6 w-6 rounded-full bg-slate-100 flex items-center justify-center text-[10px] font-black text-slate-500 border border-slate-200 uppercase">
-                               {((c as any).assignedToName || 'U')[0]}
+                               {(c.assignedToName || 'U')[0]}
                             </div>
-                            <span className="text-[11px] font-bold text-slate-500 capitalize">{(c as any).assignedToName || 'Unassigned'}</span>
+                            <span className="text-[11px] font-bold text-slate-500 capitalize">{c.assignedToName || 'Unassigned'}</span>
                          </div>
                       </TableCell>
                       <TableCell>
