@@ -54,20 +54,28 @@ class SyncManager {
     if (this.isSyncing) return;
     this.isSyncing = true;
 
-    const { BackgroundTask } = await import('@capawesome/capacitor-background-task');
-
-    // Use BackgroundTask to ensure it finishes even if app is minimized
-    let taskId: string | null = null;
-    if (isNative()) {
-      taskId = await BackgroundTask.beforeExit(async () => {
-        await this.performSync(agentId);
-        if (taskId) BackgroundTask.finish({ taskId });
-      });
-    } else {
+    // NOTE: BackgroundTask.beforeExit() was previously used as the trigger
+    // for running performSync -- that's backwards. Per the plugin's own
+    // docs, beforeExit() should only be called in response to the app
+    // actually going to background (App.addListener('appStateChange', ...)),
+    // as a way to buy extra runtime for work already started -- it is not
+    // itself a "run this now" hook, and wrapping performSync inside it meant
+    // sync only ever ran the moment the app was backgrounded/closed, never
+    // on open, network reconnect, or the periodic timer, despite the code
+    // and comments elsewhere claiming otherwise.
+    //
+    // Separately: @capawesome/capacitor-background-task has NO Android
+    // implementation at all as of this plugin version ("There is currently
+    // no ready implementation on Android" -- their own README). This app is
+    // Android-only, so relying on it for anything right now is a no-op on
+    // the one platform that matters here. Sync must run directly.
+    try {
       await this.performSync(agentId);
+    } catch (e) {
+      console.warn('Sync failed', e);
+    } finally {
+      this.isSyncing = false;
     }
-
-    this.isSyncing = false;
   }
 
   private async performSync(agentId: string) {

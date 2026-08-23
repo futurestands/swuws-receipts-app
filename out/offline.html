@@ -51,7 +51,6 @@
     </div>
 
     <!-- Capacitor Plugins -->
-    <script src="cordova.js"></script>
     <script>
         // Emergency Offline Logic
         async function handleSearch() {
@@ -64,8 +63,6 @@
             }
 
             try {
-                // This is where we talk to the real SQLite plugin
-                // Note: In pure HTML, we use the Capacitor window object
                 const CapacitorSQLite = window.Capacitor.Plugins.CapacitorSQLite;
 
                 // Fetch from the exact same table Next.js uses
@@ -92,12 +89,6 @@
             }
         }
 
-        // Initialize Native Bridge
-        document.addEventListener('deviceready', () => {
-            console.log('Native Shell Ready');
-            checkQueue();
-        }, false);
-
         async function checkQueue() {
             try {
                 const CapacitorSQLite = window.Capacitor.Plugins.CapacitorSQLite;
@@ -111,6 +102,28 @@
                 document.getElementById('queue-status').innerText = "Syncing not initialized.";
             }
         }
+
+        // NOTE: this app is built on Capacitor, not Cordova. Capacitor does
+        // NOT fire a 'deviceready' event -- that's Cordova-only, and the
+        // previous version of this file waited on it forever, which meant
+        // checkQueue() never ran on any device, ever. window.Capacitor is
+        // injected by the native bridge before this inline script executes,
+        // but we poll briefly anyway as a defensive guard against any
+        // WebView-specific timing edge case, rather than assume it's always
+        // synchronously ready the instant this script block runs.
+        function waitForCapacitorBridge(callback, attemptsLeft = 20) {
+            if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.CapacitorSQLite) {
+                callback();
+                return;
+            }
+            if (attemptsLeft <= 0) {
+                document.getElementById('queue-status').innerText = "Syncing not initialized.";
+                return;
+            }
+            setTimeout(() => waitForCapacitorBridge(callback, attemptsLeft - 1), 150);
+        }
+
+        waitForCapacitorBridge(checkQueue);
     </script>
 </body>
 </html>
