@@ -12,6 +12,7 @@ import { z } from "zod"
 import { roleSchema } from "@/lib/iam-schemas"
 import type { Scope } from "@/lib/iam"
 import { ROLES } from "@/lib/permissions/roles"
+import { canCreateRole } from "@/lib/permissions/server"
 
 /**
  * List all roles, ordered by level and name.
@@ -73,6 +74,10 @@ async function wouldCreateCycle(roleId: string, candidateParentId: string): Prom
 export async function createRole(data: z.infer<typeof roleSchema>) {
   const current = await requireUser()
   if (!await hasPermission(current, "roles.manage")) throw new Error("Forbidden")
+
+  if (!(await canCreateRole(current, data.code))) {
+    return { ok: false as const, error: "You cannot create a role above your own level" }
+  }
 
   const parsed = roleSchema.parse(data)
   const id = randomUUID()
@@ -210,12 +215,24 @@ export async function updateRolePermissions(roleId: string, grants: { permission
 
     // 2. Insert new
     if (grants.length > 0) {
-      await tx.insert(iamRolePermission).values(grants.map(g => ({
-        id: randomUUID(),
-        roleId,
-        permissionId: g.permissionId,
-        scope: g.scope as Scope,
-      })))
+      // Verify current user holds these permissions
+      const validGrants = []
+      for (const g of grants) {
+        // Find permission code first
+        const [p] = await tx.select({ code: iamPermission.code }).from(iamPermission).where(eq(iamPermission.id, g.permissionId)).limit(1)
+        if (p && await hasPermission(current, p.code)) {
+          validGrants.push({
+            id: randomUUID(),
+            roleId,
+            permissionId: g.permissionId,
+            scope: g.scope as Scope,
+          })
+        }
+      }
+
+      if (validGrants.length > 0) {
+        await tx.insert(iamRolePermission).values(validGrants)
+      }
     }
 
     await writeAudit({

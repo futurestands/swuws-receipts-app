@@ -33,6 +33,9 @@ export function OfflineSearchClient({ agentId }: { agentId: string }) {
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null)
   const [selectedCustomerIdForReading, setSelectedCustomerIdForReading] = useState<string | null>(null)
 
+  const totalQueued = queuedReceipts.filter(r => r.status !== 'synced').length +
+                      queuedReadings.filter(r => r.status !== 'synced').length
+
   const handleSearch = async () => {
     // Always search local SQLite
     const local = await sqliteService.searchCustomers(query)
@@ -91,7 +94,13 @@ export function OfflineSearchClient({ agentId }: { agentId: string }) {
       window.removeEventListener("online", updateOnlineStatus)
       window.removeEventListener("offline", updateOnlineStatus)
     }
-  }, [])
+  }, [uploading])
+
+  useEffect(() => {
+    if (isOnline && totalQueued > 0 && !uploading) {
+      handleSyncPush()
+    }
+  }, [isOnline, totalQueued, uploading])
 
   const handleSyncPull = async () => {
     if (!isOnline) {
@@ -157,7 +166,8 @@ export function OfflineSearchClient({ agentId }: { agentId: string }) {
             paymentMethod: r.paymentMethod,
             paymentReference: r.paymentReference || undefined,
             notes: r.notes || undefined,
-            paymentDate: r.paymentDate || undefined
+            paymentDate: r.paymentDate || undefined,
+            idempotencyKey: r.idempotencyKey
           }
         }))
 
@@ -176,7 +186,8 @@ export function OfflineSearchClient({ agentId }: { agentId: string }) {
             billingPeriodId: r.billingPeriodId,
             currentReading: r.currentReading,
             previousReading: r.previousReading,
-            notes: r.notes || undefined
+            notes: r.notes || undefined,
+            idempotencyKey: r.idempotencyKey
           }
         }))
 
@@ -197,19 +208,6 @@ export function OfflineSearchClient({ agentId }: { agentId: string }) {
     } finally {
       setUploading(false)
     }
-  }
-
-  if (!isNative()) {
-    return (
-      <div className="p-8 text-center">
-        <AlertCircle className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
-        <h2 className="text-xl font-bold mb-2">Native Only Feature</h2>
-        <p className="text-muted-foreground max-w-md mx-auto">
-          Offline search and receipting is only available when running as a native Android application.
-          Use the standard portal for web browsing.
-        </p>
-      </div>
-    )
   }
 
   if (selectedCustomerId) {
@@ -241,9 +239,6 @@ export function OfflineSearchClient({ agentId }: { agentId: string }) {
       </div>
     )
   }
-
-  const totalQueued = queuedReceipts.filter(r => r.status !== 'synced').length +
-                      queuedReadings.filter(r => r.status !== 'synced').length
 
   return (
     <div className="space-y-6 pb-20">

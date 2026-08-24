@@ -4,7 +4,7 @@ import { db } from "@/lib/db"
 import { customer, receipt, waterScheme, branch } from "@/lib/db/schema"
 import { requireUser } from "@/lib/session"
 import { writeAudit } from "@/lib/audit"
-import { and, desc, eq, ilike, or, sql, getTableColumns, gte, lte } from "drizzle-orm"
+import { and, desc, eq, ilike, or, sql, getTableColumns, gte, lte, inArray } from "drizzle-orm"
 import { randomUUID } from "crypto"
 import { revalidatePath } from "next/cache"
 import * as XLSX from "xlsx"
@@ -15,7 +15,8 @@ import {
   canCreateCustomer,
   canEditCustomer,
   canViewReports,
-  canIssueReceipt
+  canIssueReceipt,
+  canViewAllData
 } from "@/lib/permissions"
 import { applyCustomerScope, applyReceiptScope, validateWriteScope } from "@/lib/scopes"
 import { hasPermission } from "@/lib/iam"
@@ -445,9 +446,24 @@ export async function listActiveWaterSchemesForPicker() {
   const current = await requireUser()
   if (!canIssueReceipt(current) && !canCreateCustomer(current)) throw new Error("Forbidden")
 
+  const conditions = [eq(waterScheme.active, true)]
+
+  if (!canViewAllData(current) && (current.clusterId || current.branchId || current.schemeId)) {
+    if (current.schemeId) {
+      conditions.push(eq(waterScheme.id, current.schemeId))
+    } else if (current.branchId) {
+      conditions.push(eq(waterScheme.branchId, current.branchId))
+    } else if (current.clusterId) {
+      conditions.push(inArray(
+        waterScheme.branchId,
+        db.select({ id: branch.id }).from(branch).where(eq(branch.clusterId, current.clusterId))
+      ))
+    }
+  }
+
   return db
     .select({ id: waterScheme.id, name: waterScheme.name })
     .from(waterScheme)
-    .where(eq(waterScheme.active, true))
+    .where(and(...conditions))
     .orderBy(waterScheme.name)
 }

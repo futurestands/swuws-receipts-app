@@ -4,6 +4,16 @@ import { isNative } from '../mobile-hardware';
 
 const DB_NAME = 'swuws_offline_cache';
 
+export function safeId() {
+  if (typeof window !== 'undefined' && window.crypto?.randomUUID) {
+    return window.crypto.randomUUID()
+  }
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+    const r = Math.random() * 16 | 0
+    return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16)
+  })
+}
+
 class SQLiteService {
   private sqlite: SQLiteConnection = new SQLiteConnection(CapacitorSQLite);
   private db: SQLiteDBConnection | null = null;
@@ -16,7 +26,7 @@ class SQLiteService {
       await this.db.open();
 
       // Define Schema (Phase 1, 2 & 3)
-      const schema = `
+      await this.db.execute(`
         CREATE TABLE IF NOT EXISTS local_customers (
           id TEXT PRIMARY KEY,
           customerAccount TEXT,
@@ -27,8 +37,9 @@ class SQLiteService {
           category TEXT,
           active INTEGER,
           updatedAt TEXT
-        );
+        );`);
 
+      await this.db.execute(`
         CREATE TABLE IF NOT EXISTS local_billing_records (
           id TEXT PRIMARY KEY,
           customerId TEXT,
@@ -38,15 +49,17 @@ class SQLiteService {
           status TEXT,
           billingPeriodId TEXT,
           FOREIGN KEY(customerId) REFERENCES local_customers(id)
-        );
+        );`);
 
+      await this.db.execute(`
         CREATE TABLE IF NOT EXISTS sync_meta (
           deviceId TEXT PRIMARY KEY,
           lastSuccessfulPullAt TEXT,
           scopedAgentId TEXT,
           activePeriodId TEXT
-        );
+        );`);
 
+      await this.db.execute(`
         CREATE TABLE IF NOT EXISTS local_receipt_queue (
           id TEXT PRIMARY KEY,
           customerId TEXT,
@@ -61,8 +74,9 @@ class SQLiteService {
           serverReceiptId TEXT,
           error TEXT,
           createdAt TEXT DEFAULT CURRENT_TIMESTAMP
-        );
+        );`);
 
+      await this.db.execute(`
         CREATE TABLE IF NOT EXISTS local_meter_readings (
           id TEXT PRIMARY KEY,
           customerId TEXT,
@@ -74,8 +88,9 @@ class SQLiteService {
           status TEXT DEFAULT 'queued',
           error TEXT,
           createdAt TEXT DEFAULT CURRENT_TIMESTAMP
-        );
+        );`);
 
+      await this.db.execute(`
         CREATE TABLE IF NOT EXISTS printer_settings (
           id INTEGER PRIMARY KEY CHECK (id = 1),
           type TEXT DEFAULT 'auto',
@@ -83,8 +98,9 @@ class SQLiteService {
           deviceName TEXT,
           paperWidth TEXT DEFAULT '58mm',
           networkIp TEXT
-        );
+        );`);
 
+      await this.db.execute(`
         CREATE TABLE IF NOT EXISTS local_print_logs (
           id TEXT PRIMARY KEY,
           receiptId TEXT,
@@ -92,8 +108,9 @@ class SQLiteService {
           status TEXT, -- 'success', 'failed'
           error TEXT,
           createdAt TEXT DEFAULT CURRENT_TIMESTAMP
-        );
+        );`);
 
+      await this.db.execute(`
         CREATE TABLE IF NOT EXISTS local_sync_logs (
           id TEXT PRIMARY KEY,
           action TEXT, -- 'pull', 'push'
@@ -101,18 +118,16 @@ class SQLiteService {
           details TEXT, -- JSON string
           error TEXT,
           createdAt TEXT DEFAULT CURRENT_TIMESTAMP
-        );
+        );`);
 
+      await this.db.execute(`
         CREATE TABLE IF NOT EXISTS local_notifications (
           id TEXT PRIMARY KEY,
           title TEXT,
           message TEXT,
           read INTEGER DEFAULT 0,
           createdAt TEXT DEFAULT CURRENT_TIMESTAMP
-        );
-      `;
-
-      await this.db.execute(schema);
+        );`);
     } catch (err) {
       console.error('SQLite initialization failed', err);
     }
@@ -210,7 +225,7 @@ class SQLiteService {
     paymentDate: string;
   }): Promise<void> {
     if (!this.db) return;
-    const idempotencyKey = window.crypto.randomUUID();
+    const idempotencyKey = safeId();
     await this.db.run(
       `INSERT INTO local_receipt_queue (id, customerId, billingRecordId, amount, paymentMethod, paymentReference, notes, paymentDate, idempotencyKey)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -253,7 +268,7 @@ class SQLiteService {
     notes?: string;
   }): Promise<void> {
     if (!this.db) return;
-    const idempotencyKey = window.crypto.randomUUID();
+    const idempotencyKey = safeId();
     await this.db.run(
       `INSERT INTO local_meter_readings (id, customerId, billingPeriodId, previousReading, currentReading, notes, idempotencyKey)
        VALUES (?, ?, ?, ?, ?, ?, ?)`,
@@ -302,7 +317,7 @@ class SQLiteService {
 
   async logPrint(data: { receiptId: string, printerType: string, status: 'success' | 'failed', error?: string }) {
     if (!this.db) return;
-    const id = window.crypto.randomUUID();
+    const id = safeId();
     await this.db.run(
       `INSERT INTO local_print_logs (id, receiptId, printerType, status, error) VALUES (?, ?, ?, ?, ?)`,
       [id, data.receiptId, data.printerType, data.status, data.error || null]
@@ -317,7 +332,7 @@ class SQLiteService {
 
   async logSync(data: { action: 'pull' | 'push', status: 'success' | 'failed' | 'partial', details?: any, error?: string }) {
     if (!this.db) return;
-    const id = window.crypto.randomUUID();
+    const id = safeId();
     await this.db.run(
       `INSERT INTO local_sync_logs (id, action, status, details, error) VALUES (?, ?, ?, ?, ?)`,
       [id, data.action, data.status, data.details ? JSON.stringify(data.details) : null, data.error || null]
@@ -332,7 +347,7 @@ class SQLiteService {
 
   async addNotification(data: { title: string, message: string }) {
     if (!this.db) return;
-    const id = window.crypto.randomUUID();
+    const id = safeId();
     await this.db.run(
       `INSERT INTO local_notifications (id, title, message) VALUES (?, ?, ?)`,
       [id, data.title, data.message]

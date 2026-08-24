@@ -3,6 +3,7 @@
 import { db } from "@/lib/db"
 import {
   dailyCollectionRecord,
+  dailyCollectionImport,
   reconciliationApproval,
   reconciliationException,
   user as userTable,
@@ -84,6 +85,18 @@ export async function submitForReview(batchId: string, comments?: string) {
 export async function approveBatch(batchId: string, comments?: string) {
   const current = await requireUser()
   if (!await hasPermission(current, "reconciliation.approve")) throw new Error("Forbidden")
+
+  // Load Batch Metadata
+  const [batch] = await db
+    .select({ id: dailyCollectionImport.id, uploadedById: dailyCollectionImport.uploadedById })
+    .from(dailyCollectionImport)
+    .where(eq(dailyCollectionImport.id, batchId))
+    .limit(1)
+
+  if (!batch) throw new Error("Batch not found")
+  if (current.id === batch.uploadedById) {
+    throw new Error("You cannot approve a batch you submitted")
+  }
 
   // 1. All critical exceptions for this batch must be resolved
   const [critical] = await db

@@ -48,19 +48,6 @@ export async function createReceipt(input: CreateReceiptInput & { idempotencyKey
   const current = await requireUser()
   if (!canIssueReceipt(current)) throw new Error("Forbidden")
 
-  // 0. Idempotency Guard (Check if this receipt already exists)
-  if (input.idempotencyKey) {
-    const [existing] = await db
-      .select({ id: receipt.id, receiptNumber: receipt.receiptNumber })
-      .from(receipt)
-      .where(eq(receipt.idempotencyKey, input.idempotencyKey))
-      .limit(1)
-
-    if (existing) {
-      return { ok: true as const, receipt: existing }
-    }
-  }
-
   // Organizational Scope Validation:
   // Ensure the user is issuing a receipt for their assigned Area (Branch).
   if (!(await validateWriteScope(current, "receipts.create", { branchId: input.branchId }))) {
@@ -96,6 +83,19 @@ export async function createReceipt(input: CreateReceiptInput & { idempotencyKey
 
   try {
     const row = await db.transaction(async (tx) => {
+      // 0. Idempotency Guard (Check if this receipt already exists)
+      if (input.idempotencyKey) {
+        const [existing] = await tx
+          .select()
+          .from(receipt)
+          .where(eq(receipt.idempotencyKey, input.idempotencyKey))
+          .limit(1)
+
+        if (existing) {
+          return existing
+        }
+      }
+
       let periodName: string | null = null
       let schemeName: string | null = null
       let targetSchemeId: string | null = data.schemeId || null
@@ -630,7 +630,7 @@ export async function listActiveBranches() {
   const current = await requireUser()
   const conditions = [eq(branchTable.active, true)]
 
-  if (current.role !== ROLES.SYSTEM_ADMIN && (current.clusterId || current.branchId || current.schemeId)) {
+  if (!canViewAllData(current) && (current.clusterId || current.branchId || current.schemeId)) {
     if (current.branchId) {
       conditions.push(eq(branchTable.id, current.branchId))
     } else if (current.clusterId) {
@@ -687,6 +687,7 @@ export async function recordReceiptPrint(receiptId: string) {
       entityId: receiptId,
       details: { warning: "Excessive printing attempt", currentCount },
     })
+    return { ok: false, error: "Rate limit exceeded. Please wait before reprinting." }
   }
 
   const h = await headers()
@@ -821,6 +822,8 @@ export async function requestReceiptVoid(receiptId: string, reason: string) {
         },
         tx,
       )
+
+      await tx.update(receipt).set({ reconciliationStatus: 'void' }).where(eq(receipt.id, receiptId))
     })
 
     logFinancial("Receipt Voided (Reversed)", {

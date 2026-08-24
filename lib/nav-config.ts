@@ -9,7 +9,8 @@ import {
   canViewCrm,
   canViewBilling,
   canViewMeterReadings,
-  canViewBillingExceptions
+  canViewBillingExceptions,
+  hasPerm
 } from "@/lib/permissions"
 import type { UserPermissionsContext } from "@/lib/permissions"
 import { ROLES } from "@/lib/permissions/roles"
@@ -56,7 +57,7 @@ export function getNavSections(current: UserPermissionsContext): NavSection[] {
   if (canUploadBilling(current)) {
     const finance: NavItem[] = []
 
-    if (canViewBilling(current) || current.permissions?.includes("billing.import")) {
+    if (canViewBilling(current) || hasPerm(current, "billing.import")) {
        finance.push({ href: "/dashboard/billing", label: "Billing", icon: "Wallet", activeMatch: "/dashboard/billing" })
     }
 

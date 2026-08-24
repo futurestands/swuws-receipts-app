@@ -4,7 +4,7 @@ import { db } from "@/lib/db"
 import { orgSettings, branch, paymentMethod, waterScheme, cluster, notification, user, type EditableFields } from "@/lib/db/schema"
 import { getCurrentUser, requireUser } from "@/lib/session"
 import { writeAudit } from "@/lib/audit"
-import { eq, inArray } from "drizzle-orm"
+import { eq, inArray, and } from "drizzle-orm"
 import { put } from "@vercel/blob"
 import { revalidatePath, unstable_cache } from "next/cache"
 import { randomUUID } from "crypto"
@@ -17,7 +17,8 @@ import {
   canConfigureSystem,
   canManageAreas,
   canManageSchemes,
-  canAccessAdminConsole
+  canAccessAdminConsole,
+  canViewAllData
 } from "@/lib/permissions"
 
 const DEFAULT_EDITABLE: EditableFields = {
@@ -76,9 +77,25 @@ export async function updateEditableFields(fields: EditableFields) {
 export async function uploadLogo(formData: FormData) {
   const current = await requireUser(); if (!canConfigureSystem(current)) throw new Error("Forbidden")
   try {
-    const file = formData.get("logo") as File; if (!file) return { ok: false as const, error: "No file" }
+    const file = formData.get("logo") as File; if (!file || file.size === 0) return { ok: false as const, error: "No file provided" }
+
+    if (file.size > 5 * 1024 * 1024) return { ok: false as const, error: "Logo must be under 5MB" }
+
+    const allowedTypes: Record<string, boolean> = { "image/png": true, "image/jpeg": true, "image/jpg": true }
+    if (!allowedTypes[file.type]) {
+      return { ok: false as const, error: "Only PNG and JPG images are allowed" }
+    }
+
+    // Magic-byte verification
+    const buffer = Buffer.from(await file.arrayBuffer())
+    const isPng = buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4E && buffer[3] === 0x47
+    const isJpeg = buffer[0] === 0xFF && buffer[1] === 0xD8 && buffer[2] === 0xFF
+
+    if (!isPng && !isJpeg) {
+      return { ok: false as const, error: "Invalid image content. File is corrupted or spoofed." }
+    }
+
     const token = process.env.BLOB_READ_WRITE_TOKEN
-    const arrayBuffer = await file.arrayBuffer(); const buffer = Buffer.from(arrayBuffer)
     const blob = await put(`logos/${Date.now()}-${file.name}`, buffer, { access: "public", token })
     await db.update(orgSettings).set({ logoUrl: blob.url, updatedAt: new Date() }).where(eq(orgSettings.id, 1))
     revalidatePath("/", "layout"); return { ok: true as const, url: blob.url }
@@ -89,7 +106,7 @@ export async function listClusters() {
   const current = await requireUser(); if (!canAccessAdminConsole(current)) throw new Error("Forbidden")
   const baseQuery = db.select().from(cluster).orderBy(cluster.name)
 
-  if (current.role === ROLES.SYSTEM_ADMIN || (!current.clusterId && !current.branchId && !current.schemeId)) {
+  if (canViewAllData(current) || (!current.clusterId && !current.branchId && !current.schemeId)) {
     return baseQuery
   }
 
@@ -99,9 +116,25 @@ export async function listClusters() {
 export async function listBranches() {
   const current = await requireUser(); if (!canAccessAdminConsole(current)) throw new Error("Forbidden")
 
-  // Requirement: Allow viewing all global branches in the Admin Console,
-  // but write access is restricted elsewhere.
-  return db.select().from(branch).orderBy(branch.name)
+  const baseQuery = db.select().from(branch).orderBy(branch.name)
+
+  // HIERARCHY BYPASS: Global Administrators or Head Office tiers see everything.
+  if (canViewAllData(current) || (!current.clusterId && !current.branchId && !current.schemeId)) {
+    return baseQuery
+  }
+
+  // HIERARCHY ENFORCEMENT: Scoped users are trapped in their assigned territory.
+  const conditions = []
+  if (current.branchId) {
+    conditions.push(eq(branch.id, current.branchId))
+  } else if (current.clusterId) {
+    conditions.push(eq(branch.clusterId, current.clusterId))
+  } else {
+    // Safety fallback: if assigned to a scheme only, they shouldn't be selecting branches.
+    return []
+  }
+
+  return baseQuery.where(and(...conditions))
 }
 
 export async function createBranch(input: { name: string, code: string }) {
@@ -144,9 +177,27 @@ export async function setPaymentMethodActive(id: string, active: boolean) {
 export async function listWaterSchemes() {
   const current = await requireUser(); if (!canAccessAdminConsole(current)) throw new Error("Forbidden")
 
-  // Requirement: Allow viewing all global schemes in the Admin Console,
-  // but write access is restricted elsewhere.
-  return db.select().from(waterScheme).orderBy(waterScheme.name)
+  const baseQuery = db.select().from(waterScheme).orderBy(waterScheme.name)
+
+  // HIERARCHY BYPASS: Global Administrators or Head Office tiers see everything.
+  if (canViewAllData(current) || (!current.clusterId && !current.branchId && !current.schemeId)) {
+    return baseQuery
+  }
+
+  // HIERARCHY ENFORCEMENT: Scoped users are trapped in their assigned territory.
+  const conditions = []
+  if (current.schemeId) {
+    conditions.push(eq(waterScheme.id, current.schemeId))
+  } else if (current.branchId) {
+    conditions.push(eq(waterScheme.branchId, current.branchId))
+  } else if (current.clusterId) {
+    conditions.push(inArray(
+      waterScheme.branchId,
+      db.select({ id: branch.id }).from(branch).where(eq(branch.clusterId, current.clusterId))
+    ))
+  }
+
+  return baseQuery.where(and(...conditions))
 }
 
 export async function createWaterScheme(input: any) {

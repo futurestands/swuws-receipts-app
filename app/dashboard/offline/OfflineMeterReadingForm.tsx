@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { sqliteService } from "@/lib/offline/sqlite-service"
+import { sqliteService, safeId } from "@/lib/offline/sqlite-service"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -57,7 +57,7 @@ export function OfflineMeterReadingForm({
 
     setPending(true)
     try {
-      const id = window.crypto.randomUUID()
+      const id = safeId()
       await sqliteService.enqueueMeterReading({
         id,
         customerId,

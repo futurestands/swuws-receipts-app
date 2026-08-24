@@ -53,7 +53,7 @@ export function SmsGatewayPanel({ settings }: { settings: SmsGatewaySettings }) 
       if (result.ok) {
         toast.success("Test message sent successfully")
       } else {
-        toast.error("Test send failed -- check your credentials and try again")
+        toast.error("Test send failed &mdash; check your credentials and try again")
       }
     })
   }
@@ -67,7 +67,7 @@ export function SmsGatewayPanel({ settings }: { settings: SmsGatewaySettings }) 
         </div>
         <CardDescription>
           Manage your SMS provider subscription here. Once configured, bulk SMS and billing notifications
-          send for real -- no code changes or redeploys needed to switch providers or update credentials.
+          send for real &mdash; no code changes or redeploys needed to switch providers or update credentials.
         </CardDescription>
       </CardHeader>
       <form onSubmit={handleSave}>
@@ -76,7 +76,7 @@ export function SmsGatewayPanel({ settings }: { settings: SmsGatewaySettings }) 
             <div className="space-y-0.5">
               <Label>Gateway active</Label>
               <p className="text-xs text-muted-foreground">
-                When off, messages are logged as simulated only -- nothing actually sends.
+                When off, messages are logged as simulated only &mdash; nothing actually sends.
               </p>
             </div>
             <Switch checked={active} onCheckedChange={setActive} />
@@ -88,7 +88,7 @@ export function SmsGatewayPanel({ settings }: { settings: SmsGatewaySettings }) 
               <Select value={provider} onValueChange={v => setProvider(v ?? "africastalking")}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="africastalking">Africa's Talking</SelectItem>
+                  <SelectItem value="africastalking">Africa&apos;s Talking</SelectItem>
                 </SelectContent>
               </Select>
             </div>

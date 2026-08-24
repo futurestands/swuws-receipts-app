@@ -19,7 +19,7 @@ export type SessionUser = {
   schemeId: string | null
   iamRoleId: string | null
   roleLevel: number
-  permissions: string[]
+  permissions: Array<{ code: string; scope: string }>
   grants: PermissionGrant[]
 }
 
@@ -57,7 +57,7 @@ export const getCurrentUser = cache(async (): Promise<SessionUser | null> => {
     // Fetch effective permissions, scopes, and role level
     const grants = row.iamRoleId ? await getEffectivePermissions(row.iamRoleId) : []
     const roleLevel = row.iamRoleId ? await getOwnRoleLevel(row.iamRoleId) : 0
-    const permissions = grants.map(g => g.code)
+    const permissions = grants.map(g => ({ code: g.code, scope: g.scope }))
 
     return {
       ...row,

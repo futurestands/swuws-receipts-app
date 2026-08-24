@@ -20,6 +20,7 @@ import { randomUUID } from "crypto"
 import { createNotification } from "./notifications"
 import { revalidatePath } from "next/cache"
 import { logEvent, logFinancial, logSecurity } from "@/lib/logger"
+import { applyReceiptScope } from "@/lib/scopes"
 
 /**
  * AUTOMATED RECONCILIATION ENGINE (Phase 3A)
@@ -76,7 +77,9 @@ export async function runReconciliation(batchId: string) {
     .where(and(
       gte(receipt.paymentDate, windowStart),
       lte(receipt.paymentDate, windowEnd),
-      eq(receipt.reconciliationStatus, 'pending')
+      eq(receipt.reconciliationStatus, 'pending'),
+      ne(receipt.reconciliationStatus, 'void'),
+      applyReceiptScope(current)
     ))
 
   const matches: {
@@ -346,7 +349,10 @@ export async function getExceptions(params: {
   const [totalResult] = await db
     .select({ count: count() })
     .from(reconciliationException)
-    .where(and(...conditions))
+    .leftJoin(receipt, eq(reconciliationException.receiptId, receipt.id))
+    .leftJoin(dailyCollectionRecord, eq(reconciliationException.dailyCollectionRecordId, dailyCollectionRecord.id))
+    .leftJoin(dailyCollectionImport, eq(dailyCollectionRecord.batchId, dailyCollectionImport.id))
+    .where(and(...conditions, applyReceiptScope(current)))
 
   const exceptions = await db
     .select({
@@ -364,7 +370,8 @@ export async function getExceptions(params: {
     .from(reconciliationException)
     .leftJoin(receipt, eq(reconciliationException.receiptId, receipt.id))
     .leftJoin(dailyCollectionRecord, eq(reconciliationException.dailyCollectionRecordId, dailyCollectionRecord.id))
-    .where(and(...conditions))
+    .leftJoin(dailyCollectionImport, eq(dailyCollectionRecord.batchId, dailyCollectionImport.id))
+    .where(and(...conditions, applyReceiptScope(current)))
     .limit(params.limit)
     .offset(offset)
     .orderBy(desc(reconciliationException.createdAt))

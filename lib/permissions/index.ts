@@ -18,8 +18,26 @@ export interface UserPermissionsContext {
   schemeId?: string | null
   iamRoleId?: string | null
   roleLevel?: number
-  permissions?: string[]
+  permissions?: Array<{ code: string; scope: string }> | string[]
   grants?: PermissionGrant[]
+}
+
+/**
+ * Robust check for a permission code that handles both the legacy
+ * string[] format and the new v1.2 object[] format.
+ */
+export function hasPerm(user: UserPermissionsContext, code: string): boolean {
+  const perms = user.permissions
+  if (!perms) return false
+
+  for (const p of perms) {
+    if (typeof p === "string") {
+      if (p === code) return true
+    } else if (p && typeof p === "object" && "code" in p) {
+      if (p.code === code) return true
+    }
+  }
+  return false
 }
 
 // Helper to cast string role to Role type safely
@@ -35,7 +53,7 @@ export function canManageUsers(user: UserPermissionsContext) {
   return (
     user.role === ROLES.SYSTEM_ADMIN ||
     (user.roleLevel ?? 0) >= 10 ||
-    user.permissions?.includes("users.view")
+    hasPerm(user, "users.view")
   ) ?? false
 }
 
@@ -46,7 +64,7 @@ export function canDeleteUser(user: UserPermissionsContext) {
   return (
     user.role === ROLES.SYSTEM_ADMIN ||
     (user.roleLevel ?? 0) >= 10 ||
-    user.permissions?.includes("users.delete")
+    hasPerm(user, "users.delete")
   ) ?? false
 }
 
@@ -57,7 +75,7 @@ export function canEditUser(user: UserPermissionsContext) {
   return (
     user.role === ROLES.SYSTEM_ADMIN ||
     (user.roleLevel ?? 0) >= 10 ||
-    user.permissions?.includes("users.edit")
+    hasPerm(user, "users.edit")
   ) ?? false
 }
 
@@ -68,19 +86,40 @@ export function canAccessAdminConsole(user: UserPermissionsContext) {
   return (
     user.role === ROLES.SYSTEM_ADMIN ||
     (user.roleLevel ?? 0) >= 10 ||
-    user.permissions?.includes("users.view") ||
-    user.permissions?.includes("reports.view")
+    hasPerm(user, "users.view") ||
+    hasPerm(user, "reports.view")
   ) ?? false
 }
 
 /**
  * Global View: Who can see all data (receipts, customers) across the entire organization.
+ *
+ * HARD-LOCKED: System Administrators always see everything. Regional users (with branch/cluster assignments)
+ * are strictly restricted to their territory, even if they inherit global permissions.
+ * Head Office tiers (Level 8+) without regional assignments see all data.
  */
 export function canViewAllData(user: UserPermissionsContext) {
-  return (
-    user.role === ROLES.SYSTEM_ADMIN ||
-    (user.roleLevel ?? 0) >= 8 // Senior management / Head Office tier
-  ) ?? false
+  // SYSTEM ADMIN is the only role that can override regional assignments.
+  if (user.role === ROLES.SYSTEM_ADMIN) return true
+
+  // If they are assigned to a specific region, they are NOT global viewers.
+  // This is the "Force-Cap" at the engine level.
+  if (user.clusterId || user.branchId || user.schemeId) return false
+
+  if ((user.roleLevel ?? 0) >= 8) return true
+
+  const perms = user.permissions
+  if (!perms) return false
+
+  // Specifically only allow 'global' viewing if they have core management permissions with global scope.
+  const globalRequiredPerms = ["reports.view", "dashboard.view", "reconciliation.view", "system.audit.view"]
+
+  for (const p of perms) {
+    if (p && typeof p === "object" && "scope" in p && p.scope === "global") {
+      if (globalRequiredPerms.includes(p.code)) return true
+    }
+  }
+  return false
 }
 
 /**
@@ -90,7 +129,7 @@ export function canIssueReceipt(user: UserPermissionsContext) {
   return (
     user.role === ROLES.SYSTEM_ADMIN ||
     (user.roleLevel ?? 0) >= 10 ||
-    user.permissions?.includes("receipts.create")
+    hasPerm(user, "receipts.create")
   ) ?? false
 }
 
@@ -101,7 +140,7 @@ export function canManageCollectionPeriods(user: UserPermissionsContext) {
   return (
     user.role === ROLES.SYSTEM_ADMIN ||
     (user.roleLevel ?? 0) >= 10 ||
-    user.permissions?.includes("collection.view")
+    hasPerm(user, "collection.view")
   ) ?? false
 }
 
@@ -112,7 +151,7 @@ export function canActivateCollectionPeriod(user: UserPermissionsContext) {
   return (
     user.role === ROLES.SYSTEM_ADMIN ||
     (user.roleLevel ?? 0) >= 10 ||
-    user.permissions?.includes("collection.activate")
+    hasPerm(user, "collection.activate")
   ) ?? false
 }
 
@@ -123,7 +162,7 @@ export function canArchiveCollectionPeriod(user: UserPermissionsContext) {
   return (
     user.role === ROLES.SYSTEM_ADMIN ||
     (user.roleLevel ?? 0) >= 10 ||
-    user.permissions?.includes("collection.archive")
+    hasPerm(user, "collection.archive")
   ) ?? false
 }
 
@@ -134,7 +173,7 @@ export function canUploadBilling(user: UserPermissionsContext) {
   return (
     user.role === ROLES.SYSTEM_ADMIN ||
     (user.roleLevel ?? 0) >= 10 ||
-    user.permissions?.includes("billing.import")
+    hasPerm(user, "billing.import")
   ) ?? false
 }
 
@@ -145,7 +184,7 @@ export function canDeleteBilling(user: UserPermissionsContext) {
   return (
     user.role === ROLES.SYSTEM_ADMIN ||
     (user.roleLevel ?? 0) >= 10 ||
-    user.permissions?.includes("billing.delete")
+    hasPerm(user, "billing.delete")
   ) ?? false
 }
 
@@ -156,7 +195,7 @@ export function canCreateCustomer(user: UserPermissionsContext) {
   return (
     user.role === ROLES.SYSTEM_ADMIN ||
     (user.roleLevel ?? 0) >= 10 ||
-    user.permissions?.includes("customers.create")
+    hasPerm(user, "customers.create")
   ) ?? false
 }
 
@@ -167,7 +206,7 @@ export function canEditCustomer(user: UserPermissionsContext) {
   return (
     user.role === ROLES.SYSTEM_ADMIN ||
     (user.roleLevel ?? 0) >= 10 ||
-    user.permissions?.includes("customers.edit")
+    hasPerm(user, "customers.edit")
   ) ?? false
 }
 
@@ -178,7 +217,7 @@ export function canUploadCustomers(user: UserPermissionsContext) {
   return (
     user.role === ROLES.SYSTEM_ADMIN ||
     (user.roleLevel ?? 0) >= 10 ||
-    user.permissions?.includes("customers.import")
+    hasPerm(user, "customers.import")
   ) ?? false
 }
 
@@ -189,7 +228,7 @@ export function canManageSchemes(user: UserPermissionsContext) {
   return (
     user.role === ROLES.SYSTEM_ADMIN ||
     (user.roleLevel ?? 0) >= 10 ||
-    user.permissions?.includes("system.settings.manage")
+    hasPerm(user, "system.settings.manage")
   ) ?? false
 }
 
@@ -200,7 +239,7 @@ export function canManageAreas(user: UserPermissionsContext) {
   return (
     user.role === ROLES.SYSTEM_ADMIN ||
     (user.roleLevel ?? 0) >= 10 ||
-    user.permissions?.includes("system.settings.manage")
+    hasPerm(user, "system.settings.manage")
   ) ?? false
 }
 
@@ -211,7 +250,7 @@ export function canManageClusters(user: UserPermissionsContext) {
   return (
     user.role === ROLES.SYSTEM_ADMIN ||
     (user.roleLevel ?? 0) >= 10 ||
-    user.permissions?.includes("system.settings.manage")
+    hasPerm(user, "system.settings.manage")
   ) ?? false
 }
 
@@ -222,7 +261,7 @@ export function canViewBilling(user: UserPermissionsContext) {
   return (
     user.role === ROLES.SYSTEM_ADMIN ||
     (user.roleLevel ?? 0) >= 10 ||
-    user.permissions?.includes("billing.view")
+    hasPerm(user, "billing.view")
   ) ?? false
 }
 
@@ -233,7 +272,7 @@ export function canViewMeterReadings(user: UserPermissionsContext) {
   return (
     user.role === ROLES.SYSTEM_ADMIN ||
     (user.roleLevel ?? 0) >= 10 ||
-    user.permissions?.includes("meter_readings.view")
+    hasPerm(user, "meter_readings.view")
   ) ?? false
 }
 
@@ -244,7 +283,7 @@ export function canViewBillingExceptions(user: UserPermissionsContext) {
   return (
     user.role === ROLES.SYSTEM_ADMIN ||
     (user.roleLevel ?? 0) >= 10 ||
-    user.permissions?.includes("billing.exceptions.view")
+    hasPerm(user, "billing.exceptions.view")
   ) ?? false
 }
 
@@ -255,7 +294,7 @@ export function canViewControlCenter(user: UserPermissionsContext) {
   return (
     user.role === ROLES.SYSTEM_ADMIN ||
     (user.roleLevel ?? 0) >= 10 ||
-    user.permissions?.includes("reconciliation.view")
+    hasPerm(user, "reconciliation.view")
   ) ?? false
 }
 
@@ -266,8 +305,8 @@ export function canViewReports(user: UserPermissionsContext) {
   return (
     user.role === ROLES.SYSTEM_ADMIN ||
     (user.roleLevel ?? 0) >= 10 ||
-    user.permissions?.includes("reports.view") ||
-    user.permissions?.includes("dashboard.view")
+    hasPerm(user, "reports.view") ||
+    hasPerm(user, "dashboard.view")
   ) ?? false
 }
 
@@ -278,7 +317,7 @@ export function canViewExecutiveReports(user: UserPermissionsContext) {
   return (
     user.role === ROLES.SYSTEM_ADMIN ||
     (user.roleLevel ?? 0) >= 10 ||
-    user.permissions?.includes("reports.executive")
+    hasPerm(user, "reports.executive")
   ) ?? false
 }
 
@@ -289,7 +328,7 @@ export function canExportReports(user: UserPermissionsContext) {
   return (
     user.role === ROLES.SYSTEM_ADMIN ||
     (user.roleLevel ?? 0) >= 10 ||
-    user.permissions?.includes("reports.export")
+    hasPerm(user, "reports.export")
   ) ?? false
 }
 
@@ -308,7 +347,7 @@ export function canViewReceipts(user: UserPermissionsContext) {
   return (
     user.role === ROLES.SYSTEM_ADMIN ||
     (user.roleLevel ?? 0) >= 10 ||
-    user.permissions?.includes("receipts.view")
+    hasPerm(user, "receipts.view")
   ) ?? false
 }
 
@@ -319,7 +358,7 @@ export function canPrintReceipt(user: UserPermissionsContext) {
   return (
     user.role === ROLES.SYSTEM_ADMIN ||
     (user.roleLevel ?? 0) >= 10 ||
-    user.permissions?.includes("receipts.print")
+    hasPerm(user, "receipts.print")
   ) ?? false
 }
 
@@ -330,7 +369,7 @@ export function canReprintReceipt(user: UserPermissionsContext) {
   return (
     user.role === ROLES.SYSTEM_ADMIN ||
     (user.roleLevel ?? 0) >= 10 ||
-    user.permissions?.includes("receipts.reprint")
+    hasPerm(user, "receipts.reprint")
   ) ?? false
 }
 
@@ -389,7 +428,7 @@ export function canViewCrm(user: UserPermissionsContext) {
   return (
     user.role === ROLES.SYSTEM_ADMIN ||
     (user.roleLevel ?? 0) >= 10 ||
-    user.permissions?.includes("crm.view")
+    hasPerm(user, "crm.view")
   ) ?? false
 }
 
@@ -400,7 +439,7 @@ export function canManageComplaints(user: UserPermissionsContext) {
   return (
     user.role === ROLES.SYSTEM_ADMIN ||
     (user.roleLevel ?? 0) >= 10 ||
-    user.permissions?.includes("crm.complaints.manage")
+    hasPerm(user, "crm.complaints.manage")
   ) ?? false
 }
 
@@ -411,7 +450,7 @@ export function canAssignComplaints(user: UserPermissionsContext) {
   return (
     user.role === ROLES.SYSTEM_ADMIN ||
     (user.roleLevel ?? 0) >= 10 ||
-    user.permissions?.includes("crm.complaints.assign")
+    hasPerm(user, "crm.complaints.assign")
   ) ?? false
 }
 
@@ -422,7 +461,7 @@ export function canSendBulkSms(user: UserPermissionsContext) {
   return (
     user.role === ROLES.SYSTEM_ADMIN ||
     (user.roleLevel ?? 0) >= 10 ||
-    user.permissions?.includes("crm.sms.send")
+    hasPerm(user, "crm.sms.send")
   ) ?? false
 }
 
@@ -433,6 +472,6 @@ export function canConfigureCrm(user: UserPermissionsContext) {
   return (
     user.role === ROLES.SYSTEM_ADMIN ||
     (user.roleLevel ?? 0) >= 10 ||
-    user.permissions?.includes("crm.settings.manage")
+    hasPerm(user, "crm.settings.manage")
   ) ?? false
 }

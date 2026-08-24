@@ -19,7 +19,8 @@ import {
   canManageIAM,
   canEditUser,
   canDeleteUser,
-  canResetPasswords
+  canResetPasswords,
+  hasPerm
 } from "@/lib/permissions"
 
 export default async function AdminPage() {
@@ -44,7 +45,7 @@ export default async function AdminPage() {
   const canManageIAMVal = current ? canManageIAM(current) : false
   const canEditUserVal = current ? canEditUser(current) : false
   const canDeleteUserVal = current ? canDeleteUser(current) : false
-  const canCreateUserVal = current ? (current.permissions?.includes("users.create") || current.role === ROLES.SYSTEM_ADMIN) : false
+  const canCreateUserVal = current ? (hasPerm(current, "users.create") || current.role === ROLES.SYSTEM_ADMIN) : false
   const canResetPasswordVal = current ? canResetPasswords(current) : false
 
   const [agentsResult, auditLogs, stats, collections, printingStats, clusters, branches, methods, schemes, settings, smsGatewaySettings, periods, iamRoles, allPermissions, tariffs, templates] = await Promise.all([

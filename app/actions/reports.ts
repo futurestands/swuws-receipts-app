@@ -335,30 +335,35 @@ export async function getDashboardStats(params: {
 
   // EXECUTE: Aggregate Daily Collections (ONLY for customers WITHOUT a current billing record or meter reading)
   // NOTE: If they HAVE a billing record or reading, their recovery is already captured via derived math.
-  const [dailyStats] = await db
-    .select({
-      totalCollected: sum(dailyCollectionRecord.amount),
-    })
-    .from(dailyCollectionRecord)
-    .innerJoin(dailyCollectionImport, eq(dailyCollectionRecord.batchId, dailyCollectionImport.id))
-    .innerJoin(customer, eq(dailyCollectionRecord.accountNumber, customer.customerAccount))
-    .leftJoin(waterScheme, eq(customer.waterSchemeId, waterScheme.id))
-    .leftJoin(branch, eq(waterScheme.branchId, branch.id))
-    .where(and(
-      ...verifiedConditions,
-      activePeriodId && activePeriodId !== 'all' ? eq(dailyCollectionImport.billingPeriodId, activePeriodId) : sql`true`,
-      // CRITICAL: Triple-Exclusion to prevent double-counting (Forensic Audit #1 Fix)
-      sql`NOT EXISTS (
-        SELECT 1 FROM billing_record
-        WHERE "customerId" = ${customer.id}
-        AND "billingPeriodId" = ${activePeriodId || ''}
-      )`,
-      sql`NOT EXISTS (
-        SELECT 1 FROM meter_reading
-        WHERE "customerId" = ${customer.id}
-        AND "billingPeriodId" = ${activePeriodId || ''}
-      )`
-    ))
+  let dailyOrphanCollected = 0
+  if (activePeriodId) {
+    const [dailyStats] = await db
+      .select({
+        totalCollected: sum(dailyCollectionRecord.amount),
+      })
+      .from(dailyCollectionRecord)
+      .innerJoin(dailyCollectionImport, eq(dailyCollectionRecord.batchId, dailyCollectionImport.id))
+      .innerJoin(customer, eq(dailyCollectionRecord.accountNumber, customer.customerAccount))
+      .leftJoin(waterScheme, eq(customer.waterSchemeId, waterScheme.id))
+      .leftJoin(branch, eq(waterScheme.branchId, branch.id))
+      .where(and(
+        ...verifiedConditions,
+        activePeriodId && activePeriodId !== 'all' ? eq(dailyCollectionImport.billingPeriodId, activePeriodId) : sql`true`,
+        // CRITICAL: Triple-Exclusion to prevent double-counting (Forensic Audit #1 Fix)
+        sql`NOT EXISTS (
+          SELECT 1 FROM billing_record
+          WHERE "customerId" = ${customer.id}
+          AND "billingPeriodId" = ${activePeriodId}
+        )`,
+        sql`NOT EXISTS (
+          SELECT 1 FROM meter_reading
+          WHERE "customerId" = ${customer.id}
+          AND "billingPeriodId" = ${activePeriodId}
+        )`
+      ))
+
+    dailyOrphanCollected = Number(dailyStats?.totalCollected || 0)
+  }
 
   // 4. OPERATIONAL CASH (Source: All Issued Receipts)
   const receiptConditions = []
@@ -401,8 +406,6 @@ export async function getDashboardStats(params: {
 
   // COMPREHENSIVE RECOVERY LOGIC (Arrears First):
   // Business Rule: Harmonize Monthly Imports, Field Meter Readings, and Daily Sync Orphans.
-
-  const dailyOrphanCollected = Number(dailyStats?.totalCollected || 0)
 
   // 1. Arrears Recovery
   const verifiedArrears =

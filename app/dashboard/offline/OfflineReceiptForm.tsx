@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { sqliteService } from "@/lib/offline/sqlite-service"
+import { sqliteService, safeId } from "@/lib/offline/sqlite-service"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -16,7 +16,6 @@ import {
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { toast } from "sonner"
 import { formatUGX } from "@/lib/format"
-import { randomUUID } from "crypto"
 
 export function OfflineReceiptForm({
   customerId,
@@ -47,7 +46,7 @@ export function OfflineReceiptForm({
 
     setPending(true)
     try {
-      const id = window.crypto.randomUUID()
+      const id = safeId()
       await sqliteService.enqueueReceipt({
         id,
         customerId,

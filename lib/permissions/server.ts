@@ -3,7 +3,7 @@ import { db } from "../db"
 import { iamRole } from "../db/schema"
 import { eq } from "drizzle-orm"
 import { Role, ROLE_RANK } from "./roles"
-import { UserPermissionsContext, getRole } from "./index"
+import { UserPermissionsContext, getRole, hasPerm } from "./index"
 import { getOwnRoleLevel } from "../iam"
 
 /**
@@ -16,8 +16,8 @@ import { getOwnRoleLevel } from "../iam"
  */
 export async function canCreateRole(currentUser: UserPermissionsContext, targetRoleCode: string) {
   const hasCreatePermission =
-    currentUser.permissions?.includes("roles.manage") ||
-    currentUser.permissions?.includes("users.create")
+    hasPerm(currentUser, "roles.manage") ||
+    hasPerm(currentUser, "users.create")
   if (!hasCreatePermission) return false
 
   const targetRank = ROLE_RANK[targetRoleCode as Role]

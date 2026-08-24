@@ -29,6 +29,7 @@ export async function getAgentOfflineData() {
       category: customer.category,
       active: customer.active,
       updatedAt: customer.updatedAt,
+      lastReading: customer.lastReading,
     })
     .from(customer)
     .where(customerScope)

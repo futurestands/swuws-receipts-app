@@ -15,19 +15,29 @@ export type { UserPermissionsContext }
  */
 
 function getScope(user: UserPermissionsContext, permissionCode: string): Scope | null {
-  const grant = user.grants?.find(g => g.code === permissionCode)
-  let scope = (grant?.scope as Scope) || null
+  const grant = user.permissions?.find((p: any) =>
+    typeof p === "object" ? p.code === permissionCode : p === permissionCode
+  )
+
+  let scope: Scope | null = null
+
+  if (typeof grant === "object" && grant !== null) {
+    scope = (grant as any).scope as Scope
+  } else if (typeof grant === "string") {
+    // Legacy fallback
+    const g = user.grants?.find(g => g.code === permissionCode)
+    scope = (g?.scope as Scope) || null
+  }
 
   // HIERARCHY OVERRIDE 1: Global Authority check
-  // ONLY grant "global" if explicitly assigned or if the user passes the formal permission check.
-  // Never infer seniority merely from the absence of organizational fields.
+  // If the user passes the 'Global' check, set the initial scope to global.
   if (canViewAllData(user)) {
-    return "global"
+    scope = "global"
   }
 
   // HIERARCHY OVERRIDE 2: Force-cap scope based on assigned hierarchy level
   // This ensures an Area Manager can never accidentally see "Global" data
-  // even if their permission was misconfigured in the DB.
+  // even if their permission was misconfigured in the DB or inherited from a parent role.
   if (scope === "global") {
      if (user.clusterId) scope = "cluster"
      else if (user.branchId) scope = "area"

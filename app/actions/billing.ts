@@ -54,7 +54,7 @@ export async function getAuthorizedSchemes() {
   const current = await requireUser()
   const conditions = [eq(waterScheme.active, true)]
 
-  if (current.role !== ROLES.SYSTEM_ADMIN && (current.clusterId || current.branchId || current.schemeId)) {
+  if (!canViewAllData(current) && (current.clusterId || current.branchId || current.schemeId)) {
     if (current.schemeId) {
       conditions.push(eq(waterScheme.id, current.schemeId))
     } else if (current.branchId) {
@@ -540,6 +540,13 @@ export async function importBilling(
 ): Promise<{ ok: true; imported: number; failed: number; report: string } | { ok: false; error: string }> {
   const current = await requireUser()
   if (!canUploadBilling(current)) throw new Error("Forbidden")
+
+  if (summary.schemeId !== "all") {
+    const [scheme] = await db.select({ branchId: waterScheme.branchId }).from(waterScheme).where(eq(waterScheme.id, summary.schemeId)).limit(1)
+    if (!scheme || !(await validateWriteScope(current, "billing.import", { branchId: scheme.branchId, schemeId: summary.schemeId }))) {
+      throw new Error("You are not authorized to import for this scheme")
+    }
+  }
 
   const validRows = summary.rows.filter((r) => r.valid)
   if (validRows.length === 0) return { ok: false, error: "No valid rows to import" }
@@ -1084,6 +1091,7 @@ export async function getBillingHistory(limit = 100) {
     .innerJoin(waterScheme, eq(billingRun.schemeId, waterScheme.id))
     .innerJoin(billingPeriod, eq(billingRun.billingPeriodId, billingPeriod.id))
     .innerJoin(userTable, eq(billingRun.uploadedById, userTable.id))
+    .where(applyBillingScope(current))
     .orderBy(desc(billingRun.uploadedAt))
     .limit(limit)
 }
@@ -1147,7 +1155,7 @@ export async function getBillingRunDetails(runId: string) {
     .innerJoin(waterScheme, eq(billingRun.schemeId, waterScheme.id))
     .innerJoin(billingPeriod, eq(billingRun.billingPeriodId, billingPeriod.id))
     .innerJoin(userTable, eq(billingRun.uploadedById, userTable.id))
-    .where(eq(billingRun.id, runId))
+    .where(and(eq(billingRun.id, runId), applyBillingScope(current)))
     .limit(1)
 
   if (!run) return null
@@ -1187,7 +1195,7 @@ export async function deleteBillingRun(runId: string) {
     })
     .from(billingRun)
     .innerJoin(billingPeriod, eq(billingRun.billingPeriodId, billingPeriod.id))
-    .where(eq(billingRun.id, runId))
+    .where(and(eq(billingRun.id, runId), applyBillingScope(current)))
     .limit(1)
 
   if (!run) throw new Error("Billing run not found")
@@ -1270,6 +1278,18 @@ export async function bulkDeleteBillingRuns(runIds: string[]) {
   const current = await requireUser()
   if (!canUploadBilling(current)) throw new Error("Forbidden")
   if (!runIds.length) return { ok: true }
+
+  // Scope Enforcement
+  const scope = applyBillingScope(current)
+  const accessibleRuns = await db
+    .select({ id: billingRun.id })
+    .from(billingRun)
+    .where(and(inArray(billingRun.id, runIds), scope))
+
+  const accessibleIds = accessibleRuns.map(r => r.id)
+  if (accessibleIds.length < runIds.length) {
+    throw new Error("You do not have permission to delete some of the selected runs")
+  }
 
   // FORENSIC AUDIT B2 FIX: Check for payment interference.
   const [interference] = await db
