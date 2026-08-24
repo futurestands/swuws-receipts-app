@@ -283,24 +283,25 @@ export async function getDashboardStats(params: {
         totalBilled: sum(meterReading.billedAmount),
         totalArrearsBilled: sum(meterReading.previousBalanceSnapshot),
         totalCurrentBilled: sum(meterReading.billedAmount),
-        // FIELD RECOVERY MATH (Forensic Audit #3 Fix)
-        // Arrears recovery = MIN(Starting Arrears, (Starting Demand - Current Balance))
-        verifiedArrears: sum(sql`
-          least(
-            greatest(0, coalesce(${meterReading.previousBalanceSnapshot}, 0)::numeric),
-            greatest(0, (coalesce(${meterReading.previousBalanceSnapshot}, 0)::numeric + coalesce(${meterReading.billedAmount}, 0)::numeric) - coalesce(${customer.accountBalance}, 0)::numeric)
-          )
-        `),
-        // Current recovery = (Starting Demand - Current Balance) - Arrears recovery
-        verifiedCurrent: sum(sql`
-          greatest(0,
-            greatest(0, (coalesce(${meterReading.previousBalanceSnapshot}, 0)::numeric + coalesce(${meterReading.billedAmount}, 0)::numeric) - coalesce(${customer.accountBalance}, 0)::numeric) -
-            least(
-              greatest(0, coalesce(${meterReading.previousBalanceSnapshot}, 0)::numeric),
-              greatest(0, (coalesce(${meterReading.previousBalanceSnapshot}, 0)::numeric + coalesce(${meterReading.billedAmount}, 0)::numeric) - coalesce(${customer.accountBalance}, 0)::numeric)
-            )
-          )
-        `),
+        // FIELD RECOVERY MATH -- DISABLED (was Forensic Audit #3 Fix)
+        // This formula compared (previousBalanceSnapshot + billedAmount)
+        // against customer.accountBalance to infer how much of a field
+        // reading's bill had been paid. That only worked because
+        // submitMeterReading used to bump accountBalance to include the
+        // new bill at reading time, so the gap between the two reflected
+        // real payment. Meter readings no longer touch accountBalance at
+        // all (EBS -- daily sync / monthly import -- is now the only thing
+        // allowed to move it, matching how receipts already worked), so
+        // accountBalance never grows to include an unconfirmed reading's
+        // bill in the first place. Left as-is, this formula would report
+        // every field-billed customer's FULL new bill as "recovered"
+        // immediately on submission, before any payment happened --
+        // silently inflating collections. Hardcoded to 0 until field-billed
+        // customers have a real EBS-reconciled path (e.g. a reading
+        // creating a proper billingRecord row, the same table Excel
+        // imports use) rather than report a confident but wrong number.
+        verifiedArrears: sql<string>`0`,
+        verifiedCurrent: sql<string>`0`,
         billedCount: count(meterReading.id),
       })
       .from(meterReading)

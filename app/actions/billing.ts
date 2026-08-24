@@ -908,9 +908,14 @@ export async function getCollectionSummary() {
         totalReadings: count(meterReading.id),
         totalMonthlyBilled: sum(meterReading.billedAmount),
         totalArrearsBilled: sum(meterReading.previousBalanceSnapshot),
-        totalRecovered: sum(sql`
-          greatest(0, (coalesce(${meterReading.previousBalanceSnapshot}, 0)::numeric + coalesce(${meterReading.billedAmount}, 0)::numeric) - coalesce(${customer.accountBalance}, 0)::numeric)
-        `),
+        // Same fix as reports.ts's fieldStats: this compared reading demand
+        // against customer.accountBalance, which used to be bumped by the
+        // reading itself -- now that meter readings never touch
+        // accountBalance (EBS-only, matching how receipts already work),
+        // this would report every unconfirmed reading's full bill as
+        // "recovered" immediately. Hardcoded to 0 until field-billed
+        // customers have a real EBS-reconciled path.
+        totalRecovered: sql<string>`0`,
       })
       .from(meterReading)
       .innerJoin(customer, eq(meterReading.customerId, customer.id))

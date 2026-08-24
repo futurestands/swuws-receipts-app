@@ -2,7 +2,7 @@
 
 import { db } from "@/lib/db"
 import { customer, tariffConfiguration, meterReading, waterScheme, billingPeriod, managedTemplate, templateVersion, branch, billingRecord, billingDiscrepancy, user as userTable } from "@/lib/db/schema"
-import { eq, and, desc, or, ilike, sql } from "drizzle-orm"
+import { eq, and, desc, or, ilike } from "drizzle-orm"
 import { randomUUID } from "crypto"
 import { requireUser } from "@/lib/session"
 import { calculateBill } from "@/lib/billing/math"
@@ -214,12 +214,19 @@ export async function submitMeterReading(data: {
       idempotencyKey: data.idempotencyKey || null,
     })
 
+    // EBS (the daily collection sync / monthly bill import) is the single
+    // source of truth for customer.accountBalance -- a meter reading is a
+    // field observation of what the customer should be billed, the same
+    // way a receipt is a field observation of what was paid. Neither
+    // should move the live balance directly. The bill this reading
+    // produces lives on the meterReading row itself (billedAmount,
+    // previousBalanceSnapshot, totalDueSnapshot) for reconciliation and
+    // reporting; only an EBS event may change accountBalance.
     await tx
       .update(customer)
       .set({
         lastReading: data.currentReading,
         lastReadingDate: new Date(),
-        accountBalance: String(grandTotalDue), // Update live balance with new bill
         phone: finalPhone, // Update phone if changed
         updatedAt: new Date(),
       })
@@ -412,7 +419,7 @@ export async function deleteTariff(id: string) {
  */
 export async function resolveBillingDiscrepancy(id: string, action: 'accept' | 'reject', notes: string) {
   const current = await requireUser()
-  if (current.role !== ROLES.SYSTEM_ADMIN) throw new Error("Forbidden")
+  if (current.role !== ROLES.SYSTEM_ADMIN && (current.roleLevel ?? 0) < 10) throw new Error("Forbidden")
 
   const [discrepancy] = await db
     .select()
@@ -424,26 +431,23 @@ export async function resolveBillingDiscrepancy(id: string, action: 'accept' | '
 
   await db.transaction(async (tx) => {
     if (action === 'accept') {
-      // 1. Find the customer and current balance
-      const [cust] = await tx.select({ balance: customer.accountBalance }).from(customer).where(eq(customer.id, discrepancy.customerId)).limit(1)
-      if (cust) {
-        // 2. Overwrite the customer's live balance with the agent's field value
-        // Note: AttemptedValue in field_reading represents the actual meter amount.
-        await tx.update(customer)
-          .set({ accountBalance: String(discrepancy.attemptedValue), updatedAt: new Date() })
-          .where(eq(customer.id, discrepancy.customerId))
-
-        // 3. Update the specific billing record snapshot for this period
-        await tx.update(billingRecord)
-          .set({ totalDue: String(discrepancy.attemptedValue), updatedAt: new Date() })
-          .where(and(
-            eq(billingRecord.customerId, discrepancy.customerId),
-            eq(billingRecord.billingPeriodId, discrepancy.billingPeriodId)
-          ))
-      }
+      // EBS (daily collection sync / monthly bill import) is the single
+      // source of truth for customer.accountBalance -- accepting a field
+      // discrepancy corrects the BILL (billingRecord.totalDue), not the
+      // live balance. The live balance is left untouched here; the next
+      // EBS sync reconciles it against the corrected bill. Previously this
+      // blindly overwrote accountBalance with a value frozen at the moment
+      // the discrepancy was reported, silently erasing any real payment
+      // collected while it sat open.
+      await tx.update(billingRecord)
+        .set({ totalDue: String(discrepancy.attemptedValue), updatedAt: new Date() })
+        .where(and(
+          eq(billingRecord.customerId, discrepancy.customerId),
+          eq(billingRecord.billingPeriodId, discrepancy.billingPeriodId)
+        ))
     }
 
-    // 4. Close the discrepancy record
+    // Close the discrepancy record
     await tx.update(billingDiscrepancy)
       .set({
         status: action === 'accept' ? 'resolved' : 'ignored',
@@ -531,7 +535,7 @@ export async function cancelMeterReading(readingId: string) {
 
   // Authorization: Only the creator or an admin
   const isCreator = reading.recordedById === user.id
-  const isAdmin = user.role === ROLES.SYSTEM_ADMIN
+  const isAdmin = user.role === ROLES.SYSTEM_ADMIN || (user.roleLevel ?? 0) >= 10
   if (!isCreator && !isAdmin) {
     throw new Error("You are not authorized to cancel this reading.")
   }
@@ -542,30 +546,23 @@ export async function cancelMeterReading(readingId: string) {
   }
 
   await db.transaction(async (tx) => {
-    // 1. Lock customer for update
-    const lockResult = await tx.execute<{ accountBalance: string }>(
-      sql`SELECT "accountBalance" FROM "customer" WHERE id = ${reading.customerId} FOR UPDATE`
-    )
-    const cust = lockResult.rows[0]
-    if (!cust) throw new Error("Customer profile not found")
-
-    // 2. Reverse Financials
-    const currentBalance = Number(cust.accountBalance)
-    const readingAmount = Number(reading.billedAmount)
-    const newBalance = Math.max(0, currentBalance - readingAmount)
+    // EBS (daily collection sync / monthly bill import) is the single
+    // source of truth for customer.accountBalance -- cancelling a reading
+    // removes the bill it produced (the meterReading row itself) but does
+    // not touch the live balance. Previously this subtracted the reading's
+    // billed amount straight out of accountBalance, which silently erases
+    // any real payment collected since the reading was submitted (e.g. if
+    // an EBS sync already reduced the balance based on this bill, this
+    // reversal would double-subtract on top of that).
+    await tx.delete(meterReading).where(eq(meterReading.id, readingId))
 
     await tx.update(customer)
       .set({
-        accountBalance: String(newBalance),
         lastReading: reading.previousReading, // Restore previous reading state
         updatedAt: new Date(),
       })
       .where(eq(customer.id, reading.customerId))
 
-    // 3. Delete Record
-    await tx.delete(meterReading).where(eq(meterReading.id, readingId))
-
-    // 4. Audit Log
     await writeAudit({
       user,
       action: "meter_reading.cancel",
@@ -578,7 +575,7 @@ export async function cancelMeterReading(readingId: string) {
       }
     }, tx)
 
-    // 5. Notify Original Agent (if different from canceller)
+    // Notify Original Agent (if different from canceller)
     if (reading.recordedById !== user.id) {
       const [custInfo] = await tx.select({ name: customer.name }).from(customer).where(eq(customer.id, reading.customerId)).limit(1)
       await createNotification({
