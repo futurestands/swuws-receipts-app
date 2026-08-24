@@ -1,5 +1,6 @@
 import { listAgents, getAuditLogs, getSystemStats, getCollectionsSummary, getPrintingReports } from "@/app/actions/admin"
 import { listClusters, listBranches, listPaymentMethods, listWaterSchemes, getSettings } from "@/app/actions/settings"
+import { getSmsGatewaySettings } from "@/app/actions/sms-gateway-settings"
 import { getCollectionPeriods } from "@/app/actions/billing"
 import { AdminTabs } from "@/app/admin/admin-tabs"
 import { getCurrentUser } from "@/lib/session"
@@ -46,7 +47,7 @@ export default async function AdminPage() {
   const canCreateUserVal = current ? (current.permissions?.includes("users.create") || current.role === ROLES.SYSTEM_ADMIN) : false
   const canResetPasswordVal = current ? canResetPasswords(current) : false
 
-  const [agentsResult, auditLogs, stats, collections, printingStats, clusters, branches, methods, schemes, settings, periods, iamRoles, allPermissions, tariffs, templates] = await Promise.all([
+  const [agentsResult, auditLogs, stats, collections, printingStats, clusters, branches, methods, schemes, settings, smsGatewaySettings, periods, iamRoles, allPermissions, tariffs, templates] = await Promise.all([
     canManageUsersVal
       ? listAgents({ page: 1, pageSize: 25 }).catch(() => ({ agents: [], total: 0, page: 1, pageSize: 25, totalPages: 1 }))
       : Promise.resolve({ agents: [], total: 0, page: 1, pageSize: 25, totalPages: 1 }),
@@ -59,6 +60,9 @@ export default async function AdminPage() {
     canConfigureSystemVal ? listPaymentMethods().catch(() => []) : Promise.resolve([]),
     listWaterSchemes().catch(() => []),
     getSettings(), // Settings is readable by all for branding
+    canConfigureSystemVal
+      ? getSmsGatewaySettings().catch(() => ({ provider: null, username: null, senderId: null, active: false, maskedApiKey: null, hasApiKey: false }))
+      : Promise.resolve({ provider: null, username: null, senderId: null, active: false, maskedApiKey: null, hasApiKey: false }),
     getCollectionPeriods().catch(() => []),
     canManageIAMVal ? listRoles().catch(() => []) : Promise.resolve([]),
     canManageIAMVal ? listAllPermissions().catch(() => []) : Promise.resolve([]),
@@ -116,6 +120,7 @@ export default async function AdminPage() {
         allBranches={branches}
         allSchemes={schemes}
         settings={settings}
+        smsGatewaySettings={smsGatewaySettings}
         permissions={permissions}
         periods={periods}
         iamRoles={iamRoles}

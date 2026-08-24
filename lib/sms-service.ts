@@ -1,32 +1,54 @@
 import { db } from "@/lib/db"
-import { auditLog } from "@/lib/db/schema"
+import { auditLog, smsGatewayConfig } from "@/lib/db/schema"
 import { randomUUID } from "crypto"
+import { eq } from "drizzle-orm"
 
 /**
  * Enterprise SMS Gateway Service
  *
- * Config-driven: reads SMS_PROVIDER / SMS_API_KEY / SMS_USERNAME /
- * SMS_SENDER_ID from the environment (see .env.example). When credentials
- * aren't set, this stays a safe simulated no-op — billing runs must never
- * be blocked just because SMS isn't configured yet. Once a real provider's
- * credentials are added to the environment, sending goes live automatically
- * with no code changes.
+ * Config-driven: primarily reads provider/apiKey/username/senderId from
+ * the sms_gateway_config table (admin-managed via the SMS Gateway panel
+ * in /admin -- see app/actions/sms-gateway-settings.ts), so subscribing to
+ * or changing providers is an admin action, not a code deploy. Falls back
+ * to SMS_PROVIDER / SMS_API_KEY / SMS_USERNAME / SMS_SENDER_ID environment
+ * variables only if the DB isn't configured, purely so nothing breaks for
+ * any environment that already had those env vars set before this table
+ * existed. When neither is configured, this stays a safe simulated no-op
+ * — billing runs must never be blocked just because SMS isn't set up yet.
  *
  * Currently wired for Africa's Talking (common for Uganda/East Africa).
  * To add a different provider, add another branch in sendViaProvider()
- * keyed off SMS_PROVIDER — the public sendSMS() signature doesn't change.
+ * keyed off provider — the public sendSMS() signature doesn't change.
  */
 
-async function sendViaProvider(to: string, message: string): Promise<{ ok: boolean; error?: string }> {
+async function getGatewayCredentials() {
+  const [row] = await db.select().from(smsGatewayConfig).where(eq(smsGatewayConfig.id, 1)).limit(1)
+
+  if (row?.active && row.provider && row.apiKey && row.username) {
+    return { provider: row.provider.toLowerCase(), apiKey: row.apiKey, username: row.username, senderId: row.senderId || undefined }
+  }
+
+  // Fallback for environments configured before this table existed.
   const provider = (process.env.SMS_PROVIDER || "").toLowerCase()
   const apiKey = process.env.SMS_API_KEY
   const username = process.env.SMS_USERNAME
   const senderId = process.env.SMS_SENDER_ID
+  if (provider && apiKey && username) {
+    return { provider, apiKey, username, senderId }
+  }
 
-  if (!provider || !apiKey || !username) {
+  return null
+}
+
+async function sendViaProvider(to: string, message: string): Promise<{ ok: boolean; error?: string }> {
+  const creds = await getGatewayCredentials()
+
+  if (!creds) {
     // Not configured — caller records this as "simulated" below.
     return { ok: false, error: "not_configured" }
   }
+
+  const { provider, apiKey, username, senderId } = creds
 
   if (provider === "africastalking") {
     try {

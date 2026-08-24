@@ -153,3 +153,26 @@ export type AuditLog = typeof auditLog.$inferSelect
 export type Notification = typeof notification.$inferSelect
 export type ManagedTemplate = typeof managedTemplate.$inferSelect
 export type TemplateVersion = typeof templateVersion.$inferSelect
+
+/**
+ * SMS Gateway configuration -- deliberately a SEPARATE table from
+ * orgSettings, not extra columns on it. orgSettings is read broadly across
+ * the app (login page, receipts, dashboard) via a cached getSettings()
+ * call that many unrelated components destructure from; putting an API key
+ * on that same row would make it too easy for it to end up in a client
+ * props object somewhere it was never meant to reach. This table is only
+ * ever read by the dedicated admin SMS settings panel and by the SMS
+ * sending service itself -- nothing else should import it.
+ */
+export const smsGatewayConfig = pgTable("sms_gateway_config", {
+  id: integer("id").primaryKey().default(1),
+  provider: text("provider"), // e.g. 'africastalking'. Null = not configured, sendSMS stays a safe simulated no-op.
+  apiKey: text("apiKey"),
+  username: text("username"),
+  senderId: text("senderId"),
+  active: boolean("active").notNull().default(false),
+  updatedById: text("updatedById").references(() => user.id, { onDelete: "set null" }),
+  updatedAt: timestamp("updatedAt").notNull().defaultNow(),
+})
+
+export type SmsGatewayConfig = typeof smsGatewayConfig.$inferSelect

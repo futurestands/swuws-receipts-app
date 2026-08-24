@@ -3,6 +3,7 @@
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { AgentsPanel } from "@/app/admin/agents-panel"
 import { BrandingPanel } from "@/app/admin/branding-panel"
+import { SmsGatewayPanel } from "@/app/admin/sms-gateway-panel"
 import { ReferenceDataPanel } from "@/app/admin/reference-data-panel"
 import { AuditLogPanel } from "@/app/admin/audit-log-panel"
 import { StatsPanel } from "@/app/admin/stats-panel"
@@ -39,6 +40,7 @@ export function AdminTabs({
   methods,
   schemes,
   settings,
+  smsGatewaySettings,
   permissions,
   periods,
   iamRoles,
@@ -67,6 +69,14 @@ export function AdminTabs({
   methods: PaymentMethod[]
   schemes: WaterScheme[]
   settings: OrgSettings
+  smsGatewaySettings: {
+    provider: string | null
+    username: string | null
+    senderId: string | null
+    active: boolean
+    maskedApiKey: string | null
+    hasApiKey: boolean
+  }
   permissions: {
     canManageUsers: boolean
     canManageHierarchy: boolean
@@ -114,6 +124,7 @@ export function AdminTabs({
           {permissions.canManageIAM && <TabsTrigger value="templates" className="shrink-0">Templates</TabsTrigger>}
           {permissions.canManageHierarchy && <TabsTrigger value="reference" className="shrink-0">Branches &amp; schemes</TabsTrigger>}
           {permissions.canManageIAM && <TabsTrigger value="branding" className="shrink-0">Branding</TabsTrigger>}
+          {permissions.canConfigureSystem && <TabsTrigger value="sms-gateway" className="shrink-0">SMS Gateway</TabsTrigger>}
           {permissions.canManageIAM && <TabsTrigger value="audit" className="shrink-0">Audit log</TabsTrigger>}
           {permissions.canManageIAM && <TabsTrigger value="maintenance" className="shrink-0 text-destructive font-bold">Maintenance</TabsTrigger>}
         </TabsList>
@@ -197,6 +208,12 @@ export function AdminTabs({
       {permissions.canConfigureSystem && (
         <TabsContent value="branding" className="mt-4">
           <BrandingPanel settings={settings} />
+        </TabsContent>
+      )}
+
+      {permissions.canConfigureSystem && (
+        <TabsContent value="sms-gateway" className="mt-4">
+          <SmsGatewayPanel settings={smsGatewaySettings} />
         </TabsContent>
       )}
 
