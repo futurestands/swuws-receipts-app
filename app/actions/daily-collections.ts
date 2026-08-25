@@ -533,7 +533,7 @@ export async function commitDailyBalanceSync(formData: FormData) {
         // A. Batch Update Customer Balances
         const customerValuesList = findable.map(r => {
           const cust = custMap.get(r.accountNumber.toLowerCase().trim())!
-          return sql`(${cust.id}::uuid, ${r.totalDue}::numeric)`
+          return sql`(${cust.id}::text, ${r.totalDue}::numeric)`
         }).reduce((acc, curr) => sql`${acc}, ${curr}`)
 
         await tx.execute(sql`
@@ -578,7 +578,7 @@ export async function commitDailyBalanceSync(formData: FormData) {
             const remainingBill = Number(activeBill.billAmount) - newTotalRecovery
             const newStatus = remainingBill <= 0 ? 'paid' : (newTotalRecovery > 0 ? 'partially_paid' : activeBill.status)
 
-            billUpdateValues.push(sql`(${activeBill.id}::uuid, ${newTotalRecovery}::numeric, ${newArrearsRecovery}::numeric, ${newStatus})`)
+            billUpdateValues.push(sql`(${activeBill.id}::text, ${newTotalRecovery}::numeric, ${newArrearsRecovery}::numeric, ${newStatus})`)
           }
 
           collectionsToInsert.push({

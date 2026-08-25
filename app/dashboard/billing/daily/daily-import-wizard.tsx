@@ -131,7 +131,8 @@ export function DailyImportWizard() {
           toast.success("Success!")
           router.refresh()
         } else {
-          toast.error(response.error || "Import failed. Please check the file for duplicates or errors.")
+          const errorMsg = response.error || "Import failed. Please check the file for duplicates or errors."
+          toast.error(errorMsg.length > 300 ? errorMsg.substring(0, 300) + "..." : errorMsg)
         }
       } catch (err) {
         console.error("UI Commit Error:", err)
