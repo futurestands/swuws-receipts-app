@@ -54,6 +54,50 @@
     <script src="cordova.js"></script>
     <script>
         // Emergency Offline Logic
+        async function initDatabase() {
+            try {
+                const sqlite = window.Capacitor.Plugins.CapacitorSQLite;
+                const dbName = "swuws_offline_cache";
+
+                // Individual table creation for driver compatibility
+                await sqlite.execute({
+                    database: dbName,
+                    statements: `CREATE TABLE IF NOT EXISTS local_customers (
+                        id TEXT PRIMARY KEY,
+                        customerAccount TEXT,
+                        name TEXT,
+                        phone TEXT,
+                        address TEXT,
+                        accountBalance TEXT,
+                        category TEXT,
+                        active INTEGER,
+                        updatedAt TEXT
+                    );`
+                });
+
+                await sqlite.execute({
+                    database: dbName,
+                    statements: `CREATE TABLE IF NOT EXISTS local_receipt_queue (
+                        id TEXT PRIMARY KEY,
+                        customerId TEXT,
+                        billingRecordId TEXT,
+                        amount REAL,
+                        paymentMethod TEXT,
+                        paymentReference TEXT,
+                        notes TEXT,
+                        paymentDate TEXT,
+                        idempotencyKey TEXT,
+                        status TEXT DEFAULT 'queued',
+                        serverReceiptId TEXT,
+                        error TEXT,
+                        createdAt TEXT DEFAULT CURRENT_TIMESTAMP
+                    );`
+                });
+            } catch (e) {
+                console.error('Offline init failed', e);
+            }
+        }
+
         async function handleSearch() {
             const query = document.getElementById('search').value;
             const resultsDiv = document.getElementById('results');
@@ -64,18 +108,15 @@
             }
 
             try {
-                // This is where we talk to the real SQLite plugin
-                // Note: In pure HTML, we use the Capacitor window object
                 const CapacitorSQLite = window.Capacitor.Plugins.CapacitorSQLite;
 
-                // Fetch from the exact same table Next.js uses
                 const res = await CapacitorSQLite.query({
-                    database: "swuws_offline.db",
+                    database: "swuws_offline_cache",
                     statement: "SELECT * FROM local_customers WHERE name LIKE ? OR customerAccount LIKE ? LIMIT 20;",
                     values: [`%${query}%`, `%${query}%`]
                 });
 
-                if (res.values.length === 0) {
+                if (!res || !res.values || res.values.length === 0) {
                     resultsDiv.innerHTML = '<div class="empty">No local matches found.</div>';
                     return;
                 }
@@ -88,24 +129,26 @@
                 `).join('');
 
             } catch (err) {
-                resultsDiv.innerHTML = '<div class="empty">Offline Database not ready yet.</div>';
+                console.error('Search failed', err);
+                resultsDiv.innerHTML = '<div class="empty">Database not initialized. Please open the app while online first.</div>';
             }
         }
 
-        // Initialize Native Bridge
-        document.addEventListener('deviceready', () => {
-            console.log('Native Shell Ready');
+        // Initialize on Load
+        document.addEventListener('DOMContentLoaded', async () => {
+            console.log('Offline Shell Initializing');
+            await initDatabase();
             checkQueue();
-        }, false);
+        });
 
         async function checkQueue() {
             try {
                 const CapacitorSQLite = window.Capacitor.Plugins.CapacitorSQLite;
                 const res = await CapacitorSQLite.query({
-                    database: "swuws_offline.db",
+                    database: "swuws_offline_cache",
                     statement: "SELECT COUNT(*) as count FROM local_receipt_queue WHERE status != 'synced';"
                 });
-                const count = res.values[0].count;
+                const count = (res && res.values && res.values[0]) ? res.values[0].count : 0;
                 document.getElementById('queue-status').innerText = `${count} receipts waiting to be uploaded.`;
             } catch (e) {
                 document.getElementById('queue-status').innerText = "Syncing not initialized.";

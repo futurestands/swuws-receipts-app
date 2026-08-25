@@ -1,7 +1,7 @@
 import { eq, and, or, sql, inArray } from "drizzle-orm"
 import { ROLES } from "../permissions/roles"
 import { UserPermissionsContext, canViewAllData } from "../permissions"
-import { receipt, customer, branch, waterScheme, billingPeriod, billingRun, billingRecord, meterReading, user as userTable } from "../db/schema"
+import { receipt, customer, branch, waterScheme, billingPeriod, billingRun, billingRecord, meterReading, dailyCollectionRecord, user as userTable } from "../db/schema"
 import { Scope } from "../iam"
 import { db } from "../db"
 
@@ -308,4 +308,38 @@ export async function validateWriteScope(user: UserPermissionsContext, permissio
   }
 
   return true // 'own' scope always allowed for write (filtered by logic)
+}
+
+/**
+ * Applies organizational scope to Reconciliation Exception queries.
+ * Handles both receipt-based and EBS-based (orphan) exceptions.
+ */
+export function applyExceptionScope(user: UserPermissionsContext) {
+  const scope = getScope(user, "reconciliation.exceptions.manage") || getScope(user, "reconciliation.view")
+  if (!scope) return sql`1 = 0`
+
+  if (scope === "global") return undefined
+
+  if (scope === "cluster" && user.clusterId) {
+    return or(
+      inArray(receipt.branchId, sql`(SELECT id FROM branch WHERE "clusterId" = ${user.clusterId})`),
+      inArray(dailyCollectionRecord.branchName, sql`(SELECT name FROM branch WHERE "clusterId" = ${user.clusterId})`)
+    )
+  }
+
+  if (scope === "area" && user.branchId) {
+    return or(
+      eq(receipt.branchId, user.branchId),
+      eq(dailyCollectionRecord.branchName, sql`(SELECT name FROM branch WHERE id = ${user.branchId})`)
+    )
+  }
+
+  if (scope === "scheme" && user.schemeId) {
+    return or(
+      eq(receipt.schemeId, user.schemeId),
+      eq(dailyCollectionRecord.schemeName, sql`(SELECT name FROM water_scheme WHERE id = ${user.schemeId})`)
+    )
+  }
+
+  return sql`1 = 0`
 }
