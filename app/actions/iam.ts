@@ -12,7 +12,6 @@ import { z } from "zod"
 import { roleSchema } from "@/lib/iam-schemas"
 import type { Scope } from "@/lib/iam"
 import { ROLES } from "@/lib/permissions/roles"
-import { canCreateRole } from "@/lib/permissions/server"
 
 /**
  * List all roles, ordered by level and name.
@@ -75,8 +74,19 @@ export async function createRole(data: z.infer<typeof roleSchema>) {
   const current = await requireUser()
   if (!await hasPermission(current, "roles.manage")) throw new Error("Forbidden")
 
-  if (!(await canCreateRole(current, data.code))) {
-    return { ok: false as const, error: "You cannot create a role above your own level" }
+  // canCreateRole(current, data.code) does NOT work here -- it looks up
+  // an EXISTING iam_role row by code to find its level, but this role
+  // doesn't exist yet (it's being created right now). That lookup always
+  // returns nothing for a genuinely new custom role, so this call was
+  // rejecting every single new role creation, for every user, including
+  // System Administrators -- confirmed by tracing canCreateRole's actual
+  // implementation. The correct check is comparing the NEW role's
+  // requested level (data.level) against the creating user's own level.
+  if (current.role !== ROLES.SYSTEM_ADMIN) {
+    const ownLevel = current.roleLevel ?? (current.iamRoleId ? await getOwnRoleLevel(current.iamRoleId) : 0)
+    if (data.level > ownLevel) {
+      return { ok: false as const, error: `You cannot create a role (level ${data.level}) higher than your own (level ${ownLevel}).` }
+    }
   }
 
   const parsed = roleSchema.parse(data)
@@ -156,6 +166,19 @@ export async function updateRole(id: string, data: z.infer<typeof roleSchema>) {
   const [existing] = await db.select().from(iamRole).where(eq(iamRole.id, id)).limit(1)
   if (!existing) throw new Error("Role not found")
   if (existing.isSystem && data.code !== existing.code) throw new Error("System roles cannot have their code changed")
+
+  // This function had no escalation guard at all -- a user with
+  // roles.manage could raise an EXISTING role's level straight to 100
+  // (System Admin tier) regardless of their own seniority. Same fix as
+  // createRole, comparing against data.level rather than looking up an
+  // existing row (this role already exists, but the level being SET is
+  // what needs checking, not what it currently is).
+  if (current.role !== ROLES.SYSTEM_ADMIN) {
+    const ownLevel = current.roleLevel ?? (current.iamRoleId ? await getOwnRoleLevel(current.iamRoleId) : 0)
+    if (data.level > ownLevel) {
+      return { ok: false as const, error: `You cannot raise this role to level ${data.level}, above your own level ${ownLevel}.` }
+    }
+  }
 
   const parsed = roleSchema.parse(data)
 
