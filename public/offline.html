@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>SWUWS Offline Mode</title>
     <style>
-        :root { --brand-blue: #2c4a5e; --bg-gray: #f8fafc; --primary: #3b82f6; }
+        :root { --brand-blue: #2c4a5e; --bg-gray: #f8fafc; --primary: #3b82f6; --destructive: #ef4444; }
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background: var(--bg-gray); margin: 0; color: #1e293b; display: flex; flex-direction: column; height: 100vh; }
         .header { background: var(--brand-blue); color: white; padding: 1.5rem 1rem; text-align: center; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
         .status-bar { background: #fee2e2; color: #991b1b; padding: 0.5rem; text-align: center; font-size: 0.75rem; font-weight: bold; border-bottom: 1px solid #fecaca; }
@@ -21,6 +21,9 @@
         .customer-meta { font-size: 0.85rem; color: #64748b; margin-top: 0.25rem; }
         .empty { text-align: center; color: #94a3b8; padding: 2rem 0; }
         .retry-container { padding: 1rem; background: white; border-top: 1px solid #e2e8f0; }
+
+        .diagnostics { margin-top: 1rem; font-size: 0.65rem; color: #64748b; background: #f1f5f9; padding: 0.5rem; border-radius: 0.4rem; font-mono: monospace; display: none; }
+        .diagnostics.error { display: block; background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; }
 
         /* Modal Styles */
         #payment-modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 100; align-items: center; justify-content: center; padding: 1rem; }
@@ -52,6 +55,8 @@
             <h3 style="margin-top: 0;">Pending Uploads</h3>
             <div id="queue-status" class="customer-meta">Checking queue...</div>
         </div>
+
+        <div id="diag-box" class="diagnostics"></div>
     </main>
 
     <div id="payment-modal">
@@ -81,12 +86,59 @@
 
     <div class="retry-container">
         <button class="btn" onclick="window.location.reload()">Try Reconnect to Live Server</button>
-        <p style="text-align: center; font-size: 0.7rem; color: #94a3b8; margin-top: 1rem;">v1.2 (Hardened Offline Shell)</p>
+        <p style="text-align: center; font-size: 0.7rem; color: #94a3b8; margin-top: 1rem;">v1.3 (Hardened Offline Shell)</p>
     </div>
 
     <script src="cordova.js"></script>
     <script>
-        const DB_NAME = "swuws_offline_cache";
+        // Simple SQLite Wrapper to match React App's positional API
+        // while sending correct options objects to the raw Capacitor plugin.
+        class SimpleSQLite {
+            constructor() {
+                this.plugin = window.Capacitor && window.Capacitor.Plugins ? window.Capacitor.Plugins.CapacitorSQLite : null;
+                this.dbName = "swuws_offline_cache";
+            }
+
+            async isReady() {
+                if (!this.plugin) {
+                    this.showError("Capacitor SQLite plugin not found.");
+                    return false;
+                }
+                return true;
+            }
+
+            async execute(sql) {
+                return await this.plugin.execute({ database: this.dbName, statements: sql });
+            }
+
+            async query(sql, params = []) {
+                return await this.plugin.query({ database: this.dbName, statement: sql, values: params });
+            }
+
+            async open() {
+                // Ensure connection exists first
+                try {
+                    await this.plugin.createConnection({
+                        database: this.dbName,
+                        encrypted: false,
+                        mode: "no-encryption",
+                        version: 1,
+                        readonly: false
+                    });
+                } catch (e) {
+                    // Connection might already exist, ignore
+                }
+                return await this.plugin.open({ database: this.dbName });
+            }
+
+            showError(msg) {
+                const box = document.getElementById('diag-box');
+                box.innerText = msg;
+                box.classList.add('error');
+            }
+        }
+
+        const db = new SimpleSQLite();
         let selectedCustomerId = null;
 
         function safeId() {
@@ -97,10 +149,10 @@
         }
 
         async function initDatabase() {
+            if (!(await db.isReady())) return;
             try {
-                const sqlite = window.Capacitor.Plugins.CapacitorSQLite;
+                await db.open();
 
-                // Full Schema Alignment
                 const tables = [
                     `CREATE TABLE IF NOT EXISTS local_customers (
                         id TEXT PRIMARY KEY,
@@ -112,22 +164,6 @@
                         category TEXT,
                         active INTEGER,
                         updatedAt TEXT
-                    );`,
-                    `CREATE TABLE IF NOT EXISTS local_billing_records (
-                        id TEXT PRIMARY KEY,
-                        customerId TEXT,
-                        totalDue TEXT,
-                        arrears TEXT,
-                        billAmount TEXT,
-                        status TEXT,
-                        billingPeriodId TEXT,
-                        FOREIGN KEY(customerId) REFERENCES local_customers(id)
-                    );`,
-                    `CREATE TABLE IF NOT EXISTS sync_meta (
-                        deviceId TEXT PRIMARY KEY,
-                        lastSuccessfulPullAt TEXT,
-                        scopedAgentId TEXT,
-                        activePeriodId TEXT
                     );`,
                     `CREATE TABLE IF NOT EXISTS local_receipt_queue (
                         id TEXT PRIMARY KEY,
@@ -143,27 +179,14 @@
                         serverReceiptId TEXT,
                         error TEXT,
                         createdAt TEXT DEFAULT CURRENT_TIMESTAMP
-                    );`,
-                    `CREATE TABLE IF NOT EXISTS local_meter_readings (
-                        id TEXT PRIMARY KEY,
-                        customerId TEXT,
-                        billingPeriodId TEXT,
-                        previousReading INTEGER,
-                        currentReading INTEGER,
-                        notes TEXT,
-                        idempotencyKey TEXT,
-                        status TEXT DEFAULT 'queued',
-                        error TEXT,
-                        createdAt TEXT DEFAULT CURRENT_TIMESTAMP
                     );`
                 ];
 
                 for (const sql of tables) {
-                    await sqlite.execute({ database: DB_NAME, statements: sql });
+                    await db.execute(sql);
                 }
-                console.log('Database Schema Initialized');
             } catch (e) {
-                console.error('Offline init failed', e);
+                db.showError("Database Init Failed: " + e.message);
             }
         }
 
@@ -177,12 +200,10 @@
             }
 
             try {
-                const sqlite = window.Capacitor.Plugins.CapacitorSQLite;
-                const res = await sqlite.query({
-                    database: DB_NAME,
-                    statement: "SELECT * FROM local_customers WHERE name LIKE ? OR customerAccount LIKE ? LIMIT 20;",
-                    values: [`%${query}%`, `%${query}%`]
-                });
+                const res = await db.query(
+                    "SELECT * FROM local_customers WHERE name LIKE ? OR customerAccount LIKE ? LIMIT 20;",
+                    [`%${query}%`, `%${query}%`]
+                );
 
                 if (!res || !res.values || res.values.length === 0) {
                     resultsDiv.innerHTML = '<div class="empty">No local matches found.</div>';
@@ -200,8 +221,8 @@
                 `).join('');
 
             } catch (err) {
-                console.error('Search failed', err);
-                resultsDiv.innerHTML = '<div class="empty">Database not initialized. Please connect to the internet and use the Sync Cache button in the main app first.</div>';
+                resultsDiv.innerHTML = '<div class="empty">Offline Database not ready yet.</div>';
+                db.showError("Search Error: " + err.message);
             }
         }
 
@@ -227,32 +248,24 @@
             }
 
             try {
-                const sqlite = window.Capacitor.Plugins.CapacitorSQLite;
                 const id = safeId();
                 const idempotencyKey = safeId();
 
-                await sqlite.execute({
-                    database: DB_NAME,
-                    statements: `INSERT INTO local_receipt_queue (id, customerId, amount, paymentMethod, paymentReference, idempotencyKey, paymentDate)
-                               VALUES ('${id}', '${selectedCustomerId}', ${amount}, '${method}', '${ref}', '${idempotencyKey}', '${new Date().toISOString()}');`
-                });
+                await db.execute(`INSERT INTO local_receipt_queue (id, customerId, amount, paymentMethod, paymentReference, idempotencyKey, paymentDate)
+                               VALUES ('${id}', '${selectedCustomerId}', ${amount}, '${method}', '${ref}', '${idempotencyKey}', '${new Date().toISOString()}');`);
 
                 alert("Receipt queued offline. It will sync automatically when you are back online.");
                 closeModal();
                 checkQueue();
             } catch (e) {
-                console.error('Queue failed', e);
+                db.showError("Queue Failed: " + e.message);
                 alert("Failed to save offline receipt.");
             }
         }
 
         async function checkQueue() {
             try {
-                const sqlite = window.Capacitor.Plugins.CapacitorSQLite;
-                const res = await sqlite.query({
-                    database: DB_NAME,
-                    statement: "SELECT COUNT(*) as count FROM local_receipt_queue WHERE status != 'synced';"
-                });
+                const res = await db.query("SELECT COUNT(*) as count FROM local_receipt_queue WHERE status != 'synced';");
                 const count = (res && res.values && res.values[0]) ? res.values[0].count : 0;
                 document.getElementById('queue-status').innerText = `${count} receipts waiting to be uploaded.`;
             } catch (e) {

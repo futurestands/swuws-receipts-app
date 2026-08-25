@@ -30,13 +30,14 @@ export function OfflineSearchClient({ agentId }: { agentId: string }) {
   const [uploading, setUploading] = useState(false)
   const [queuedReceipts, setQueuedReceipts] = useState<any[]>([])
   const [queuedReadings, setQueuedReadings] = useState<any[]>([])
-  const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null)
-  const [selectedCustomerIdForReading, setSelectedCustomerIdForReading] = useState<string | null>(null)
+  const [lastSyncAttempt, setLastSyncAttempt] = useState<number>(0)
+  const SYNC_COOLDOWN = 30000 // 30 seconds cooldown for auto-sync on failure
 
   const totalQueued = queuedReceipts.filter(r => r.status !== 'synced').length +
                       queuedReadings.filter(r => r.status !== 'synced').length
 
-  const handleSearch = async () => {
+  const hasNewItems = queuedReceipts.some(r => r.status === 'queued') ||
+                      queuedReadings.some(r => r.status === 'queued')
     // Always search local SQLite
     const local = await sqliteService.searchCustomers(query)
     setLocalCustomers(local)
@@ -60,6 +61,13 @@ export function OfflineSearchClient({ agentId }: { agentId: string }) {
     }
   }
 
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      handleSearch()
+    }, 300)
+    return () => clearTimeout(timer)
+  }, [query])
+
   const refreshData = async () => {
     const [meta, queue, readings] = await Promise.all([
       sqliteService.getSyncMeta(),
@@ -73,34 +81,34 @@ export function OfflineSearchClient({ agentId }: { agentId: string }) {
   }
 
   useEffect(() => {
-    // Initial load
+    let active = true
     const init = async () => {
       await sqliteService.initialize()
-      await refreshData()
+      if (active) await refreshData()
     }
     init()
 
-    // Online/Offline status
     const updateOnlineStatus = () => setIsOnline(navigator.onLine)
     window.addEventListener("online", updateOnlineStatus)
     window.addEventListener("offline", updateOnlineStatus)
 
-    // Avoid synchronous setState during render by doing this in useEffect
     if (typeof navigator !== 'undefined') {
       setIsOnline(navigator.onLine)
     }
 
     return () => {
+      active = false
       window.removeEventListener("online", updateOnlineStatus)
       window.removeEventListener("offline", updateOnlineStatus)
     }
-  }, [uploading])
+  }, [])
 
   useEffect(() => {
-    if (isOnline && totalQueued > 0 && !uploading) {
+    const now = Date.now()
+    if (isOnline && hasNewItems && !uploading && (now - lastSyncAttempt > SYNC_COOLDOWN)) {
       handleSyncPush()
     }
-  }, [isOnline, totalQueued, uploading])
+  }, [isOnline, hasNewItems, uploading])
 
   const handleSyncPull = async () => {
     if (!isOnline) {
@@ -153,6 +161,7 @@ export function OfflineSearchClient({ agentId }: { agentId: string }) {
     if (pendingReceipts.length === 0 && pendingReadings.length === 0) return
 
     setUploading(true)
+    setLastSyncAttempt(Date.now())
     try {
       // 1. Sync Receipts
       if (pendingReceipts.length > 0) {

@@ -22,10 +22,18 @@ class SQLiteService {
     if (!isNative()) return;
 
     try {
-      this.db = await this.sqlite.createConnection(DB_NAME, false, 'no-encryption', 1, false);
+      // Robust connection management
+      const checkResult = await this.sqlite.isConnection(DB_NAME, false);
+      if (checkResult.result) {
+        this.db = await this.sqlite.retrieveConnection(DB_NAME, false);
+      } else {
+        this.db = await this.sqlite.createConnection(DB_NAME, false, 'no-encryption', 1, false);
+      }
+
+      if (!this.db) throw new Error("Could not establish SQLite connection");
       await this.db.open();
 
-      // Define Schema (Phase 1, 2 & 3)
+      // Ensure all tables exist individually for driver stability
       await this.db.execute(`
         CREATE TABLE IF NOT EXISTS local_customers (
           id TEXT PRIMARY KEY,
