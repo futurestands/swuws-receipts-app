@@ -15,19 +15,30 @@ import {
 } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { toast } from "sonner"
-import { Printer, Usb, Bluetooth, Settings2, RefreshCw, Wifi, Tablet, CheckCircle2 } from "lucide-react"
+import { Printer, Usb, Bluetooth, Settings2, RefreshCw, Wifi, Tablet, CheckCircle2, Search, Loader2, WifiOff } from "lucide-react"
 import { isNative } from "@/lib/mobile-hardware"
 import { printerManager } from "@/lib/offline/printer-manager"
+import { networkPrinter } from "@/lib/offline/network-printer"
 
 export function PrinterSettingsClient() {
   const [settings, setSettings] = useState<any>({ type: 'auto', paperWidth: '58mm', networkIp: '' })
   const [loading, setLoading] = useState(true)
   const [scanning, setScanning] = useState(false)
+  const [scanProgress, setScanProgress] = useState(0)
+  const [foundPrinters, setFoundPrinters] = useState<string[]>([])
+  const [manualIp, setManualIp] = useState('')
+  const [connecting, setConnecting] = useState<string | null>(null)
+  const [connectionVerified, setConnectionVerified] = useState(false)
 
   useEffect(() => {
     sqliteService.initialize().then(() => {
       sqliteService.getPrinterSettings().then(s => {
         setSettings(s)
+        setManualIp(s?.networkIp || '')
+        // A previously-saved network IP was, by definition, verified when
+        // it was saved (see handleConnectToIp below) -- trust it until the
+        // user changes it or a real print attempt fails.
+        setConnectionVerified(!!s?.networkIp)
         setLoading(false)
       })
     })
@@ -52,6 +63,56 @@ export function PrinterSettingsClient() {
       toast.success("Test print sent!")
     } catch (err: any) {
       toast.error(err.message || "Test print failed")
+    }
+  }
+
+  // Scans common local subnets for anything answering on port 9100 (the
+  // standard thermal-printer TCP port) -- an actual connectivity check
+  // per candidate, not a guess based on IP range alone.
+  const handleScanNetwork = async () => {
+    setScanning(true)
+    setScanProgress(0)
+    setFoundPrinters([])
+    try {
+      const found = await networkPrinter.scanForPrinters((scanned, total) => {
+        setScanProgress(Math.round((scanned / total) * 100))
+      })
+      setFoundPrinters(found)
+      if (found.length === 0) {
+        toast.error("No printers found. Make sure the printer is powered on and connected to the same WiFi network, or enter its IP manually below.")
+      } else {
+        toast.success(`Found ${found.length} printer${found.length > 1 ? 's' : ''} on the network`)
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Scan failed")
+    } finally {
+      setScanning(false)
+    }
+  }
+
+  // The actual "connect" step: attempts a real connection (and a small
+  // real ESC/POS command, not just an open socket) before this IP is
+  // trusted as the active printer. Nothing gets saved as 'network' mode
+  // until this succeeds -- replacing "type an IP and hope" with a
+  // confirmed, verified connection.
+  const handleConnectToIp = async (ip: string) => {
+    if (!ip) {
+      toast.error("Enter or select a printer IP first")
+      return
+    }
+    setConnecting(ip)
+    setConnectionVerified(false)
+    try {
+      const result = await networkPrinter.testConnection(ip)
+      if (result.ok) {
+        await handleSave({ networkIp: ip, type: 'network' })
+        setConnectionVerified(true)
+        toast.success(`Connected to printer at ${ip}`)
+      } else {
+        toast.error(`Could not connect to ${ip}: ${result.error || 'no response'}`)
+      }
+    } finally {
+      setConnecting(null)
     }
   }
 
@@ -137,27 +198,88 @@ export function PrinterSettingsClient() {
                   <CardTitle className="text-sm font-black uppercase tracking-tight">WiFi / Network</CardTitle>
                   <CardDescription className="text-xs">TCP/IP printing via Port 9100.</CardDescription>
                 </div>
-                {settings.type === 'network' && <CheckCircle2 className="h-5 w-5 text-green-600" />}
+                {settings.type === 'network' && connectionVerified && <CheckCircle2 className="h-5 w-5 text-green-600" />}
               </div>
             </CardHeader>
             <CardContent className="space-y-4">
+              {settings.type === 'network' && settings.networkIp && connectionVerified && (
+                <div className="flex items-center gap-2 p-3 bg-green-50 border border-green-100 rounded-lg text-xs text-green-800 font-bold">
+                  <CheckCircle2 className="h-4 w-4 shrink-0" />
+                  Connected and verified: {settings.networkIp}
+                </div>
+              )}
+
               <div className="space-y-2">
-                <Label htmlFor="printer-ip" className="text-xs font-bold uppercase text-muted-foreground">Printer IP Address</Label>
-                <Input
-                  id="printer-ip"
-                  placeholder="e.g. 192.168.1.100"
-                  value={settings.networkIp || ''}
-                  onChange={(e) => handleSave({ networkIp: e.target.value })}
-                  className="h-12 font-mono text-lg"
-                />
+                <Button
+                  onClick={handleScanNetwork}
+                  disabled={scanning}
+                  variant="outline"
+                  className="w-full h-12 font-bold shadow-sm"
+                >
+                  {scanning ? (
+                    <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Scanning... {scanProgress}%</>
+                  ) : (
+                    <><Search className="h-4 w-4 mr-2" /> Scan for Printers</>
+                  )}
+                </Button>
+                <p className="text-[11px] text-muted-foreground text-center">
+                  Make sure the printer is powered on and the phone is on the same WiFi network first.
+                </p>
               </div>
-              <Button
-                onClick={() => { handleSave({ type: 'network' }); toast.success("Network mode active"); }}
-                variant={settings.type === 'network' ? 'default' : 'outline'}
-                className="w-full h-12 font-bold shadow-sm"
-              >
-                {settings.type === 'network' ? 'Network Mode Enabled' : 'Switch to Network'}
-              </Button>
+
+              {foundPrinters.length > 0 && (
+                <div className="space-y-2">
+                  <Label className="text-xs font-bold uppercase text-muted-foreground">Found on network</Label>
+                  {foundPrinters.map(ip => (
+                    <Button
+                      key={ip}
+                      onClick={() => handleConnectToIp(ip)}
+                      disabled={connecting !== null}
+                      variant={settings.networkIp === ip && connectionVerified ? 'default' : 'outline'}
+                      className="w-full h-11 font-mono justify-between"
+                    >
+                      <span className="flex items-center gap-2">
+                        <Wifi className="h-4 w-4" /> {ip}
+                      </span>
+                      {connecting === ip ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : settings.networkIp === ip && connectionVerified ? (
+                        <CheckCircle2 className="h-4 w-4" />
+                      ) : null}
+                    </Button>
+                  ))}
+                </div>
+              )}
+
+              {!scanning && foundPrinters.length === 0 && (
+                <div className="flex items-center gap-2 p-3 bg-muted/50 rounded-lg text-[11px] text-muted-foreground">
+                  <WifiOff className="h-4 w-4 shrink-0" />
+                  No scan run yet, or nothing found -- you can still enter an IP manually below.
+                </div>
+              )}
+
+              <div className="space-y-2 pt-2 border-t">
+                <Label htmlFor="printer-ip" className="text-xs font-bold uppercase text-muted-foreground">Or enter IP manually</Label>
+                <div className="flex gap-2">
+                  <Input
+                    id="printer-ip"
+                    placeholder="e.g. 192.168.1.100"
+                    value={manualIp}
+                    onChange={(e) => { setManualIp(e.target.value); setConnectionVerified(false); }}
+                    className="h-12 font-mono text-base flex-1"
+                  />
+                  <Button
+                    onClick={() => handleConnectToIp(manualIp)}
+                    disabled={connecting !== null || !manualIp}
+                    className="h-12 font-bold shrink-0"
+                  >
+                    {connecting === manualIp ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Connect'}
+                  </Button>
+                </div>
+                <p className="text-[11px] text-muted-foreground">
+                  "Connect" attempts a real connection before saving -- it won't be set as your active printer unless it actually responds.
+                </p>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>
