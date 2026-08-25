@@ -67,8 +67,8 @@ export async function getReportData(id: string, filters: ReportFilters) {
       return getAuditActivity(filters)
     case "meter-reading":
       return getMeterReadingReport(current, filters)
-    case "unmetered-accounts":
-      return getUnmeteredReport(current, filters)
+    case "unbilled-accounts":
+      return getUnbilledReport(current, filters)
     default:
       throw new Error("Report not implemented")
   }
@@ -262,7 +262,7 @@ async function getMeterReadingReport(user: SessionUser, filters: ReportFilters) 
     .orderBy(desc(meterReading.createdAt))
 }
 
-async function getUnmeteredReport(user: SessionUser, filters: ReportFilters) {
+async function getUnbilledReport(user: SessionUser, filters: ReportFilters) {
   const periodId = filters.periodId || filters.batchId; // Use batchId as fallback if the UI passes it
   if (!periodId) throw new Error("Billing Period is required for this report");
 

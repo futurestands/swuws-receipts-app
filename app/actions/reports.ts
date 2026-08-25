@@ -416,20 +416,23 @@ export async function getDashboardStats(params: {
   // COMPREHENSIVE RECOVERY LOGIC (Arrears First):
   // Business Rule: Harmonize Monthly Imports, Field Meter Readings, and Daily Sync Orphans.
 
-  // 1. Arrears Recovery
+  // 1. Arrears Recovery (Money applied to historical debt)
   const verifiedArrears =
     Number(importStats?.verifiedArrears || 0) +
     Number(fieldStats?.verifiedArrears || 0) +
     dailyOrphanCollected
 
-  // 2. Current Month Recovery (Including Upfront/Advance Consumption)
-  const verifiedCurrent =
+  // 2. Current Month Performance (Money applied to THIS month's bill only)
+  // This is capped at the billAmount per customer by the underlying SQL.
+  const verifiedMonthlyPerformance =
     Number(importStats?.verifiedCurrent || 0) +
-    Number(importStats?.verifiedUpfront || 0) +
     Number(fieldStats?.verifiedCurrent || 0)
 
-  // 3. Bank Verified Total
-  const verifiedTotal = verifiedArrears + verifiedCurrent
+  // 3. New Advances Generated (Money paid in excess of total demand)
+  const verifiedNewAdvances = Number(importStats?.verifiedUpfront || 0)
+
+  // 4. Bank Verified Total (Total cash confirmed: Arrears + Current + Advances)
+  const verifiedTotal = verifiedArrears + verifiedMonthlyPerformance + verifiedNewAdvances
 
   const totalHarmonizedCollected = verifiedTotal
 
@@ -437,6 +440,7 @@ export async function getDashboardStats(params: {
   const operationalCount = Number(receiptStats?.totalCount || 0)
 
   // Collection Rates
+  // Global Rate: Total Collected vs Total Demand (Current + Arrears)
   const globalRate = totalBilled > 0 ? (totalHarmonizedCollected / totalBilled) * 100 : 0
 
   // Total System Arrears (Current Snapshot)
@@ -483,14 +487,15 @@ export async function getDashboardStats(params: {
     },
     collections: {
       verifiedTotal,
-      verifiedMonthly: verifiedCurrent,
+      verifiedMonthly: verifiedMonthlyPerformance,
       verifiedArrears,
+      verifiedAdvances: verifiedNewAdvances,
       operationalCash,
       operationalCount,
       outstanding: Math.max(0, totalBilled - verifiedTotal),
       collectionRate: globalRate,
       arrearsRate: arrearsBilled > 0 ? (verifiedArrears / arrearsBilled) * 100 : 0,
-      currentRate: currentBilled > 0 ? (verifiedCurrent / currentBilled) * 100 : 0,
+      currentRate: currentBilled > 0 ? (verifiedMonthlyPerformance / currentBilled) * 100 : 0,
     },
     arrears: {
       totalArrears,

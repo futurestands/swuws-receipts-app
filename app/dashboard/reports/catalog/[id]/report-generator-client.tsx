@@ -75,7 +75,7 @@ export function ReportGeneratorClient({ reportId, title }: { reportId: string, t
            <CardDescription>Configure filters to narrow down the report results.</CardDescription>
         </CardHeader>
         <CardContent className="grid gap-6 md:grid-cols-4 items-end">
-           {reportId === 'unmetered-accounts' ? (
+           {reportId === 'unbilled-accounts' ? (
              <div className="space-y-2">
                 <Label className="text-xs">Billing Period</Label>
                 <Select value={selectedPeriodId} onValueChange={(v) => setSelectedPeriodId(v || "")}>
@@ -102,7 +102,7 @@ export function ReportGeneratorClient({ reportId, title }: { reportId: string, t
              </>
            )}
 
-           {reportId !== 'meter-reading' && reportId !== 'audit-activity' && reportId !== 'unmetered-accounts' ? (
+           {reportId !== 'meter-reading' && reportId !== 'audit-activity' && reportId !== 'unbilled-accounts' ? (
              <div className="space-y-2">
                 <Label className="text-xs">Reconciliation Status</Label>
                 <Select value={status} onValueChange={(v) => v && setStatus(v)}>

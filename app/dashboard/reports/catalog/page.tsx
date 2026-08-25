@@ -21,7 +21,7 @@ const REPORT_CATEGORIES = [
     reports: [
       { id: "receipt-activity", title: "Receipt Activity Report", description: "Detailed log of all receipts issued, including collector and reconciliation status." },
       { id: "meter-reading", title: "Meter Reading Report", description: "Capture details of all field meter readings, including customer info and outstanding balances." },
-      { id: "unmetered-accounts", title: "Unmetered Accounts Report", description: "List of customers who have not had a meter reading captured for the selected billing period." },
+      { id: "unbilled-accounts", title: "Unbilled Accounts Report", description: "List of customers who have not had a meter reading captured for the selected billing period." },
       { id: "daily-collection", title: "Daily Collection Summary", description: "Summary of receipts vs confirmed EBS collections for a specific business date." }
     ]
   },

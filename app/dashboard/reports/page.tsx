@@ -142,12 +142,12 @@ export default async function ReportsPage({
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Monthly Billed</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">New Bills (Month)</CardTitle>
             <FileText className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{formatUGX(billing.totalBilled)}</div>
-            <p className="text-xs text-muted-foreground">{billing.billedCount} bills (Selected Period)</p>
+            <div className="text-2xl font-bold">{formatUGX(billing.currentBilled)}</div>
+            <p className="text-xs text-muted-foreground">{billing.billedCount} bills (Current Charges)</p>
           </CardContent>
         </Card>
         <Card className="border-green-100 bg-green-50/30">
@@ -157,7 +157,7 @@ export default async function ReportsPage({
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-green-600">{formatUGX(collections.verifiedTotal)}</div>
-            <p className="text-xs text-green-700/70">Confirmed via EBS Import</p>
+            <p className="text-xs text-green-700/70">Arrears + Current + Advances</p>
           </CardContent>
         </Card>
         <Card className="border-amber-100 bg-amber-50/30">
@@ -172,11 +172,12 @@ export default async function ReportsPage({
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Global Collection Rate</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">Period Performance</CardTitle>
             <TrendingUp className="h-4 w-4 text-primary" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{formatPercent(collections.collectionRate)}</div>
+            <p className="text-[10px] text-muted-foreground mb-2">Efficiency vs Total Demand ({formatUGX(billing.totalBilled)})</p>
             <Progress value={collections.collectionRate} className="h-2 mt-2" />
           </CardContent>
         </Card>
