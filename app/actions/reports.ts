@@ -19,6 +19,7 @@ import { applyReceiptScope, applyCustomerScope } from "@/lib/scopes"
 import { and, eq, sql, desc, sum, count, gte, inArray, or, ilike } from "drizzle-orm"
 import { canViewReports, canUploadBilling, canViewAllData } from "@/lib/permissions"
 import { ROLES } from "@/lib/permissions/roles"
+import { getCategoryEquivalents } from "@/lib/utils/category"
 
 /**
  * CUSTOMER STATEMENT (Phase 2, Objective 3)
@@ -198,7 +199,9 @@ export async function getDashboardStats(params: {
   if (params.schemeId && params.schemeId !== "all") billingConditions.push(eq(customer.waterSchemeId, params.schemeId))
   if (params.branchId && params.branchId !== "all") billingConditions.push(eq(waterScheme.branchId, params.branchId))
   if (params.clusterId && params.clusterId !== "all") billingConditions.push(eq(branch.clusterId, params.clusterId))
-  if (params.category && params.category !== "all") billingConditions.push(eq(customer.category, params.category))
+  if (params.category && params.category !== "all") {
+    billingConditions.push(inArray(customer.category, getCategoryEquivalents(params.category)))
+  }
   if (params.query?.trim()) {
     const q = `%${params.query.trim().toLowerCase()}%`
     billingConditions.push(or(
@@ -227,7 +230,9 @@ export async function getDashboardStats(params: {
   if (params.schemeId && params.schemeId !== "all") readingConditions.push(eq(customer.waterSchemeId, params.schemeId))
   if (params.branchId && params.branchId !== "all") readingConditions.push(eq(waterScheme.branchId, params.branchId))
   if (params.clusterId && params.clusterId !== "all") readingConditions.push(eq(branch.clusterId, params.clusterId))
-  if (params.category && params.category !== "all") readingConditions.push(eq(customer.category, params.category))
+  if (params.category && params.category !== "all") {
+    readingConditions.push(inArray(customer.category, getCategoryEquivalents(params.category)))
+  }
   if (params.query?.trim()) {
     const q = `%${params.query.trim().toLowerCase()}%`
     readingConditions.push(or(
@@ -320,7 +325,9 @@ export async function getDashboardStats(params: {
   if (params.branchId && params.branchId !== "all") verifiedConditions.push(eq(waterScheme.branchId, params.branchId))
   if (params.clusterId && params.clusterId !== "all") verifiedConditions.push(eq(branch.clusterId, params.clusterId))
   if (activePeriodId && activePeriodId !== "all") verifiedConditions.push(eq(dailyCollectionImport.billingPeriodId, activePeriodId))
-  if (params.category && params.category !== "all") verifiedConditions.push(eq(customer.category, params.category))
+  if (params.category && params.category !== "all") {
+    verifiedConditions.push(inArray(customer.category, getCategoryEquivalents(params.category)))
+  }
   if (params.query?.trim()) {
     const q = `%${params.query.trim().toLowerCase()}%`
     const queryCondition = or(
@@ -371,7 +378,9 @@ export async function getDashboardStats(params: {
   if (params.branchId && params.branchId !== "all") receiptConditions.push(eq(waterScheme.branchId, params.branchId))
   if (params.clusterId && params.clusterId !== "all") receiptConditions.push(eq(branch.clusterId, params.clusterId))
   if (activePeriodId && activePeriodId !== "all") receiptConditions.push(eq(receipt.billingPeriodId, activePeriodId))
-  if (params.category && params.category !== "all") receiptConditions.push(eq(customer.category, params.category))
+  if (params.category && params.category !== "all") {
+    receiptConditions.push(inArray(customer.category, getCategoryEquivalents(params.category)))
+  }
   if (params.query?.trim()) {
     const q = `%${params.query.trim().toLowerCase()}%`
     const cond = or(ilike(customer.name, q), ilike(customer.customerAccount, q))
@@ -435,7 +444,9 @@ export async function getDashboardStats(params: {
   if (params.schemeId && params.schemeId !== "all") arrearsConditions.push(eq(customer.waterSchemeId, params.schemeId))
   if (params.branchId && params.branchId !== "all") arrearsConditions.push(eq(waterScheme.branchId, params.branchId))
   if (params.clusterId && params.clusterId !== "all") arrearsConditions.push(eq(branch.clusterId, params.clusterId))
-  if (params.category && params.category !== "all") arrearsConditions.push(eq(customer.category, params.category))
+  if (params.category && params.category !== "all") {
+    arrearsConditions.push(inArray(customer.category, getCategoryEquivalents(params.category)))
+  }
   if (params.query?.trim()) {
     const q = `%${params.query.trim().toLowerCase()}%`
     const cond = or(ilike(customer.name, q), ilike(customer.customerAccount, q))
@@ -576,7 +587,9 @@ export async function getTopDebtors(params: {
   if (params.schemeId && params.schemeId !== "all") conditions.push(eq(customer.waterSchemeId, params.schemeId))
   if (params.branchId && params.branchId !== "all") conditions.push(eq(waterScheme.branchId, params.branchId))
   if (params.clusterId && params.clusterId !== "all") conditions.push(eq(branch.clusterId, params.clusterId))
-  if (params.category && params.category !== "all") conditions.push(eq(customer.category, params.category))
+  if (params.category && params.category !== "all") {
+    conditions.push(inArray(customer.category, getCategoryEquivalents(params.category)))
+  }
 
   if (params.query?.trim()) {
     const q = `%${params.query.trim().toLowerCase()}%`

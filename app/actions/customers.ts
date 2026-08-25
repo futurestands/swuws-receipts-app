@@ -21,6 +21,7 @@ import {
 import { applyCustomerScope, applyReceiptScope, validateWriteScope } from "@/lib/scopes"
 import { hasPermission } from "@/lib/iam"
 import { logEvent } from "@/lib/logger"
+import { normalizeCategory, getCategoryEquivalents } from "@/lib/utils/category"
 
 const customerSchema = z.object({
   name: z.string().trim().min(1, "Name is required").max(200),
@@ -68,7 +69,7 @@ export async function createCustomer(input: CustomerInput) {
         address: data.address || null,
         waterSchemeId: data.waterSchemeId || null,
         notes: data.notes || null,
-        category: data.category || "domestic",
+        category: normalizeCategory(data.category),
         active: data.active ?? true,
         createdById: current.id,
       })
@@ -130,6 +131,7 @@ export async function updateCustomer(id: string, input: CustomerInput) {
         waterSchemeId: data.waterSchemeId || null,
         notes: data.notes || null,
         active: data.active,
+        category: normalizeCategory(data.category),
         lastReading: data.lastReading !== undefined ? data.lastReading : undefined,
         updatedAt: new Date(),
       })
@@ -272,7 +274,7 @@ export async function searchCustomers(params: {
     conditions.push(eq(customer.waterSchemeId, current.schemeId))
   }
   if (params.category && params.category !== 'all') {
-    conditions.push(eq(customer.category, params.category))
+    conditions.push(inArray(customer.category, getCategoryEquivalents(params.category)))
   }
   if (params.minBalance !== undefined) {
     conditions.push(gte(customer.accountBalance, String(params.minBalance)))
@@ -355,7 +357,7 @@ export async function exportCustomersExcel(params: {
     conditions.push(eq(waterScheme.branchId, params.branchId))
   }
   if (params.category && params.category !== 'all') {
-    conditions.push(eq(customer.category, params.category))
+    conditions.push(inArray(customer.category, getCategoryEquivalents(params.category)))
   }
   if (params.minBalance !== undefined) {
     conditions.push(gte(customer.accountBalance, String(params.minBalance)))

@@ -19,6 +19,7 @@ import { processExcelImport, getImportMapping, type ImportSummary } from "@/lib/
 import { DEFAULT_CUSTOMER_IMPORT_MAPPING } from "@/lib/import-mappings"
 import { customerImportSchema, type CustomerImportRow } from "@/lib/import-schemas"
 import { logEvent } from "@/lib/logger"
+import { normalizeCategory } from "@/lib/utils/category"
 
 export type CustomerImportSummary = ImportSummary<CustomerImportRow>
 
@@ -117,7 +118,7 @@ export async function importCustomers(summary: CustomerImportSummary): Promise<{
             waterSchemeId: schemeId,
             meterRef: data.meterRef || null,
             serialNo: data.serialNo || null,
-            category: data.category || "domestic",
+            category: normalizeCategory(data.category),
             lastReading: data.lastReading || 0,
             openingArrears: data.openingArrears,
             accountBalance: String(data.openingArrears),
@@ -186,7 +187,7 @@ export async function importCustomers(summary: CustomerImportSummary): Promise<{
               waterSchemeId: schemeId || existing.waterSchemeId,
               meterRef: data.meterRef || existing.meterRef,
               serialNo: data.serialNo || existing.serialNo,
-              category: data.category || existing.category,
+              category: normalizeCategory(data.category),
               lastReading: data.lastReading || existing.lastReading,
               openingArrears: data.openingArrears,
               accountBalance: String(data.openingArrears),
@@ -204,7 +205,7 @@ export async function importCustomers(summary: CustomerImportSummary): Promise<{
               waterSchemeId: schemeId || null,
               meterRef: data.meterRef || null,
               serialNo: data.serialNo || null,
-              category: data.category || "domestic",
+              category: normalizeCategory(data.category),
               lastReading: data.lastReading || 0,
               openingArrears: data.openingArrears,
               accountBalance: String(data.openingArrears),

@@ -2,7 +2,7 @@
 
 import { db } from "@/lib/db"
 import { customer, tariffConfiguration, meterReading, waterScheme, billingPeriod, managedTemplate, templateVersion, branch, billingRecord, billingDiscrepancy, user as userTable } from "@/lib/db/schema"
-import { eq, and, desc, or, ilike } from "drizzle-orm"
+import { eq, and, desc, or, ilike, inArray } from "drizzle-orm"
 import { randomUUID } from "crypto"
 import { requireUser } from "@/lib/session"
 import { calculateBill } from "@/lib/billing/math"
@@ -15,6 +15,7 @@ import { renderTemplate } from "@/lib/templates/template-engine"
 import { sendSMS } from "@/lib/sms-service"
 import { createNotification } from "./notifications"
 import { getSettings } from "./settings"
+import { normalizeCategory, getCategoryEquivalents } from "@/lib/utils/category"
 
 /**
  * Searches customers by name, account, or meter ref.
@@ -55,7 +56,7 @@ export async function getTariffForCustomer(customerId: string) {
 
   if (!cust) return null
 
-  const category = cust.category || 'domestic'
+  const category = normalizeCategory(cust.category)
 
   if (cust.waterSchemeId) {
     const [schemeTariff] = await db
@@ -65,7 +66,7 @@ export async function getTariffForCustomer(customerId: string) {
         and(
           eq(tariffConfiguration.targetType, "scheme"),
           eq(tariffConfiguration.targetId, cust.waterSchemeId),
-          eq(tariffConfiguration.customerCategory, category),
+          inArray(tariffConfiguration.customerCategory, getCategoryEquivalents(category)),
           eq(tariffConfiguration.active, true)
         )
       )
@@ -82,7 +83,7 @@ export async function getTariffForCustomer(customerId: string) {
         and(
           eq(tariffConfiguration.targetType, "branch"),
           eq(tariffConfiguration.targetId, cust.branchId),
-          eq(tariffConfiguration.customerCategory, category),
+          inArray(tariffConfiguration.customerCategory, getCategoryEquivalents(category)),
           eq(tariffConfiguration.active, true)
         )
       )

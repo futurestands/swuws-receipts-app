@@ -15,6 +15,7 @@ import { processExcelImport, getImportMapping, type ImportSummary } from "@/lib/
 import { DEFAULT_TARIFF_IMPORT_MAPPING } from "@/lib/import-mappings"
 import { tariffImportSchema, type TariffImportRow } from "@/lib/import-schemas"
 import { logEvent } from "@/lib/logger"
+import { normalizeCategory } from "@/lib/utils/category"
 
 export type TariffImportSummary = ImportSummary<TariffImportRow>
 
@@ -71,7 +72,8 @@ export async function validateTariffImport(formData: FormData): Promise<{ ok: tr
           errors.push("Access Denied: You are not authorized to manage tariffs for this area.")
         } else {
           // Check for existing to show "Update" vs "New"
-          const key = `${data.targetType}:${targetId}:${data.customerCategory?.toLowerCase() || 'domestic'}`
+          const category = normalizeCategory(data.customerCategory)
+          const key = `${data.targetType}:${targetId}:${category}`
           if (existingSet.has(key)) {
             warnings.push("Update: This will override an existing tariff.")
           } else {
@@ -123,6 +125,8 @@ export async function executeTariffImport(summary: TariffImportSummary): Promise
           continue
         }
 
+        const category = normalizeCategory(data.customerCategory)
+
         // Upsert logic: check if exists
         const [existing] = await tx
           .select({ id: tariffConfiguration.id })
@@ -130,7 +134,7 @@ export async function executeTariffImport(summary: TariffImportSummary): Promise
           .where(and(
             eq(tariffConfiguration.targetType, data.targetType),
             eq(tariffConfiguration.targetId, targetId),
-            eq(tariffConfiguration.customerCategory, data.customerCategory)
+            eq(tariffConfiguration.customerCategory, category)
           ))
           .limit(1)
 
@@ -150,7 +154,7 @@ export async function executeTariffImport(summary: TariffImportSummary): Promise
             id: randomUUID(),
             targetType: data.targetType,
             targetId: targetId,
-            customerCategory: data.customerCategory,
+            customerCategory: category,
             unitPrice: String(data.unitPrice),
             serviceFee: String(data.serviceFee),
             vatPercentage: data.vatPercentage,
