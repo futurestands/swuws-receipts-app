@@ -142,12 +142,12 @@ export default async function ReportsPage({
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">New Bills (Month)</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">Total Period Demand</CardTitle>
             <FileText className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{formatUGX(billing.currentBilled)}</div>
-            <p className="text-xs text-muted-foreground">{billing.billedCount} bills (Current Charges)</p>
+            <div className="text-2xl font-bold">{formatUGX(billing.totalBilled)}</div>
+            <p className="text-xs text-muted-foreground">{billing.billedCount} bills (Current + Arrears)</p>
           </CardContent>
         </Card>
         <Card className="border-green-100 bg-green-50/30">
