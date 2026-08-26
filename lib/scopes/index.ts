@@ -1,7 +1,7 @@
 import { eq, and, or, sql, inArray } from "drizzle-orm"
 import { ROLES } from "../permissions/roles"
 import { UserPermissionsContext, canViewAllData } from "../permissions"
-import { receipt, customer, branch, waterScheme, billingPeriod, billingRun, billingRecord, meterReading, dailyCollectionRecord, user as userTable } from "../db/schema"
+import { receipt, customer, branch, waterScheme, billingPeriod, billingRun, billingRecord, meterReading, dailyCollectionRecord, crmSmsBatch, user as userTable } from "../db/schema"
 import { Scope } from "../iam"
 import { db } from "../db"
 
@@ -177,6 +177,35 @@ export function applyBillingScope(user: UserPermissionsContext) {
 }
 
 /**
+ * Applies organizational scope to CRM SMS Batch queries.
+ * Note: SMS batches are scoped by the creator's assigned territory.
+ */
+export function applySmsBatchScope(user: UserPermissionsContext) {
+  const scope = getScope(user, "crm.view")
+  if (!scope) return sql`1 = 0`
+
+  if (scope === "global") return undefined
+
+  // Join with userTable to find batches created by people in the same territory
+  const creatorSubquery = db
+    .select({ id: userTable.id })
+    .from(userTable)
+
+  if (scope === "cluster" && user.clusterId) {
+    creatorSubquery.where(eq(userTable.clusterId, user.clusterId))
+  } else if (scope === "area" && user.branchId) {
+    creatorSubquery.where(eq(userTable.branchId, user.branchId))
+  } else if (scope === "scheme" && user.schemeId) {
+    creatorSubquery.where(eq(userTable.schemeId, user.schemeId))
+  } else {
+    // 'own' scope
+    return eq(crmSmsBatch.createdById, user.id)
+  }
+
+  return inArray(crmSmsBatch.createdById, creatorSubquery)
+}
+
+/**
  * Applies organizational scope to individual Billing Record queries.
  */
 export function applyBillingRecordScope(user: UserPermissionsContext) {
@@ -213,6 +242,35 @@ export function applyBillingRecordScope(user: UserPermissionsContext) {
   }
 
   return sql`1 = 0`
+}
+
+/**
+ * Applies organizational scope to CRM SMS Batch queries.
+ * Note: SMS batches are scoped by the creator's assigned territory.
+ */
+export function applySmsBatchScope(user: UserPermissionsContext) {
+  const scope = getScope(user, "crm.view")
+  if (!scope) return sql`1 = 0`
+
+  if (scope === "global") return undefined
+
+  // Join with userTable to find batches created by people in the same territory
+  const creatorSubquery = db
+    .select({ id: userTable.id })
+    .from(userTable)
+
+  if (scope === "cluster" && user.clusterId) {
+    creatorSubquery.where(eq(userTable.clusterId, user.clusterId))
+  } else if (scope === "area" && user.branchId) {
+    creatorSubquery.where(eq(userTable.branchId, user.branchId))
+  } else if (scope === "scheme" && user.schemeId) {
+    creatorSubquery.where(eq(userTable.schemeId, user.schemeId))
+  } else {
+    // 'own' scope
+    return eq(crmSmsBatch.createdById, user.id)
+  }
+
+  return inArray(crmSmsBatch.createdById, creatorSubquery)
 }
 
 /**
@@ -342,4 +400,33 @@ export function applyExceptionScope(user: UserPermissionsContext) {
   }
 
   return sql`1 = 0`
+}
+
+/**
+ * Applies organizational scope to CRM SMS Batch queries.
+ * Note: SMS batches are scoped by the creator's assigned territory.
+ */
+export function applySmsBatchScope(user: UserPermissionsContext) {
+  const scope = getScope(user, "crm.view")
+  if (!scope) return sql`1 = 0`
+
+  if (scope === "global") return undefined
+
+  // Join with userTable to find batches created by people in the same territory
+  const creatorSubquery = db
+    .select({ id: userTable.id })
+    .from(userTable)
+
+  if (scope === "cluster" && user.clusterId) {
+    creatorSubquery.where(eq(userTable.clusterId, user.clusterId))
+  } else if (scope === "area" && user.branchId) {
+    creatorSubquery.where(eq(userTable.branchId, user.branchId))
+  } else if (scope === "scheme" && user.schemeId) {
+    creatorSubquery.where(eq(userTable.schemeId, user.schemeId))
+  } else {
+    // 'own' scope
+    return eq(crmSmsBatch.createdById, user.id)
+  }
+
+  return inArray(crmSmsBatch.createdById, creatorSubquery)
 }

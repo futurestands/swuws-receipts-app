@@ -20,7 +20,7 @@ import {
   canSendBulkSms,
   canConfigureCrm
 } from "@/lib/permissions"
-import { applyCustomerScope } from "@/lib/scopes"
+import { applyCustomerScope, applySmsBatchScope } from "@/lib/scopes"
 import { canViewAllData } from "@/lib/permissions"
 import { randomUUID } from "crypto"
 import { revalidatePath } from "next/cache"
@@ -549,6 +549,9 @@ export async function listSmsBatches(params: {
     ))
   }
 
+  const scope = applySmsBatchScope(user)
+  if (scope) conds.push(scope)
+
   return db
     .select({
       ...getTableColumns(crmSmsBatch),
@@ -618,6 +621,9 @@ export async function getCrmStats() {
   const customerScope = applyCustomerScope(user)
   const scopeCond = customerScope ?? sql`1=1`
 
+  const smsScope = applySmsBatchScope(user)
+  const smsScopeCond = smsScope ?? sql`1=1`
+
   const [complaintStats, smsStats] = await Promise.all([
     (needsCustomerJoin
       ? db
@@ -648,6 +654,7 @@ export async function getCrmStats() {
         pendingCount: sql<number>`count(case when ${crmSmsBatch.status} = 'pending' then 1 end)::int`,
       })
       .from(crmSmsBatch)
+      .where(smsScopeCond)
       .then(rows => rows[0])
   ])
 
