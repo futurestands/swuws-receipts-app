@@ -432,10 +432,11 @@ export async function getDashboardStats(params: {
   const verifiedNewAdvances = Number(importStats?.verifiedUpfront || 0)
 
   // 4. Bank Verified Total (Total cash confirmed: Arrears + Current + Advances)
+  // This is the absolute source of truth for money that entered the system.
   const verifiedTotal = verifiedArrears + verifiedMonthlyPerformance + verifiedNewAdvances
 
   // 5. DEBT CLEARANCE PERFORMANCE (Money that actually reduced demand)
-  // This excludes advances because advances don't reduce current/old debt.
+  // This measures efficiency in clearing the SPECIFIC USh 1.47B demand for this period.
   const debtRecoveryPerformance = verifiedArrears + verifiedMonthlyPerformance
 
   const totalHarmonizedCollected = verifiedTotal
@@ -444,7 +445,8 @@ export async function getDashboardStats(params: {
   const operationalCount = Number(receiptStats?.totalCount || 0)
 
   // Collection Rates
-  // PERFORMANCE EFFICIENCY: Realized Recovery vs Total Demand
+  // PERFORMANCE EFFICIENCY: How much of our total billed demand (1.47B) did we actually collect?
+  // We use debtRecoveryPerformance (Money applied to bills) vs totalBilled (Demand).
   const globalRate = totalBilled > 0 ? (debtRecoveryPerformance / totalBilled) * 100 : 0
 
   // Total System Arrears (Current Snapshot)
