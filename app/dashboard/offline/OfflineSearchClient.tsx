@@ -11,11 +11,9 @@ import { Badge } from "@/components/ui/badge"
 import { toast } from "sonner"
 import { formatUGX } from "@/lib/format"
 import { cn } from "@/lib/utils"
-import { Search, RefreshCw, Wifi, WifiOff, AlertCircle, Banknote, Clock, Calculator, AlertTriangle, Printer } from "lucide-react"
-import { isNative } from "@/lib/mobile-hardware"
+import { Search, RefreshCw, Wifi, WifiOff, Banknote, Clock, Calculator, AlertTriangle, Printer } from "lucide-react"
 import { OfflineReceiptForm } from "./OfflineReceiptForm"
 import { OfflineMeterReadingForm } from "./OfflineMeterReadingForm"
-import { bluetoothLePrinter } from "@/lib/offline/bluetooth-printer"
 import { printerManager } from "@/lib/offline/printer-manager"
 import { searchCustomers } from "@/app/actions/customers"
 
@@ -30,14 +28,18 @@ export function OfflineSearchClient({ agentId }: { agentId: string }) {
   const [uploading, setUploading] = useState(false)
   const [queuedReceipts, setQueuedReceipts] = useState<any[]>([])
   const [queuedReadings, setQueuedReadings] = useState<any[]>([])
+  const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null)
+  const [selectedCustomerIdForReading, setSelectedCustomerIdForReading] = useState<string | null>(null)
   const [lastSyncAttempt, setLastSyncAttempt] = useState<number>(0)
-  const SYNC_COOLDOWN = 30000 // 30 seconds cooldown for auto-sync on failure
+  const SYNC_COOLDOWN = 30000 // 30 seconds cooldown
 
   const totalQueued = queuedReceipts.filter(r => r.status !== 'synced').length +
                       queuedReadings.filter(r => r.status !== 'synced').length
 
   const hasNewItems = queuedReceipts.some(r => r.status === 'queued') ||
                       queuedReadings.some(r => r.status === 'queued')
+
+  const handleSearch = async () => {
     // Always search local SQLite
     const local = await sqliteService.searchCustomers(query)
     setLocalCustomers(local)
@@ -61,13 +63,6 @@ export function OfflineSearchClient({ agentId }: { agentId: string }) {
     }
   }
 
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      handleSearch()
-    }, 300)
-    return () => clearTimeout(timer)
-  }, [query])
-
   const refreshData = async () => {
     const [meta, queue, readings] = await Promise.all([
       sqliteService.getSyncMeta(),
@@ -79,6 +74,13 @@ export function OfflineSearchClient({ agentId }: { agentId: string }) {
     setQueuedReadings(readings)
     await handleSearch()
   }
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      handleSearch()
+    }, 300)
+    return () => clearTimeout(timer)
+  }, [query, isOnline])
 
   useEffect(() => {
     let active = true
@@ -102,52 +104,6 @@ export function OfflineSearchClient({ agentId }: { agentId: string }) {
       window.removeEventListener("offline", updateOnlineStatus)
     }
   }, [])
-
-  useEffect(() => {
-    const now = Date.now()
-    if (isOnline && hasNewItems && !uploading && (now - lastSyncAttempt > SYNC_COOLDOWN)) {
-      handleSyncPush()
-    }
-  }, [isOnline, hasNewItems, uploading])
-
-  const handleSyncPull = async () => {
-    if (!isOnline) {
-      toast.error("You must be online to sync data")
-      return
-    }
-
-    setSyncing(true)
-    try {
-      const data = await getAgentOfflineData()
-      await sqliteService.pullSync({
-        ...data,
-        agentId
-      })
-      await refreshData()
-      toast.success("Offline cache updated successfully")
-    } catch (err) {
-      console.error(err)
-      toast.error("Sync failed. Check your connection.")
-    } finally {
-      setSyncing(false)
-    }
-  }
-
-  const handlePrintOffline = async (r: any) => {
-    try {
-      await printerManager.print({
-        receiptNumber: r.id.slice(0, 8).toUpperCase(), // Provisional #
-        customerName: r.customerName,
-        amount: r.amount,
-        paymentMethod: r.paymentMethod,
-        paymentDate: r.paymentDate,
-        isProvisional: true
-      })
-      toast.success("Printing receipt...")
-    } catch (err: any) {
-      toast.error(err.message || "Printing failed")
-    }
-  }
 
   const handleSyncPush = async () => {
     if (!isOnline) {
@@ -216,6 +172,52 @@ export function OfflineSearchClient({ agentId }: { agentId: string }) {
       toast.error("Upload failed")
     } finally {
       setUploading(false)
+    }
+  }
+
+  useEffect(() => {
+    const now = Date.now()
+    if (isOnline && hasNewItems && !uploading && (now - lastSyncAttempt > SYNC_COOLDOWN)) {
+      handleSyncPush()
+    }
+  }, [isOnline, hasNewItems, uploading])
+
+  const handleSyncPull = async () => {
+    if (!isOnline) {
+      toast.error("You must be online to sync data")
+      return
+    }
+
+    setSyncing(true)
+    try {
+      const data = await getAgentOfflineData()
+      await sqliteService.pullSync({
+        ...data,
+        agentId
+      })
+      await refreshData()
+      toast.success("Offline cache updated successfully")
+    } catch (err) {
+      console.error(err)
+      toast.error("Sync failed. Check your connection.")
+    } finally {
+      setSyncing(false)
+    }
+  }
+
+  const handlePrintOffline = async (r: any) => {
+    try {
+      await printerManager.print({
+        receiptNumber: r.id.slice(0, 8).toUpperCase(), // Provisional #
+        customerName: r.customerName,
+        amount: r.amount,
+        paymentMethod: r.paymentMethod,
+        paymentDate: r.paymentDate,
+        isProvisional: true
+      })
+      toast.success("Printing receipt...")
+    } catch (err: any) {
+      toast.error(err.message || "Printing failed")
     }
   }
 
