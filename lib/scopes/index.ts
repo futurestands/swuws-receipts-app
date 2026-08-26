@@ -320,17 +320,37 @@ export function applyExceptionScope(user: UserPermissionsContext) {
 
   if (scope === "global") return undefined
 
+  // TRIPLE-FALLBACK SCOPING (Aug 26 Hardening):
+  // Ensures branch managers can see exceptions even for orphan EBS payments
+  // (where receiptId IS NULL) by checking the EBS record's branch metadata
+  // or the branch of the staff member who performed the upload.
+  const isOrphan = sql`reconciliation_exception."receiptId" IS NULL`
+
   if (scope === "cluster" && user.clusterId) {
     return or(
       inArray(receipt.branchId, sql`(SELECT id FROM branch WHERE "clusterId" = ${user.clusterId})`),
-      inArray(dailyCollectionRecord.branchName, sql`(SELECT name FROM branch WHERE "clusterId" = ${user.clusterId})`)
+      inArray(dailyCollectionRecord.branchName, sql`(SELECT name FROM branch WHERE "clusterId" = ${user.clusterId})`),
+      and(
+        isOrphan,
+        inArray(
+          sql`(SELECT "branchId" FROM "user" WHERE id = (SELECT "uploadedById" FROM daily_collection_import WHERE id = ${dailyCollectionRecord.batchId}))`,
+          sql`(SELECT id FROM branch WHERE "clusterId" = ${user.clusterId})`
+        )
+      )
     )
   }
 
   if (scope === "area" && user.branchId) {
     return or(
       eq(receipt.branchId, user.branchId),
-      eq(dailyCollectionRecord.branchName, sql`(SELECT name FROM branch WHERE id = ${user.branchId})`)
+      eq(dailyCollectionRecord.branchName, sql`(SELECT name FROM branch WHERE id = ${user.branchId})`),
+      and(
+        isOrphan,
+        eq(
+          sql`(SELECT "branchId" FROM "user" WHERE id = (SELECT "uploadedById" FROM daily_collection_import WHERE id = ${dailyCollectionRecord.batchId}))`,
+          user.branchId
+        )
+      )
     )
   }
 

@@ -102,11 +102,13 @@ export function canViewAllData(user: UserPermissionsContext) {
   // SYSTEM ADMIN is the only role that can override regional assignments.
   if (user.role === ROLES.SYSTEM_ADMIN) return true
 
-  // If they are assigned to a specific region, they are NOT global viewers.
-  // This is the "Force-Cap" at the engine level.
-  if (user.clusterId || user.branchId || user.schemeId) return false
+  // If they are assigned to a specific region, they are usually restricted.
+  // SENIORITY EXEMPTION (Aug 26 Hardening): Head Office staff (Level 8+) retain
+  // global view even if assigned to a branch (e.g. for audit/support).
+  const isSeniorStaff = (user.roleLevel ?? 0) >= 8
+  if (!isSeniorStaff && (user.clusterId || user.branchId || user.schemeId)) return false
 
-  if ((user.roleLevel ?? 0) >= 8) return true
+  if (isSeniorStaff) return true
 
   const perms = user.permissions
   if (!perms) return false

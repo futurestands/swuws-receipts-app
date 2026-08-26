@@ -7,12 +7,14 @@ import {
   reconciliationApproval,
   reconciliationException,
   user as userTable,
+  iamRolePermission,
+  iamPermission,
 } from "@/lib/db/schema"
 import { requireUser } from "@/lib/session"
 import { hasPermission } from "@/lib/iam"
 import { ROLES } from "@/lib/permissions/roles"
 import { writeAudit } from "@/lib/audit"
-import { and, eq, sql, count, or, ne } from "drizzle-orm"
+import { and, eq, sql, count, or, ne, inArray } from "drizzle-orm"
 import { randomUUID } from "crypto"
 import { createNotification } from "./notifications"
 import { revalidatePath } from "next/cache"
@@ -56,18 +58,27 @@ export async function submitForReview(batchId: string, comments?: string) {
       details: { batchId, comments }
     }, tx)
 
-    // Notify Approvers (Finance & Admin)
+    // Notify Approvers (Aug 26 Hardening): Align with IAM permissions.
+    // We notify System Admins + any user whose IAM Role carries 'reconciliation.approve'.
     const approvers = await tx
       .select({ id: userTable.id })
       .from(userTable)
+      .leftJoin(iamRolePermission, eq(userTable.iamRoleId, iamRolePermission.roleId))
+      .leftJoin(iamPermission, eq(iamRolePermission.permissionId, iamPermission.id))
       .where(and(
         eq(userTable.active, true),
-        or(eq(userTable.role, ROLES.SYSTEM_ADMIN), eq(userTable.role, ROLES.FINANCE_OFFICER))
+        or(
+          eq(userTable.role, ROLES.SYSTEM_ADMIN),
+          eq(iamPermission.code, 'reconciliation.approve')
+        )
       ))
 
-    for (const app of approvers) {
+    // Deduplicate IDs (one user might have multiple paths to the permission)
+    const approverIds = Array.from(new Set(approvers.map(a => a.id)))
+
+    for (const appID of approverIds) {
       await createNotification({
-        userId: app.id,
+        userId: appID,
         type: "approval_pending",
         title: "Reconciliation Sign-off Required",
         message: `Batch ${batchId.split('-')[0]} is ready for review and final sign-off.`,

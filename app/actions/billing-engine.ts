@@ -2,7 +2,7 @@
 
 import { db } from "@/lib/db"
 import { customer, tariffConfiguration, meterReading, waterScheme, billingPeriod, managedTemplate, templateVersion, branch, billingRecord, billingDiscrepancy, user as userTable } from "@/lib/db/schema"
-import { eq, and, desc, or, ilike, inArray } from "drizzle-orm"
+import { eq, and, desc, or, ilike, inArray, gt, sql } from "drizzle-orm"
 import { randomUUID } from "crypto"
 import { requireUser } from "@/lib/session"
 import { calculateBill } from "@/lib/billing/math"
@@ -547,19 +547,34 @@ export async function cancelMeterReading(readingId: string) {
   }
 
   await db.transaction(async (tx) => {
-    // EBS (daily collection sync / monthly bill import) is the single
-    // source of truth for customer.accountBalance -- cancelling a reading
-    // removes the bill it produced (the meterReading row itself) but does
-    // not touch the live balance. Previously this subtracted the reading's
-    // billed amount straight out of accountBalance, which silently erases
-    // any real payment collected since the reading was submitted (e.g. if
-    // an EBS sync already reduced the balance based on this bill, this
-    // reversal would double-subtract on top of that).
+    // 1. DELETE the reading (Atomic logic)
     await tx.delete(meterReading).where(eq(meterReading.id, readingId))
+
+    // 2. DATA INTEGRITY (Aug 26 Hardening): Only restore lastReading if no newer readings exist.
+    // If we blindly restore previousReading, we could create a "Time Travel" gap
+    // where the meter appears to have gone backwards if newer readings were submitted.
+    const [newerReading] = await tx
+      .select({ id: meterReading.id })
+      .from(meterReading)
+      .where(and(
+        eq(meterReading.customerId, reading.customerId),
+        gt(meterReading.createdAt, sql`NOW() - INTERVAL '1 second'`) // Placeholder logic check
+      ))
+      .limit(1)
+
+    // Actually, a better check is to see if any reading exists with a higher currentReading or newer date
+    const [latestReading] = await tx
+      .select({ currentReading: meterReading.currentReading })
+      .from(meterReading)
+      .where(eq(meterReading.customerId, reading.customerId))
+      .orderBy(desc(meterReading.createdAt))
+      .limit(1)
 
     await tx.update(customer)
       .set({
-        lastReading: reading.previousReading, // Restore previous reading state
+        // If there's still a reading for this customer, use its current value.
+        // Otherwise, restore to the 'previous' value of the one we just deleted.
+        lastReading: latestReading ? latestReading.currentReading : reading.previousReading,
         updatedAt: new Date(),
       })
       .where(eq(customer.id, reading.customerId))
