@@ -22,8 +22,11 @@
         .empty { text-align: center; color: #94a3b8; padding: 2rem 0; }
         .retry-container { padding: 1rem; background: white; border-top: 1px solid #e2e8f0; }
 
-        .diagnostics { margin-top: 1rem; font-size: 0.65rem; color: #64748b; background: #f1f5f9; padding: 0.5rem; border-radius: 0.4rem; font-mono: monospace; display: none; }
-        .diagnostics.error { display: block; background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; }
+        .diagnostics { margin-top: 1rem; font-size: 0.65rem; color: #64748b; background: #f1f5f9; padding: 0.75rem; border-radius: 0.4rem; font-family: monospace; white-space: pre-wrap; line-height: 1.4; border: 1px solid #e2e8f0; }
+        .diagnostics.active { display: block; }
+        .log-entry { margin-bottom: 2px; }
+        .log-error { color: #ef4444; font-weight: bold; }
+        .log-success { color: #10b981; font-weight: bold; }
 
         /* Modal Styles */
         #payment-modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 100; align-items: center; justify-content: center; padding: 1rem; }
@@ -56,7 +59,10 @@
             <div id="queue-status" class="customer-meta">Checking queue...</div>
         </div>
 
-        <div id="diag-box" class="diagnostics"></div>
+        <div id="diag-box" class="diagnostics active">
+            <div class="log-entry">Initializing robust shell...</div>
+        </div>
+        <button id="init-retry" class="btn btn-sm btn-outline" style="display:none; margin-top: 0.5rem;" onclick="initDatabase()">Retry Initialization</button>
     </main>
 
     <div id="payment-modal">
@@ -86,25 +92,43 @@
 
     <div class="retry-container">
         <button class="btn" onclick="window.location.reload()">Try Reconnect to Live Server</button>
-        <p style="text-align: center; font-size: 0.7rem; color: #94a3b8; margin-top: 1rem;">v1.3 (Hardened Offline Shell)</p>
+        <p style="text-align: center; font-size: 0.7rem; color: #94a3b8; margin-top: 1rem;">v1.4 (Robust Offline Shell)</p>
     </div>
 
     <script src="cordova.js"></script>
     <script>
-        // Simple SQLite Wrapper to match React App's positional API
-        // while sending correct options objects to the raw Capacitor plugin.
+        function log(msg, type = '') {
+            const box = document.getElementById('diag-box');
+            const entry = document.createElement('div');
+            entry.className = 'log-entry ' + (type ? 'log-' + type : '');
+            entry.innerText = `> ${msg}`;
+            box.appendChild(entry);
+            console.log(`[OfflineShell] ${msg}`);
+        }
+
         class SimpleSQLite {
             constructor() {
-                this.plugin = window.Capacitor && window.Capacitor.Plugins ? window.Capacitor.Plugins.CapacitorSQLite : null;
                 this.dbName = "swuws_offline_cache";
+                this.plugin = null;
             }
 
-            async isReady() {
-                if (!this.plugin) {
-                    this.showError("Capacitor SQLite plugin not found.");
-                    return false;
+            async findPlugin() {
+                log("Waiting for Capacitor bridge...");
+                const maxWait = 5000;
+                const start = Date.now();
+
+                while (Date.now() - start < maxWait) {
+                    if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.CapacitorSQLite) {
+                        this.plugin = window.Capacitor.Plugins.CapacitorSQLite;
+                        log("SQLite plugin found.", "success");
+                        return true;
+                    }
+                    await new Promise(r => setTimeout(r, 200));
                 }
-                return true;
+
+                log("SQLite plugin NOT found after 5s.", "error");
+                document.getElementById('init-retry').style.display = 'block';
+                return false;
             }
 
             async execute(sql) {
@@ -115,26 +139,31 @@
                 return await this.plugin.query({ database: this.dbName, statement: sql, values: params });
             }
 
-            async open() {
-                // Ensure connection exists first
-                try {
-                    await this.plugin.createConnection({
-                        database: this.dbName,
-                        encrypted: false,
-                        mode: "no-encryption",
-                        version: 1,
-                        readonly: false
-                    });
-                } catch (e) {
-                    // Connection might already exist, ignore
-                }
-                return await this.plugin.open({ database: this.dbName });
+            async run(sql, params = []) {
+                return await this.plugin.run({ database: this.dbName, statement: sql, values: params });
             }
 
-            showError(msg) {
-                const box = document.getElementById('diag-box');
-                box.innerText = msg;
-                box.classList.add('error');
+            async open() {
+                try {
+                    log(`Opening database: ${this.dbName}`);
+                    try {
+                        await this.plugin.createConnection({
+                            database: this.dbName,
+                            encrypted: false,
+                            mode: "no-encryption",
+                            version: 1,
+                            readonly: false
+                        });
+                    } catch (e) {
+                        // Connection likely exists
+                    }
+                    await this.plugin.open({ database: this.dbName });
+                    log("Database opened.", "success");
+                    return true;
+                } catch (e) {
+                    log("Open Failed: " + e.message, "error");
+                    return false;
+                }
             }
         }
 
@@ -149,10 +178,14 @@
         }
 
         async function initDatabase() {
-            if (!(await db.isReady())) return;
-            try {
-                await db.open();
+            document.getElementById('init-retry').style.display = 'none';
+            if (!(await db.findPlugin())) return;
 
+            const success = await db.open();
+            if (!success) return;
+
+            try {
+                log("Verifying tables...");
                 const tables = [
                     `CREATE TABLE IF NOT EXISTS local_customers (
                         id TEXT PRIMARY KEY,
@@ -185,8 +218,19 @@
                 for (const sql of tables) {
                     await db.execute(sql);
                 }
+                log("Database ready!", "success");
+
+                // Hide diagnostics after 3s if everything is okay
+                setTimeout(() => {
+                    const box = document.getElementById('diag-box');
+                    if (!box.querySelector('.log-error')) {
+                        box.style.display = 'none';
+                    }
+                }, 3000);
+
+                checkQueue();
             } catch (e) {
-                db.showError("Database Init Failed: " + e.message);
+                log("Table Init Failed: " + e.message, "error");
             }
         }
 
@@ -196,6 +240,11 @@
 
             if (query.length < 2) {
                 resultsDiv.innerHTML = '<div class="empty">Type at least 2 characters...</div>';
+                return;
+            }
+
+            if (!db.plugin) {
+                resultsDiv.innerHTML = '<div class="empty">System not initialized.</div>';
                 return;
             }
 
@@ -221,8 +270,8 @@
                 `).join('');
 
             } catch (err) {
-                resultsDiv.innerHTML = '<div class="empty">Offline Database not ready yet.</div>';
-                db.showError("Search Error: " + err.message);
+                resultsDiv.innerHTML = '<div class="empty">Search failed.</div>';
+                log("Search Error: " + err.message, "error");
             }
         }
 
@@ -250,33 +299,36 @@
             try {
                 const id = safeId();
                 const idempotencyKey = safeId();
+                const date = new Date().toISOString();
 
-                await db.execute(`INSERT INTO local_receipt_queue (id, customerId, amount, paymentMethod, paymentReference, idempotencyKey, paymentDate)
-                               VALUES ('${id}', '${selectedCustomerId}', ${amount}, '${method}', '${ref}', '${idempotencyKey}', '${new Date().toISOString()}');`);
+                await db.run(
+                    `INSERT INTO local_receipt_queue (id, customerId, amount, paymentMethod, paymentReference, idempotencyKey, paymentDate)
+                     VALUES (?, ?, ?, ?, ?, ?, ?);`,
+                    [id, selectedCustomerId, amount, method, ref, idempotencyKey, date]
+                );
 
                 alert("Receipt queued offline. It will sync automatically when you are back online.");
                 closeModal();
                 checkQueue();
             } catch (e) {
-                db.showError("Queue Failed: " + e.message);
+                log("Queue Failed: " + e.message, "error");
                 alert("Failed to save offline receipt.");
             }
         }
 
         async function checkQueue() {
+            if (!db.plugin) return;
             try {
                 const res = await db.query("SELECT COUNT(*) as count FROM local_receipt_queue WHERE status != 'synced';");
                 const count = (res && res.values && res.values[0]) ? res.values[0].count : 0;
-                document.getElementById('queue-status').innerText = `${count} receipts waiting to be uploaded.`;
+                document.getElementById('queue-status').innerText = `${count} receipt(s) waiting to be uploaded.`;
             } catch (e) {
-                document.getElementById('queue-status').innerText = "Syncing not initialized.";
+                document.getElementById('queue-status').innerText = "Sync status unknown.";
             }
         }
 
-        document.addEventListener('DOMContentLoaded', async () => {
-            console.log('Offline Shell Initializing');
-            await initDatabase();
-            checkQueue();
+        document.addEventListener('DOMContentLoaded', () => {
+            initDatabase();
         });
     </script>
 </body>

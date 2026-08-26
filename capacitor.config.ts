@@ -29,7 +29,7 @@ if (serverUrl.includes('localhost') || serverUrl.includes('127.0.0.1')) {
 const config: CapacitorConfig = {
   appId: 'org.swuws.portal',
   appName: 'SWUWS',
-  webDir: 'out',
+  webDir: 'public',
   server: {
     url: serverUrl,
     cleartext: false,
