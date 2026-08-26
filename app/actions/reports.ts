@@ -434,14 +434,18 @@ export async function getDashboardStats(params: {
   // 4. Bank Verified Total (Total cash confirmed: Arrears + Current + Advances)
   const verifiedTotal = verifiedArrears + verifiedMonthlyPerformance + verifiedNewAdvances
 
+  // 5. DEBT CLEARANCE PERFORMANCE (Money that actually reduced demand)
+  // This excludes advances because advances don't reduce current/old debt.
+  const debtRecoveryPerformance = verifiedArrears + verifiedMonthlyPerformance
+
   const totalHarmonizedCollected = verifiedTotal
 
   const operationalCash = Number(receiptStats?.totalAmount || 0)
   const operationalCount = Number(receiptStats?.totalCount || 0)
 
   // Collection Rates
-  // Global Rate: Total Collected vs Total Demand (Current + Arrears)
-  const globalRate = totalBilled > 0 ? (totalHarmonizedCollected / totalBilled) * 100 : 0
+  // PERFORMANCE EFFICIENCY: Realized Recovery vs Total Demand
+  const globalRate = totalBilled > 0 ? (debtRecoveryPerformance / totalBilled) * 100 : 0
 
   // Total System Arrears (Current Snapshot)
   const arrearsConditions = []
@@ -483,7 +487,7 @@ export async function getDashboardStats(params: {
       paidCount: Number(importStats?.paidCount || 0),
       confirmedCount: Number(importStats?.confirmedCount || 0),
       partialCount: Number(importStats?.partialCount || 0),
-      unpaidCount: Number(importStats?.unpaidCount || 0),
+      unpaidCount: Number(importStats?.unpaidCount || 0) + Number(fieldStats?.billedCount || 0),
     },
     collections: {
       verifiedTotal,

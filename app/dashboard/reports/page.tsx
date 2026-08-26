@@ -172,12 +172,12 @@ export default async function ReportsPage({
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Period Performance</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">Recovery Performance</CardTitle>
             <TrendingUp className="h-4 w-4 text-primary" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{formatPercent(collections.collectionRate)}</div>
-            <p className="text-[10px] text-muted-foreground mb-2">Efficiency vs Total Demand ({formatUGX(billing.totalBilled)})</p>
+            <p className="text-[10px] text-muted-foreground mb-2">Efficiency in clearing Total Demand</p>
             <Progress value={collections.collectionRate} className="h-2 mt-2" />
           </CardContent>
         </Card>
