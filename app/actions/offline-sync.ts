@@ -43,28 +43,34 @@ export async function getAgentOfflineData() {
     }
   }
 
-  // 3. Fetch active-period billing records for these specific customers
+  // 3. Fetch active-period billing records for these specific customers in chunks
+  // (Prevents hitting the Postgres parameter limit for large branches/global admins)
   const customerIds = scopedCustomers.map((c) => c.id)
+  const activeBillingRecords: any[] = []
 
-  let activeBillingRecords: any[] = []
   if (activePeriod) {
-    activeBillingRecords = await db
-      .select({
-        id: billingRecord.id,
-        customerId: billingRecord.customerId,
-        totalDue: billingRecord.totalDue,
-        arrears: billingRecord.arrears,
-        billAmount: billingRecord.billAmount,
-        status: billingRecord.status,
-        billingPeriodId: billingRecord.billingPeriodId,
-      })
-      .from(billingRecord)
-      .where(
-        and(
-          eq(billingRecord.billingPeriodId, activePeriod.id),
-          inArray(billingRecord.customerId, customerIds)
+    const CHUNK_SIZE = 5000
+    for (let i = 0; i < customerIds.length; i += CHUNK_SIZE) {
+      const chunk = customerIds.slice(i, i + CHUNK_SIZE)
+      const records = await db
+        .select({
+          id: billingRecord.id,
+          customerId: billingRecord.customerId,
+          totalDue: billingRecord.totalDue,
+          arrears: billingRecord.arrears,
+          billAmount: billingRecord.billAmount,
+          status: billingRecord.status,
+          billingPeriodId: billingRecord.billingPeriodId,
+        })
+        .from(billingRecord)
+        .where(
+          and(
+            eq(billingRecord.billingPeriodId, activePeriod.id),
+            inArray(billingRecord.customerId, chunk)
+          )
         )
-      )
+      activeBillingRecords.push(...records)
+    }
   }
 
   return {

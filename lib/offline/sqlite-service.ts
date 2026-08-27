@@ -159,29 +159,37 @@ class SQLiteService {
       await this.db.execute('DELETE FROM local_billing_records;');
       await this.db.execute('DELETE FROM local_customers;');
 
-      // Insert customers
+      // OPTIMIZED BATCH INSERT (Aug 27 Hardening)
+      // Instead of 18,000 separate calls to the native bridge,
+      // we use executeSet to batch statements for maximum speed.
+      const set: any[] = [];
+
+      // 1. Batch customers
       for (const c of data.customers) {
-        await this.db.run(
-          `INSERT INTO local_customers (id, customerAccount, name, phone, address, accountBalance, category, active, updatedAt)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          [c.id, c.customerAccount, c.name, c.phone, c.address, String(c.accountBalance), c.category, c.active ? 1 : 0, c.updatedAt]
-        );
+        set.push({
+          statement: `INSERT INTO local_customers (id, customerAccount, name, phone, address, accountBalance, category, active, updatedAt)
+                      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          values: [c.id, c.customerAccount, c.name, c.phone, c.address, String(c.accountBalance), c.category, c.active ? 1 : 0, c.updatedAt]
+        });
       }
 
-      // Insert billing records
+      // 2. Batch billing records
       for (const br of data.billingRecords) {
-        await this.db.run(
-          `INSERT INTO local_billing_records (id, customerId, totalDue, arrears, billAmount, status, billingPeriodId)
-           VALUES (?, ?, ?, ?, ?, ?, ?)`,
-          [br.id, br.customerId, String(br.totalDue), String(br.arrears), String(br.billAmount), br.status, br.billingPeriodId]
-        );
+        set.push({
+          statement: `INSERT INTO local_billing_records (id, customerId, totalDue, arrears, billAmount, status, billingPeriodId)
+                      VALUES (?, ?, ?, ?, ?, ?, ?)`,
+          values: [br.id, br.customerId, String(br.totalDue), String(br.arrears), String(br.billAmount), br.status, br.billingPeriodId]
+        });
       }
 
-      // Update sync meta
-      await this.db.run(
-        `INSERT OR REPLACE INTO sync_meta (deviceId, lastSuccessfulPullAt, scopedAgentId, activePeriodId) VALUES (?, ?, ?, ?)`,
-        [deviceId, data.timestamp, data.agentId, data.activePeriodId]
-      );
+      // 3. Batch metadata update
+      set.push({
+        statement: `INSERT OR REPLACE INTO sync_meta (deviceId, lastSuccessfulPullAt, scopedAgentId, activePeriodId) VALUES (?, ?, ?, ?)`,
+        values: [deviceId, data.timestamp, data.agentId, data.activePeriodId]
+      });
+
+      // Execute the entire set in one go (very fast in Capacitor SQLite)
+      await this.db.executeSet(set);
 
       await this.db.execute('COMMIT;');
     } catch (err) {

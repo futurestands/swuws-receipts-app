@@ -25,6 +25,7 @@ export function OfflineSearchClient({ agentId }: { agentId: string }) {
   const [isOnline, setIsOnline] = useState(true)
   const [searchingServer, setSearchingServer] = useState(false)
   const [syncing, setSyncing] = useState(false)
+  const [syncStep, setSyncStep] = useState<string>("")
   const [uploading, setUploading] = useState(false)
   const [queuedReceipts, setQueuedReceipts] = useState<any[]>([])
   const [queuedReadings, setQueuedReadings] = useState<any[]>([])
@@ -189,8 +190,10 @@ export function OfflineSearchClient({ agentId }: { agentId: string }) {
     }
 
     setSyncing(true)
+    setSyncStep("Fetching data from server...")
     try {
       const data = await getAgentOfflineData()
+      setSyncStep(`Saving ${data.customers.length} customers locally...`)
       await sqliteService.pullSync({
         ...data,
         agentId
@@ -202,6 +205,7 @@ export function OfflineSearchClient({ agentId }: { agentId: string }) {
       toast.error("Sync failed. Check your connection.")
     } finally {
       setSyncing(false)
+      setSyncStep("")
     }
   }
 
@@ -272,8 +276,8 @@ export function OfflineSearchClient({ agentId }: { agentId: string }) {
             variant="outline"
             className="gap-2"
           >
-            <RefreshCw className={`h-4 w-4 ${syncing ? 'animate-spin' : ''}`} />
-            Sync Cache
+            <RefreshCw className={cn("h-4 w-4", syncing && "animate-spin")} />
+            {syncing ? syncStep : "Sync Cache"}
           </Button>
         </div>
       </div>
