@@ -553,16 +553,7 @@ export async function cancelMeterReading(readingId: string) {
     // 2. DATA INTEGRITY (Aug 26 Hardening): Only restore lastReading if no newer readings exist.
     // If we blindly restore previousReading, we could create a "Time Travel" gap
     // where the meter appears to have gone backwards if newer readings were submitted.
-    const [newerReading] = await tx
-      .select({ id: meterReading.id })
-      .from(meterReading)
-      .where(and(
-        eq(meterReading.customerId, reading.customerId),
-        gt(meterReading.createdAt, sql`NOW() - INTERVAL '1 second'`) // Placeholder logic check
-      ))
-      .limit(1)
-
-    // Actually, a better check is to see if any reading exists with a higher currentReading or newer date
+    // We check if any reading exists for this customer (after the deletion above).
     const [latestReading] = await tx
       .select({ currentReading: meterReading.currentReading })
       .from(meterReading)
