@@ -11,7 +11,7 @@ import {
 } from "@/lib/db/schema"
 import { requireUser } from "@/lib/session"
 import { canUploadBilling } from "@/lib/permissions"
-import { eq, desc, and, ilike, or, sql, count, inArray } from "drizzle-orm"
+import { eq, desc, and, ilike, or, sql, count, inArray, gt } from "drizzle-orm"
 import { randomUUID, createHash } from "crypto"
 import * as XLSX from "xlsx"
 import { z } from "zod"
@@ -721,8 +721,10 @@ export async function getDailyImportRecords(params: { batchId: string, page: num
 
 /**
  * DELETES A DAILY IMPORT BATCH (Phase 2B Hardening)
- * This removes the import record and all its associated collection records.
- * Note: It does NOT roll back customer balance changes (reconciliation logic).
+ *
+ * IMPLEMENTS FORENSIC ROLLBACK:
+ * If this was a 'Balance Sync' batch, we reverse the balance changes
+ * made to customers and billing records before deleting.
  */
 export async function deleteDailyImport(id: string) {
   const current = await requireUser()
@@ -731,7 +733,13 @@ export async function deleteDailyImport(id: string) {
   try {
     const userScope = applyUserScope(current)
     const [batch] = await db
-      .select({ id: dailyCollectionImport.id, filename: dailyCollectionImport.filename })
+      .select({
+        id: dailyCollectionImport.id,
+        filename: dailyCollectionImport.filename,
+        businessDate: dailyCollectionImport.businessDate,
+        status: dailyCollectionImport.status,
+        billingPeriodId: dailyCollectionImport.billingPeriodId
+      })
       .from(dailyCollectionImport)
       .innerJoin(userTable, eq(dailyCollectionImport.uploadedById, userTable.id))
       .where(and(eq(dailyCollectionImport.id, id), userScope))
@@ -739,26 +747,106 @@ export async function deleteDailyImport(id: string) {
 
     if (!batch) return { ok: false, error: "Import not found or you don't have permission to delete it" }
 
-    await db.transaction(async (tx) => {
-      // 1. Delete granular records (cascades but manual is safer for auditing)
-      await tx.delete(dailyCollectionRecord).where(eq(dailyCollectionRecord.batchId, id))
+    // 1. Identify matched records that affected balances
+    const matchedRecords = await db
+      .select()
+      .from(dailyCollectionRecord)
+      .where(and(
+        eq(dailyCollectionRecord.batchId, id),
+        eq(dailyCollectionRecord.importStatus, 'matched')
+      ))
 
-      // 2. Delete the import metadata
+    // 2. INTERFERENCE CHECK: If any NEWER batch exists for these customers, block deletion.
+    // This prevents "Debt Time-Travel" where rolling back an old payment creates
+    // an impossible balance state compared to newer records.
+    if (matchedRecords.length > 0) {
+      const [newerBatch] = await db
+        .select({ id: dailyCollectionImport.id })
+        .from(dailyCollectionImport)
+        .where(and(
+          gt(dailyCollectionImport.businessDate, batch.businessDate),
+          eq(dailyCollectionImport.status, 'processed')
+        ))
+        .limit(1)
+
+      if (newerBatch) {
+        throw new Error("Cannot delete this batch. A newer Daily Collection has already been processed. Please delete newer batches first to maintain debt history.")
+      }
+    }
+
+    await db.transaction(async (tx) => {
+      // 3. Reverse balance changes for matched records
+      for (const record of matchedRecords) {
+        // A. Restore Customer Balance
+        await tx.execute(sql`
+          UPDATE customer
+          SET
+            "accountBalance" = "accountBalance" + ${record.amount}::numeric,
+            "updatedAt" = now()
+          WHERE "customerAccount" = ${record.accountNumber}
+        `)
+
+        // B. Restore Billing Record (if any)
+        if (batch.billingPeriodId) {
+          const [cust] = await tx.select({ id: customer.id }).from(customer).where(eq(customer.customerAccount, record.accountNumber)).limit(1)
+          if (cust) {
+            // Find the bill affected by this sync
+            const [bill] = await tx
+              .select()
+              .from(billingRecord)
+              .where(and(
+                eq(billingRecord.customerId, cust.id),
+                eq(billingRecord.billingPeriodId, batch.billingPeriodId)
+              ))
+              .limit(1)
+
+            if (bill) {
+              /**
+               * REVERSE RECOVERY PORTIONS:
+               * We need to figure out how much of this specific record's 'amount'
+               * went to current vs arrears. We use the logic from commitDailyBalanceSync.
+               */
+              const arrearsAvailableToRestore = Math.min(record.amount, Number(bill.arrearsRecovery))
+              const currentAvailableToRestore = record.amount - arrearsAvailableToRestore
+
+              const newTotalDue = Number(bill.totalDue) + record.amount
+              const newRecovery = Math.max(0, Number(bill.recoveryAmount) - currentAvailableToRestore)
+              const newArrearsRecovery = Math.max(0, Number(bill.arrearsRecovery) - arrearsAvailableToRestore)
+
+              // Reset status: if newRecovery > 0 then partially_paid, else pending
+              const newStatus = newRecovery > 0 ? 'partially_paid' : 'pending'
+
+              await tx.update(billingRecord)
+                .set({
+                  totalDue: String(newTotalDue),
+                  recoveryAmount: String(newRecovery),
+                  arrearsRecovery: String(newArrearsRecovery),
+                  status: newStatus,
+                  updatedAt: new Date()
+                })
+                .where(eq(billingRecord.id, bill.id))
+            }
+          }
+        }
+      }
+
+      // 4. Delete the data records and metadata
+      await tx.delete(dailyCollectionRecord).where(eq(dailyCollectionRecord.batchId, id))
       await tx.delete(dailyCollectionImport).where(eq(dailyCollectionImport.id, id))
 
       await writeAudit({
         user: current,
-        action: "daily_collection.delete",
+        action: "daily_collection.delete_rollback",
         entityType: "daily_collection_import",
         entityId: id,
-        details: { filename: batch.filename }
+        details: { filename: batch.filename, rolledBackRecords: matchedRecords.length }
       }, tx)
     })
 
     revalidatePath("/dashboard/billing/daily")
     return { ok: true }
   } catch (err: any) {
-    console.error("Failed to delete import:", err)
+    console.error("Failed to delete import with rollback:", err)
     return {
       ok: false,
       error: err instanceof Error ? err.message : "Failed to delete import"
