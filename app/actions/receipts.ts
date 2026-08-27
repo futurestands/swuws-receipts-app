@@ -371,6 +371,9 @@ export async function createReceipt(input: CreateReceiptInput & { idempotencyKey
 
 export async function getReceipts(limit = 100) {
   const current = await requireUser()
+  // Uncapped -- a client could request getReceipts(999999) and cause an
+  // out-of-memory/timeout risk. Clamp rather than trust the caller.
+  const safeLimit = Math.min(Math.max(1, limit), 1000)
   const scope = applyReceiptScope(current)
 
   const printCounts = db
@@ -398,7 +401,7 @@ export async function getReceipts(limit = 100) {
       sql`${auditLog.id} IS NULL`
     ))
     .orderBy(desc(receipt.createdAt))
-    .limit(limit)
+    .limit(safeLimit)
 }
 
 export async function getReceiptById(id: string) {
@@ -577,9 +580,14 @@ export async function uploadReceiptAttachment(receiptId: string, formData: FormD
 }
 
 export async function getDailyTotals(dateISO?: string) {
-  let current;
+  // requireUser() must run OUTSIDE the try/catch below. Previously an
+  // expired session was silently swallowed into a fake "0 receipts today"
+  // -- the dashboard looked like a normal, quiet day instead of showing
+  // the user they'd been logged out. Auth failures must propagate so the
+  // UI can redirect to login, not be treated as "no data."
+  const current = await requireUser()
+
   try {
-    current = await requireUser()
     const day = dateISO ? new Date(dateISO) : new Date()
     const start = new Date(day)
     start.setHours(0, 0, 0, 0)

@@ -16,7 +16,7 @@ import {
 } from "@/lib/db/schema"
 import { requireUser } from "@/lib/session"
 import { applyReceiptScope, applyCustomerScope } from "@/lib/scopes"
-import { and, eq, sql, desc, sum, count, gte, inArray, or, ilike } from "drizzle-orm"
+import { and, eq, ne, sql, desc, sum, count, gte, inArray, or, ilike } from "drizzle-orm"
 import { canViewReports, canUploadBilling, canViewAllData } from "@/lib/permissions"
 import { ROLES } from "@/lib/permissions/roles"
 import { getCategoryEquivalents } from "@/lib/utils/category"
@@ -520,7 +520,7 @@ export async function getCollectionTrends(days = 30) {
   const startDate = new Date()
   startDate.setDate(startDate.getDate() - days)
 
-  const conditions = [gte(receipt.paymentDate, startDate)]
+  const conditions = [gte(receipt.paymentDate, startDate), ne(receipt.reconciliationStatus, 'void')]
   if (scope) conditions.push(scope)
 
   return db
@@ -540,7 +540,11 @@ export async function getCollectionTrends(days = 30) {
  */
 export async function getBillPaymentHistory(billingRecordId: string) {
   const current = await requireUser()
-  if (!canUploadBilling(current)) throw new Error("Forbidden")
+  // canUploadBilling was the wrong gate here -- that permission is about
+  // importing billing data, not viewing payment history. A user with
+  // reports access but no upload rights was incorrectly blocked; this is
+  // a read/reporting function, gate it the same as the rest of this file.
+  if (!canViewReports(current)) throw new Error("Forbidden")
 
   const [bill] = await db
     .select()
@@ -559,10 +563,12 @@ export async function getBillPaymentHistory(billingRecordId: string) {
     .limit(1)
   if (!inScope) return null
 
+  // Excludes voided receipts -- previously a voided payment still counted
+  // toward this bill's totalPaid, overstating how much was actually paid.
   const receipts = await db
     .select()
     .from(receipt)
-    .where(eq(receipt.billingRecordId, billingRecordId))
+    .where(and(eq(receipt.billingRecordId, billingRecordId), ne(receipt.reconciliationStatus, 'void')))
     .orderBy(receipt.createdAt)
 
   return {
@@ -587,7 +593,11 @@ export async function getTopDebtors(params: {
   const current = await requireUser()
   if (!canViewReports(current)) throw new Error("Forbidden")
 
-  const limit = params.limit ?? 10
+  // Regression check: this cap was added and pushed earlier, then lost
+  // when a later push overwrote this file wholesale -- re-applying.
+  // Uncapped, a client could request getTopDebtors({ limit: 999999 }) and
+  // cause a timeout/memory risk.
+  const limit = Math.min(Math.max(1, params.limit ?? 10), 500)
 
   const conditions = [
     eq(customer.active, true),

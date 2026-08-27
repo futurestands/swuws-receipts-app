@@ -361,20 +361,48 @@ export async function deleteAgent(userId: string) {
   }
 
   try {
-    // 1. Check for activity (Receipts) - Block deletion if they have financial history
-    const [receiptCount] = await db
-      .select({ val: count() })
-      .from(receipt)
-      .where(eq(receipt.agentId, userId))
+    // Check for activity across every table with a restrict-on-delete FK
+    // to user.id -- previously only receipts were checked, but
+    // receiptPrintHistory.printedById, meterReading.recordedById, and
+    // dailyCollectionImport.uploadedById all also have onDelete: "restrict"
+    // (confirmed directly in the schema). Deleting an agent who'd printed
+    // a receipt, recorded a reading, or uploaded a daily collection file
+    // -- but never issued a receipt themselves -- would pass this check
+    // and then fail with a raw, unhandled Postgres FK violation instead
+    // of a helpful message.
+    const [receiptCount, printCount, readingCount, uploadCount] = await Promise.all([
+      db.select({ val: count() }).from(receipt).where(eq(receipt.agentId, userId)),
+      db.select({ val: count() }).from(receiptPrintHistory).where(eq(receiptPrintHistory.printedById, userId)),
+      db.select({ val: count() }).from(meterReading).where(eq(meterReading.recordedById, userId)),
+      db.select({ val: count() }).from(dailyCollectionImport).where(eq(dailyCollectionImport.uploadedById, userId)),
+    ])
 
-    if (Number(receiptCount?.val || 0) > 0) {
+    if (Number(receiptCount[0]?.val || 0) > 0) {
       return {
         ok: false as const,
         error: "This agent has issued receipts and cannot be deleted. Deactivate them instead to preserve audit integrity."
       }
     }
+    if (Number(printCount[0]?.val || 0) > 0) {
+      return {
+        ok: false as const,
+        error: "This agent has print history on record and cannot be deleted. Deactivate them instead to preserve audit integrity."
+      }
+    }
+    if (Number(readingCount[0]?.val || 0) > 0) {
+      return {
+        ok: false as const,
+        error: "This agent has recorded meter readings and cannot be deleted. Deactivate them instead to preserve audit integrity."
+      }
+    }
+    if (Number(uploadCount[0]?.val || 0) > 0) {
+      return {
+        ok: false as const,
+        error: "This agent has uploaded daily collection files and cannot be deleted. Deactivate them instead to preserve audit integrity."
+      }
+    }
 
-    // 2. Delete from Auth Provider
+    // Delete from Auth Provider
     await auth.api.removeUser({
       body: { userId },
       headers: await headers(),
