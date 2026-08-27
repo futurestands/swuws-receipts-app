@@ -8,7 +8,7 @@ export default async function VerifyPage({
   const { number } = await searchParams
 
   return (
-    <div className="min-h-screen bg-muted/40 flex items-center justify-center px-4 py-12">
+    <div className="min-h-screen bg-muted/40 flex items-center justify-center px-4 pt-[max(3rem,env(safe-area-inset-top))] pb-[max(3rem,env(safe-area-inset-bottom))]">
       <div className="w-full max-w-md">
         <div className="mb-8 text-center">
           <h1 className="text-2xl font-semibold tracking-tight text-primary">

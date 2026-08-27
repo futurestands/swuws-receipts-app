@@ -146,8 +146,22 @@
     min-height: -webkit-fill-available;
     overflow-x: hidden;
     padding-bottom: env(safe-area-inset-bottom);
-    padding-top: env(safe-area-inset-top);
   }
+}
+
+/* ---------------------------------------------------------------------
+   Capacitor Edge-to-Edge Support
+   Ensures UI elements don't collide with the notch/status bar.
+   --------------------------------------------------------------------- */
+.safe-top {
+  padding-top: env(safe-area-inset-top);
+}
+.safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+.safe-my {
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
 }
 
 @layer components {

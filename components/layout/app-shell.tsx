@@ -154,25 +154,22 @@ export function AppShell({
 
       {/* Mobile drawer */}
       <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
-        <SheetContent side="left" className="w-72 max-w-[85vw] border-sidebar-border bg-sidebar p-0">
-          <SheetHeader className="h-20 flex flex-col items-start justify-center border-b border-sidebar-border px-4">
+        <SheetContent side="left" className="w-72 max-w-[85vw] border-sidebar-border bg-sidebar p-0 flex flex-col h-full overflow-hidden">
+          <SheetHeader className="flex flex-col items-start justify-center border-b border-sidebar-border px-4 shrink-0 h-24 pt-[env(safe-area-inset-top)]">
             <SheetTitle className="text-sidebar-foreground text-left flex flex-col leading-tight">
               <span className="text-sm font-black tracking-tight uppercase">{receiptPrefix} COLLECTION</span>
               <span className="text-sm font-black tracking-tight uppercase">PORTAL</span>
             </SheetTitle>
           </SheetHeader>
-          <div className="flex-1 overflow-y-auto">
+          <div className="flex-1 overflow-y-auto pb-[env(safe-area-inset-bottom)]">
             <SidebarNav sections={filteredSections} onNavigate={() => setMobileOpen(false)} />
           </div>
         </SheetContent>
       </Sheet>
 
       {/* Main column */}
-      <div className="flex min-w-0 flex-1 flex-col">
-        <header className={cn(
-          "sticky top-0 z-30 flex h-14 shrink-0 items-center gap-3 border-b bg-card/95 px-3 backdrop-blur supports-backdrop-filter:bg-card/80 sm:px-4 md:px-6 no-print",
-          native && "pt-3 h-auto min-h-14"
-        )}>
+      <div className="flex min-w-0 flex-1 flex-col h-screen overflow-hidden">
+        <header className="sticky top-0 z-30 flex items-center gap-3 border-b bg-card/95 px-3 backdrop-blur supports-backdrop-filter:bg-card/80 sm:px-4 md:px-6 no-print h-auto min-h-14 pt-[env(safe-area-inset-top)] pb-2">
           <Button
             variant="ghost"
             size="icon-sm"
