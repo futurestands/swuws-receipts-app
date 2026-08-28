@@ -157,7 +157,20 @@ export default async function ReportsPage({
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-green-600">{formatUGX(collections.verifiedTotal)}</div>
-            <p className="text-xs text-green-700/70">Arrears + Current + Advances</p>
+            <div className="mt-2 space-y-1">
+               <div className="flex justify-between text-[10px] text-green-700/70 border-b border-green-200/50 pb-1">
+                  <span>Applied to Arrears</span>
+                  <span className="font-bold">{formatUGX(collections.verifiedArrears)}</span>
+               </div>
+               <div className="flex justify-between text-[10px] text-green-700/70 border-b border-green-200/50 pb-1">
+                  <span>Applied to Current</span>
+                  <span className="font-bold">{formatUGX(collections.verifiedMonthly)}</span>
+               </div>
+               <div className="flex justify-between text-[10px] text-green-700/70">
+                  <span>New Monthly Advances</span>
+                  <span className="font-bold">{formatUGX(collections.verifiedAdvances)}</span>
+               </div>
+            </div>
           </CardContent>
         </Card>
         <Card className="border-amber-100 bg-amber-50/30">

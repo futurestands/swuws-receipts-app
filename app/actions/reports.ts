@@ -288,23 +288,6 @@ export async function getDashboardStats(params: {
         totalBilled: sum(meterReading.billedAmount),
         totalArrearsBilled: sum(meterReading.previousBalanceSnapshot),
         totalCurrentBilled: sum(meterReading.billedAmount),
-        // FIELD RECOVERY MATH -- DISABLED (was Forensic Audit #3 Fix)
-        // This formula compared (previousBalanceSnapshot + billedAmount)
-        // against customer.accountBalance to infer how much of a field
-        // reading's bill had been paid. That only worked because
-        // submitMeterReading used to bump accountBalance to include the
-        // new bill at reading time, so the gap between the two reflected
-        // real payment. Meter readings no longer touch accountBalance at
-        // all (EBS -- daily sync / monthly import -- is now the only thing
-        // allowed to move it, matching how receipts already worked), so
-        // accountBalance never grows to include an unconfirmed reading's
-        // bill in the first place. Left as-is, this formula would report
-        // every field-billed customer's FULL new bill as "recovered"
-        // immediately on submission, before any payment happened --
-        // silently inflating collections. Hardcoded to 0 until field-billed
-        // customers have a real EBS-reconciled path (e.g. a reading
-        // creating a proper billingRecord row, the same table Excel
-        // imports use) rather than report a confident but wrong number.
         verifiedArrears: sql<string>`0`,
         verifiedCurrent: sql<string>`0`,
         billedCount: count(meterReading.id),
@@ -317,67 +300,33 @@ export async function getDashboardStats(params: {
       .then(rows => rows[0]),
   ])
 
-  // 3. BANK VERIFIED COLLECTIONS (Source: EBS Matched Records)
+  // 3. BANK VERIFIED COLLECTIONS (Absolute Source of Truth: Daily Transaction Logs)
+  // We sum every payment that physically entered the system during this period.
   const verifiedConditions = [
-    eq(dailyCollectionRecord.importStatus, 'matched')
+    eq(dailyCollectionRecord.importStatus, 'matched'),
+    activePeriodId && activePeriodId !== 'all' ? eq(dailyCollectionImport.billingPeriodId, activePeriodId) : sql`true`,
   ]
   if (params.schemeId && params.schemeId !== "all") verifiedConditions.push(eq(customer.waterSchemeId, params.schemeId))
   if (params.branchId && params.branchId !== "all") verifiedConditions.push(eq(waterScheme.branchId, params.branchId))
   if (params.clusterId && params.clusterId !== "all") verifiedConditions.push(eq(branch.clusterId, params.clusterId))
-  if (activePeriodId && activePeriodId !== "all") verifiedConditions.push(eq(dailyCollectionImport.billingPeriodId, activePeriodId))
   if (params.category && params.category !== "all") {
     verifiedConditions.push(inArray(customer.category, getCategoryEquivalents(params.category)))
   }
   if (params.query?.trim()) {
     const q = `%${params.query.trim().toLowerCase()}%`
-    const queryCondition = or(
-      ilike(customer.name, q),
-      ilike(customer.customerAccount, q)
-    )
-    if (queryCondition) verifiedConditions.push(queryCondition)
+    const cond = or(ilike(customer.name, q), ilike(customer.customerAccount, q))
+    if (cond) verifiedConditions.push(cond)
   }
-
   forceHierarchy(verifiedConditions)
   if (customerScope) verifiedConditions.push(customerScope)
 
-  // EXECUTE: Aggregate Daily Collections (ONLY for customers WITHOUT a current billing record or meter reading)
-  // NOTE: If they HAVE a billing record or reading, their recovery is already captured via derived math.
-  let dailyOrphanCollected = 0
-  if (activePeriodId) {
-    const [dailyStats] = await db
-      .select({
-        totalCollected: sum(dailyCollectionRecord.amount),
-      })
-      .from(dailyCollectionRecord)
-      .innerJoin(dailyCollectionImport, eq(dailyCollectionRecord.batchId, dailyCollectionImport.id))
-      .innerJoin(customer, eq(dailyCollectionRecord.accountNumber, customer.customerAccount))
-      .leftJoin(waterScheme, eq(customer.waterSchemeId, waterScheme.id))
-      .leftJoin(branch, eq(waterScheme.branchId, branch.id))
-      .where(and(
-        ...verifiedConditions,
-        activePeriodId && activePeriodId !== 'all' ? eq(dailyCollectionImport.billingPeriodId, activePeriodId) : sql`true`,
-        // CRITICAL: Triple-Exclusion to prevent double-counting (Forensic Audit #1 Fix)
-        sql`NOT EXISTS (
-          SELECT 1 FROM billing_record
-          WHERE "customerId" = ${customer.id}
-          AND "billingPeriodId" = ${activePeriodId}
-        )`,
-        sql`NOT EXISTS (
-          SELECT 1 FROM meter_reading
-          WHERE "customerId" = ${customer.id}
-          AND "billingPeriodId" = ${activePeriodId}
-        )`
-      ))
-
-    dailyOrphanCollected = Number(dailyStats?.totalCollected || 0)
-  }
-
   // 4. OPERATIONAL CASH (Source: All Issued Receipts)
-  const receiptConditions = []
+  const receiptConditions = [
+    activePeriodId && activePeriodId !== 'all' ? eq(receipt.billingPeriodId, activePeriodId) : sql`true`,
+  ]
   if (params.schemeId && params.schemeId !== "all") receiptConditions.push(eq(customer.waterSchemeId, params.schemeId))
   if (params.branchId && params.branchId !== "all") receiptConditions.push(eq(waterScheme.branchId, params.branchId))
   if (params.clusterId && params.clusterId !== "all") receiptConditions.push(eq(branch.clusterId, params.clusterId))
-  if (activePeriodId && activePeriodId !== "all") receiptConditions.push(eq(receipt.billingPeriodId, activePeriodId))
   if (params.category && params.category !== "all") {
     receiptConditions.push(inArray(customer.category, getCategoryEquivalents(params.category)))
   }
@@ -386,68 +335,50 @@ export async function getDashboardStats(params: {
     const cond = or(ilike(customer.name, q), ilike(customer.customerAccount, q))
     if (cond) receiptConditions.push(cond)
   }
-
   forceHierarchy(receiptConditions)
   if (receiptScope) receiptConditions.push(receiptScope)
 
-  const [receiptStats] = await db
-    .select({
-      totalAmount: sum(receipt.amount),
-      totalCount: count(receipt.id),
-    })
-    .from(receipt)
-    .innerJoin(customer, eq(receipt.customerId, customer.id))
-    .leftJoin(waterScheme, eq(customer.waterSchemeId, waterScheme.id))
-    .leftJoin(branch, eq(waterScheme.branchId, branch.id))
-    // Optimization: Exclude voided receipts using LEFT JOIN + NULL check instead of NOT IN
-    .leftJoin(auditLog, and(eq(receipt.id, auditLog.entityId), eq(auditLog.action, 'receipt.void')))
-    .where(and(
-      ...receiptConditions,
-      sql`${auditLog.id} IS NULL`
-    ))
+  const [bankActivity, receiptStats] = await Promise.all([
+    db
+      .select({ totalCashReceived: sum(dailyCollectionRecord.amount) })
+      .from(dailyCollectionRecord)
+      .innerJoin(dailyCollectionImport, eq(dailyCollectionRecord.batchId, dailyCollectionImport.id))
+      .innerJoin(customer, eq(dailyCollectionRecord.accountNumber, customer.customerAccount))
+      .leftJoin(waterScheme, eq(customer.waterSchemeId, waterScheme.id))
+      .leftJoin(branch, eq(waterScheme.branchId, branch.id))
+      .where(and(...verifiedConditions))
+      .then(rows => rows[0]),
+    db
+      .select({ totalAmount: sum(receipt.amount), totalCount: count(receipt.id) })
+      .from(receipt)
+      .innerJoin(customer, eq(receipt.customerId, customer.id))
+      .leftJoin(waterScheme, eq(customer.waterSchemeId, waterScheme.id))
+      .leftJoin(branch, eq(waterScheme.branchId, branch.id))
+      .leftJoin(auditLog, and(eq(receipt.id, auditLog.entityId), eq(auditLog.action, 'receipt.void')))
+      .where(and(
+        ...receiptConditions,
+        sql`${auditLog.id} IS NULL`
+      ))
+      .then(rows => rows[0])
+  ])
 
+  const verifiedTotal = Number(bankActivity?.totalCashReceived || 0)
   const arrearsBilled = Number(importStats?.totalArrearsBilled || 0) + Number(fieldStats?.totalArrearsBilled || 0)
   const currentBilled = Number(importStats?.totalCurrentBilled || 0) + Number(fieldStats?.totalCurrentBilled || 0)
   const billedCount = Number(importStats?.billedCount || 0) + Number(fieldStats?.billedCount || 0)
-
-  // TOTAL BILLING (Selected Period: Current Charges + Arrears Billed)
   const totalBilled = currentBilled + arrearsBilled
 
-  // COMPREHENSIVE RECOVERY LOGIC (Arrears First):
-  // Business Rule: Harmonize Monthly Imports, Field Meter Readings, and Daily Sync Orphans.
-
-  // 1. Arrears Recovery (Money applied to historical debt)
-  const verifiedArrears =
-    Number(importStats?.verifiedArrears || 0) +
-    Number(fieldStats?.verifiedArrears || 0) +
-    dailyOrphanCollected
-
-  // 2. Current Month Performance (Money applied to THIS month's bill only)
-  // This is capped at the billAmount per customer by the underlying SQL.
-  const verifiedMonthlyPerformance =
-    Number(importStats?.verifiedCurrent || 0) +
-    Number(fieldStats?.verifiedCurrent || 0)
-
-  // 3. New Advances Generated (Money paid in excess of total demand)
+  // REVENUE REALIZATION (Derived from Bills: Money applied to Demand)
+  const verifiedArrears = Number(importStats?.verifiedArrears || 0)
+  const verifiedMonthlyPerformance = Number(importStats?.verifiedCurrent || 0)
   const verifiedNewAdvances = Number(importStats?.verifiedUpfront || 0)
 
-  // 4. Bank Verified Total (Total cash confirmed: Arrears + Current + Advances)
-  // This is the absolute source of truth for money that entered the system.
-  const verifiedTotal = verifiedArrears + verifiedMonthlyPerformance + verifiedNewAdvances
-
-  // 5. DEBT CLEARANCE PERFORMANCE (Money that actually reduced demand)
-  // This measures efficiency in clearing the SPECIFIC USh 1.47B demand for this period.
+  // PERFORMANCE EFFICIENCY: Money that actually reduced demand vs Total Demand
   const debtRecoveryPerformance = verifiedArrears + verifiedMonthlyPerformance
-
-  const totalHarmonizedCollected = verifiedTotal
+  const globalRate = totalBilled > 0 ? (debtRecoveryPerformance / totalBilled) * 100 : 0
 
   const operationalCash = Number(receiptStats?.totalAmount || 0)
   const operationalCount = Number(receiptStats?.totalCount || 0)
-
-  // Collection Rates
-  // PERFORMANCE EFFICIENCY: How much of our total billed demand (1.47B) did we actually collect?
-  // We use debtRecoveryPerformance (Money applied to bills) vs totalBilled (Demand).
-  const globalRate = totalBilled > 0 ? (debtRecoveryPerformance / totalBilled) * 100 : 0
 
   // Total System Arrears (Current Snapshot)
   const arrearsConditions = []
