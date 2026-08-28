@@ -568,8 +568,19 @@ export async function commitDailyBalanceSync(formData: FormData) {
           const oldBalance = Number(cust.balance)
           const newBalance = row.totalDue
 
-          // Collection is the physical money that moved the balance down.
-          const collection = Math.max(0, oldBalance - newBalance)
+          /**
+           * MIGRATION GUARD (Aug 28 Hardening):
+           * If the customer started at 0 (or was just created) and they have a
+           * credit balance in the Excel, we do NOT record a collection.
+           * This prevents old legacy credits from being counted as "Bank Verified"
+           * cash flow for the current month.
+           */
+          let collection = 0
+          if (oldBalance === 0 && newBalance < 0) {
+            collection = 0 // Baseline migration, not new cash.
+          } else {
+            collection = Math.max(0, oldBalance - newBalance)
+          }
 
           if (collection <= 0) {
             successfulRecords++
