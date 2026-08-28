@@ -1,7 +1,7 @@
 "use server"
 
 import { requireUser } from "@/lib/session"
-import { canIssueReceipt } from "@/lib/permissions"
+import { canIssueReceipt, canViewMeterReadings } from "@/lib/permissions"
 import { createReceipt } from "./receipts"
 import { CreateReceiptInput } from "@/lib/finance-schemas"
 import { submitMeterReading } from "./billing-engine"
