@@ -200,9 +200,10 @@ export function OfflineSearchClient({ agentId }: { agentId: string }) {
       })
       await refreshData()
       toast.success("Offline cache updated successfully")
-    } catch (err) {
+    } catch (err: any) {
       console.error(err)
-      toast.error("Sync failed. Check your connection.")
+      const msg = err.message || "Unknown error"
+      toast.error(`Sync failed: ${msg.slice(0, 50)}`)
     } finally {
       setSyncing(false)
       setSyncStep("")

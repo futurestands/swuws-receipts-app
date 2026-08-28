@@ -153,16 +153,12 @@ class SQLiteService {
     try {
       const deviceId = (await Device.getId()).identifier;
 
-      await this.db.execute('BEGIN TRANSACTION;');
-
-      // Clear existing cache (simple pull-sync for Phase 1)
-      await this.db.execute('DELETE FROM local_billing_records;');
-      await this.db.execute('DELETE FROM local_customers;');
-
       // OPTIMIZED BATCH INSERT (Aug 27 Hardening)
-      // Instead of 18,000 separate calls to the native bridge,
-      // we use executeSet to batch statements for maximum speed.
       const set: any[] = [];
+
+      // MOVE TO BATCH (Aug 27 Hardening): Run deletes inside the same set
+      set.push({ statement: 'DELETE FROM local_billing_records;', values: [] });
+      set.push({ statement: 'DELETE FROM local_customers;', values: [] });
 
       // 1. Batch customers
       for (const c of data.customers) {
@@ -188,12 +184,14 @@ class SQLiteService {
         values: [deviceId, data.timestamp, data.agentId, data.activePeriodId]
       });
 
-      // Execute the entire set in one go (very fast in Capacitor SQLite)
-      await this.db.executeSet(set);
-
-      await this.db.execute('COMMIT;');
+      // SAFE CHUNKED EXECUTION (Aug 27 Hardening)
+      const CHUNK_SIZE = 500;
+      for (let i = 0; i < set.length; i += CHUNK_SIZE) {
+        const chunk = set.slice(i, i + CHUNK_SIZE);
+        console.log(`Syncing chunk ${Math.floor(i / CHUNK_SIZE) + 1} of ${Math.ceil(set.length / CHUNK_SIZE)}...`);
+        await this.db.executeSet(chunk);
+      }
     } catch (err) {
-      if (this.db) await this.db.execute('ROLLBACK;');
       console.error('SQLite pullSync failed', err);
       throw err;
     }

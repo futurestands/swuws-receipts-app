@@ -32,8 +32,7 @@ const config: CapacitorConfig = {
   webDir: 'public',
   server: {
     url: serverUrl,
-    cleartext: false,
-    errorPath: 'offline.html'
+    cleartext: false
   },
   android: {
     allowMixedContent: false
