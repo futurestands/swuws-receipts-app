@@ -381,18 +381,20 @@ export async function getDashboardStats(params: {
   const billedCount = Number(importStats?.billedCount || 0) + Number(fieldStats?.billedCount || 0)
   const totalBilled = currentBilled + arrearsBilled
 
-  // REVENUE REALIZATION (Derived from Bills: Money applied to Demand)
-  const verifiedArrears = Number(importStats?.verifiedArrears || 0)
-  const verifiedMonthlyPerformance = Number(importStats?.verifiedCurrent || 0)
+  // STRICT CASH COLLECTION (Aug 28 Hardening)
+  // We only show money that physically arrived this month.
+  // We EXCLUDE bills satisfied by old advances from previous periods.
+  const verifiedArrears = Number(importStats?.cashToArrears || 0)
+  const verifiedMonthlyPerformance = Number(importStats?.cashToCurrent || 0)
 
   // FRESH ADVANCES CALCULATION (Aug 28 Hardening)
   // We calculate New Advances by taking Total Cash Received and subtracting the
   // portions of THAT CASH that went to Arrears and Current Bills.
   // This ensures we NEVER count old carried-over credits as new advances.
-  const cashUsedForDebt = Number(importStats?.cashToArrears || 0) + Number(importStats?.cashToCurrent || 0)
+  const cashUsedForDebt = verifiedArrears + verifiedMonthlyPerformance
   const verifiedNewAdvances = Math.max(0, verifiedTotal - cashUsedForDebt)
 
-  // PERFORMANCE EFFICIENCY: Money that actually reduced demand vs Total Demand
+  // PERFORMANCE EFFICIENCY: Fresh Cash vs Total Demand
   const debtRecoveryPerformance = verifiedArrears + verifiedMonthlyPerformance
   const globalRate = totalBilled > 0 ? (debtRecoveryPerformance / totalBilled) * 100 : 0
 
