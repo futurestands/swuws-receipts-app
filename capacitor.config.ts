@@ -32,7 +32,17 @@ const config: CapacitorConfig = {
   webDir: 'public',
   server: {
     url: serverUrl,
-    cleartext: false
+    cleartext: false,
+    // This was removed at some point (likely from bad advice in an
+    // external report recommending output:'export' + no errorPath -- that
+    // recommendation is wrong for this app: it runs on Server Components
+    // and Server Actions extensively, which cannot work under a static
+    // export build at all. Removing errorPath without replacing it with
+    // anything is what turned "offline mode shows a helpful screen" back
+    // into "offline mode shows a raw connection-refused error page."
+    // webDir is 'public' now (was 'out'), so this resolves to
+    // public/offline.html.
+    errorPath: 'offline.html'
   },
   android: {
     allowMixedContent: false
