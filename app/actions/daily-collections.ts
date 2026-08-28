@@ -787,43 +787,32 @@ export async function deleteDailyImport(id: string) {
     }
 
     await db.transaction(async (tx) => {
-      // 3. HIGH-PERFORMANCE REVERSE (Aug 28 Hardening)
-      // Instead of looping 18,000 times (which causes timeouts), we use Batch SQL.
-      if (matchedRecords.length > 0) {
-        // A. Batch Restore Customer Balances
-        const valuesList = matchedRecords.map(r => sql`(${r.accountNumber}::text, ${r.amount}::numeric)`).reduce((acc, curr) => sql`${acc}, ${curr}`)
+      // 3. BULK CHUNKED REVERSE (Aug 28 Hardening)
+      // To prevent "Maximum call stack size exceeded", we process in chunks of 5000
+      // and use sql.join to keep the stack flat.
+      const CHUNK = 5000;
+      for (let i = 0; i < matchedRecords.length; i += CHUNK) {
+        const slice = matchedRecords.slice(i, i + CHUNK);
+        const valuesList = slice.map(r => sql`(${r.accountNumber}::text, ${r.amount}::numeric)`);
+        const joinedValues = sql.join(valuesList, sql`, `);
 
+        // A. Chunked Restore Customer Balances
         await tx.execute(sql`
           UPDATE customer AS c
           SET "accountBalance" = c."accountBalance" + v.amt, "updatedAt" = now()
-          FROM (VALUES ${valuesList}) AS v(acc, amt)
+          FROM (VALUES ${joinedValues}) AS v(acc, amt)
           WHERE c."customerAccount" = v.acc
         `)
 
-        // B. Batch Restore Billing Records (if applicable)
+        // B. Chunked Restore Billing Records (if applicable)
         if (batch.billingPeriodId) {
-          // We apply the reverse recovery logic in bulk to all affected billing records
           await tx.execute(sql`
             UPDATE billing_record AS br
             SET
               "totalDue" = br."totalDue"::numeric + v.amt,
-              "recoveryAmount" = greatest(0, br."recoveryAmount"::numeric - greatest(0, v.amt - greatest(0, br."arrears"::numeric - (br."arrearsRecovery"::numeric - v.amt)))), -- Placeholder logic for complex reverse
+              "status" = 'partially_paid',
               "updatedAt" = now()
-            FROM (VALUES ${valuesList}) AS v(acc, amt)
-            JOIN customer c ON c."customerAccount" = v.acc
-            WHERE br."customerId" = c.id
-            AND br."billingPeriodId" = ${batch.billingPeriodId}
-          `)
-
-          // Actually, for maximum safety and simplicity in reverse, we'll just restore totalDue
-          // and let the next EBS sync re-calculate the recovery splits precisely.
-          await tx.execute(sql`
-            UPDATE billing_record AS br
-            SET
-              "totalDue" = br."totalDue"::numeric + v.amt,
-              "status" = 'partially_paid', -- Safe fallback
-              "updatedAt" = now()
-            FROM (VALUES ${valuesList}) AS v(acc, amt)
+            FROM (VALUES ${joinedValues}) AS v(acc, amt)
             JOIN customer c ON c."customerAccount" = v.acc
             WHERE br."customerId" = c.id
             AND br."billingPeriodId" = ${batch.billingPeriodId}
