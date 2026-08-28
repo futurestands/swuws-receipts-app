@@ -53,7 +53,12 @@ export async function syncOfflineMeterReadingBatch(batch: {
   }
 }[]) {
   const current = await requireUser()
-  if (!canIssueReceipt(current)) throw new Error("Forbidden")
+
+  // FIX (Aug 28 Hardening): Align with meter reading permissions.
+  // Previously used canIssueReceipt, which blocked agents who only do readings.
+  if (!canIssueReceipt(current) && !canViewMeterReadings(current)) {
+    throw new Error("Forbidden")
+  }
 
   const results: OfflineSyncResult[] = []
 
