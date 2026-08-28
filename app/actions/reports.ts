@@ -267,9 +267,22 @@ export async function getDashboardStats(params: {
         verifiedCurrent: sum(sql`
           greatest(0, coalesce(${billingRecord.billAmount}, 0)::numeric - greatest(0, coalesce(${billingRecord.totalDue}, 0)::numeric))
         `),
-        // 4. Upfront portion = New credit generated
-        verifiedUpfront: sum(sql`
-          greatest(0, coalesce(${billingRecord.totalDue}, 0)::numeric * -1)
+        // 4. CASH PORTION (Money that physically entered the bank this period)
+        cashToArrears: sum(sql`
+          least(
+            greatest(0, coalesce(${billingRecord.arrears}, 0)::numeric),
+            greatest(0, (coalesce(${billingRecord.arrears}, 0)::numeric + coalesce(${billingRecord.billAmount}, 0)::numeric) - coalesce(${billingRecord.totalDue}, 0)::numeric)
+          )
+        `),
+        cashToCurrent: sum(sql`
+          least(
+            coalesce(${billingRecord.billAmount}, 0)::numeric,
+            greatest(0, ((coalesce(${billingRecord.arrears}, 0)::numeric + coalesce(${billingRecord.billAmount}, 0)::numeric) - coalesce(${billingRecord.totalDue}, 0)::numeric) -
+            least(
+              greatest(0, coalesce(${billingRecord.arrears}, 0)::numeric),
+              greatest(0, (coalesce(${billingRecord.arrears}, 0)::numeric + coalesce(${billingRecord.billAmount}, 0)::numeric) - coalesce(${billingRecord.totalDue}, 0)::numeric)
+            ))
+          )
         `),
         billedCount: count(billingRecord.id),
         paidCount: sql<number>`count(case when ${billingRecord.status} = 'paid' then 1 end)::int`,
@@ -371,7 +384,13 @@ export async function getDashboardStats(params: {
   // REVENUE REALIZATION (Derived from Bills: Money applied to Demand)
   const verifiedArrears = Number(importStats?.verifiedArrears || 0)
   const verifiedMonthlyPerformance = Number(importStats?.verifiedCurrent || 0)
-  const verifiedNewAdvances = Number(importStats?.verifiedUpfront || 0)
+
+  // FRESH ADVANCES CALCULATION (Aug 28 Hardening)
+  // We calculate New Advances by taking Total Cash Received and subtracting the
+  // portions of THAT CASH that went to Arrears and Current Bills.
+  // This ensures we NEVER count old carried-over credits as new advances.
+  const cashUsedForDebt = Number(importStats?.cashToArrears || 0) + Number(importStats?.cashToCurrent || 0)
+  const verifiedNewAdvances = Math.max(0, verifiedTotal - cashUsedForDebt)
 
   // PERFORMANCE EFFICIENCY: Money that actually reduced demand vs Total Demand
   const debtRecoveryPerformance = verifiedArrears + verifiedMonthlyPerformance
