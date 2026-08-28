@@ -798,40 +798,42 @@ export async function deleteDailyImport(id: string) {
     }
 
     await db.transaction(async (tx) => {
-      // 3. BULK CHUNKED REVERSE (Aug 28 Hardening)
-      // To prevent "Maximum call stack size exceeded", we process in chunks of 5000
-      // and use sql.join to keep the stack flat.
-      const CHUNK = 5000;
-      for (let i = 0; i < matchedRecords.length; i += CHUNK) {
-        const slice = matchedRecords.slice(i, i + CHUNK);
-        const valuesList = slice.map(r => sql`(${r.accountNumber}::text, ${r.amount}::numeric)`);
-        const joinedValues = sql.join(valuesList, sql`, `);
+      // 3. INTERNAL SQL JOIN REVERSE (Aug 28 Hardening)
+      // This is the absolute fastest way to restore balances.
+      // Instead of looping in JavaScript (which caused stack overflows and timeouts),
+      // we tell PostgreSQL to join the tables and do the math internally.
+      // This reduces 18,000+ operations down to 2 atomic internal database updates.
 
-        // A. Chunked Restore Customer Balances
+      // A. Restore Customer Balances
+      await tx.execute(sql`
+        UPDATE customer AS c
+        SET "accountBalance" = c."accountBalance" + r.amount, "updatedAt" = now()
+        FROM daily_collection_record AS r
+        WHERE c."customerAccount" = r."accountNumber"
+        AND r."batchId" = ${id}
+        AND r."importStatus" = 'matched'
+      `)
+
+      // B. Restore Billing Records (if applicable)
+      if (batch.billingPeriodId) {
         await tx.execute(sql`
-          UPDATE customer AS c
-          SET "accountBalance" = c."accountBalance" + v.amt, "updatedAt" = now()
-          FROM (VALUES ${joinedValues}) AS v(acc, amt)
-          WHERE c."customerAccount" = v.acc
+          UPDATE billing_record AS br
+          SET
+            "totalDue" = br."totalDue"::numeric + r.amount,
+            "status" = 'partially_paid',
+            "updatedAt" = now()
+          FROM daily_collection_record AS r
+          JOIN customer AS c ON c."customerAccount" = r."accountNumber"
+          WHERE br."customerId" = c.id
+          AND br."billingPeriodId" = ${batch.billingPeriodId}
+          AND r."batchId" = ${id}
+          AND r."importStatus" = 'matched'
         `)
-
-        // B. Chunked Restore Billing Records (if applicable)
-        if (batch.billingPeriodId) {
-          await tx.execute(sql`
-            UPDATE billing_record AS br
-            SET
-              "totalDue" = br."totalDue"::numeric + v.amt,
-              "status" = 'partially_paid',
-              "updatedAt" = now()
-            FROM (VALUES ${joinedValues}) AS v(acc, amt)
-            JOIN customer c ON c."customerAccount" = v.acc
-            WHERE br."customerId" = c.id
-            AND br."billingPeriodId" = ${batch.billingPeriodId}
-          `)
-        }
       }
 
       // 4. Delete the data records and metadata
+      await tx.delete(dailyCollectionRecord).where(eq(dailyCollectionRecord.batchId, id))
+      await tx.delete(dailyCollectionImport).where(eq(dailyCollectionImport.id, id))
       await tx.delete(dailyCollectionRecord).where(eq(dailyCollectionRecord.batchId, id))
       await tx.delete(dailyCollectionImport).where(eq(dailyCollectionImport.id, id))
 
