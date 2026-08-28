@@ -160,11 +160,11 @@ export default async function ReportsPage({
             <div className="mt-2 space-y-1">
                <div className="flex justify-between text-[10px] text-green-700/70 border-b border-green-200/50 pb-1">
                   <span>Applied to Arrears</span>
-                  <span className="font-bold">{formatUGX(collections.verifiedArrears)}</span>
+                  <span className="font-bold">{formatUGX(collections.cashToArrears)}</span>
                </div>
                <div className="flex justify-between text-[10px] text-green-700/70 border-b border-green-200/50 pb-1">
                   <span>Applied to Current</span>
-                  <span className="font-bold">{formatUGX(collections.verifiedMonthly)}</span>
+                  <span className="font-bold">{formatUGX(collections.cashToCurrent)}</span>
                </div>
                <div className="flex justify-between text-[10px] text-green-700/70">
                   <span>New Monthly Advances</span>

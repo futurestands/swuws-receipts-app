@@ -558,7 +558,19 @@ export async function commitDailyBalanceSync(formData: FormData) {
 
         for (const row of findable) {
           const cust = custMap.get(row.accountNumber.toLowerCase().trim())!
-          const collection = Math.max(0, Number(cust.balance) - row.totalDue)
+
+          /**
+           * ACCURATE COLLECTION MATH (Aug 28 Hardening):
+           * We must distinguish between "Clearing Debt" and "Existing Credits".
+           * If a customer already had a 1M credit, and the new file still shows 1M credit,
+           * we collected ZERO today.
+           */
+          const oldBalance = Number(cust.balance)
+          const newBalance = row.totalDue
+
+          // Collection is the physical money that moved the balance down.
+          const collection = Math.max(0, oldBalance - newBalance)
+
           if (collection <= 0) {
             successfulRecords++
             continue

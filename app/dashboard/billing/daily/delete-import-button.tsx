@@ -42,9 +42,11 @@ export function DeleteImportButton({ id, filename }: { id: string, filename: str
         <AlertDialogHeader>
           <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
           <AlertDialogDescription>
-            This will permanently remove the import record for <strong>{filename}</strong> and all its associated collection entries from the repository.
+            This will permanently remove the import record for <strong>{filename}</strong>.
             <br /><br />
-            <span className="text-destructive font-bold uppercase text-[10px]">Note:</span> This will NOT automatically roll back the customer balance updates made by this sync.
+            <span className="text-destructive font-black uppercase text-[10px]">Forensic Rollback:</span> This will automatically **reverse** the balance changes made to customers and billing records.
+            <br /><br />
+            <span className="text-muted-foreground text-[10px] italic">Note: You cannot delete this batch if a newer batch has already been processed.</span>
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
