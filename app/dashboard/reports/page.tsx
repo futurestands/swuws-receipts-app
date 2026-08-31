@@ -122,19 +122,19 @@ export default async function ReportsPage({
             <TrendingUp className="h-4 w-4 text-green-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-black text-green-600">{formatUGX(collections.verifiedArrears)}</div>
+            <div className="text-3xl font-black text-green-600">{formatUGX(collections.cashToArrears)}</div>
             <p className="text-xs text-muted-foreground mt-1">Collections applied to historical arrears</p>
           </CardContent>
         </Card>
 
         <Card className="card-accent-blue">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Customer Advances</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Total System Credit</CardTitle>
             <Landmark className="h-4 w-4 text-brand-blue" />
           </CardHeader>
           <CardContent>
             <div className="text-3xl font-black text-brand-blue">{formatUGX(arrears.totalUpfront)}</div>
-            <p className="text-xs text-muted-foreground mt-1">Total surplus money paid in advance</p>
+            <p className="text-[10px] text-muted-foreground mt-2 italic">Sum of all customer credit balances (Pre-payments).</p>
           </CardContent>
         </Card>
       </div>
@@ -142,55 +142,44 @@ export default async function ReportsPage({
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Total Period Demand</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground uppercase">Total Period Demand</CardTitle>
             <FileText className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{formatUGX(billing.totalBilled)}</div>
-            <p className="text-xs text-muted-foreground">{billing.billedCount} bills (Current + Arrears)</p>
+            <p className="text-[10px] text-muted-foreground uppercase font-bold mt-1">{billing.billedCount} active bills</p>
           </CardContent>
         </Card>
-        <Card className="border-green-100 bg-green-50/30">
+
+        <Card className="border-green-100 bg-green-50/20">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-green-700">Bank Verified (Total)</CardTitle>
+            <CardTitle className="text-sm font-medium text-green-700 uppercase">Monthly Cash Inflow</CardTitle>
             <TrendingUp className="h-4 w-4 text-green-600" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-green-600">{formatUGX(collections.verifiedTotal)}</div>
-            <div className="mt-2 space-y-1">
-               <div className="flex justify-between text-[10px] text-green-700/70 border-b border-green-200/50 pb-1">
-                  <span>Applied to Arrears</span>
-                  <span className="font-bold">{formatUGX(collections.cashToArrears)}</span>
-               </div>
-               <div className="flex justify-between text-[10px] text-green-700/70 border-b border-green-200/50 pb-1">
-                  <span>Applied to Current</span>
-                  <span className="font-bold">{formatUGX(collections.cashToCurrent)}</span>
-               </div>
-               <div className="flex justify-between text-[10px] text-green-700/70">
-                  <span>New Monthly Advances</span>
-                  <span className="font-bold">{formatUGX(collections.verifiedAdvances)}</span>
-               </div>
-            </div>
+            <div className="text-2xl font-black text-green-600">{formatUGX(collections.totalBankCash)}</div>
+            <p className="text-[10px] text-green-700/70 uppercase font-bold mt-1">Total physical cash received</p>
           </CardContent>
         </Card>
-        <Card className="border-amber-100 bg-amber-50/30">
+
+        <Card className="border-amber-100 bg-amber-50/20">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-amber-700">Operational Cash (Receipts)</CardTitle>
-            <FileText className="h-4 w-4 text-amber-600" />
+            <CardTitle className="text-sm font-medium text-amber-700 uppercase">Bank Verified (Debt)</CardTitle>
+            <TrendingUp className="h-4 w-4 text-amber-600" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-amber-600">{formatUGX(collections.operationalCash)}</div>
-            <p className="text-xs text-amber-700/70">{collections.operationalCount} receipts printed</p>
+            <div className="text-2xl font-black text-amber-600">{formatUGX(collections.verifiedTotal)}</div>
+            <p className="text-[10px] text-amber-700/70 uppercase font-bold mt-1">Cash applied to current/old debt</p>
           </CardContent>
         </Card>
-        <Card>
+
+        <Card className="border-primary/10">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Recovery Performance</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground uppercase">Recovery Performance</CardTitle>
             <TrendingUp className="h-4 w-4 text-primary" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{formatPercent(collections.collectionRate)}</div>
-            <p className="text-[10px] text-muted-foreground mb-2">Efficiency in clearing Total Demand</p>
             <Progress value={collections.collectionRate} className="h-2 mt-2" />
           </CardContent>
         </Card>
@@ -211,7 +200,7 @@ export default async function ReportsPage({
                </div>
                <div className="text-right">
                  <p className="text-xs text-muted-foreground uppercase text-green-600">Arrears Collected</p>
-                 <p className="text-xl font-black text-green-600">{formatUGX(collections.verifiedArrears)}</p>
+                 <p className="text-xl font-black text-green-600">{formatUGX(collections.cashToArrears)}</p>
                </div>
              </div>
              <div className="space-y-2">
@@ -237,7 +226,7 @@ export default async function ReportsPage({
                </div>
                <div className="text-right">
                  <p className="text-xs text-muted-foreground uppercase text-blue-600">Current Collected</p>
-                 <p className="text-xl font-black text-blue-600">{formatUGX(collections.verifiedMonthly)}</p>
+                 <p className="text-xl font-black text-blue-600">{formatUGX(collections.cashToCurrent)}</p>
                </div>
              </div>
              <div className="space-y-2">

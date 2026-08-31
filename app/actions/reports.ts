@@ -381,21 +381,26 @@ export async function getDashboardStats(params: {
   const billedCount = Number(importStats?.billedCount || 0) + Number(fieldStats?.billedCount || 0)
   const totalBilled = currentBilled + arrearsBilled
 
-  // STRICT CASH COLLECTION (Aug 28 Hardening)
-  // We only show money that physically arrived this month.
-  // We EXCLUDE bills satisfied by old advances from previous periods.
-  const verifiedArrears = Number(importStats?.cashToArrears || 0)
-  const verifiedMonthlyPerformance = Number(importStats?.cashToCurrent || 0)
+  // REVENUE REALIZATION (Satisfied Demand: Cash + Consumed Old Advances)
+  // This tells you the total VALUE of bills cleared this period.
+  const satisfiedArrears = Number(importStats?.verifiedArrears || 0)
+  const satisfiedCurrent = Number(importStats?.verifiedCurrent || 0)
 
-  // FRESH ADVANCES CALCULATION (Aug 28 Hardening)
-  // We calculate New Advances by taking Total Cash Received and subtracting the
-  // portions of THAT CASH that went to Arrears and Current Bills.
-  // This ensures we NEVER count old carried-over credits as new advances.
-  const cashUsedForDebt = verifiedArrears + verifiedMonthlyPerformance
-  const verifiedNewAdvances = Math.max(0, verifiedTotal - cashUsedForDebt)
+  // STRICT CASH PORTION (Portion of the satisfaction that was physical cash)
+  const cashToArrears = Number(importStats?.cashToArrears || 0)
+  const cashToCurrent = Number(importStats?.cashToCurrent || 0)
 
-  // PERFORMANCE EFFICIENCY: Fresh Cash vs Total Demand
-  const debtRecoveryPerformance = verifiedArrears + verifiedMonthlyPerformance
+  // THE "BANK VERIFIED" TOTAL (Monthly Debt Clearance Value)
+  // Refined Logic (Aug 28): Verified is now STRICTLY the sum of Debt cleared by FRESH CASH.
+  // It EXCLUDES legacy credits consumed and EXCLUDES surplus top-ups.
+  const verifiedDebtClearanceByCash = cashToArrears + cashToCurrent
+
+  // NEW SURPLUS isolation (Fresh Top-ups)
+  const freshCashSurplus = Math.max(0, verifiedTotal - (cashToArrears + cashToCurrent))
+
+  // PERFORMANCE EFFICIENCY: Total Value Cleared (Cash + Old Credits) vs Total Demand
+  // Managers still need the "Satisfaction" rate for broad efficiency analysis.
+  const debtRecoveryPerformance = satisfiedArrears + satisfiedCurrent
   const globalRate = totalBilled > 0 ? (debtRecoveryPerformance / totalBilled) * 100 : 0
 
   const operationalCash = Number(receiptStats?.totalAmount || 0)
@@ -444,18 +449,19 @@ export async function getDashboardStats(params: {
       unpaidCount: Number(importStats?.unpaidCount || 0) + Number(fieldStats?.billedCount || 0),
     },
     collections: {
-      verifiedTotal,
-      verifiedMonthly: verifiedMonthlyPerformance,
-      verifiedArrears,
-      verifiedAdvances: verifiedNewAdvances,
-      cashToArrears: Number(importStats?.cashToArrears || 0),
-      cashToCurrent: Number(importStats?.cashToCurrent || 0),
+      verifiedTotal: verifiedDebtClearanceByCash, // Pure Fresh Cash applied to Debt
+      satisfiedMonthly: satisfiedCurrent,
+      satisfiedArrears: satisfiedArrears,
+      cashToArrears,
+      cashToCurrent,
+      totalBankCash: verifiedTotal, // All Cash Received (for bank recon)
+      verifiedAdvances: freshCashSurplus, // Top-ups this month
       operationalCash,
       operationalCount,
-      outstanding: Math.max(0, totalBilled - (verifiedArrears + verifiedMonthlyPerformance)),
+      outstanding: Math.max(0, totalBilled - satisfiedCurrent - satisfiedArrears),
       collectionRate: globalRate,
-      arrearsRate: arrearsBilled > 0 ? (verifiedArrears / arrearsBilled) * 100 : 0,
-      currentRate: currentBilled > 0 ? (verifiedMonthlyPerformance / currentBilled) * 100 : 0,
+      arrearsRate: arrearsBilled > 0 ? (cashToArrears / arrearsBilled) * 100 : 0,
+      currentRate: currentBilled > 0 ? (cashToCurrent / currentBilled) * 100 : 0,
     },
     arrears: {
       totalArrears,

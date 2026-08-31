@@ -164,7 +164,7 @@ export function CommercialDashboard({
                 <CardTitle className="text-sm font-medium text-green-700 uppercase tracking-wider">Verified Collections</CardTitle>
               </CardHeader>
               <CardContent>
-                <p className="text-2xl font-bold text-green-600">{formatUGX(stats.collections.verifiedMonthly + stats.collections.verifiedArrears)}</p>
+                <p className="text-2xl font-bold text-green-600">{formatUGX(stats.collections.cashToCurrent + stats.collections.cashToArrears)}</p>
                 <p className="text-[10px] text-muted-foreground mt-1">
                   Confirmed via EBS Bank Import
                 </p>

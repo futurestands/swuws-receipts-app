@@ -569,15 +569,15 @@ export async function commitDailyBalanceSync(formData: FormData) {
           const newBalance = row.totalDue
 
           /**
-           * MIGRATION GUARD (Aug 28 Hardening):
-           * If the customer started at 0 (or was just created) and they have a
-           * credit balance in the Excel, we do NOT record a collection.
-           * This prevents old legacy credits from being counted as "Bank Verified"
-           * cash flow for the current month.
+           * MIGRATION GUARD (Aug 31 Forensic Hardening):
+           * We only count genuine balance reductions as collections.
+           * If we discover a credit for the first time on an account that was
+           * previously in debt or zero, we only count the debt-clearing portion.
+           * This prevents "Credit Discovery Spikes" from legacy data migration.
            */
           let collection = 0
-          if (oldBalance === 0 && newBalance < 0) {
-            collection = 0 // Baseline migration, not new cash.
+          if (oldBalance >= 0 && newBalance < 0) {
+            collection = oldBalance // Paid the debt, the rest is legacy credit.
           } else {
             collection = Math.max(0, oldBalance - newBalance)
           }

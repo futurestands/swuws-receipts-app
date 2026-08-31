@@ -44,15 +44,18 @@ export function AccountClient({ user, settings, siteUrl }: { user: UserProfile, 
   const isOutdated = settings.latestAppVersion !== CURRENT_APP_VERSION && isNative()
 
   async function handleDownload() {
+    const buildId = process.env.NEXT_PUBLIC_BUILD_SHA || Date.now().toString();
+    const fileName = `swuws-portal.apk?v=${buildId}`;
+
     if (isNative()) {
        // In native app, we MUST use the system browser to handle APK downloads
        // because the internal webview doesn't support the "download" attribute.
-       const url = siteUrl.endsWith('/') ? `${siteUrl}swuws-portal.apk` : `${siteUrl}/swuws-portal.apk`
+       const url = siteUrl.endsWith('/') ? `${siteUrl}${fileName}` : `${siteUrl}/${fileName}`
        await Browser.open({ url })
     } else {
        // On web, a standard download works
        const link = document.createElement('a')
-       link.href = '/swuws-portal.apk'
+       link.href = `/${fileName}`
        link.download = 'swuws-portal.apk'
        link.click()
     }
