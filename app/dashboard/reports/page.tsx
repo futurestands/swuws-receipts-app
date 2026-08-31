@@ -139,7 +139,7 @@ export default async function ReportsPage({
         </Card>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground uppercase">Total Period Demand</CardTitle>
@@ -151,20 +151,9 @@ export default async function ReportsPage({
           </CardContent>
         </Card>
 
-        <Card className="border-green-100 bg-green-50/20">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-green-700 uppercase">Monthly Cash Inflow</CardTitle>
-            <TrendingUp className="h-4 w-4 text-green-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-black text-green-600">{formatUGX(collections.totalBankCash)}</div>
-            <p className="text-[10px] text-green-700/70 uppercase font-bold mt-1">Total physical cash received</p>
-          </CardContent>
-        </Card>
-
         <Card className="border-amber-100 bg-amber-50/20">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-amber-700 uppercase">Bank Verified (Debt)</CardTitle>
+            <CardTitle className="text-sm font-medium text-amber-700 uppercase">Collections on Billing</CardTitle>
             <TrendingUp className="h-4 w-4 text-amber-600" />
           </CardHeader>
           <CardContent>
