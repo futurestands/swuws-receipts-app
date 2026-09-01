@@ -768,41 +768,46 @@ export async function importBilling(
 export async function downloadBillingTemplate() {
   await requireUser()
 
-  // 1. Resolve Headers from Template Hub
+  // 1. Resolve Mapping from Template Hub
   const dbMappingRaw = await getImportMapping("import.billing.monthly")
 
-  // ULTIMATE RESILIENCE: Merge custom keys ADDITIVELY with defaults
-  const mapping = { ...DEFAULT_BILLING_IMPORT_MAPPING } as Record<string, any>
-  if (dbMappingRaw) {
-    for (const [k, v] of Object.entries(dbMappingRaw)) {
-      const lowerK = k.toLowerCase()
-      if (lowerK === "customeraccount" || lowerK === "accountnumber") {
-         mapping.accountNumber = [v, ...(Array.isArray(mapping.accountNumber) ? mapping.accountNumber : [mapping.accountNumber])]
-      } else if (lowerK === "billamount") {
-         mapping.billAmount = [v, ...(Array.isArray(mapping.billAmount) ? mapping.billAmount : [mapping.billAmount])]
-      } else if (lowerK === "totalamountdue" || lowerK === "arrears") {
-         mapping.arrears = [v, ...(Array.isArray(mapping.arrears) ? mapping.arrears : [mapping.arrears])]
-      } else if (lowerK === "duedate") {
-         mapping.dueDate = [v, ...(Array.isArray(mapping.dueDate) ? mapping.dueDate : [mapping.dueDate])]
-      } else {
-         mapping[k] = v
-      }
-    }
-  }
+  // Use custom mapping if it exists, otherwise fall back to defaults
+  // We prioritize the keys and order from the DB mapping if available
+  const mapping = (dbMappingRaw || { ...DEFAULT_BILLING_IMPORT_MAPPING }) as Record<string, string | string[] | number>
 
   // 2. Generate Sample Data strictly based on the mapping keys
-  const headers = Object.values(mapping).map(v => Array.isArray(v) ? v[0] : v) as string[]
+  const headers: string[] = []
   const sampleRow: Record<string, any> = {}
 
-  // Fill sample values ONLY for keys that the user defined in their JSON
-  if (mapping.accountNumber) sampleRow[Array.isArray(mapping.accountNumber) ? mapping.accountNumber[0] : mapping.accountNumber] = "6000000000"
-  if (mapping.billAmount) sampleRow[Array.isArray(mapping.billAmount) ? mapping.billAmount[0] : mapping.billAmount] = 50000
-  if (mapping.dueDate) sampleRow[Array.isArray(mapping.dueDate) ? mapping.dueDate[0] : mapping.dueDate] = new Date().toISOString().split("T")[0]
+  // Standard internal keys to process in a logical order
+  const internalKeys = ["accountNumber", "billAmount", "arrears", "currentCharges", "totalDue", "dueDate"]
 
-  // Optional fields - only fill if the user specifically chose to include them in their JSON
-  if (mapping.arrears) sampleRow[Array.isArray(mapping.arrears) ? mapping.arrears[0] : mapping.arrears] = 0
-  if (mapping.currentCharges) sampleRow[Array.isArray(mapping.currentCharges) ? mapping.currentCharges[0] : mapping.currentCharges] = 0
-  if (mapping.totalDue) sampleRow[Array.isArray(mapping.totalDue) ? mapping.totalDue[0] : mapping.totalDue] = 50000
+  // If no custom mapping exists, we use the standard keys order
+  const keysToProcess = dbMappingRaw ? Object.keys(dbMappingRaw) : internalKeys
+
+  for (const key of keysToProcess) {
+    // Map custom/legacy keys to internal equivalents if necessary
+    const lowerK = key.toLowerCase()
+    let internalKey = key
+    if (lowerK === "customeraccount") internalKey = "accountNumber"
+    if (lowerK === "totalamountdue") internalKey = "totalDue"
+
+    const value = mapping[key]
+    if (value !== undefined) {
+      const header = Array.isArray(value) ? String(value[0]) : String(value)
+      if (headers.includes(header)) continue // Prevent duplicate columns
+      headers.push(header)
+
+      // Fill sample values based on the internal intent of the field
+      if (internalKey === "accountNumber") sampleRow[header] = "6000000000"
+      else if (internalKey === "billAmount") sampleRow[header] = 50000
+      else if (internalKey === "dueDate") sampleRow[header] = new Date().toISOString().split("T")[0]
+      else if (internalKey === "arrears") sampleRow[header] = 0
+      else if (internalKey === "currentCharges") sampleRow[header] = 0
+      else if (internalKey === "totalDue") sampleRow[header] = 50000
+      else sampleRow[header] = "..."
+    }
+  }
 
   const worksheet = XLSX.utils.json_to_sheet([sampleRow], { header: headers })
   const workbook = XLSX.utils.book_new()

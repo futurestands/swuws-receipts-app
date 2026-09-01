@@ -664,19 +664,45 @@ export async function commitDailyBalanceSync(formData: FormData) {
 
 export async function downloadDailyCollectionTemplate(format: "xlsx" | "csv") {
   await requireUser()
-  const dbMapping = await getImportMapping("import.daily.collections")
-  const mapping: Record<string, string | string[]> = dbMapping || { ...DEFAULT_DAILY_IMPORT_MAPPING }
-  const headers = Object.values(mapping).map(v => Array.isArray(v) ? v[0] : v) as string[]
-  const sample: Record<string, string> = {}
-  Object.entries(mapping).forEach(([k, v]) => {
-    const col = Array.isArray(v) ? v[0] : v
-    if (k === 'accountNumber') sample[col] = "6000000000"
-    else if (k === 'amountPaid') sample[col] = "50000"
-    else sample[col] = "Sample"
-  })
-  const ws = XLSX.utils.json_to_sheet([sample], { header: headers })
-  const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "Template")
-  return format === "xlsx" ? XLSX.write(wb, { type: "buffer", bookType: "xlsx" }).toString("base64") : Buffer.from(XLSX.utils.sheet_to_csv(ws)).toString("base64")
+
+  // 1. Resolve Mapping from Template Hub
+  const dbMappingRaw = await getImportMapping("import.daily.collections")
+
+  // Use custom mapping if it exists, otherwise fall back to defaults
+  const mapping = (dbMappingRaw || { ...DEFAULT_DAILY_IMPORT_MAPPING }) as Record<string, string | string[] | number>
+
+  // 2. Generate Sample Data strictly based on the mapping keys
+  const headers: string[] = []
+  const sampleRow: Record<string, any> = {}
+
+  // Standard internal keys to process
+  const internalKeys = ["accountNumber", "customerName", "amountPaid", "paymentDate", "externalReference", "paymentChannel"]
+
+  // If no custom mapping exists, we use the standard keys order
+  const keysToProcess = dbMappingRaw ? Object.keys(dbMappingRaw) : internalKeys
+
+  for (const key of keysToProcess) {
+    const value = mapping[key]
+    if (value !== undefined) {
+      const header = Array.isArray(value) ? String(value[0]) : String(value)
+      if (headers.includes(header)) continue
+      headers.push(header)
+
+      // Fill sample values
+      if (key === "accountNumber") sampleRow[header] = "6000000000"
+      else if (key === "amountPaid") sampleRow[header] = 50000
+      else if (key === "paymentDate") sampleRow[header] = new Date().toISOString().split("T")[0]
+      else sampleRow[header] = "Sample Data"
+    }
+  }
+
+  const ws = XLSX.utils.json_to_sheet([sampleRow], { header: headers })
+  const wb = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(wb, ws, "Template")
+
+  return format === "xlsx"
+    ? XLSX.write(wb, { type: "buffer", bookType: "xlsx" }).toString("base64")
+    : Buffer.from(XLSX.utils.sheet_to_csv(ws)).toString("base64")
 }
 
 export async function getDailyImportDetails(id: string) {
