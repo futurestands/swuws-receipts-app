@@ -301,8 +301,33 @@ export async function getDashboardStats(params: {
         totalBilled: sum(meterReading.billedAmount),
         totalArrearsBilled: sum(meterReading.previousBalanceSnapshot),
         totalCurrentBilled: sum(meterReading.billedAmount),
-        verifiedArrears: sql<string>`0`,
-        verifiedCurrent: sql<string>`0`,
+        // FIELD RECOVERY MATH: Detect satisfaction for field-captured bills
+        verifiedArrears: sum(sql`
+          least(
+            greatest(0, coalesce(${meterReading.previousBalanceSnapshot}, 0)::numeric),
+            greatest(0, (coalesce(${meterReading.previousBalanceSnapshot}, 0)::numeric + coalesce(${meterReading.billedAmount}, 0)::numeric) - coalesce(${customer.accountBalance}, 0)::numeric)
+          )
+        `),
+        verifiedCurrent: sum(sql`
+          greatest(0, coalesce(${meterReading.billedAmount}, 0)::numeric - greatest(0, coalesce(${customer.accountBalance}, 0)::numeric))
+        `),
+        // FIELD CASH MATH: Isolate physical cash portion
+        cashToArrears: sum(sql`
+          least(
+            greatest(0, coalesce(${meterReading.previousBalanceSnapshot}, 0)::numeric),
+            greatest(0, (coalesce(${meterReading.previousBalanceSnapshot}, 0)::numeric + coalesce(${meterReading.billedAmount}, 0)::numeric) - coalesce(${customer.accountBalance}, 0)::numeric)
+          )
+        `),
+        cashToCurrent: sum(sql`
+          least(
+            coalesce(${meterReading.billedAmount}, 0)::numeric,
+            greatest(0, ((coalesce(${meterReading.previousBalanceSnapshot}, 0)::numeric + coalesce(${meterReading.billedAmount}, 0)::numeric) - coalesce(${customer.accountBalance}, 0)::numeric) -
+            least(
+              greatest(0, coalesce(${meterReading.previousBalanceSnapshot}, 0)::numeric),
+              greatest(0, (coalesce(${meterReading.previousBalanceSnapshot}, 0)::numeric + coalesce(${meterReading.billedAmount}, 0)::numeric) - coalesce(${customer.accountBalance}, 0)::numeric)
+            ))
+          )
+        `),
         billedCount: count(meterReading.id),
       })
       .from(meterReading)
@@ -382,13 +407,12 @@ export async function getDashboardStats(params: {
   const totalBilled = currentBilled + arrearsBilled
 
   // REVENUE REALIZATION (Satisfied Demand: Cash + Consumed Old Advances)
-  // This tells you the total VALUE of bills cleared this period.
-  const satisfiedArrears = Number(importStats?.verifiedArrears || 0)
-  const satisfiedCurrent = Number(importStats?.verifiedCurrent || 0)
+  const satisfiedArrears = Number(importStats?.verifiedArrears || 0) + Number(fieldStats?.verifiedArrears || 0)
+  const satisfiedCurrent = Number(importStats?.verifiedCurrent || 0) + Number(fieldStats?.verifiedCurrent || 0)
 
-  // STRICT CASH PORTION (Portion of the satisfaction that was physical cash)
-  const cashToArrears = Number(importStats?.cashToArrears || 0)
-  const cashToCurrent = Number(importStats?.cashToCurrent || 0)
+  // STRICT CASH PORTION (Harmonized: Imports + Field Readings)
+  const cashToArrears = Number(importStats?.cashToArrears || 0) + Number(fieldStats?.cashToArrears || 0)
+  const cashToCurrent = Number(importStats?.cashToCurrent || 0) + Number(fieldStats?.cashToCurrent || 0)
 
   // THE "BANK VERIFIED" TOTAL (Monthly Debt Clearance Value)
   // Refined Logic (Aug 28): Verified is now STRICTLY the sum of Debt cleared by FRESH CASH.
@@ -398,10 +422,9 @@ export async function getDashboardStats(params: {
   // NEW SURPLUS isolation (Fresh Top-ups)
   const freshCashSurplus = Math.max(0, verifiedTotal - (cashToArrears + cashToCurrent))
 
-  // PERFORMANCE EFFICIENCY: Total Value Cleared (Cash + Old Credits) vs Total Demand
-  // Managers still need the "Satisfaction" rate for broad efficiency analysis.
-  const debtRecoveryPerformance = satisfiedArrears + satisfiedCurrent
-  const globalRate = totalBilled > 0 ? (debtRecoveryPerformance / totalBilled) * 100 : 0
+  // PERFORMANCE EFFICIENCY: Total Cash Collections (Old + New) vs Current Month Demand
+  // This calculates how much of the current month's bill value was recovered in total cash.
+  const globalRate = currentBilled > 0 ? (verifiedDebtClearanceByCash / currentBilled) * 100 : 0
 
   const operationalCash = Number(receiptStats?.totalAmount || 0)
   const operationalCount = Number(receiptStats?.totalCount || 0)
