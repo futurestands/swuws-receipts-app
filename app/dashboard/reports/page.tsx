@@ -188,13 +188,27 @@ export default async function ReportsPage({
                  <p className="text-xl font-bold">{formatUGX(billing.arrearsBilled)}</p>
                </div>
                <div className="text-right">
-                 <p className="text-xs text-muted-foreground uppercase text-green-600">Arrears Collected</p>
+                 <p className="text-xs text-muted-foreground uppercase text-green-600">Arrears Collected (Cash)</p>
                  <p className="text-xl font-black text-green-600">{formatUGX(collections.cashToArrears)}</p>
                </div>
              </div>
+             {/* Previously "Arrears Collected" silently excluded old debt cleared
+                 by consuming existing credit -- shown separately here rather
+                 than folded invisibly into (or hidden entirely from) the
+                 headline cash figure above. */}
+             {collections.satisfiedArrears > collections.cashToArrears && (
+               <div className="flex justify-between items-center text-xs bg-slate-50 rounded-md px-3 py-2 border border-slate-100">
+                 <span className="text-muted-foreground">+ Covered by existing credit</span>
+                 <span className="font-bold text-slate-600">{formatUGX(collections.satisfiedArrears - collections.cashToArrears)}</span>
+               </div>
+             )}
+             <div className="flex justify-between items-center text-xs px-3">
+               <span className="font-bold text-muted-foreground uppercase">= Total Arrears Coverage</span>
+               <span className="font-black">{formatUGX(collections.satisfiedArrears)}</span>
+             </div>
              <div className="space-y-2">
                 <div className="flex items-center justify-between text-sm">
-                  <span className="font-medium">Recovery Rate</span>
+                  <span className="font-medium">Recovery Rate (Cash)</span>
                   <span className="font-black text-green-600">{formatPercent(collections.arrearsRate)}</span>
                 </div>
                 <Progress value={collections.arrearsRate} className="h-3 bg-green-50" />
@@ -214,13 +228,29 @@ export default async function ReportsPage({
                  <p className="text-xl font-bold">{formatUGX(billing.currentBilled)}</p>
                </div>
                <div className="text-right">
-                 <p className="text-xs text-muted-foreground uppercase text-blue-600">Current Collected</p>
+                 <p className="text-xs text-muted-foreground uppercase text-blue-600">Current Collected (Cash)</p>
                  <p className="text-xl font-black text-blue-600">{formatUGX(collections.cashToCurrent)}</p>
                </div>
              </div>
+             {/* Same distinction as the Arrears card: this month's bills that
+                 were satisfied by drawing down a customer's pre-existing
+                 credit, not by new cash arriving this period. Both are real
+                 and correct -- "Current Collected" alone answers "how much
+                 fresh cash came in," this line answers "how much of this
+                 month's demand is actually cleared, by any means." */}
+             {collections.satisfiedMonthly > collections.cashToCurrent && (
+               <div className="flex justify-between items-center text-xs bg-slate-50 rounded-md px-3 py-2 border border-slate-100">
+                 <span className="text-muted-foreground">+ Covered by existing credit</span>
+                 <span className="font-bold text-slate-600">{formatUGX(collections.satisfiedMonthly - collections.cashToCurrent)}</span>
+               </div>
+             )}
+             <div className="flex justify-between items-center text-xs px-3">
+               <span className="font-bold text-muted-foreground uppercase">= Total Bill Coverage</span>
+               <span className="font-black">{formatUGX(collections.satisfiedMonthly)}</span>
+             </div>
              <div className="space-y-2">
                 <div className="flex items-center justify-between text-sm">
-                  <span className="font-medium">Collection Rate</span>
+                  <span className="font-medium">Collection Rate (Cash)</span>
                   <span className="font-black text-blue-600">{formatPercent(collections.currentRate)}</span>
                 </div>
                 <Progress value={collections.currentRate} className="h-3 bg-blue-50" />
