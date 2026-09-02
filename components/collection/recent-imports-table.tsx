@@ -30,12 +30,15 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
 
+import { SendRemindersButton } from "@/components/crm/send-reminders-button"
+
 interface RecentImportsTableProps {
   uploads: any[]
   canDelete?: boolean
+  canSendSms?: boolean
 }
 
-export function RecentImportsTable({ uploads, canDelete = false }: RecentImportsTableProps) {
+export function RecentImportsTable({ uploads, canDelete = false, canSendSms = false }: RecentImportsTableProps) {
   const [selectedIds, setSelectedIds] = useState<string[]>([])
   const [isDeleting, setIsDeleting] = useState(false)
   const [isConfirmOpen, setIsConfirmOpen] = useState(false)
@@ -171,11 +174,12 @@ export function RecentImportsTable({ uploads, canDelete = false }: RecentImports
                     {run.status}
                   </Badge>
                 </TableCell>
-                {canDelete && (
-                  <TableCell className="text-right">
-                    <DeleteRunButton runId={run.id} schemeName={run.schemeName} />
-                  </TableCell>
-                )}
+                <TableCell className="text-right">
+                  <div className="flex justify-end gap-2">
+                    {canSendSms && <SendRemindersButton runId={run.id} />}
+                    {canDelete && <DeleteRunButton runId={run.id} schemeName={run.schemeName} />}
+                  </div>
+                </TableCell>
               </TableRow>
             ))}
           </TableBody>

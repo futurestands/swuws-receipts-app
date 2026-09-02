@@ -1,10 +1,11 @@
 import { requireUser } from "@/lib/session"
-import { canViewCrm } from "@/lib/permissions"
+import { canViewCrm, canConfigureCrm } from "@/lib/permissions"
 import { getCrmStats } from "@/app/actions/crm"
 import { PageHeader } from "@/components/ui/page-header"
 import { StatCard, StatCardGrid } from "@/components/ui/stat-card"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
-import { MessageSquare, Smartphone, CheckCircle2, AlertCircle, Clock, FileBarChart, List } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { MessageSquare, Smartphone, CheckCircle2, AlertCircle, Clock, FileBarChart, List, Settings2 } from "lucide-react"
 
 import Link from "next/link"
 
@@ -13,14 +14,26 @@ export default async function CrmDashboardPage() {
   const user = await requireUser()
   if (!canViewCrm(user)) throw new Error("Forbidden")
 
-  const stats = await getCrmStats()
+  const [stats, canConfig] = await Promise.all([
+    getCrmStats(),
+    Promise.resolve(canConfigureCrm(user))
+  ])
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        title="CRM Hub"
-        description="Manage customer relationships, complaints, and communications."
-      />
+      <div className="flex items-center justify-between">
+        <PageHeader
+          title="CRM Hub"
+          description="Manage customer relationships, complaints, and communications."
+        />
+        {canConfig && (
+          <Button asChild variant="outline" size="sm" className="h-9 gap-2 font-black text-[10px] uppercase tracking-widest border-2">
+            <Link href="/dashboard/crm/settings">
+              <Settings2 className="h-4 w-4" /> CRM SETUP
+            </Link>
+          </Button>
+        )}
+      </div>
 
       <div className="grid gap-6 md:grid-cols-3">
         <Card className="border-t-4 border-t-sky-500 shadow-sm">

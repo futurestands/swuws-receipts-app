@@ -387,6 +387,27 @@ export async function seedSystemTemplates() {
   </div>
 </div>
       `
+    },
+    {
+      code: 'crm.complaint.registered.sms',
+      name: 'Complaint Registration Confirmation',
+      category: 'CRM',
+      type: 'SMS',
+      content: 'Dear {{customer_name}}, your complaint #{{ticket_id}} has been registered. Nature: {{category}}. Status: OPEN. SWUWS IT.'
+    },
+    {
+      code: 'crm.complaint.resolved.sms',
+      name: 'Complaint Resolution Notification',
+      category: 'CRM',
+      type: 'SMS',
+      content: 'Dear {{customer_name}}, your complaint #{{ticket_id}} has been RESOLVED. Resolution: {{notes}}. Thank you for your patience. SWUWS IT.'
+    },
+    {
+      code: 'crm.bulk.general.sms',
+      name: 'General Purpose SMS (Broadcast)',
+      category: 'CRM',
+      type: 'SMS',
+      content: 'SWUWS NOTICE: {{message}}'
     }
   ]
 

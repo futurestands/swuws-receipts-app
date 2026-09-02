@@ -10,7 +10,12 @@ import {
   customer,
   user as userTable,
   branch,
-  waterScheme
+  waterScheme,
+  billingRecord,
+  billingPeriod,
+  billingRun,
+  managedTemplate,
+  templateVersion
 } from "@/lib/db/schema"
 import { eq, and, desc, asc, sql, or, ilike, count, getTableColumns, gte, lte } from "drizzle-orm"
 import { requireUser } from "@/lib/session"
@@ -28,6 +33,7 @@ import { writeAudit } from "@/lib/audit"
 import { createNotification } from "./notifications"
 import { smsImportSchema, smsImportMapping } from "@/lib/crm-schemas"
 import { processExcelImport } from "@/lib/import-engine"
+import { renderTemplate } from "@/lib/templates/template-engine"
 
 /**
  * DEPARTMENTS
@@ -473,6 +479,8 @@ export async function importSmsBatch(formData: FormData) {
   const name = formData.get("name") as string
   const category = formData.get("category") as string
   const templateId = formData.get("templateId") as string || undefined
+  const manualMessage = formData.get("manualMessage") as string || undefined
+  const schemeId = formData.get("schemeId") as string || "all"
 
   if (!file) throw new Error("File is required")
 
@@ -507,7 +515,7 @@ export async function importSmsBatch(formData: FormData) {
         id: randomUUID(),
         batchId,
         phoneNumber: String(r.data.phoneNumber),
-        message: `Dear ${r.data.customerName || 'Customer'}, your bill for ${r.data.billingPeriod || 'the period'} is due. Balance: ${r.data.balance || 0}.`,
+        message: manualMessage || `Dear ${r.data.customerName || 'Customer'}, your bill for ${r.data.billingPeriod || 'the period'} is due. Balance: ${r.data.balance || 0}.`,
         status: "queued" as const,
         updatedAt: new Date()
       }))
@@ -606,6 +614,77 @@ export async function createSmsBatch(data: {
 
   revalidatePath("/dashboard/crm/sms")
   return { ok: true, batchId }
+}
+
+/**
+ * AUTOMATED REMINDERS
+ */
+export async function generateRemindersFromImport(runId: string) {
+  const user = await requireUser()
+  if (!canSendBulkSms(user)) throw new Error("Forbidden")
+
+  // 1. Fetch billing records and customer phones
+  const records = await db
+    .select({
+      id: billingRecord.id,
+      accountNumber: billingRecord.accountNumber,
+      amount: billingRecord.currentCharges,
+      totalDue: billingRecord.totalDue,
+      customerId: customer.id,
+      customerName: customer.name,
+      phoneNumber: customer.phone,
+      periodName: billingPeriod.periodName
+    })
+    .from(billingRecord)
+    .innerJoin(customer, eq(billingRecord.customerId, customer.id))
+    .innerJoin(billingPeriod, eq(billingRecord.billingPeriodId, billingPeriod.id))
+    .where(and(
+      eq(billingRecord.billingRunId, runId),
+      sql`${billingRecord.totalDue} > 0` // Only remind those who owe money
+    ))
+
+  if (records.length === 0) return { ok: false, error: "No debtors found in this import batch." }
+
+  const [schemeInfo] = await db
+    .select({ name: waterScheme.name })
+    .from(billingRun)
+    .innerJoin(waterScheme, eq(billingRun.schemeId, waterScheme.id))
+    .where(eq(billingRun.id, runId))
+    .limit(1)
+
+  const batchName = `Reminders: ${schemeInfo?.name || 'Import'} - ${records[0].periodName}`
+
+  // 3. Resolve Template (notif.billing.sms)
+  const [template] = await db.select().from(managedTemplate).where(eq(managedTemplate.code, 'notif.billing.sms')).limit(1)
+  let activeContent = "Dear {{customer_name}}, your water bill for {{period}} is USh {{amount}}. Total due: USh {{total_due}}. Please pay promptly. Thank you."
+
+  if (template?.activeVersionId) {
+    const [version] = await db.select().from(templateVersion).where(eq(templateVersion.id, template.activeVersionId)).limit(1)
+    if (version) activeContent = version.content
+  }
+
+  // 4. Map to SMS records using dynamic rendering
+  const recipients = records
+    .filter(r => r.phoneNumber && r.phoneNumber.length > 5)
+    .map(r => ({
+      customerId: r.customerId,
+      phoneNumber: r.phoneNumber!,
+      message: renderTemplate(activeContent, {
+        customer_name: r.customerName,
+        period: r.periodName,
+        amount: Number(r.amount).toLocaleString(),
+        total_due: Number(r.totalDue).toLocaleString()
+      })
+    }))
+
+  if (recipients.length === 0) return { ok: false, error: "No valid phone numbers found for the customers in this batch." }
+
+  // 5. Create batch using existing logic
+  return await createSmsBatch({
+    name: batchName,
+    category: "Bill Reminders",
+    recipients
+  })
 }
 
 /**

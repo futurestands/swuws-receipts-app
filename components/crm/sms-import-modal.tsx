@@ -8,7 +8,10 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { importSmsBatch } from "@/app/actions/crm"
 import { toast } from "sonner"
-import { Loader2, Plus, Upload } from "lucide-react"
+import { Checkbox } from "@/components/ui/checkbox"
+import { Textarea } from "@/components/ui/textarea"
+import { useEffect } from "react"
+import { Plus, Loader2, Upload } from "lucide-react"
 
 export function SmsImportModal() {
   const [open, setOpen] = useState(false)
@@ -16,6 +19,18 @@ export function SmsImportModal() {
   const [category, setCategory] = useState("Bill Reminders")
   const [file, setFile] = useState<File | null>(null)
   const [loading, setLoading] = useState(false)
+
+  const [message, setMessage] = useState("")
+  const [useManualMessage, setUseManualMessage] = useState(false)
+  const [selectedSchemeId, setSelectedSchemeId] = useState("all")
+  const [schemes, setSchemes] = useState<{id: string, name: string}[]>([])
+
+  // Fetch schemes for the filter
+  useEffect(() => {
+    import("@/app/actions/settings").then(mod => {
+      mod.listWaterSchemes().then(data => setSchemes(data || []))
+    })
+  }, [])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -36,6 +51,10 @@ export function SmsImportModal() {
       formData.append("file", file)
       formData.append("name", name)
       formData.append("category", category)
+      formData.append("schemeId", selectedSchemeId)
+      if (useManualMessage && message.trim()) {
+        formData.append("manualMessage", message)
+      }
 
       const res = await importSmsBatch(formData)
       if (res.ok) {
@@ -59,7 +78,7 @@ export function SmsImportModal() {
           <Plus className="mr-2 h-4 w-4" /> Create contact list
         </Button>
       </DialogTrigger>
-      <DialogContent className="sm:max-w-[500px]">
+      <DialogContent className="sm:max-w-[550px] max-h-[95vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="text-lg font-bold text-slate-700">Upload Customer contacts list</DialogTitle>
         </DialogHeader>
@@ -86,6 +105,45 @@ export function SmsImportModal() {
                 </SelectContent>
               </Select>
             </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label className="text-xs font-bold uppercase text-slate-500">Target Water Scheme</Label>
+            <Select onValueChange={(val) => setSelectedSchemeId(val || "all")} defaultValue={selectedSchemeId}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select Scheme" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">ALL SCHEMES</SelectItem>
+                {schemes.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-4 border p-4 rounded-xl bg-slate-50/50">
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                id="manual-mode"
+                checked={useManualMessage}
+                onCheckedChange={(checked) => setUseManualMessage(!!checked)}
+              />
+              <Label htmlFor="manual-mode" className="text-xs font-black uppercase text-primary cursor-pointer">
+                Custom Message Mode (Manual)
+              </Label>
+            </div>
+
+            {useManualMessage && (
+              <div className="space-y-2 animate-in fade-in slide-in-from-top-1">
+                <Label className="text-[10px] font-bold uppercase text-slate-400">Your Message</Label>
+                <Textarea
+                  placeholder="Type your custom notice here..."
+                  className="min-h-[80px] text-xs font-bold"
+                  value={message}
+                  onChange={(e) => setMessage(e.target.value)}
+                />
+                <p className="text-[9px] text-muted-foreground italic">Note: Placeholders like {"{{name}}"} are supported if in the CSV.</p>
+              </div>
+            )}
           </div>
 
           <div className="space-y-2">
