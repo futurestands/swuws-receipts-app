@@ -180,6 +180,21 @@ export async function registerComplaint(data: {
     if (c) customerId = c.id
   }
 
+  // HIERARCHY SCOPING: canManageComplaints only checks module access, not
+  // which customers this user can file complaints against -- without this,
+  // a regional user could register a complaint against any customer
+  // org-wide. Consistent with the same check already applied to
+  // resolveComplaint/closeComplaint.
+  if (customerId && !canViewAllData(user)) {
+    const customerScope = applyCustomerScope(user)
+    const [inScope] = await db
+      .select({ id: customer.id })
+      .from(customer)
+      .where(and(eq(customer.id, customerId), customerScope ?? sql`1=1`))
+      .limit(1)
+    if (!inScope) throw new Error("Forbidden: customer is outside your assigned scope")
+  }
+
   const id = randomUUID()
   const complaintNumber = `COMP-${Date.now().toString().slice(-6)}-${Math.floor(Math.random() * 1000).toString().padStart(3, '0')}`
 
@@ -518,6 +533,10 @@ export async function importSmsBatch(formData: FormData) {
     }
   })
 
+  // Same fix as createSmsBatch -- this path had the identical gap, its
+  // own separate route to creating 'queued' rows that nothing ever sent.
+  await processSmsBatch(batchId)
+
   revalidatePath("/dashboard/crm/sms")
   return { ok: true, batchId, summary: { total: summary.totalRows, valid: summary.validRows } }
 }
@@ -604,8 +623,71 @@ export async function createSmsBatch(data: {
     }
   })
 
+  // Actually send the messages. Previously this function only created
+  // 'queued' database rows and stopped there -- nothing anywhere in the
+  // codebase ever processed them into a real send, so every SMS campaign
+  // silently did nothing while looking like it succeeded. Processing
+  // synchronously here (a Server Action runs to completion before
+  // returning regardless) rather than deferring to a background job,
+  // since this app has no job-queue infrastructure to defer to yet.
+  // NOTE: for very large recipient lists this risks the serverless
+  // function's execution time limit -- fine for realistic campaign sizes,
+  // but a true background processor would be needed before pushing this
+  // to, say, 10,000+ recipients in one batch.
+  await processSmsBatch(batchId)
+
   revalidatePath("/dashboard/crm/sms")
   return { ok: true, batchId }
+}
+
+/**
+ * Sends every queued record in a batch via the configured SMS gateway,
+ * updating per-record status and the batch's aggregate counts as it goes.
+ */
+async function processSmsBatch(batchId: string) {
+  const { sendSMS } = await import("@/lib/sms-service")
+
+  await db.update(crmSmsBatch).set({ status: "processing", updatedAt: new Date() }).where(eq(crmSmsBatch.id, batchId))
+
+  const records = await db.select().from(crmSmsRecord).where(and(eq(crmSmsRecord.batchId, batchId), eq(crmSmsRecord.status, "queued")))
+
+  let sentCount = 0
+  let failedCount = 0
+
+  for (const record of records) {
+    try {
+      const result = await sendSMS(record.phoneNumber, record.message)
+      if (result.delivered) {
+        sentCount++
+        await db.update(crmSmsRecord)
+          .set({ status: "sent", externalRef: result.id, updatedAt: new Date() })
+          .where(eq(crmSmsRecord.id, record.id))
+      } else {
+        // sendSMS never throws and always returns ok:true (a down gateway
+        // must not block anything else) -- delivered:false is the real
+        // signal here, covering both "not configured, simulated" and
+        // "configured but the provider rejected it."
+        failedCount++
+        await db.update(crmSmsRecord)
+          .set({ status: "failed", error: "Gateway not configured or send failed", externalRef: result.id, updatedAt: new Date() })
+          .where(eq(crmSmsRecord.id, record.id))
+      }
+    } catch (err) {
+      failedCount++
+      await db.update(crmSmsRecord)
+        .set({ status: "failed", error: err instanceof Error ? err.message : "Unknown error", updatedAt: new Date() })
+        .where(eq(crmSmsRecord.id, record.id))
+    }
+  }
+
+  await db.update(crmSmsBatch)
+    .set({
+      status: "completed",
+      sentMessages: sentCount,
+      failedMessages: failedCount,
+      updatedAt: new Date(),
+    })
+    .where(eq(crmSmsBatch.id, batchId))
 }
 
 /**
