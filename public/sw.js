@@ -11,9 +11,7 @@ const PRECACHE_ASSETS = [
   OFFLINE_URL,
   LOGS_URL,
   SETTINGS_URL,
-  '/globals.css',
   '/manifest.webmanifest',
-  '/icon.svg',
   '/logo.jpg'
 ];
 

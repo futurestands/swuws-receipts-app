@@ -67,6 +67,7 @@ export async function getCustomerStatement(customerId: string) {
       billingPeriod: receipt.billingPeriodSnapshot,
       agentName: receipt.agentName,
       remainingBalance: receipt.outstandingBalance,
+      reconciliationStatus: receipt.reconciliationStatus,
     })
     .from(receipt)
     .where(eq(receipt.customerId, customerId))

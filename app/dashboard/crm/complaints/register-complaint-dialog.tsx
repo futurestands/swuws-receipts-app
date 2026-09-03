@@ -171,7 +171,7 @@ export function RegisterComplaintDialog({
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Preferred Language</FormLabel>
-                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                    <Select onValueChange={field.onChange} value={field.value}>
                       <FormControl>
                         <SelectTrigger>
                           <SelectValue placeholder="Select language" />
@@ -196,7 +196,7 @@ export function RegisterComplaintDialog({
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Complaint Category</FormLabel>
-                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                    <Select onValueChange={field.onChange} value={field.value}>
                       <FormControl>
                         <SelectTrigger>
                           <SelectValue placeholder="Select category" />
@@ -218,7 +218,7 @@ export function RegisterComplaintDialog({
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Priority Level</FormLabel>
-                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                    <Select onValueChange={field.onChange} value={field.value}>
                       <FormControl>
                         <SelectTrigger>
                           <SelectValue placeholder="Select priority" />

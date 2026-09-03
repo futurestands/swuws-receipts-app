@@ -19,6 +19,9 @@ import { RegisterComplaintModal } from "@/components/crm/register-complaint-moda
 import { ComplaintRowActions } from "@/components/crm/complaint-row-actions"
 import { ComplaintsFilterBar } from "@/components/crm/complaints-filter-bar"
 import { ScrollableTableContainer } from "@/components/ui/responsive-table"
+import { ComplaintsServiceBoard } from "@/components/crm/complaints-service-board"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { LayoutGrid, List as ListIcon } from "lucide-react"
 import type { CrmComplaint } from "@/lib/db/schema"
 
 type ComplaintRow = CrmComplaint & {
@@ -139,95 +142,115 @@ export default async function ComplaintsPage({
 
       <ComplaintsFilterBar areas={areas} staff={staff} />
 
-      <Card className="shadow-xl border-none overflow-hidden bg-white">
-        <CardHeader className="border-b bg-slate-900 p-6">
-          <div className="flex items-center gap-3">
-             <div className="h-8 w-8 rounded-lg bg-white/10 flex items-center justify-center border border-white/10">
-                <ClipboardList className="h-4 w-4 text-primary" />
-             </div>
-             <div>
-                <CardTitle className="text-sm font-black uppercase text-white tracking-widest">Service Delivery Log</CardTitle>
-                <p className="text-[10px] text-slate-400 font-medium">Real-time oversight of technical and financial service tickets.</p>
-             </div>
-          </div>
-        </CardHeader>
-        <CardContent className="p-0">
-          <ScrollableTableContainer className="border-0 rounded-none">
-            <Table>
-              <TableHeader>
-                <TableRow className="hover:bg-transparent bg-slate-50">
-                  <TableHead className="text-[10px] font-black uppercase tracking-tighter py-5 px-6">Date and Time</TableHead>
-                  <TableHead className="text-[10px] font-black uppercase tracking-tighter">Customer Name</TableHead>
-                  <TableHead className="text-[10px] font-black uppercase tracking-tighter">Ticket ID</TableHead>
-                  <TableHead className="text-[10px] font-black uppercase tracking-tighter text-center">A/C No</TableHead>
-                  <TableHead className="text-[10px] font-black uppercase tracking-tighter">Contact</TableHead>
-                  <TableHead className="text-[10px] font-black uppercase tracking-tighter">Nature of Issue</TableHead>
-                  <TableHead className="text-[10px] font-black uppercase tracking-tighter">Handler</TableHead>
-                  <TableHead className="text-[10px] font-black uppercase tracking-tighter">Current Status</TableHead>
-                  <TableHead className="text-right text-[10px] font-black uppercase tracking-tighter pr-8">Operations</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {complaintData.complaints.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={9} className="text-center py-24 text-slate-400 italic text-sm font-medium">
-                      <div className="flex flex-col items-center gap-4">
-                         <Filter className="h-12 w-12 opacity-10" />
-                         <p>No complaints found matching your current filter set.</p>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  (complaintData.complaints as ComplaintRow[]).map((c) => (
-                    <TableRow key={c.id} className="hover:bg-slate-50/80 transition-colors group">
-                      <TableCell className="text-[11px] font-bold text-slate-500 whitespace-nowrap px-6">
-                         {formatDateTime(c.createdAt)}
-                      </TableCell>
-                      <TableCell className="text-[12px] font-black text-slate-800 uppercase tracking-tight">{c.complainantName}</TableCell>
-                      <TableCell>
-                         <Badge variant="outline" className="text-[10px] font-mono font-black bg-sky-50 text-sky-700 border-sky-100">
-                            {c.complaintNumber.slice(-6)}
-                         </Badge>
-                      </TableCell>
-                      <TableCell className="text-center">
-                         <span className="text-[11px] font-mono font-bold text-slate-400">{c.customerAccount || 'N/A'}</span>
-                      </TableCell>
-                      <TableCell className="text-[11px] font-bold text-slate-600">{c.complainantPhone}</TableCell>
-                      <TableCell>
-                         <span className="text-[11px] font-bold text-slate-700 uppercase tracking-tighter">{c.categoryName}</span>
-                      </TableCell>
-                      <TableCell>
-                         <div className="flex items-center gap-2">
-                            <div className="h-6 w-6 rounded-full bg-slate-100 flex items-center justify-center text-[10px] font-black text-slate-500 border border-slate-200 uppercase">
-                               {(c.assignedToName || 'U')[0]}
-                            </div>
-                            <span className="text-[11px] font-bold text-slate-500 capitalize">{c.assignedToName || 'Unassigned'}</span>
-                         </div>
-                      </TableCell>
-                      <TableCell>
-                        <Badge
-                          className={cn(
-                            "h-5 px-2 text-[9px] uppercase font-black border shadow-sm",
-                            c.status === 'open' ? 'bg-rose-50 text-rose-700 border-rose-100' :
-                            c.status === 'assigned' ? 'bg-amber-50 text-amber-700 border-amber-100' :
-                            c.status === 'resolved' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' :
-                            'bg-slate-50 text-slate-700 border-slate-200'
-                          )}
-                        >
-                          {c.status}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-right pr-8">
-                        <ComplaintRowActions complaint={c} />
-                      </TableCell>
+      <Tabs defaultValue="board" className="w-full">
+        <div className="flex items-center justify-between mb-4">
+           <h3 className="text-[10px] font-black uppercase text-slate-400 tracking-[0.2em]">View Orientation</h3>
+           <TabsList className="bg-slate-100/50 p-1 border border-slate-200">
+             <TabsTrigger value="board" className="text-[9px] font-black uppercase gap-1.5 data-[state=active]:bg-white data-[state=active]:text-primary shadow-none h-7">
+               <LayoutGrid className="h-3 w-3" /> Service Board
+             </TabsTrigger>
+             <TabsTrigger value="list" className="text-[9px] font-black uppercase gap-1.5 data-[state=active]:bg-white data-[state=active]:text-primary shadow-none h-7">
+               <ListIcon className="h-3 w-3" /> Data Log
+             </TabsTrigger>
+           </TabsList>
+        </div>
+
+        <TabsContent value="board" className="mt-0">
+           <ComplaintsServiceBoard complaints={complaintData.complaints} />
+        </TabsContent>
+
+        <TabsContent value="list" className="mt-0">
+          <Card className="shadow-xl border-none overflow-hidden bg-white">
+            <CardHeader className="border-b bg-slate-900 p-6">
+              <div className="flex items-center gap-3">
+                 <div className="h-8 w-8 rounded-lg bg-white/10 flex items-center justify-center border border-white/10">
+                    <ClipboardList className="h-4 w-4 text-primary" />
+                 </div>
+                 <div>
+                    <CardTitle className="text-sm font-black uppercase text-white tracking-widest">Service Delivery Log</CardTitle>
+                    <p className="text-[10px] text-slate-400 font-medium">Real-time oversight of technical and financial service tickets.</p>
+                 </div>
+              </div>
+            </CardHeader>
+            <CardContent className="p-0">
+              <ScrollableTableContainer className="border-0 rounded-none">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="hover:bg-transparent bg-slate-50">
+                      <TableHead className="text-[10px] font-black uppercase tracking-tighter py-5 px-6">Date and Time</TableHead>
+                      <TableHead className="text-[10px] font-black uppercase tracking-tighter">Customer Name</TableHead>
+                      <TableHead className="text-[10px] font-black uppercase tracking-tighter">Ticket ID</TableHead>
+                      <TableHead className="text-[10px] font-black uppercase tracking-tighter text-center">A/C No</TableHead>
+                      <TableHead className="text-[10px] font-black uppercase tracking-tighter">Contact</TableHead>
+                      <TableHead className="text-[10px] font-black uppercase tracking-tighter">Nature of Issue</TableHead>
+                      <TableHead className="text-[10px] font-black uppercase tracking-tighter">Handler</TableHead>
+                      <TableHead className="text-[10px] font-black uppercase tracking-tighter">Current Status</TableHead>
+                      <TableHead className="text-right text-[10px] font-black uppercase tracking-tighter pr-8">Operations</TableHead>
                     </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
-          </ScrollableTableContainer>
-        </CardContent>
-      </Card>
+                  </TableHeader>
+                  <TableBody>
+                    {complaintData.complaints.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={9} className="text-center py-24 text-slate-400 italic text-sm font-medium">
+                          <div className="flex flex-col items-center gap-4">
+                             <Filter className="h-12 w-12 opacity-10" />
+                             <p>No complaints found matching your current filter set.</p>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      (complaintData.complaints as ComplaintRow[]).map((c) => (
+                        <TableRow key={c.id} className="hover:bg-slate-50/80 transition-colors group">
+                          <TableCell className="text-[11px] font-bold text-slate-500 whitespace-nowrap px-6">
+                             {formatDateTime(c.createdAt)}
+                          </TableCell>
+                          <TableCell className="text-[12px] font-black text-slate-800 uppercase tracking-tight">{c.complainantName}</TableCell>
+                          <TableCell>
+                             <Badge variant="outline" className="text-[10px] font-mono font-black bg-sky-50 text-sky-700 border-sky-100">
+                                {c.complaintNumber.slice(-6)}
+                             </Badge>
+                          </TableCell>
+                          <TableCell className="text-center">
+                             <span className="text-[11px] font-mono font-bold text-slate-400">{c.customerAccount || 'N/A'}</span>
+                          </TableCell>
+                          <TableCell className="text-[11px] font-bold text-slate-600">{c.complainantPhone}</TableCell>
+                          <TableCell>
+                             <span className="text-[11px] font-bold text-slate-700 uppercase tracking-tighter">{c.categoryName}</span>
+                          </TableCell>
+                          <TableCell>
+                             <div className="flex items-center gap-2">
+                                <div className="h-6 w-6 rounded-full bg-slate-100 flex items-center justify-center text-[10px] font-black text-slate-500 border border-slate-200 uppercase">
+                                   {(c.assignedToName || 'U')[0]}
+                                </div>
+                                <span className="text-[11px] font-bold text-slate-500 capitalize">{c.assignedToName || 'Unassigned'}</span>
+                             </div>
+                          </TableCell>
+                          <TableCell>
+                            <Badge
+                              className={cn(
+                                "h-5 px-2 text-[9px] uppercase font-black border shadow-sm",
+                                c.status === 'open' ? 'bg-rose-50 text-rose-700 border-rose-100' :
+                                c.status === 'assigned' ? 'bg-amber-50 text-amber-700 border-amber-100' :
+                                c.status === 'resolved' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' :
+                                'bg-slate-50 text-slate-700 border-slate-200'
+                              )}
+                            >
+                              {c.status}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-right pr-8">
+                            <ComplaintRowActions complaint={c} />
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
+              </ScrollableTableContainer>
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
     </div>
   )
 }

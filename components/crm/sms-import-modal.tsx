@@ -94,7 +94,7 @@ export function SmsImportModal() {
             </div>
             <div className="space-y-2">
               <Label className="text-xs font-bold uppercase text-slate-500">Category</Label>
-              <Select onValueChange={(val) => setCategory(val || "")} defaultValue={category}>
+              <Select onValueChange={(val) => setCategory(val || "")} value={category}>
                 <SelectTrigger>
                   <SelectValue placeholder="Select category" />
                 </SelectTrigger>
@@ -109,7 +109,7 @@ export function SmsImportModal() {
 
           <div className="space-y-2">
             <Label className="text-xs font-bold uppercase text-slate-500">Target Water Scheme</Label>
-            <Select onValueChange={(val) => setSelectedSchemeId(val || "all")} defaultValue={selectedSchemeId}>
+            <Select onValueChange={(val) => setSelectedSchemeId(val || "all")} value={selectedSchemeId}>
               <SelectTrigger>
                 <SelectValue placeholder="Select Scheme" />
               </SelectTrigger>

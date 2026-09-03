@@ -7,9 +7,12 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge"
 import { formatDateTime } from "@/lib/format"
 import { Button } from "@/components/ui/button"
-import { Send, Smartphone, List, Clock, CheckCircle2, MoreHorizontal } from "lucide-react"
+import { Send, Smartphone, List, Clock, CheckCircle2, MoreHorizontal, Info, RefreshCw } from "lucide-react"
 import { SmsImportModal } from "@/components/crm/sms-import-modal"
 import { SmsFilterBar } from "@/components/crm/sms-filter-bar"
+import { SmsBatchActions } from "@/components/crm/sms-batch-actions"
+import { RefreshButton } from "@/components/ui/refresh-button"
+import { cn } from "@/lib/utils"
 
 export default async function SmsHubPage({
   searchParams: searchParamsPromise,
@@ -41,7 +44,8 @@ export default async function SmsHubPage({
           description="Manage bulk messaging campaigns and delivery history."
           backHref="/dashboard/crm"
         />
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
+           <RefreshButton />
            <SmsImportModal />
         </div>
       </div>
@@ -126,14 +130,19 @@ export default async function SmsHubPage({
                        <span className="text-[11px] font-black">{b.totalMessages}</span>
                     </TableCell>
                     <TableCell className="text-center">
-                       <Badge className="h-5 px-1.5 text-[9px] bg-emerald-100 text-emerald-700 border-emerald-200 hover:bg-emerald-100 uppercase font-black">
+                       <Badge
+                        className={cn(
+                          "h-5 px-1.5 text-[9px] uppercase font-black",
+                          b.status === 'completed' ? 'bg-emerald-100 text-emerald-700 border-emerald-200 hover:bg-emerald-100' :
+                          b.status === 'processing' ? 'bg-blue-100 text-blue-700 border-blue-200 animate-pulse' :
+                          'bg-amber-100 text-amber-700 border-amber-200'
+                        )}
+                       >
                          {b.status === 'completed' ? 'Sent Out' : b.status}
                        </Badge>
                     </TableCell>
                     <TableCell className="text-right pr-6">
-                      <Button variant="outline" size="sm" className="h-7 text-[10px] font-bold bg-sky-50 text-sky-700 border-sky-100 hover:bg-sky-100 hover:text-sky-800">
-                        Details
-                      </Button>
+                      <SmsBatchActions batchId={b.id} status={b.status} />
                     </TableCell>
                   </TableRow>
                 ))

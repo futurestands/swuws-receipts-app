@@ -10,7 +10,12 @@ import {
   customer,
   user as userTable,
   branch,
-  waterScheme
+  waterScheme,
+  billingRecord,
+  billingPeriod,
+  billingRun,
+  managedTemplate,
+  templateVersion
 } from "@/lib/db/schema"
 import { eq, and, desc, asc, sql, or, ilike, count, getTableColumns, gte, lte } from "drizzle-orm"
 import { requireUser } from "@/lib/session"
@@ -28,6 +33,8 @@ import { writeAudit } from "@/lib/audit"
 import { createNotification } from "./notifications"
 import { smsImportSchema, smsImportMapping } from "@/lib/crm-schemas"
 import { processExcelImport } from "@/lib/import-engine"
+import { sendSMS } from "@/lib/sms-service"
+import { renderTemplate } from "@/lib/templates/template-engine"
 
 /**
  * DEPARTMENTS
@@ -473,6 +480,8 @@ export async function importSmsBatch(formData: FormData) {
   const name = formData.get("name") as string
   const category = formData.get("category") as string
   const templateId = formData.get("templateId") as string || undefined
+  const manualMessage = formData.get("manualMessage") as string || undefined
+  const schemeId = formData.get("schemeId") as string || "all"
 
   if (!file) throw new Error("File is required")
 
@@ -507,7 +516,7 @@ export async function importSmsBatch(formData: FormData) {
         id: randomUUID(),
         batchId,
         phoneNumber: String(r.data.phoneNumber),
-        message: `Dear ${r.data.customerName || 'Customer'}, your bill for ${r.data.billingPeriod || 'the period'} is due. Balance: ${r.data.balance || 0}.`,
+        message: manualMessage || `Dear ${r.data.customerName || 'Customer'}, your bill for ${r.data.billingPeriod || 'the period'} is due. Balance: ${r.data.balance || 0}.`,
         status: "queued" as const,
         updatedAt: new Date()
       }))
@@ -606,6 +615,137 @@ export async function createSmsBatch(data: {
 
   revalidatePath("/dashboard/crm/sms")
   return { ok: true, batchId }
+}
+
+/**
+ * AUTOMATED REMINDERS
+ */
+export async function generateRemindersFromImport(runId: string) {
+  const user = await requireUser()
+  if (!canSendBulkSms(user)) throw new Error("Forbidden")
+
+  // 1. Fetch billing records and customer phones
+  const records = await db
+    .select({
+      id: billingRecord.id,
+      accountNumber: billingRecord.accountNumber,
+      amount: billingRecord.currentCharges,
+      totalDue: billingRecord.totalDue,
+      customerId: customer.id,
+      customerName: customer.name,
+      phoneNumber: customer.phone,
+      periodName: billingPeriod.periodName
+    })
+    .from(billingRecord)
+    .innerJoin(customer, eq(billingRecord.customerId, customer.id))
+    .innerJoin(billingPeriod, eq(billingRecord.billingPeriodId, billingPeriod.id))
+    .where(and(
+      eq(billingRecord.billingRunId, runId),
+      sql`${billingRecord.totalDue} > 0` // Only remind those who owe money
+    ))
+
+  if (records.length === 0) return { ok: false, error: "No debtors found in this import batch." }
+
+  const [schemeInfo] = await db
+    .select({ name: waterScheme.name })
+    .from(billingRun)
+    .innerJoin(waterScheme, eq(billingRun.schemeId, waterScheme.id))
+    .where(eq(billingRun.id, runId))
+    .limit(1)
+
+  const batchName = `Reminders: ${schemeInfo?.name || 'Import'} - ${records[0].periodName}`
+
+  // 3. Resolve Template (notif.billing.sms)
+  const [template] = await db.select().from(managedTemplate).where(eq(managedTemplate.code, 'notif.billing.sms')).limit(1)
+  let activeContent = "Dear {{customer_name}}, your water bill for {{period}} is USh {{amount}}. Total due: USh {{total_due}}. Please pay promptly. Thank you."
+
+  if (template?.activeVersionId) {
+    const [version] = await db.select().from(templateVersion).where(eq(templateVersion.id, template.activeVersionId)).limit(1)
+    if (version) activeContent = version.content
+  }
+
+  // 4. Map to SMS records using dynamic rendering
+  const recipients = records
+    .filter(r => r.phoneNumber && r.phoneNumber.length > 5)
+    .map(r => ({
+      customerId: r.customerId,
+      phoneNumber: r.phoneNumber!,
+      message: renderTemplate(activeContent, {
+        customer_name: r.customerName,
+        period: r.periodName,
+        amount: Number(r.amount).toLocaleString(),
+        total_due: Number(r.totalDue).toLocaleString()
+      })
+    }))
+
+  if (recipients.length === 0) return { ok: false, error: "No valid phone numbers found for the customers in this batch." }
+
+  // 5. Create batch using existing logic
+  return await createSmsBatch({
+    name: batchName,
+    category: "Bill Reminders",
+    recipients
+  })
+}
+
+/**
+ * ACTUAL SENDING ENGINE
+ */
+export async function processSmsBatch(batchId: string) {
+  const user = await requireUser()
+  if (!canSendBulkSms(user)) throw new Error("Forbidden")
+
+  const [batch] = await db.select().from(crmSmsBatch).where(eq(crmSmsBatch.id, batchId)).limit(1)
+  if (!batch) throw new Error("Batch not found")
+  if (batch.status === "completed") return { ok: true, message: "Already sent" }
+
+  // Update status to processing
+  await db.update(crmSmsBatch).set({ status: "processing" }).where(eq(crmSmsBatch.id, batchId))
+
+  const records = await db.select().from(crmSmsRecord).where(eq(crmSmsRecord.batchId, batchId))
+
+  let sent = 0
+  let failed = 0
+
+  // Process in serial to avoid overwhelming the gateway and for easier tracking
+  for (const record of records) {
+    if (record.status === "sent" || record.status === "delivered") {
+      sent++
+      continue
+    }
+
+    try {
+      const result = await sendSMS(record.phoneNumber, record.message, user.id)
+      if (result.delivered) {
+        await db.update(crmSmsRecord).set({ status: "sent", updatedAt: new Date() }).where(eq(crmSmsRecord.id, record.id))
+        sent++
+      } else {
+        await db.update(crmSmsRecord).set({ status: "failed", error: "Gateway rejected", updatedAt: new Date() }).where(eq(crmSmsRecord.id, record.id))
+        failed++
+      }
+    } catch (err) {
+      failed++
+      await db.update(crmSmsRecord).set({ status: "failed", error: String(err), updatedAt: new Date() }).where(eq(crmSmsRecord.id, record.id))
+    }
+
+    // Update batch totals every 10 messages for live progress visibility
+    if ((sent + failed) % 10 === 0) {
+      await db.update(crmSmsBatch).set({
+        sentMessages: sent,
+        failedMessages: failed
+      }).where(eq(crmSmsBatch.id, batchId))
+    }
+  }
+
+  await db.update(crmSmsBatch).set({
+    status: "completed",
+    sentMessages: sent,
+    failedMessages: failed,
+    updatedAt: new Date()
+  }).where(eq(crmSmsBatch.id, batchId))
+
+  revalidatePath("/dashboard/crm/sms")
+  return { ok: true, sent, failed }
 }
 
 /**

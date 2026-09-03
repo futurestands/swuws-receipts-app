@@ -8,7 +8,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { formatUGX, formatDateTime, formatDate } from "@/lib/format"
-import { ArrowUpRight, ArrowDownLeft } from "lucide-react"
+import { ArrowUpRight, ArrowDownLeft, ShieldAlert } from "lucide-react"
 import { canEditCustomer } from "@/lib/permissions"
 import { requireUser } from "@/lib/session"
 
@@ -22,6 +22,11 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
 
   const { customer, bills, receipts, ledger, summary, lastReading } = statement
   const canEdit = canEditCustomer(current)
+
+  // Calculate unverified/pending cash for visual transparency
+  const pendingCash = receipts
+    .filter(r => !r.isVoided && r.reconciliationStatus === 'pending')
+    .reduce((sum, r) => sum + Number(r.amount), 0)
 
   return (
     <div className="space-y-6">
@@ -52,12 +57,20 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
               </Card>
             </div>
           )}
-          <Card className="px-4 py-2 bg-primary/5 border-primary/20">
-            <p className="text-[10px] uppercase font-bold text-muted-foreground leading-none mb-1">Account Balance</p>
-            <p className="text-lg font-mono font-bold text-primary leading-none">
-              {formatUGX(Number(customer.accountBalance || 0))}
-            </p>
-          </Card>
+          <div className="flex flex-col gap-1.5">
+            <Card className="px-4 py-2 bg-primary/5 border-primary/20">
+              <p className="text-[10px] uppercase font-bold text-muted-foreground leading-none mb-1">Account Balance</p>
+              <p className="text-lg font-mono font-bold text-primary leading-none">
+                {formatUGX(Number(customer.accountBalance || 0))}
+              </p>
+            </Card>
+            {pendingCash > 0 && (
+              <div className="flex items-center gap-1 text-[10px] text-amber-600 font-black uppercase tracking-tighter bg-amber-50 px-2 py-0.5 rounded border border-amber-100 shadow-sm animate-pulse">
+                 <ShieldAlert className="h-2.5 w-2.5" />
+                 Unverified Cash: {formatUGX(pendingCash)}
+              </div>
+            )}
+          </div>
           {bills[0] && (
             <Card className="px-4 py-2 bg-destructive/5 border-destructive/20">
                <p className="text-[10px] uppercase font-bold text-muted-foreground leading-none mb-1">
