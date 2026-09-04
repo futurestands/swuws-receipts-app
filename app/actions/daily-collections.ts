@@ -282,6 +282,11 @@ export async function commitDailyCollectionImport(formData: FormData) {
 const dailySyncSchema = z.object({
   accountNumber: z.coerce.string().trim().min(1, "Account Number is required"),
   totalDue: z.coerce.number().default(0),
+  paymentDate: z.preprocess((val) => {
+    if (!val) return null
+    const d = new Date(val as any)
+    return isNaN(d.getTime()) ? null : d
+  }, z.date().nullable().optional()),
 })
 
 export type DailySyncRow = z.infer<typeof dailySyncSchema>
@@ -358,6 +363,8 @@ export async function validateDailyBalanceSync(formData: FormData): Promise<{ ok
         const lowerK = k.toLowerCase()
         if (lowerK === "totaldue" || lowerK === "totalamountdue") {
           mapping.totalDue = [v, ...(Array.isArray(mapping.totalDue) ? mapping.totalDue : [mapping.totalDue])]
+        } else if (lowerK === "paymentdate" || lowerK === "lastpaymentdate") {
+          mapping.paymentDate = [v, ...(Array.isArray(mapping.paymentDate) ? mapping.paymentDate : [mapping.paymentDate])]
         } else if (lowerK !== "accountnumber" && lowerK !== "customeraccount") {
           mapping[k] = v
         }
@@ -438,6 +445,7 @@ export async function commitDailyBalanceSync(formData: FormData) {
          const lowerK = k.toLowerCase()
          if (lowerK === "accountnumber" || lowerK === "customeraccount") mapping.accountNumber = [v, ...(Array.isArray(mapping.accountNumber) ? mapping.accountNumber : [mapping.accountNumber])]
          if (lowerK === "totaldue" || lowerK === "totalamountdue") mapping.totalDue = [v, ...(Array.isArray(mapping.totalDue) ? mapping.totalDue : [mapping.totalDue])]
+         if (lowerK === "paymentdate" || lowerK === "lastpaymentdate") mapping.paymentDate = [v, ...(Array.isArray(mapping.paymentDate) ? mapping.paymentDate : [mapping.paymentDate])]
        }
     }
 
@@ -448,18 +456,28 @@ export async function commitDailyBalanceSync(formData: FormData) {
     const dueAliases = Array.isArray(mapping.totalDue) ? mapping.totalDue : [mapping.totalDue]
     const dueCol = Object.keys(firstRow).find(h => dueAliases.some(a => String(h).toLowerCase().replace(/[^a-z0-9]/g, "") === String(a).toLowerCase().replace(/[^a-z0-9]/g, ""))) || dueAliases[0]
 
+    const dateAliases = Array.isArray(mapping.paymentDate) ? mapping.paymentDate : [mapping.paymentDate]
+    const dateCol = Object.keys(firstRow).find(h => dateAliases.some(a => String(h).toLowerCase().replace(/[^a-z0-9]/g, "") === String(a).toLowerCase().replace(/[^a-z0-9]/g, "")))
+
     const [activePeriod] = await db.select({ id: billingPeriod.id }).from(billingPeriod).where(eq(billingPeriod.status, 'active')).limit(1)
     if (!activePeriod) return { ok: false, error: "No active billing period found." }
 
     // 1. Map all valid data in memory
-    const validRows: { accountNumber: string, totalDue: number }[] = []
+    const validRows: { accountNumber: string, totalDue: number, paymentDate: Date | null }[] = []
     const accountsInFile = new Set<string>()
 
     for (const row of rawData) {
       const acc = String(row[accountCol as string] || "").trim()
       const due = Number(row[dueCol as string] || 0)
+
+      let pDate: Date | null = null
+      if (dateCol && row[dateCol as string]) {
+        const d = new Date(row[dateCol as string])
+        if (!isNaN(d.getTime())) pDate = d
+      }
+
       if (acc && !isNaN(due)) {
-        validRows.push({ accountNumber: acc, totalDue: due })
+        validRows.push({ accountNumber: acc, totalDue: due, paymentDate: pDate })
         accountsInFile.add(acc)
       }
     }
@@ -610,9 +628,10 @@ export async function commitDailyBalanceSync(formData: FormData) {
             accountNumber: row.accountNumber,
             customerName: cust.name,
             amount: collection,
-            paymentDate: new Date(),
+            paymentDate: row.paymentDate || new Date(),
             externalReference: `SYNC-${importId.slice(0, 8)}-${(i + collectionsToInsert.length).toString().padStart(5, '0')}`,
             paymentChannel: "EBS Balance Sync",
+            remarks: row.paymentDate ? "Real transaction date" : "Inferred from balance change (Sync Date)",
             importStatus: 'matched' as const,
           })
         }

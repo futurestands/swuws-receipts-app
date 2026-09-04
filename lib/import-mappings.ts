@@ -62,7 +62,8 @@ export const DEFAULT_TARIFF_IMPORT_MAPPING = {
 }
 
 export const DEFAULT_DAILY_SYNC_MAPPING = {
-  accountNumber: ["AccountNumber", "Account Number", "CustID", "Account", "AccountNo", "Account #", "CustomerRef", "CustomerAccount", "Customer No", "CustomerNo", "Code", "Ref", "Reference", "Acc No", "Acct No", "Cust ID", "ID", 0],
-  totalDue: ["TotalAmountDue", "TotalDue", "Balance", "GrandTotal", "Total Amount", "Amount Due", "Closing Balance", 1],
+  accountNumber: ["AccountNumber", "Account Number", "CustID", "Account", "AccountNo", "Account #", "CustomerRef", "CustomerAccount", "Customer No", "CustomerNo", "Code", "Ref", "Reference", "Acc No", "Acct No", "Cust ID", "ID", "MeterRef", 0],
+  totalDue: ["TotalAmountDue", "TotalDue", "Balance", "GrandTotal", "Total Amount", "Amount Due", "Closing Balance", "TotalCharges", 1],
+  paymentDate: ["LastPaymentDate", "PaymentDate", "Date", "BillingDate"],
 }
 
