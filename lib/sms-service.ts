@@ -87,6 +87,78 @@ async function sendViaProvider(to: string, message: string): Promise<{ ok: boole
     }
   }
 
+  if (provider === "twilio") {
+    try {
+      // Twilio uses Basic Auth (Username: Account SID, Password: Auth Token)
+      const auth = Buffer.from(`${username}:${apiKey}`).toString('base64')
+      const url = `https://api.twilio.com/2010-04-01/Accounts/${username}/Messages.json`
+
+      const body = new URLSearchParams({
+        To: to,
+        From: senderId || "", // Twilio requires a From number or Messaging Service SID
+        Body: message,
+      })
+
+      const res = await fetch(url, {
+        method: "POST",
+        headers: {
+          Authorization: `Basic ${auth}`,
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body,
+      })
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}))
+        console.error("[SMS Gateway] Twilio API error:", errData)
+        return { ok: false, error: errData.message || res.statusText }
+      }
+
+      return { ok: true }
+    } catch (e) {
+      console.error("[SMS Gateway] Failed to reach Twilio:", e)
+      return { ok: false, error: e instanceof Error ? e.message : "unknown_error" }
+    }
+  }
+
+  if (provider === "infobip") {
+    try {
+      // Infobip uses API Key in Authorization header
+      const url = `https://${username}.api.infobip.com/sms/2/text/advanced`
+
+      const body = JSON.stringify({
+        messages: [
+          {
+            destinations: [{ to }],
+            from: senderId || "SWUWS",
+            text: message,
+          },
+        ],
+      })
+
+      const res = await fetch(url, {
+        method: "POST",
+        headers: {
+          Authorization: `App ${apiKey}`,
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body,
+      })
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}))
+        console.error("[SMS Gateway] Infobip API error:", errData)
+        return { ok: false, error: res.statusText }
+      }
+
+      return { ok: true }
+    } catch (e) {
+      console.error("[SMS Gateway] Failed to reach Infobip:", e)
+      return { ok: false, error: e instanceof Error ? e.message : "unknown_error" }
+    }
+  }
+
   console.error(`[SMS Gateway] Unknown SMS_PROVIDER "${provider}" — message not sent`)
   return { ok: false, error: `unknown_provider:${provider}` }
 }

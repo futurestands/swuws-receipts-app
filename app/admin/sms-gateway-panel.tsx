@@ -89,6 +89,8 @@ export function SmsGatewayPanel({ settings }: { settings: SmsGatewaySettings }) 
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="africastalking">Africa&apos;s Talking</SelectItem>
+                  <SelectItem value="twilio">Twilio</SelectItem>
+                  <SelectItem value="infobip">Infobip</SelectItem>
                 </SelectContent>
               </Select>
             </div>
