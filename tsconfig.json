@@ -39,6 +39,7 @@
     "node_modules",
     "android",
     ".artifacts",
-    "public/swuws-portal.apk"
+    "public/swuws-portal.apk",
+    "scratch"
   ]
 }
