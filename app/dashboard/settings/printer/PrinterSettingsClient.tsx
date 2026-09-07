@@ -277,7 +277,7 @@ export function PrinterSettingsClient() {
                   </Button>
                 </div>
                 <p className="text-[11px] text-muted-foreground">
-                  "Connect" attempts a real connection before saving -- it won't be set as your active printer unless it actually responds.
+                  &quot;Connect&quot; attempts a real connection before saving &mdash; it won&apos;t be set as your active printer unless it actually responds.
                 </p>
               </div>
             </CardContent>
@@ -299,7 +299,7 @@ export function PrinterSettingsClient() {
             <CardContent className="space-y-4">
               <div className="p-4 bg-orange-50/50 border border-orange-100 rounded-lg text-xs text-orange-800">
                 <p className="font-bold mb-1 uppercase tracking-tighter">Hardware Support</p>
-                This mode uses the manufacturer's native library. Recommended for handheld POS terminals.
+                This mode uses the manufacturer&apos;s native library. Recommended for handheld POS terminals.
               </div>
               <Button
                 onClick={() => { handleSave({ type: 'inbuilt' }); toast.success("Inbuilt mode active"); }}

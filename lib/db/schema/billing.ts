@@ -113,6 +113,7 @@ export const billingRecord = pgTable(
     recoveryAmount: numeric("recoveryAmount", { precision: 12, scale: 2 }).notNull().default("0"),
     arrearsRecovery: numeric("arrearsRecovery", { precision: 12, scale: 2 }).notNull().default("0"),
     dueDate: timestamp("dueDate").notNull(),
+    billingDate: timestamp("billingDate"),
     status: text("status").notNull().default("pending"), // pending, partially_paid, paid, cancelled, written_off
     createdAt: timestamp("createdAt").notNull().defaultNow(),
     updatedAt: timestamp("updatedAt").notNull().defaultNow(),

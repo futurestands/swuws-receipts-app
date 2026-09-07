@@ -5,7 +5,6 @@ import {
   billingPeriod,
   billingRun,
   billingRecord,
-  billingUpload,
   customer,
   waterScheme,
   branch,
@@ -13,10 +12,8 @@ import {
   receipt,
   dailyCollectionRecord,
   dailyCollectionImport,
-  reconciliationMatch,
   auditLog,
   meterReading,
-  billingDiscrepancy,
 } from "@/lib/db/schema"
 import { requireUser } from "@/lib/session"
 import { writeAudit } from "@/lib/audit"
@@ -26,13 +23,11 @@ import {
   canActivateCollectionPeriod,
   canArchiveCollectionPeriod,
   canIssueReceipt,
-  canViewReports,
   canViewAllData
 } from "@/lib/permissions"
 import { validateWriteScope, applyCustomerScope, applyReceiptScope, applyBillingRecordScope, applyMeterReadingScope, applyBillingScope } from "@/lib/scopes"
-import { and, eq, sql, desc, or, count, sum, inArray } from "drizzle-orm"
+import { and, eq, sql, desc, or, count, sum, inArray, type SQL } from "drizzle-orm"
 import * as XLSX from "xlsx"
-import { z } from "zod"
 import { randomUUID } from "crypto"
 import { revalidatePath } from "next/cache"
 import { createNotification } from "./notifications"
@@ -40,7 +35,6 @@ import { processExcelImport, getImportMapping, type ImportSummary } from "@/lib/
 import { DEFAULT_BILLING_IMPORT_MAPPING } from "@/lib/import-mappings"
 import { billingImportSchema, type BillingImportRow } from "@/lib/import-schemas"
 import { logEvent, logFinancial } from "@/lib/logger"
-import { ROLES } from "@/lib/permissions/roles"
 
 export type BillingImportSummary = ImportSummary<BillingImportRow> & {
   schemeId: string
@@ -433,6 +427,7 @@ export async function validateBillingImport(
       const dbMappingRaw = await getImportMapping("import.billing.monthly")
 
       // ULTIMATE RESILIENCE: Merge custom keys ADDITIVELY with defaults
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const mapping = { ...DEFAULT_BILLING_IMPORT_MAPPING } as Record<string, any>
       if (dbMappingRaw) {
         for (const [k, v] of Object.entries(dbMappingRaw)) {
@@ -660,6 +655,7 @@ export async function importBilling(
             recoveryAmount: String(billPortion), // Dashboard success metric
             arrearsRecovery: String(arrearsPortion), // Reports box 1
             dueDate: new Date(row.data.dueDate),
+            billingDate: row.data.billingDate ? new Date(row.data.billingDate) : null,
             status: excelTotalAmountDue <= 0 ? "paid" : (appliedFromUpfront > 0 ? "partially_paid" : "pending"),
           }
         })
@@ -777,10 +773,10 @@ export async function downloadBillingTemplate() {
 
   // 2. Generate Sample Data strictly based on the mapping keys
   const headers: string[] = []
-  const sampleRow: Record<string, any> = {}
+  const sampleRow: Record<string, string | number> = {}
 
   // Standard internal keys to process in a logical order
-  const internalKeys = ["accountNumber", "billAmount", "arrears", "currentCharges", "totalDue", "dueDate"]
+  const internalKeys = ["accountNumber", "billAmount", "arrears", "currentCharges", "totalDue", "dueDate", "billingDate"]
 
   // If no custom mapping exists, we use the standard keys order
   const keysToProcess = dbMappingRaw ? Object.keys(dbMappingRaw) : internalKeys
@@ -802,6 +798,7 @@ export async function downloadBillingTemplate() {
       if (internalKey === "accountNumber") sampleRow[header] = "6000000000"
       else if (internalKey === "billAmount") sampleRow[header] = 50000
       else if (internalKey === "dueDate") sampleRow[header] = new Date().toISOString().split("T")[0]
+      else if (internalKey === "billingDate") sampleRow[header] = new Date().toISOString().split("T")[0]
       else if (internalKey === "arrears") sampleRow[header] = 0
       else if (internalKey === "currentCharges") sampleRow[header] = 0
       else if (internalKey === "totalDue") sampleRow[header] = 50000
@@ -881,7 +878,7 @@ export async function getCollectionSummary() {
 
   // HIERARCHY FORCING (The "Trap"): Regional users are trapped in their assigned territory
   // even if they select "All" or bypass filters.
-  const forceHierarchy = (conditions: any[]) => {
+  const forceHierarchy = (conditions: (SQL | undefined)[]) => {
     if (canViewAllData(current)) return;
     if (current.branchId) conditions.push(eq(waterScheme.branchId, current.branchId))
     else if (current.clusterId) conditions.push(eq(branch.clusterId, current.clusterId))

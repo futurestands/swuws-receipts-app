@@ -49,6 +49,7 @@ export const DEFAULT_BILLING_IMPORT_MAPPING = {
   currentCharges: ["CurrentCharges", "BillAmount", "MonthlyBill"],
   totalDue: ["TotalAmountDue", "TotalDue", "Balance", "GrandTotal", "Total Amount", "Amount Due", "Closing Balance"],
   dueDate: ["DueDate", "Due Date", 3],
+  billingDate: ["BillingDate", "Billing Date", "Date"],
 }
 
 export const DEFAULT_TARIFF_IMPORT_MAPPING = {

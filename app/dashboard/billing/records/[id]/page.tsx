@@ -46,6 +46,12 @@ export default async function BillingRecordDetailPage({ params }: { params: Prom
               <span className="text-muted-foreground">Due Date</span>
               <span>{formatDate(bill.dueDate)}</span>
             </div>
+            {bill.billingDate && (
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">Billing Date</span>
+                <span>{formatDate(bill.billingDate)}</span>
+              </div>
+            )}
             <div className="flex justify-between text-sm">
               <span className="text-muted-foreground">Total Billed</span>
               <span className="font-semibold">{formatUGX(Number(bill.totalDue))}</span>

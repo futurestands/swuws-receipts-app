@@ -67,7 +67,7 @@ export function DiscrepancyResolutionCell({ id, customerName }: { id: string, cu
 
           <div className="p-3 bg-amber-50 rounded-lg border border-amber-100 text-[10px] text-amber-800 space-y-1">
              <p className="font-bold uppercase">Accepting (OVERWRITE):</p>
-             <p>This will permanently update the customer's portal balance to match what the agent saw in the field.</p>
+             <p>This will permanently update the customer&apos;s portal balance to match what the agent saw in the field.</p>
           </div>
         </div>
         <DialogFooter className="flex-col sm:flex-row gap-2">

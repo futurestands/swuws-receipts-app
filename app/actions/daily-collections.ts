@@ -19,7 +19,6 @@ import { revalidatePath } from "next/cache"
 import { writeAudit } from "@/lib/audit"
 import { getImportMapping, processExcelImport } from "@/lib/import-engine"
 import { DEFAULT_DAILY_SYNC_MAPPING } from "@/lib/import-mappings"
-import { logEvent, logFinancial } from "@/lib/logger"
 import { applyCustomerScope, applyBillingRecordScope, applyUserScope } from "@/lib/scopes"
 
 const REQUIRED_COLUMNS = [
