@@ -11,7 +11,7 @@ import {
 } from "@/lib/db/schema"
 import { requireUser } from "@/lib/session"
 import { canUploadBilling } from "@/lib/permissions"
-import { eq, desc, and, ilike, or, sql, count, inArray, gt } from "drizzle-orm"
+import { eq, ne, desc, and, ilike, or, sql, count, inArray, gt } from "drizzle-orm"
 import { randomUUID, createHash } from "crypto"
 import * as XLSX from "xlsx"
 import { z } from "zod"
@@ -458,12 +458,14 @@ export async function commitDailyBalanceSync(formData: FormData) {
     const dateAliases = Array.isArray(mapping.paymentDate) ? mapping.paymentDate : [mapping.paymentDate]
     const dateCol = Object.keys(firstRow).find(h => dateAliases.some(a => String(h).toLowerCase().replace(/[^a-z0-9]/g, "") === String(a).toLowerCase().replace(/[^a-z0-9]/g, "")))
 
-    const [activePeriod] = await db.select({ id: billingPeriod.id }).from(billingPeriod).where(eq(billingPeriod.status, 'active')).limit(1)
+    const periods = await db.select().from(billingPeriod).where(ne(billingPeriod.status, 'archived'))
+    const activePeriod = periods.find(p => p.status === 'active')
     if (!activePeriod) return { ok: false, error: "No active billing period found." }
 
     // 1. Map all valid data in memory
-    const validRows: { accountNumber: string, totalDue: number, paymentDate: Date | null }[] = []
+    const validRows: { accountNumber: string, totalDue: number, paymentDate: Date | null, resolvedPeriodId: string }[] = []
     const accountsInFile = new Set<string>()
+    const referencedPeriodIds = new Set<string>()
 
     for (const row of rawData) {
       const acc = String(row[accountCol as string] || "").trim()
@@ -475,9 +477,19 @@ export async function commitDailyBalanceSync(formData: FormData) {
         if (!isNaN(d.getTime())) pDate = d
       }
 
+      // SMART PERIOD RESOLUTION (PITO Hardening)
+      let resolvedPeriodId = activePeriod.id
+      if (pDate) {
+        const matchingPeriod = periods.find(p => pDate! >= p.startDate && pDate! <= p.endDate)
+        if (matchingPeriod) {
+           resolvedPeriodId = matchingPeriod.id
+        }
+      }
+
       if (acc && !isNaN(due)) {
-        validRows.push({ accountNumber: acc, totalDue: due, paymentDate: pDate })
+        validRows.push({ accountNumber: acc, totalDue: due, paymentDate: pDate, resolvedPeriodId })
         accountsInFile.add(acc)
+        referencedPeriodIds.add(resolvedPeriodId)
       }
     }
 
@@ -502,23 +514,24 @@ export async function commitDailyBalanceSync(formData: FormData) {
       })
     }
 
-    // 3. Chunked Billing Record Fetching
+    // 3. Multi-Period Billing Record Fetching
     const billingScope = applyBillingRecordScope(current)
     const billMap = new Map<string, any>()
     const customerIds = Array.from(custMap.values()).map(c => c.id)
 
-    console.log(`[BalanceSync] Fetching ${customerIds.length} billing records in chunks...`)
+    console.log(`[BalanceSync] Fetching billing records for ${referencedPeriodIds.size} periods in chunks...`)
     for (let i = 0; i < customerIds.length; i += CHUNK_SIZE) {
       const chunk = customerIds.slice(i, i + CHUNK_SIZE)
       const fetched = await db
         .select()
         .from(billingRecord)
         .where(and(
-          eq(billingRecord.billingPeriodId, activePeriod.id),
+          inArray(billingRecord.billingPeriodId, Array.from(referencedPeriodIds)),
           inArray(billingRecord.customerId, chunk),
           billingScope
         ))
-      fetched.forEach(b => billMap.set(b.customerId, b))
+      // Key is customerId + periodId to handle multi-period records in one batch
+      fetched.forEach(b => billMap.set(`${b.customerId}_${b.billingPeriodId}`, b))
     }
 
     let totalCollection = 0
@@ -560,14 +573,32 @@ export async function commitDailyBalanceSync(formData: FormData) {
           WHERE c.id = v.id
         `)
 
-        // B. Batch Update Billing Record totalDue
-        await tx.execute(sql`
-          UPDATE billing_record
-          SET "totalDue" = v.new_balance, "updatedAt" = now()
-          FROM (VALUES ${customerValuesList}) AS v(id, new_balance)
-          WHERE billing_record."customerId" = v.id
-          AND billing_record."billingPeriodId" = ${activePeriod.id}
-        `)
+        // B. Batch Update Billing Record totalDue (State-Aware per Period)
+        // Group chunk by resolvedPeriodId to ensure updates hit the correct period's bill
+        const byPeriod = new Map<string, typeof chunk>()
+        chunk.forEach(r => {
+          const list = byPeriod.get(r.resolvedPeriodId) || []
+          list.push(r)
+          byPeriod.set(r.resolvedPeriodId, list)
+        })
+
+        for (const [pId, periodRows] of byPeriod.entries()) {
+          const findableInPeriod = periodRows.filter(r => custMap.has(r.accountNumber.toLowerCase().trim()))
+          if (findableInPeriod.length === 0) continue
+
+          const periodValuesList = findableInPeriod.map(r => {
+            const cust = custMap.get(r.accountNumber.toLowerCase().trim())!
+            return sql`(${cust.id}::text, ${r.totalDue}::numeric)`
+          }).reduce((acc, curr) => sql`${acc}, ${curr}`)
+
+          await tx.execute(sql`
+            UPDATE billing_record
+            SET "totalDue" = v.new_balance, "updatedAt" = now()
+            FROM (VALUES ${periodValuesList}) AS v(id, new_balance)
+            WHERE billing_record."customerId" = v.id
+            AND billing_record."billingPeriodId" = ${pId}
+          `)
+        }
 
         // C. Collections and Recoveries
         const collectionsToInsert: any[] = []
@@ -607,7 +638,7 @@ export async function commitDailyBalanceSync(formData: FormData) {
           totalCollection += collection
           successfulRecords++
 
-          const activeBill = billMap.get(cust.id)
+          const activeBill = billMap.get(`${cust.id}_${row.resolvedPeriodId}`)
           if (activeBill) {
             const totalArrears = Number(activeBill.arrears)
             const arrearsRecovery = Math.min(collection, totalArrears)
