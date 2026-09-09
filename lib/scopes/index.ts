@@ -259,6 +259,7 @@ export function applyMeterReadingScope(user: UserPermissionsContext) {
  * Used during creation/updates.
  */
 export async function validateWriteScope(user: UserPermissionsContext, permissionCode: string, target: {
+  clusterId?: string | null
   branchId?: string | null
   schemeId?: string | null
 }) {
@@ -268,8 +269,32 @@ export async function validateWriteScope(user: UserPermissionsContext, permissio
 
   if (scope === "global") return true
 
+  // 1. Consistency Check: If multiple levels are provided, ensure they belong to each other.
+  // This prevents an attacker from providing a valid branchId but a schemeId from another branch.
+  if (target.schemeId && target.branchId) {
+    const [ws] = await db
+      .select({ branchId: waterScheme.branchId })
+      .from(waterScheme)
+      .where(eq(waterScheme.id, target.schemeId))
+      .limit(1)
+    if (ws && ws.branchId !== target.branchId) return false
+  }
+
+  if (target.branchId && target.clusterId) {
+    const [b] = await db
+      .select({ clusterId: branch.clusterId })
+      .from(branch)
+      .where(eq(branch.id, target.branchId))
+      .limit(1)
+    if (b && b.clusterId !== target.clusterId) return false
+  }
+
+  // 2. Scope Enforcement
   if (scope === "cluster") {
     if (!user.clusterId) return false
+
+    // Restricted to own cluster. unassigning (null) is a global action.
+    if (target.clusterId !== undefined && target.clusterId !== user.clusterId) return false
 
     // Resolve the target's branch: either given directly, or via its scheme.
     let targetBranchId = target.branchId ?? null
@@ -282,28 +307,53 @@ export async function validateWriteScope(user: UserPermissionsContext, permissio
       targetBranchId = ws?.branchId ?? null
     }
 
-    // No target branch/scheme to check against - nothing to validate, matches
-    // the existing area/scheme behavior below when no target is given.
-    if (!targetBranchId) return true
+    if (targetBranchId) {
+      const [targetBranch] = await db
+        .select({ clusterId: branch.clusterId })
+        .from(branch)
+        .where(eq(branch.id, targetBranchId))
+        .limit(1)
+      if (!targetBranch || targetBranch.clusterId !== user.clusterId) return false
+    } else if (target.branchId === null) {
+        // Attempting to move out of branch while restricted to cluster?
+        // Usually allowed if it stays in cluster, but here branchId=null means global.
+        return false
+    }
 
-    const [targetBranch] = await db
-      .select({ clusterId: branch.clusterId })
-      .from(branch)
-      .where(eq(branch.id, targetBranchId))
-      .limit(1)
-
-    return !!targetBranch && targetBranch.clusterId === user.clusterId
+    return true
   }
 
   if (scope === "area") {
     if (!user.branchId) return false
-    if (target.branchId && user.branchId !== target.branchId) return false
+
+    // Restricted to own area. unassigning cluster/branch/scheme is a global action.
+    if (target.clusterId !== undefined) {
+        const [b] = await db.select({ clusterId: branch.clusterId }).from(branch).where(eq(branch.id, user.branchId)).limit(1)
+        if (!b || target.clusterId !== b.clusterId) return false
+    }
+
+    if (target.branchId !== undefined && user.branchId !== target.branchId) return false
+
+    if (target.schemeId) {
+       const [ws] = await db.select({ branchId: waterScheme.branchId }).from(waterScheme).where(eq(waterScheme.id, target.schemeId)).limit(1)
+       if (!ws || ws.branchId !== user.branchId) return false
+    } else if (target.schemeId === null) {
+        // Attempting to unassign scheme - allowed as it stays in the branch.
+        return true
+    }
+
     return true
   }
 
   if (scope === "scheme") {
     if (!user.schemeId) return false
-    if (target.schemeId && user.schemeId !== target.schemeId) return false
+
+    if (target.branchId !== undefined || target.clusterId !== undefined) {
+        // Scheme admin cannot manage whole branches or clusters
+        return false
+    }
+
+    if (target.schemeId !== undefined && user.schemeId !== target.schemeId) return false
     return true
   }
 

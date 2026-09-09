@@ -512,6 +512,16 @@ export async function setAgentHierarchy(userId: string, input: {
     return { ok: false as const, error: "You are not authorized to modify agents in this area" }
   }
 
+  // DESTINATION SCOPE VALIDATION (P0 Hardening):
+  // Ensure the admin is authorized to move a user to the NEW hierarchy.
+  if (!(await validateWriteScope(current, "users.view", {
+    clusterId: input.clusterId,
+    branchId: input.branchId,
+    schemeId: input.schemeId
+  }))) {
+     return { ok: false as const, error: "You are not authorized to assign users to this hierarchy" }
+  }
+
   const [updated] = await db
     .update(user)
     .set({
