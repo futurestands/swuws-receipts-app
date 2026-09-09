@@ -39,7 +39,7 @@ import {
   canConfigureSystem,
 } from "@/lib/permissions"
 import { canCreateRole } from "@/lib/permissions/server"
-import { applyReceiptScope, applyUserScope, validateWriteScope } from "@/lib/scopes"
+import { applyReceiptScope, applyUserScope, validateWriteScope, validateTargetUserScope } from "@/lib/scopes"
 import { canAssignIamRole } from "@/lib/iam"
 
 export async function listAgents(params: { query?: string; page?: number; pageSize?: number } = {}) {
@@ -219,6 +219,21 @@ export async function setAgentActive(userId: string, active: boolean) {
   if (userId === current.id) {
     return { ok: false as const, error: "You cannot disable your own account" }
   }
+
+  const [target] = await db
+    .select({ id: user.id, clusterId: user.clusterId, branchId: user.branchId, schemeId: user.schemeId })
+    .from(user)
+    .where(eq(user.id, userId))
+    .limit(1)
+
+  if (!target) {
+    return { ok: false as const, error: "Agent not found" }
+  }
+
+  if (!(await validateTargetUserScope(current, target))) {
+    return { ok: false as const, error: "You are not authorized to modify agents in this area" }
+  }
+
   const [updated] = await db
     .update(user)
     .set({ active, updatedAt: new Date() })
@@ -244,6 +259,20 @@ export async function setAgentRole(userId: string, role: string, iamRoleId?: str
 
   if (userId === current.id) {
     return { ok: false as const, error: "You cannot change your own role" }
+  }
+
+  const [target] = await db
+    .select({ id: user.id, clusterId: user.clusterId, branchId: user.branchId, schemeId: user.schemeId })
+    .from(user)
+    .where(eq(user.id, userId))
+    .limit(1)
+
+  if (!target) {
+    return { ok: false as const, error: "Agent not found" }
+  }
+
+  if (!(await validateTargetUserScope(current, target))) {
+    return { ok: false as const, error: "You are not authorized to modify agents in this area" }
   }
 
   // SECURITY: role-ceiling check. This previously had NO restriction beyond
@@ -299,6 +328,20 @@ export async function updateAgent(userId: string, input: {
   // Security: Prevent editing self via this specific admin action
   if (userId === current.id) {
     return { ok: false as const, error: "Please use account settings to update your own profile" }
+  }
+
+  const [target] = await db
+    .select({ id: user.id, clusterId: user.clusterId, branchId: user.branchId, schemeId: user.schemeId })
+    .from(user)
+    .where(eq(user.id, userId))
+    .limit(1)
+
+  if (!target) {
+    return { ok: false as const, error: "Agent not found" }
+  }
+
+  if (!(await validateTargetUserScope(current, target))) {
+    return { ok: false as const, error: "You are not authorized to modify agents in this area" }
   }
 
   const sanitizedName = input.name.replace(/<[^>]*>?/gm, "").trim()
@@ -358,6 +401,20 @@ export async function deleteAgent(userId: string) {
 
   if (userId === current.id) {
     return { ok: false as const, error: "You cannot delete your own account" }
+  }
+
+  const [target] = await db
+    .select({ id: user.id, clusterId: user.clusterId, branchId: user.branchId, schemeId: user.schemeId })
+    .from(user)
+    .where(eq(user.id, userId))
+    .limit(1)
+
+  if (!target) {
+    return { ok: false as const, error: "Agent not found" }
+  }
+
+  if (!(await validateTargetUserScope(current, target))) {
+    return { ok: false as const, error: "You are not authorized to modify agents in this area" }
   }
 
   try {
@@ -441,6 +498,20 @@ export async function setAgentHierarchy(userId: string, input: {
   const current = await requireUser()
   if (!canManageUsers(current)) throw new Error("Forbidden")
 
+  const [target] = await db
+    .select({ id: user.id, clusterId: user.clusterId, branchId: user.branchId, schemeId: user.schemeId })
+    .from(user)
+    .where(eq(user.id, userId))
+    .limit(1)
+
+  if (!target) {
+    return { ok: false as const, error: "Agent not found" }
+  }
+
+  if (!(await validateTargetUserScope(current, target))) {
+    return { ok: false as const, error: "You are not authorized to modify agents in this area" }
+  }
+
   const [updated] = await db
     .update(user)
     .set({
@@ -477,6 +548,20 @@ export async function resetAgentPassword(userId: string, newPassword: string) {
   const current = await requireUser()
   if (!canResetPasswords(current)) throw new Error("Forbidden")
 
+  const [target] = await db
+    .select({ id: user.id, clusterId: user.clusterId, branchId: user.branchId, schemeId: user.schemeId })
+    .from(user)
+    .where(eq(user.id, userId))
+    .limit(1)
+
+  if (!target) {
+    return { ok: false as const, error: "Agent not found" }
+  }
+
+  if (!(await validateTargetUserScope(current, target))) {
+    return { ok: false as const, error: "You are not authorized to modify agents in this area" }
+  }
+
   const rate = await checkRateLimit(`password-reset:${current.id}`, 10, 60)
   if (!rate.allowed) {
     return { ok: false as const, error: "Too many password resets in a short time. Please wait a moment." }
@@ -489,8 +574,6 @@ export async function resetAgentPassword(userId: string, newPassword: string) {
     return { ok: false as const, error: "Use your own account settings to change your own password" }
   }
 
-  const [target] = await db.select({ id: user.id }).from(user).where(eq(user.id, userId)).limit(1)
-  if (!target) return { ok: false as const, error: "Agent not found" }
 
   try {
     await auth.api.setUserPassword({

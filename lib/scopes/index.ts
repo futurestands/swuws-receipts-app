@@ -392,3 +392,37 @@ export function applySmsBatchScope(user: UserPermissionsContext) {
 
   return inArray(crmSmsBatch.createdById, creatorSubquery)
 }
+
+/**
+ * Validates if currentUser is authorized to manage targetUser based on their geographic scopes.
+ * Essential for preventing IDOR in administrative actions.
+ */
+export async function validateTargetUserScope(currentUser: UserPermissionsContext, targetUser: {
+  id: string
+  clusterId?: string | null
+  branchId?: string | null
+  schemeId?: string | null
+}) {
+  const scope = getScope(currentUser, "users.view")
+  if (!scope) return false
+
+  if (scope === "global") return true
+
+  if (scope === "cluster") {
+    return !!currentUser.clusterId && targetUser.clusterId === currentUser.clusterId
+  }
+
+  if (scope === "area") {
+    return !!currentUser.branchId && targetUser.branchId === currentUser.branchId
+  }
+
+  if (scope === "scheme") {
+    return !!currentUser.schemeId && targetUser.schemeId === currentUser.schemeId
+  }
+
+  if (scope === "own") {
+    return targetUser.id === currentUser.id
+  }
+
+  return false
+}
