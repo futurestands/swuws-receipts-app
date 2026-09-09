@@ -1205,7 +1205,7 @@ export async function deleteBillingRun(runId: string) {
     throw new Error(`Cannot delete a run from a ${run.status} period.`)
   }
 
-  // FORENSIC AUDIT B2 FIX: Check for payment interference.
+  // SECURITY: Check for payment interference.
   // If any customer in this run has received a payment reduction (Daily Sync),
   // we must block absolute deletion to prevent debt resurrection.
   const [interference] = await db
@@ -1293,7 +1293,7 @@ export async function bulkDeleteBillingRuns(runIds: string[]) {
     throw new Error("You do not have permission to delete some of the selected runs")
   }
 
-  // FORENSIC AUDIT B2 FIX: Check for payment interference.
+  // SECURITY: Check for payment interference.
   const [interference] = await db
     .select({ id: billingRecord.id })
     .from(billingRecord)

@@ -400,7 +400,7 @@ export function ReceiptForm({
                 set("billingRecordId", v ?? "")
                 const bill = bills.find((b) => b.id === v)
                 if (bill) {
-                  // Auto-populate (Certification Finding 10.2.2)
+                  // Auto-populate customer details from selected profile.
                   set("amount", String(bill.totalDue))
                 }
               }}

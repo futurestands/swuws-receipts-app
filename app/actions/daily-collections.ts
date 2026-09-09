@@ -477,7 +477,7 @@ export async function commitDailyBalanceSync(formData: FormData) {
         if (!isNaN(d.getTime())) pDate = d
       }
 
-      // SMART PERIOD RESOLUTION (PITO Hardening)
+      // Automatically attribute payments to the correct historical period.
       let resolvedPeriodId = activePeriod.id
       if (pDate) {
         const matchingPeriod = periods.find(p => pDate! >= p.startDate && pDate! <= p.endDate)

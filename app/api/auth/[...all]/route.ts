@@ -9,7 +9,7 @@ const { GET, POST: originalPost } = toNextJsHandler(auth.handler)
 export { GET }
 
 /**
- * Certification Finding 6.3: no brute-force protection existed anywhere.
+  * SECURITY: Added brute-force protection logic.
  * Only the sign-in endpoint is throttled here — that's the one a
  * credential-stuffing/brute-force attempt actually needs, and every other
  * Better Auth endpoint (sign-up, session refresh, etc.) is passed straight

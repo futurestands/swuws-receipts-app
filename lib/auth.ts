@@ -20,14 +20,14 @@ const baseURL = normalizeOrigin(
   process.env.V0_RUNTIME_URL
 ) || "http://localhost:3000"
 
-// Audit finding 9.7: Environment variable trust list.
+// SECURITY: CSRF protection origins.
 const explicitTrustedOrigins = (process.env.BETTER_AUTH_TRUSTED_ORIGINS || "")
   .split(",")
   .map((s) => s.trim())
   .filter(Boolean)
   .map(url => normalizeOrigin(url))
 
-// Goal Alignment: Automatic Vercel URL trust.
+// SECURITY: Automatic origin detection.
 // We trust the specific deployment URL AND the production project URL.
 const dynamicVercelOrigins = [
   process.env.VERCEL_URL,
@@ -55,7 +55,7 @@ if (isProduction && trustedOrigins.length === 0) {
 }
 
 export const auth = betterAuth({
-  // Certification Finding 11.1: this used to be `new Pool({ connectionString: ... })`,
+  // DATABASE: Re-use primary connection pool.
   // a second independent connection pool alongside lib/db/index.ts's. Both
   // now share the single pool exported from lib/db, halving the worst-case
   // connection count per serverless invocation. Better Auth accepts a raw
@@ -123,7 +123,7 @@ export const auth = betterAuth({
     // setUserPassword API surface, not for its own role/permission system.
     adminPlugin(),
   ],
-  // Certification Finding 11.2: secure: true on localhost without HTTPS
+  // SECURITY: Require secure cookies on production hosts.
   // prevents session cookies from being stored. In development, we allow
   // insecure cookies unless the developer has specifically configured a local
   // SSL proxy (not detected here).

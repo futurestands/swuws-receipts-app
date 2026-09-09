@@ -470,7 +470,7 @@ export async function getReceiptAttachments(receiptId: string) {
   if (!r) return []
 
   // Deliberately not selecting `url`: the raw Blob URL must never reach the
-  // browser (Certification Finding 6.1). Downloads go through the
+  // SECURITY: Proxy download for authenticated users only.
   // authenticated proxy at app/api/attachments/[id]/route.ts instead, keyed
   // by attachment id.
   return db
@@ -520,7 +520,7 @@ export async function uploadReceiptAttachment(receiptId: string, formData: FormD
   if (file.size > 10 * 1024 * 1024) {
     return { ok: false as const, error: "File must be under 10MB" }
   }
-  // Certification Finding 6.2: previously any file type was accepted.
+  // SECURITY: Ensure only supported document types are accepted.
   // Allow-list only the types the business actually needs (proof-of-payment
   // scans/photos), rejecting HTML/SVG/executables/scripts/archives/etc.
   if (!ALLOWED_ATTACHMENT_TYPES[file.type]) {
@@ -530,7 +530,7 @@ export async function uploadReceiptAttachment(receiptId: string, formData: FormD
     }
   }
 
-  // Audit Hardening: Magic-Byte Verification (Phase 2 Remediation)
+  // SECURITY: Verify file content via magic-bytes.
   // Trust but verify: the client-supplied MIME type can be spoofed.
   const buffer = await file.arrayBuffer()
   const bytes = new Uint8Array(buffer.slice(0, 8))
@@ -573,7 +573,7 @@ export async function uploadReceiptAttachment(receiptId: string, formData: FormD
   })
 
   revalidatePath(`/dashboard/receipts/${receiptId}`)
-  // Certification Finding 6.1: never return the raw Blob url to the client.
+  // SECURITY: Use authenticated proxy for downloads.
   // Downloads happen only through the authenticated proxy route, keyed by id.
   const { url: _url, ...attachmentWithoutUrl } = row
   return { ok: true as const, attachment: attachmentWithoutUrl }

@@ -19,7 +19,6 @@ import { normalizeCategory, getCategoryEquivalents } from "@/lib/utils/category"
 
 /**
  * Searches customers by name, account, or meter ref.
- * Finding 1 Fix: Added permission check and scope filter.
  */
 export async function searchCustomersForReading(query: string) {
   const user = await requireUser()
@@ -121,7 +120,7 @@ export async function submitMeterReading(data: {
     }
   }
 
-  // Finding 2 Fix: Verify Active Billing Period in the action
+  // SECURITY: Verify Active Billing Period in the action
   const [period] = await db
     .select()
     .from(billingPeriod)
@@ -138,7 +137,7 @@ export async function submitMeterReading(data: {
     .from(customer)
     .where(and(
       eq(customer.id, data.customerId),
-      applyCustomerScope(user) // Finding 2 Fix: Apply scope check
+      applyCustomerScope(user) // SECURITY: Apply scope check
     ))
     .limit(1)
 
@@ -147,7 +146,7 @@ export async function submitMeterReading(data: {
   // Use manual override if provided, otherwise fallback to system last reading
   const effectivePreviousReading = data.previousReading !== undefined ? data.previousReading : cust.lastReading
 
-  // Finding 3 Fix: Server-side validation of reading value
+  // SECURITY: Server-side validation of reading value
   if (data.currentReading < effectivePreviousReading) {
     throw new Error(`Invalid reading: ${data.currentReading} is lower than the previous reading of ${effectivePreviousReading}`)
   }
@@ -188,7 +187,7 @@ export async function submitMeterReading(data: {
   const serviceFee = Number(tariff.serviceFee)
   const calc = calculateBill(effectivePreviousReading, data.currentReading, { ...tariff, unitPrice, serviceFee })
 
-  // Finding 8 Fix: Calculate Grand Total (New Bill + Existing Arrears)
+  // SECURITY: Calculate Grand Total (New Bill + Existing Arrears)
   const totalArrears = Number(cust.accountBalance) || 0
   const grandTotalDue = calc.totalNewBill + totalArrears
 

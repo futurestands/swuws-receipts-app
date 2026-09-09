@@ -8,6 +8,7 @@ import {
   numeric,
   index,
   uniqueIndex,
+  check,
 } from "drizzle-orm/pg-core"
 import { sql } from "drizzle-orm"
 import { customer } from "./crm"
@@ -105,6 +106,7 @@ export const receipt = pgTable(
     billingRecordIdx: index("receipt_billing_record_idx").on(table.billingRecordId),
     billingPeriodIdx: index("receipt_billing_period_idx").on(table.billingPeriodId),
     idempotencyKeyIdx: uniqueIndex("receipt_idempotency_key_idx").on(table.idempotencyKey),
+    amountCheck: check("receipt_amount_positive", sql`CAST(${table.amount} AS NUMERIC) > 0`),
   }),
 )
 

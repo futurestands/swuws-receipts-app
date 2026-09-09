@@ -1,5 +1,0 @@
-- `[x]` Re-index migration files to strict sequential order (0001-0031)
-- `[x]` Create and run `sync-migrations.js` to update database tracking
-- `[x]` Implement magic-byte verification in `uploadReceiptAttachment`
-- `[x]` Verify upload security and migration consistency
-- `[x]` Finalize remediation walkthrough

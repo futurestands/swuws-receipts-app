@@ -49,11 +49,11 @@ function createPool(): Pool {
       ssl: sslConfig,
       // Goal Alignment: Platform-aware pool sizing.
       // - Vercel: Cap at 1 (Serverless concurrency limit safety)
-      // - Remote (Supabase): Cap at 5 (Prevent EMAXCONNSESSION in session mode)
+      // - Remote (Supabase): Increase to 15 for local dev breathing room.
       // - Local: Cap at 20 (Speed for development)
-      max: isVercel ? 1 : (useSsl ? 5 : 20),
+      max: isVercel ? 1 : (useSsl ? 15 : 20),
       idleTimeoutMillis: 30_000,
-      connectionTimeoutMillis: 30_000,
+      connectionTimeoutMillis: 60_000, // 60s timeout for slow rebuilds
     }
 
     console.log(`[DB Init] Connection config: ${config.user}@${config.host}:${config.port}/${config.database} (SSL: ${!!config.ssl})`)
@@ -63,20 +63,25 @@ function createPool(): Pool {
     return new Pool({
       connectionString: urlString,
       ssl: sslConfig,
-      connectionTimeoutMillis: 30_000,
+      max: isVercel ? 1 : (useSsl ? 15 : 20),
+      connectionTimeoutMillis: 60_000,
     })
   }
 }
 
+if (globalThis.__pool) {
+  console.log("[DB Init] Re-using existing connection pool (Singleton)")
+}
+
 export const pool = globalThis.__pool || createPool()
+
+if (process.env.NODE_ENV !== "production") {
+  globalThis.__pool = pool
+}
 
 // Prevent the process from crashing on unhandled pool errors (e.g. connection drops)
 pool.on("error", (err) => {
   console.error("Unexpected error on idle database client", err)
 })
-
-if (process.env.NODE_ENV !== "production") {
-  globalThis.__pool = pool
-}
 
 export const db = drizzle(pool, { schema })

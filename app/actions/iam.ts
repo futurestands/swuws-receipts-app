@@ -125,7 +125,7 @@ export async function createRole(data: z.infer<typeof roleSchema>) {
 
 /**
  * Bootstraps new permissions for v1.2.
- * Finding 6 Fix: Switched from hardcoded role to permission check.
+  * SECURITY: Switched from hardcoded role to permission check.
  */
 export async function seedV12Permissions() {
   const current = await requireUser()

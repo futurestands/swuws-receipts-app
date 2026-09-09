@@ -8,7 +8,9 @@ import {
   numeric,
   index,
   uniqueIndex,
+  check,
 } from "drizzle-orm/pg-core"
+import { sql } from "drizzle-orm"
 import { customer } from "./crm"
 import { waterScheme } from "./hierarchy"
 import { user } from "./auth"
@@ -129,6 +131,8 @@ export const billingRecord = pgTable(
     accountIdx: index("billing_record_account_idx").on(table.accountNumber),
     dueDateIdx: index("billing_record_due_date_idx").on(table.dueDate),
     statusIdx: index("billing_record_status_idx").on(table.status),
+    billAmountCheck: check("bill_amount_non_negative", sql`CAST(${table.billAmount} AS NUMERIC) >= 0`),
+    currentChargesCheck: check("current_charges_non_negative", sql`CAST(${table.currentCharges} AS NUMERIC) >= 0`),
   }),
 )
 
@@ -179,6 +183,8 @@ export const tariffConfiguration = pgTable(
   },
   (table) => ({
     targetIdx: uniqueIndex("tariff_target_idx").on(table.targetType, table.targetId, table.customerCategory),
+    unitPriceCheck: check("tariff_unit_price_non_negative", sql`CAST(${table.unitPrice} AS NUMERIC) >= 0`),
+    serviceFeeCheck: check("tariff_service_fee_non_negative", sql`CAST(${table.serviceFee} AS NUMERIC) >= 0`),
   }),
 )
 
@@ -223,6 +229,7 @@ export const meterReading = pgTable(
     customerIdx: index("meter_reading_customer_idx").on(table.customerId),
     periodIdx: index("meter_reading_period_idx").on(table.billingPeriodId),
     idempotencyKeyIdx: uniqueIndex("meter_reading_idempotency_key_idx").on(table.idempotencyKey),
+    billedAmountCheck: check("meter_reading_billed_amount_non_negative", sql`CAST(${table.billedAmount} AS NUMERIC) >= 0`),
   }),
 )
 
