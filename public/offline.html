@@ -120,15 +120,22 @@
                 const start = Date.now();
 
                 while (Date.now() - start < maxWait) {
-                    if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.CapacitorSQLite) {
-                        this.plugin = window.Capacitor.Plugins.CapacitorSQLite;
-                        log("SQLite plugin found.", "success");
-                        return true;
+                    if (window.Capacitor && window.Capacitor.Plugins) {
+                        const plugins = Object.keys(window.Capacitor.Plugins);
+                        if (plugins.length > 0 && !this._loggedPlugins) {
+                            log("Plugins available: " + plugins.join(', '));
+                            this._loggedPlugins = true;
+                        }
+                        if (window.Capacitor.Plugins.CapacitorSQLite) {
+                            this.plugin = window.Capacitor.Plugins.CapacitorSQLite;
+                            log("SQLite plugin found.", "success");
+                            return true;
+                        }
                     }
                     await new Promise(r => setTimeout(r, 200));
                 }
 
-                log("SQLite plugin NOT found after 5s.", "error");
+                log(`SQLite plugin NOT found after ${Math.round((Date.now()-start)/1000)}s.`, "error");
                 document.getElementById('init-retry').style.display = 'block';
                 return false;
             }
