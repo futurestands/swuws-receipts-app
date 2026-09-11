@@ -33,7 +33,9 @@ import { logEvent } from "@/lib/logger"
 import { ROLES } from "@/lib/permissions/roles"
 import {
   canViewUsers,
-  canManageUsers,
+  canCreateUser,
+  canEditUser,
+  canDisableUser,
   canResetPasswords,
   canViewReports,
   canAudit,
@@ -116,7 +118,7 @@ export async function createAgent(input: {
   schemeId?: string | null
 }) {
   const current = await requireUser()
-  if (!canManageUsers(current)) throw new Error("Forbidden")
+  if (!canCreateUser(current)) throw new Error("Forbidden")
 
   if (!input.name?.trim()) return { ok: false as const, error: "Name is required" }
   if (!input.email?.trim()) return { ok: false as const, error: "Email is required" }
@@ -215,7 +217,7 @@ export async function createAgent(input: {
 
 export async function setAgentActive(userId: string, active: boolean) {
   const current = await requireUser()
-  if (!canManageUsers(current)) throw new Error("Forbidden")
+  if (!canDisableUser(current)) throw new Error("Forbidden")
 
   if (userId === current.id) {
     return { ok: false as const, error: "You cannot disable your own account" }
@@ -256,7 +258,7 @@ export async function setAgentActive(userId: string, active: boolean) {
 
 export async function setAgentRole(userId: string, role: string, iamRoleId?: string | null) {
   const current = await requireUser()
-  if (!canManageUsers(current)) throw new Error("Forbidden")
+  if (!canEditUser(current)) throw new Error("Forbidden")
 
   if (userId === current.id) {
     return { ok: false as const, error: "You cannot change your own role" }
@@ -324,7 +326,7 @@ export async function updateAgent(userId: string, input: {
   phone?: string | null
 }) {
   const current = await requireUser()
-  if (!canManageUsers(current)) throw new Error("Forbidden")
+  if (!canEditUser(current)) throw new Error("Forbidden")
 
   // Security: Prevent editing self via this specific admin action
   if (userId === current.id) {
@@ -398,7 +400,7 @@ export async function updateAgent(userId: string, input: {
  */
 export async function deleteAgent(userId: string) {
   const current = await requireUser()
-  if (!canManageUsers(current)) throw new Error("Forbidden")
+  if (!canDisableUser(current)) throw new Error("Forbidden")
 
   if (userId === current.id) {
     return { ok: false as const, error: "You cannot delete your own account" }
@@ -497,7 +499,7 @@ export async function setAgentHierarchy(userId: string, input: {
   schemeId?: string | null
 }) {
   const current = await requireUser()
-  if (!canManageUsers(current)) throw new Error("Forbidden")
+  if (!canEditUser(current)) throw new Error("Forbidden")
 
   const [target] = await db
     .select({ id: user.id, clusterId: user.clusterId, branchId: user.branchId, schemeId: user.schemeId })

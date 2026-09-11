@@ -17,14 +17,22 @@ describe("Target-User Geographic Authorization (IDOR Protection)", () => {
     id: "admin-a",
     role: "admin_local", // Non-system-admin
     branchId: "branch-a",
-    permissions: [{ code: "users.view", scope: "area" }, { code: "users.edit", scope: "area" }]
+    permissions: [
+      { code: "users.view", scope: "area" },
+      { code: "users.edit", scope: "area" },
+      { code: "users.disable", scope: "area" }
+    ]
   }
 
   const branchB_Admin: UserPermissionsContext = {
     id: "admin-b",
     role: "admin_local",
     branchId: "branch-b",
-    permissions: [{ code: "users.view", scope: "area" }, { code: "users.edit", scope: "area" }]
+    permissions: [
+      { code: "users.view", scope: "area" },
+      { code: "users.edit", scope: "area" },
+      { code: "users.disable", scope: "area" }
+    ]
   }
 
   const globalAdmin: UserPermissionsContext = {

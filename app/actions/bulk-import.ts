@@ -6,7 +6,7 @@ import { user, cluster, branch, waterScheme, organization } from "@/lib/db/schem
 import { requireUser } from "@/lib/session"
 import { writeAudit } from "@/lib/audit"
 import { ROLES, ROLE_LABELS, type Role } from "@/lib/permissions/roles"
-import { canManageUsers, canViewUsers } from "@/lib/permissions"
+import { canViewUsers, canCreateUser } from "@/lib/permissions"
 import { canCreateRole } from "@/lib/permissions/server"
 import { eq, inArray, sql } from "drizzle-orm"
 import { headers } from "next/headers"
@@ -190,7 +190,7 @@ export async function validateBulkUsers(formData: FormData): Promise<{ ok: true;
 
 export async function importBulkUsers(summary: ImportSummary): Promise<{ ok: true; imported: number; failed: number; report: string } | { ok: false; error: string }> {
   const current = await requireUser()
-  if (!canManageUsers(current)) throw new Error("Forbidden")
+  if (!canCreateUser(current)) throw new Error("Forbidden")
 
   const startTime = Date.now()
   const validRows = summary.rows.filter((r) => r.valid)
