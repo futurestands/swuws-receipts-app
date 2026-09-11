@@ -1,7 +1,6 @@
 import { eq, and, or, sql, inArray } from "drizzle-orm"
-import { ROLES } from "../permissions/roles"
 import { UserPermissionsContext, canViewAllData } from "../permissions"
-import { receipt, customer, branch, waterScheme, billingPeriod, billingRun, billingRecord, meterReading, dailyCollectionRecord, crmSmsBatch, user as userTable } from "../db/schema"
+import { receipt, customer, branch, waterScheme, billingRun, billingRecord, meterReading, dailyCollectionRecord, crmSmsBatch, user as userTable } from "../db/schema"
 import { Scope } from "../iam"
 import { db } from "../db"
 
@@ -447,13 +446,17 @@ export function applySmsBatchScope(user: UserPermissionsContext) {
  * Validates if currentUser is authorized to manage targetUser based on their geographic scopes.
  * Essential for preventing IDOR in administrative actions.
  */
-export async function validateTargetUserScope(currentUser: UserPermissionsContext, targetUser: {
-  id: string
-  clusterId?: string | null
-  branchId?: string | null
-  schemeId?: string | null
-}) {
-  const scope = getScope(currentUser, "users.view")
+export async function validateTargetUserScope(
+  currentUser: UserPermissionsContext,
+  targetUser: {
+    id: string
+    clusterId?: string | null
+    branchId?: string | null
+    schemeId?: string | null
+  },
+  permissionCode: string = "users.view"
+) {
+  const scope = getScope(currentUser, permissionCode)
   if (!scope) return false
 
   if (scope === "global") return true

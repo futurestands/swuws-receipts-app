@@ -232,7 +232,7 @@ export async function setAgentActive(userId: string, active: boolean) {
     return { ok: false as const, error: "Agent not found" }
   }
 
-  if (!(await validateTargetUserScope(current, target))) {
+  if (!(await validateTargetUserScope(current, target, "users.disable"))) {
     return { ok: false as const, error: "You are not authorized to modify agents in this area" }
   }
 
@@ -273,7 +273,7 @@ export async function setAgentRole(userId: string, role: string, iamRoleId?: str
     return { ok: false as const, error: "Agent not found" }
   }
 
-  if (!(await validateTargetUserScope(current, target))) {
+  if (!(await validateTargetUserScope(current, target, "users.edit"))) {
     return { ok: false as const, error: "You are not authorized to modify agents in this area" }
   }
 
@@ -342,7 +342,7 @@ export async function updateAgent(userId: string, input: {
     return { ok: false as const, error: "Agent not found" }
   }
 
-  if (!(await validateTargetUserScope(current, target))) {
+  if (!(await validateTargetUserScope(current, target, "users.edit"))) {
     return { ok: false as const, error: "You are not authorized to modify agents in this area" }
   }
 
@@ -415,7 +415,7 @@ export async function deleteAgent(userId: string) {
     return { ok: false as const, error: "Agent not found" }
   }
 
-  if (!(await validateTargetUserScope(current, target))) {
+  if (!(await validateTargetUserScope(current, target, "users.disable"))) {
     return { ok: false as const, error: "You are not authorized to modify agents in this area" }
   }
 
@@ -510,13 +510,13 @@ export async function setAgentHierarchy(userId: string, input: {
     return { ok: false as const, error: "Agent not found" }
   }
 
-  if (!(await validateTargetUserScope(current, target))) {
+  if (!(await validateTargetUserScope(current, target, "users.edit"))) {
     return { ok: false as const, error: "You are not authorized to modify agents in this area" }
   }
 
   // DESTINATION SCOPE VALIDATION (P0 Hardening):
   // Ensure the admin is authorized to move a user to the NEW hierarchy.
-  if (!(await validateWriteScope(current, "users.view", {
+  if (!(await validateWriteScope(current, "users.edit", {
     clusterId: input.clusterId,
     branchId: input.branchId,
     schemeId: input.schemeId
@@ -570,7 +570,7 @@ export async function resetAgentPassword(userId: string, newPassword: string) {
     return { ok: false as const, error: "Agent not found" }
   }
 
-  if (!(await validateTargetUserScope(current, target))) {
+  if (!(await validateTargetUserScope(current, target, "users.reset_password"))) {
     return { ok: false as const, error: "You are not authorized to modify agents in this area" }
   }
 
