@@ -24,17 +24,6 @@ describe("Target-User Geographic Authorization (IDOR Protection)", () => {
     ]
   }
 
-  const branchB_Admin: UserPermissionsContext = {
-    id: "admin-b",
-    role: "admin_local",
-    branchId: "branch-b",
-    permissions: [
-      { code: "users.view", scope: "area" },
-      { code: "users.edit", scope: "area" },
-      { code: "users.disable", scope: "area" }
-    ]
-  }
-
   const globalAdmin: UserPermissionsContext = {
     id: "global-admin",
     role: ROLES.SYSTEM_ADMIN,

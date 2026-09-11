@@ -10,7 +10,6 @@ import { listTemplates, seedSystemTemplates } from "@/app/actions/template-actio
 import { ROLES } from "@/lib/permissions/roles"
 import {
   canViewUsers,
-  canManageUsers,
   canManageSchemes,
   canManageAreas,
   canConfigureSystem,

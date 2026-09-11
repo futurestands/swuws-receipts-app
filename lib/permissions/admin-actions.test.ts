@@ -1,8 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
-import { setAgentRole, setAgentActive, setAgentHierarchy, deleteAgent } from "../../app/actions/admin"
+import { setAgentRole, setAgentActive, deleteAgent } from "../../app/actions/admin"
 import { db } from "../../lib/db"
 import { requireUser } from "../../lib/session"
-import { ROLES } from "./roles"
 
 vi.mock('server-only', () => ({}))
 
@@ -77,7 +76,7 @@ describe("Administrative Actions Authorization (IDOR & Scope Protection)", () =>
     clusterId: "cluster-1"
   }
 
-  const mockDbSelect = (returnValue: any) => {
+  const mockDbSelect = (returnValue: unknown[]) => {
     const chain = {
       from: vi.fn().mockReturnThis(),
       where: vi.fn().mockReturnThis(),

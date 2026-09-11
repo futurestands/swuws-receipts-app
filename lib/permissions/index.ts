@@ -1,4 +1,4 @@
-import { Role, ROLES, ROLE_RANK } from "./roles"
+import { Role, ROLES } from "./roles"
 import { PermissionGrant } from "../iam"
 
 /**

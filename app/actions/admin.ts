@@ -8,7 +8,6 @@ import {
   auditLog,
   organization,
   receiptPrintHistory,
-  branch,
   waterScheme,
   receiptAttachment,
   billingRecord,
@@ -618,8 +617,6 @@ export async function resetAgentPassword(userId: string, newPassword: string) {
 export async function getAuditLogs(limit = 200) {
   const current = await requireUser()
   if (!canAudit(current)) throw new Error("Forbidden")
-
-  const scope = applyReceiptScope(current)
 
   if (current.role === ROLES.SYSTEM_ADMIN) {
     return db.select().from(auditLog).orderBy(desc(auditLog.createdAt)).limit(limit)

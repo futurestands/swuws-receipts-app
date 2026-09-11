@@ -5,14 +5,12 @@ import { db } from "@/lib/db"
 import { user, cluster, branch, waterScheme, organization } from "@/lib/db/schema"
 import { requireUser } from "@/lib/session"
 import { writeAudit } from "@/lib/audit"
-import { ROLES, ROLE_LABELS, type Role } from "@/lib/permissions/roles"
+import { ROLE_LABELS, type Role } from "@/lib/permissions/roles"
 import { canViewUsers, canCreateUser } from "@/lib/permissions"
 import { canCreateRole } from "@/lib/permissions/server"
-import { eq, inArray, sql } from "drizzle-orm"
+import { eq } from "drizzle-orm"
 import { headers } from "next/headers"
 import * as XLSX from "xlsx"
-import { z } from "zod"
-import { randomUUID } from "crypto"
 import { getImportMapping } from "@/lib/import-engine"
 import { DEFAULT_USER_IMPORT_MAPPING } from "@/lib/import-mappings"
 import { userImportSchema, type UserImportRow } from "@/lib/import-schemas"
@@ -72,8 +70,8 @@ export async function validateBulkUsers(formData: FormData): Promise<{ ok: true;
   // This must be the same mapping downloadBulkImportTemplate used to
   // generate the headers the person is now uploading — see the comment on
   // DEFAULT_USER_IMPORT_MAPPING above.
-  const dbMapping = await getImportMapping("import.users.bulk")
-  const mapping = { ...DEFAULT_USER_IMPORT_MAPPING, ...(dbMapping as any) } as Record<string, string>
+  const dbMapping = (await getImportMapping("import.users.bulk")) as Record<string, string> | null
+  const mapping = { ...DEFAULT_USER_IMPORT_MAPPING, ...dbMapping } as Record<string, string>
 
   const results: ValidationResult[] = []
   let validCount = 0
@@ -113,7 +111,7 @@ export async function validateBulkUsers(formData: FormData): Promise<{ ok: true;
     }
 
     // Role validation
-    const targetRole = Object.entries(ROLE_LABELS).find(([_, label]) => label.toLowerCase() === mappedRow.role.toLowerCase())?.[0] as Role
+    const targetRole = Object.entries(ROLE_LABELS).find(([, label]) => label.toLowerCase() === mappedRow.role.toLowerCase())?.[0] as Role
     if (!targetRole) {
       errors.push(`Invalid role: ${mappedRow.role}`)
     } else {
@@ -125,7 +123,6 @@ export async function validateBulkUsers(formData: FormData): Promise<{ ok: true;
     // Hierarchy validation
     let clusterId: string | null = null
     let areaId: string | null = null
-    let schemeId: string | null = null
 
     if (mappedRow.cluster) {
       const c = hierarchy.clusters.get(mappedRow.cluster.toLowerCase())
@@ -153,7 +150,6 @@ export async function validateBulkUsers(formData: FormData): Promise<{ ok: true;
       if (!s) {
         errors.push(`Scheme not found: ${mappedRow.scheme}`)
       } else {
-        schemeId = s.id
         if (areaId && s.branchId !== areaId) {
           errors.push(`Scheme ${mappedRow.scheme} does not belong to Area ${mappedRow.area}`)
         }
@@ -205,7 +201,7 @@ export async function importBulkUsers(summary: ImportSummary): Promise<{ ok: tru
 
   for (const row of validRows) {
     const { data } = row
-    const targetRole = Object.entries(ROLE_LABELS).find(([_, label]) => label.toLowerCase() === data.role.toLowerCase())?.[0] as Role
+    const targetRole = Object.entries(ROLE_LABELS).find(([, label]) => label.toLowerCase() === data.role.toLowerCase())?.[0] as Role
 
     const clusterRecord = data.cluster ? hierarchy.clusters.get(data.cluster.toLowerCase()) : null
     const areaRecord = data.area ? hierarchy.areas.get(data.area.toLowerCase()) : null
