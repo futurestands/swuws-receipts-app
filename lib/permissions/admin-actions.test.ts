@@ -58,7 +58,7 @@ describe("Administrative Actions Authorization (IDOR & Scope Protection)", () =>
     id: "admin-a",
     role: "admin_local",
     branchId: "branch-a",
-    permissions: [{ code: "users.view", scope: "area" }]
+    permissions: [{ code: "users.view", scope: "area" }, { code: "users.edit", scope: "area" }]
   }
 
   const userInBranchA = {

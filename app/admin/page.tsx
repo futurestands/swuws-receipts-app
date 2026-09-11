@@ -9,18 +9,18 @@ import { listAllTariffs } from "@/app/actions/billing-engine"
 import { listTemplates, seedSystemTemplates } from "@/app/actions/template-actions"
 import { ROLES } from "@/lib/permissions/roles"
 import {
+  canViewUsers,
   canManageUsers,
   canManageSchemes,
   canManageAreas,
   canConfigureSystem,
   canAudit,
   canViewReports,
-  canAccessAdminConsole,
   canManageIAM,
   canEditUser,
   canDeleteUser,
+  canCreateUser,
   canResetPasswords,
-  hasPerm
 } from "@/lib/permissions"
 
 export default async function AdminPage() {
@@ -37,7 +37,7 @@ export default async function AdminPage() {
     }
   }
 
-  const canManageUsersVal = current ? canManageUsers(current) : false
+  const canViewUsersVal = current ? canViewUsers(current) : false
   const canAuditVal = current ? canAudit(current) : false
   const canViewReportsVal = current ? canViewReports(current) : false
   const canManageHierarchyVal = current ? (canManageSchemes(current) || canManageAreas(current)) : false
@@ -45,11 +45,11 @@ export default async function AdminPage() {
   const canManageIAMVal = current ? canManageIAM(current) : false
   const canEditUserVal = current ? canEditUser(current) : false
   const canDeleteUserVal = current ? canDeleteUser(current) : false
-  const canCreateUserVal = current ? (hasPerm(current, "users.create") || current.role === ROLES.SYSTEM_ADMIN) : false
+  const canCreateUserVal = current ? canCreateUser(current) : false
   const canResetPasswordVal = current ? canResetPasswords(current) : false
 
   const [agentsResult, auditLogs, stats, collections, printingStats, clusters, branches, methods, schemes, settings, smsGatewaySettings, periods, iamRoles, allPermissions, tariffs, templates] = await Promise.all([
-    canManageUsersVal
+    canViewUsersVal
       ? listAgents({ page: 1, pageSize: 25 }).catch(() => ({ agents: [], total: 0, page: 1, pageSize: 25, totalPages: 1 }))
       : Promise.resolve({ agents: [], total: 0, page: 1, pageSize: 25, totalPages: 1 }),
     canAuditVal ? getAuditLogs(200).catch(() => []) : Promise.resolve([]),
@@ -81,7 +81,7 @@ export default async function AdminPage() {
   const filteredSchemes = (isSystemAdmin || isGlobal) ? schemes : schemes.filter(s => s.id === current?.schemeId || s.branchId === current?.branchId)
 
   const permissions = {
-    canManageUsers: canManageUsersVal,
+    canManageUsers: canViewUsersVal, // Gating tab visibility
     canManageHierarchy: canManageHierarchyVal,
     canConfigureSystem: canConfigureSystemVal,
     canAudit: canAuditVal,

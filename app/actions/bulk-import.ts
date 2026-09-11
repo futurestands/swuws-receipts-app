@@ -6,7 +6,7 @@ import { user, cluster, branch, waterScheme, organization } from "@/lib/db/schem
 import { requireUser } from "@/lib/session"
 import { writeAudit } from "@/lib/audit"
 import { ROLES, ROLE_LABELS, type Role } from "@/lib/permissions/roles"
-import { canManageUsers } from "@/lib/permissions"
+import { canManageUsers, canViewUsers } from "@/lib/permissions"
 import { canCreateRole } from "@/lib/permissions/server"
 import { eq, inArray, sql } from "drizzle-orm"
 import { headers } from "next/headers"
@@ -50,7 +50,7 @@ async function getHierarchyMaps() {
 
 export async function validateBulkUsers(formData: FormData): Promise<{ ok: true; summary: ImportSummary } | { ok: false; error: string }> {
   const current = await requireUser()
-  if (!canManageUsers(current)) throw new Error("Forbidden")
+  if (!canViewUsers(current)) throw new Error("Forbidden")
 
   const file = formData.get("file") as File
   if (!file) return { ok: false, error: "No file provided" }

@@ -32,6 +32,7 @@ import { logEvent } from "@/lib/logger"
 
 import { ROLES } from "@/lib/permissions/roles"
 import {
+  canViewUsers,
   canManageUsers,
   canResetPasswords,
   canViewReports,
@@ -44,7 +45,7 @@ import { canAssignIamRole } from "@/lib/iam"
 
 export async function listAgents(params: { query?: string; page?: number; pageSize?: number } = {}) {
   const current = await requireUser()
-  if (!canManageUsers(current)) throw new Error("Forbidden")
+  if (!canViewUsers(current)) throw new Error("Forbidden")
 
   const scope = applyUserScope(current)
   const page = Math.max(1, params.page ?? 1)
@@ -276,7 +277,7 @@ export async function setAgentRole(userId: string, role: string, iamRoleId?: str
   }
 
   // SECURITY: role-ceiling check. This previously had NO restriction beyond
-  // canManageUsers (gated on the "users.view" permission) — anyone who
+  // canManageUsers (now correctly gated on write permissions) — anyone who
   // could view the agents list could promote or demote ANY other user to
   // ANY role, including System Administrator. See canCreateRole for why
   // that legacy role string carries real authority independent of IAM

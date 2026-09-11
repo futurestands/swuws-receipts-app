@@ -17,14 +17,14 @@ describe("Target-User Geographic Authorization (IDOR Protection)", () => {
     id: "admin-a",
     role: "admin_local", // Non-system-admin
     branchId: "branch-a",
-    permissions: [{ code: "users.view", scope: "area" }]
+    permissions: [{ code: "users.view", scope: "area" }, { code: "users.edit", scope: "area" }]
   }
 
   const branchB_Admin: UserPermissionsContext = {
     id: "admin-b",
     role: "admin_local",
     branchId: "branch-b",
-    permissions: [{ code: "users.view", scope: "area" }]
+    permissions: [{ code: "users.view", scope: "area" }, { code: "users.edit", scope: "area" }]
   }
 
   const globalAdmin: UserPermissionsContext = {
@@ -76,7 +76,7 @@ describe("Destination Hierarchy Authorization (P0 Hardening)", () => {
     id: "admin-a",
     role: "admin_local",
     branchId: "branch-a",
-    permissions: [{ code: "users.view", scope: "area" }]
+    permissions: [{ code: "users.view", scope: "area" }, { code: "users.edit", scope: "area" }]
   }
 
   it("allows Branch A Admin to move user to Branch A", async () => {

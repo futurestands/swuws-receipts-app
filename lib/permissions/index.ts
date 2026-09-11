@@ -47,24 +47,51 @@ export function getRole(user: UserPermissionsContext): Role | null {
 }
 
 /**
- * User Management: Who can create or edit other users.
+ * User Management: Who can view the list of users and their profiles.
+ */
+export function canViewUsers(user: UserPermissionsContext) {
+  return (
+    user.role === ROLES.SYSTEM_ADMIN ||
+    (user.roleLevel ?? 0) >= 10 ||
+    hasPerm(user, "users.view") ||
+    canManageUsers(user)
+  ) ?? false
+}
+
+/**
+ * User Management: Who can perform write operations (create, edit, disable).
  */
 export function canManageUsers(user: UserPermissionsContext) {
   return (
     user.role === ROLES.SYSTEM_ADMIN ||
     (user.roleLevel ?? 0) >= 10 ||
-    hasPerm(user, "users.view")
+    hasPerm(user, "users.edit") ||
+    hasPerm(user, "users.create") ||
+    hasPerm(user, "users.disable") ||
+    hasPerm(user, "users.reset_password")
   ) ?? false
 }
 
 /**
  * User Management: Specific delete rights.
+ * Note: Map to 'users.disable' as 'delete' is not supported for users to preserve audit logs.
  */
 export function canDeleteUser(user: UserPermissionsContext) {
   return (
     user.role === ROLES.SYSTEM_ADMIN ||
     (user.roleLevel ?? 0) >= 10 ||
-    hasPerm(user, "users.delete")
+    hasPerm(user, "users.disable")
+  ) ?? false
+}
+
+/**
+ * User Management: Specific create rights.
+ */
+export function canCreateUser(user: UserPermissionsContext) {
+  return (
+    user.role === ROLES.SYSTEM_ADMIN ||
+    (user.roleLevel ?? 0) >= 10 ||
+    hasPerm(user, "users.create")
   ) ?? false
 }
 
@@ -76,6 +103,17 @@ export function canEditUser(user: UserPermissionsContext) {
     user.role === ROLES.SYSTEM_ADMIN ||
     (user.roleLevel ?? 0) >= 10 ||
     hasPerm(user, "users.edit")
+  ) ?? false
+}
+
+/**
+ * User Management: Specific disable rights.
+ */
+export function canDisableUser(user: UserPermissionsContext) {
+  return (
+    user.role === ROLES.SYSTEM_ADMIN ||
+    (user.roleLevel ?? 0) >= 10 ||
+    hasPerm(user, "users.disable")
   ) ?? false
 }
 
@@ -336,10 +374,13 @@ export function canExportReports(user: UserPermissionsContext) {
 
 /**
  * Security: Who can trigger password resets for other users.
- * HARD-LOCKED: System Admin only (Legacy role or Level 10).
  */
 export function canResetPasswords(user: UserPermissionsContext) {
-  return user.role === ROLES.SYSTEM_ADMIN || (user.roleLevel ?? 0) >= 10
+  return (
+    user.role === ROLES.SYSTEM_ADMIN ||
+    (user.roleLevel ?? 0) >= 10 ||
+    hasPerm(user, "users.reset_password")
+  ) ?? false
 }
 
 /**
