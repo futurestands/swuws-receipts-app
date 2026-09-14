@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { sqliteService } from "@/lib/offline/sqlite-service"
-import { getAgentOfflineData } from "@/app/actions/offline-sync"
+import { pullOfflineCache } from "@/lib/offline/pull-cache"
 import { syncOfflineReceiptBatch, syncOfflineMeterReadingBatch } from "@/app/actions/offline-upload"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -190,16 +190,21 @@ export function OfflineSearchClient({ agentId }: { agentId: string }) {
     }
 
     setSyncing(true)
-    setSyncStep("Fetching data from server...")
+    setSyncStep("Fetching customers...")
     try {
-      const data = await getAgentOfflineData()
-      setSyncStep(`Saving ${data.customers.length} customers locally...`)
-      await sqliteService.pullSync({
-        ...data,
-        agentId
+      const result = await pullOfflineCache({
+        agentId,
+        onProgress: ({ loaded, total }) => {
+          const denom = total > 0 ? total : loaded
+          setSyncStep(`Saving ${loaded.toLocaleString()} / ${denom.toLocaleString()}...`)
+        },
       })
       await refreshData()
-      toast.success("Offline cache updated successfully")
+      if (result.truncated) {
+        toast.success(`Cached ${result.loaded.toLocaleString()} of ${result.total.toLocaleString()} customers (device cap).`)
+      } else {
+        toast.success(`Offline cache updated · ${result.loaded.toLocaleString()} customers`)
+      }
     } catch (err: any) {
       console.error(err)
       const msg = err.message || "Unknown error"
@@ -364,6 +369,7 @@ export function OfflineSearchClient({ agentId }: { agentId: string }) {
           Last Pull: {new Date(syncMeta.lastSuccessfulPullAt).toLocaleString('en-GB', {
             day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit'
           })}
+          {syncMeta.customerCount != null && ` · ${Number(syncMeta.customerCount).toLocaleString()} customers cached`}
         </p>
       )}
 

@@ -1,5 +1,5 @@
-const CACHE_NAME = 'swuws-cache-v3';
-const STATIC_CACHE_NAME = 'swuws-static-v3';
+const CACHE_NAME = 'swuws-cache-v4';
+const STATIC_CACHE_NAME = 'swuws-static-v4';
 
 // Served for any navigation that fails while offline. Unlike
 // /dashboard/offline this route has no auth gate and reads no server data,

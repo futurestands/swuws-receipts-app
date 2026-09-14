@@ -1,7 +1,10 @@
 import { NextResponse, type NextRequest } from "next/server"
 import { getSessionCookie } from "better-auth/cookies"
 
-const PUBLIC_PATHS = ["/login", "/verify"]
+  // Unauthenticated on purpose: the service worker must be able to
+  // precache this route while the user is logged in, then serve it later
+  // with no session cookie. The page itself reads no server data.
+  const PUBLIC_PATHS = ["/login", "/verify", "/offline-shell"]
 
 /**
  * Global Middleware

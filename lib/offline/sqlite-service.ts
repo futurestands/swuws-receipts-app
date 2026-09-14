@@ -44,8 +44,20 @@ class SQLiteService {
           accountBalance TEXT,
           category TEXT,
           active INTEGER,
-          updatedAt TEXT
+          updatedAt TEXT,
+          lastReading INTEGER DEFAULT 0
         );`);
+
+      // Existing installs created this table without lastReading.
+      try {
+        await this.db.execute(`ALTER TABLE local_customers ADD COLUMN lastReading INTEGER DEFAULT 0;`);
+      } catch {
+        /* column already present */
+      }
+
+      await this.db.execute(`CREATE INDEX IF NOT EXISTS idx_local_customers_account ON local_customers(customerAccount);`);
+      await this.db.execute(`CREATE INDEX IF NOT EXISTS idx_local_customers_name ON local_customers(name);`);
+      await this.db.execute(`CREATE INDEX IF NOT EXISTS idx_local_customers_phone ON local_customers(phone);`);
 
       await this.db.execute(`
         CREATE TABLE IF NOT EXISTS local_billing_records (
@@ -59,13 +71,22 @@ class SQLiteService {
           FOREIGN KEY(customerId) REFERENCES local_customers(id)
         );`);
 
+      await this.db.execute(`CREATE INDEX IF NOT EXISTS idx_local_billing_customer ON local_billing_records(customerId);`);
+
       await this.db.execute(`
         CREATE TABLE IF NOT EXISTS sync_meta (
           deviceId TEXT PRIMARY KEY,
           lastSuccessfulPullAt TEXT,
           scopedAgentId TEXT,
-          activePeriodId TEXT
+          activePeriodId TEXT,
+          customerCount INTEGER
         );`);
+
+      try {
+        await this.db.execute(`ALTER TABLE sync_meta ADD COLUMN customerCount INTEGER;`);
+      } catch {
+        /* column already present */
+      }
 
       await this.db.execute(`
         CREATE TABLE IF NOT EXISTS local_receipt_queue (
@@ -141,6 +162,66 @@ class SQLiteService {
     }
   }
 
+  async beginFullPull(): Promise<void> {
+    if (!this.db) return;
+    // Receipt / reading queues are kept. Only the searchable cache is replaced.
+    await this.db.execute(`DELETE FROM local_billing_records;`);
+    await this.db.execute(`DELETE FROM local_customers;`);
+  }
+
+  async insertPullPage(customers: any[], billingRecords: any[]): Promise<void> {
+    if (!this.db) return;
+
+    const set: any[] = [];
+    for (const c of customers) {
+      set.push({
+        statement: `INSERT INTO local_customers (id, customerAccount, name, phone, address, accountBalance, category, active, updatedAt, lastReading)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        values: [
+          c.id,
+          c.customerAccount,
+          c.name,
+          c.phone,
+          c.address,
+          String(c.accountBalance ?? 0),
+          c.category,
+          c.active ? 1 : 0,
+          c.updatedAt,
+          Number(c.lastReading ?? 0),
+        ],
+      });
+    }
+
+    for (const br of billingRecords) {
+      set.push({
+        statement: `INSERT INTO local_billing_records (id, customerId, totalDue, arrears, billAmount, status, billingPeriodId)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        values: [br.id, br.customerId, String(br.totalDue ?? 0), String(br.arrears ?? 0), String(br.billAmount ?? 0), br.status, br.billingPeriodId],
+      });
+    }
+
+    // Binder-safe chunks. Never build a 100k-statement array in one go —
+    // callers must page before they reach this method.
+    const CHUNK_SIZE = 200;
+    for (let i = 0; i < set.length; i += CHUNK_SIZE) {
+      await this.db.executeSet(set.slice(i, i + CHUNK_SIZE));
+    }
+  }
+
+  async finishFullPull(data: {
+    timestamp: string;
+    agentId: string;
+    activePeriodId: string | null;
+    customerCount: number;
+  }): Promise<void> {
+    if (!this.db) return;
+    const deviceId = (await Device.getId()).identifier;
+    await this.db.run(
+      `INSERT OR REPLACE INTO sync_meta (deviceId, lastSuccessfulPullAt, scopedAgentId, activePeriodId, customerCount) VALUES (?, ?, ?, ?, ?)`,
+      [deviceId, data.timestamp, data.agentId, data.activePeriodId, data.customerCount]
+    );
+  }
+
   async pullSync(data: {
     customers: any[];
     billingRecords: any[];
@@ -148,49 +229,15 @@ class SQLiteService {
     timestamp: string;
     agentId: string;
   }): Promise<void> {
-    if (!this.db) return;
-
     try {
-      const deviceId = (await Device.getId()).identifier;
-
-      // OPTIMIZED BATCH INSERT (Aug 27 Hardening)
-      const set: any[] = [];
-
-      // MOVE TO BATCH (Aug 27 Hardening): Run deletes inside the same set
-      set.push({ statement: 'DELETE FROM local_billing_records;', values: [] });
-      set.push({ statement: 'DELETE FROM local_customers;', values: [] });
-
-      // 1. Batch customers
-      for (const c of data.customers) {
-        set.push({
-          statement: `INSERT INTO local_customers (id, customerAccount, name, phone, address, accountBalance, category, active, updatedAt)
-                      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          values: [c.id, c.customerAccount, c.name, c.phone, c.address, String(c.accountBalance), c.category, c.active ? 1 : 0, c.updatedAt]
-        });
-      }
-
-      // 2. Batch billing records
-      for (const br of data.billingRecords) {
-        set.push({
-          statement: `INSERT INTO local_billing_records (id, customerId, totalDue, arrears, billAmount, status, billingPeriodId)
-                      VALUES (?, ?, ?, ?, ?, ?, ?)`,
-          values: [br.id, br.customerId, String(br.totalDue), String(br.arrears), String(br.billAmount), br.status, br.billingPeriodId]
-        });
-      }
-
-      // 3. Batch metadata update
-      set.push({
-        statement: `INSERT OR REPLACE INTO sync_meta (deviceId, lastSuccessfulPullAt, scopedAgentId, activePeriodId) VALUES (?, ?, ?, ?)`,
-        values: [deviceId, data.timestamp, data.agentId, data.activePeriodId]
+      await this.beginFullPull();
+      await this.insertPullPage(data.customers, data.billingRecords);
+      await this.finishFullPull({
+        timestamp: data.timestamp,
+        agentId: data.agentId,
+        activePeriodId: data.activePeriodId,
+        customerCount: data.customers.length,
       });
-
-      // SAFE CHUNKED EXECUTION (Aug 27 Hardening)
-      const CHUNK_SIZE = 500;
-      for (let i = 0; i < set.length; i += CHUNK_SIZE) {
-        const chunk = set.slice(i, i + CHUNK_SIZE);
-        console.log(`Syncing chunk ${Math.floor(i / CHUNK_SIZE) + 1} of ${Math.ceil(set.length / CHUNK_SIZE)}...`);
-        await this.db.executeSet(chunk);
-      }
     } catch (err) {
       console.error('SQLite pullSync failed', err);
       throw err;

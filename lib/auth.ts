@@ -10,36 +10,60 @@ const isProduction = process.env.NODE_ENV === "production"
 // We strictly normalize all origins to include the protocol.
 const normalizeOrigin = (url: string | undefined | null) => {
   if (!url) return undefined
-  return url.startsWith('http') ? url : `https://${url}`
+  const trimmed = url.trim().replace(/\/$/, "")
+  if (!trimmed) return undefined
+  return trimmed.startsWith("http") ? trimmed : `https://${trimmed}`
 }
 
+const isLocalOrigin = (url: string | undefined) =>
+  !!url && (url.includes("localhost") || url.includes("127.0.0.1"))
+
+// Prefer the public app URL first. Capacitor, QR links, and auth must agree
+// on one origin — previously auth ignored NEXT_PUBLIC_APP_URL and could fall
+// through to "http://localhost:3000" when BETTER_AUTH_URL was unset on Vercel,
+// which made the Android WebView appear to "connect to localhost" after login.
 const baseURL = normalizeOrigin(
   process.env.BETTER_AUTH_URL ||
+  process.env.NEXT_PUBLIC_APP_URL ||
   process.env.VERCEL_PROJECT_PRODUCTION_URL ||
   process.env.VERCEL_URL ||
   process.env.V0_RUNTIME_URL
-) || "http://localhost:3000"
+) || (isProduction ? undefined : "http://localhost:3000")
+
+if (isProduction && (!baseURL || isLocalOrigin(baseURL))) {
+  throw new Error(
+    `Auth baseURL resolved to an unusable production value (${baseURL ?? "undefined"}). ` +
+      "Set BETTER_AUTH_URL or NEXT_PUBLIC_APP_URL to your real https:// domain on Vercel.",
+  )
+}
 
 // SECURITY: CSRF protection origins.
 const explicitTrustedOrigins = (process.env.BETTER_AUTH_TRUSTED_ORIGINS || "")
   .split(",")
   .map((s) => s.trim())
   .filter(Boolean)
-  .map(url => normalizeOrigin(url))
+  .map((url) => normalizeOrigin(url))
 
 // SECURITY: Automatic origin detection.
 // We trust the specific deployment URL AND the production project URL.
 const dynamicVercelOrigins = [
   process.env.VERCEL_URL,
   process.env.VERCEL_PROJECT_PRODUCTION_URL,
-  process.env.V0_RUNTIME_URL
-].map(url => normalizeOrigin(url))
+  process.env.V0_RUNTIME_URL,
+  process.env.NEXT_PUBLIC_APP_URL,
+  process.env.BETTER_AUTH_URL,
+].map((url) => normalizeOrigin(url))
 
-const trustedOrigins = Array.from(new Set([
-  ...explicitTrustedOrigins,
-  ...dynamicVercelOrigins,
-  "http://localhost:3000"
-].filter((url): url is string => !!url)))
+const trustedOrigins = Array.from(
+  new Set(
+    [
+      ...explicitTrustedOrigins,
+      ...dynamicVercelOrigins,
+      // Dev-only. Never leave this as the sole trusted origin in production.
+      ...(isProduction ? [] : ["http://localhost:3000"]),
+    ].filter((url): url is string => !!url && (!isProduction || !isLocalOrigin(url))),
+  ),
+)
 
 if (isProduction) {
   console.log(`[AUTH INIT] baseURL: ${baseURL}`)
@@ -62,7 +86,7 @@ export const auth = betterAuth({
   // node-postgres Pool here exactly as it did before — no behavior change.
   database: pool,
   secret: process.env.BETTER_AUTH_SECRET,
-  baseURL,
+  baseURL: baseURL!,
   trustedOrigins,
   emailAndPassword: {
     enabled: true,

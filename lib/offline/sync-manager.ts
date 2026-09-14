@@ -1,5 +1,5 @@
 import { sqliteService } from './sqlite-service';
-import { getAgentOfflineData } from '@/app/actions/offline-sync';
+import { pullOfflineCache } from './pull-cache';
 import { isNative } from '../mobile-hardware';
 
 /**
@@ -167,10 +167,14 @@ class SyncManager {
         }
       }
 
-      // 2. PULL: Refresh local cache
-      const data = await getAgentOfflineData();
-      await sqliteService.pullSync({ ...data, agentId });
-      await sqliteService.logSync({ action: 'pull', status: 'success', details: { customers: data.customers.length } });
+      // 2. PULL: Refresh local cache in pages so 100k customers never land
+      // in a single WebView JSON payload.
+      const pull = await pullOfflineCache({ agentId });
+      await sqliteService.logSync({
+        action: 'pull',
+        status: pull.truncated ? 'partial' : 'success',
+        details: { customers: pull.loaded, total: pull.total, truncated: pull.truncated },
+      });
 
     } catch (err: any) {
       console.error('Sync failed', err);
