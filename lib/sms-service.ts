@@ -2,6 +2,7 @@ import { db } from "@/lib/db"
 import { auditLog, smsGatewayConfig } from "@/lib/db/schema"
 import { randomUUID } from "crypto"
 import { eq } from "drizzle-orm"
+import { normalizePhone } from "@/lib/phone"
 
 /**
  * Enterprise SMS Gateway Service
@@ -163,30 +164,64 @@ async function sendViaProvider(to: string, message: string): Promise<{ ok: boole
   return { ok: false, error: `unknown_provider:${provider}` }
 }
 
-export async function sendSMS(to: string, message: string, userId?: string) {
-  const result = await sendViaProvider(to, message)
-  const isConfigured = result.error !== "not_configured"
+/** Why a send did not reach the carrier. `null` means it did. */
+export type SmsFailureReason = "invalid_number" | "not_configured" | "gateway_error"
 
-  if (!isConfigured) {
-    console.log(`[SMS Gateway] SMS_PROVIDER not configured — simulating send to ${to}: ${message}`)
-  } else if (!result.ok) {
-    console.error(`[SMS Gateway] Real send to ${to} failed: ${result.error}`)
+export async function sendSMS(
+  to: string,
+  message: string,
+  userId?: string,
+  options?: {
+    /**
+     * Audit action to record under. Defaults to the billing channel for
+     * backwards compatibility; CRM passes its own so campaign traffic can be
+     * told apart from billing notifications in the audit log.
+     */
+    auditAction?: string
+  },
+) {
+  const auditAction = options?.auditAction || "billing.sms_sent"
+
+  // Normalise before anything else: gateways reject local trunk formats
+  // ("0770000001"), and a whole imported batch is usually in that form.
+  const recipient = normalizePhone(to)
+
+  const result = recipient
+    ? await sendViaProvider(recipient, message)
+    : { ok: false, error: "invalid_number" }
+
+  const reason: SmsFailureReason | null = result.ok
+    ? null
+    : result.error === "invalid_number"
+      ? "invalid_number"
+      : result.error === "not_configured"
+        ? "not_configured"
+        : "gateway_error"
+
+  if (reason === "invalid_number") {
+    console.error(`[SMS Gateway] "${to}" is not a usable phone number — not sent`)
+  } else if (reason === "not_configured") {
+    console.log(`[SMS Gateway] Provider not configured — simulating send to ${recipient}: ${message}`)
+  } else if (reason) {
+    console.error(`[SMS Gateway] Real send to ${recipient} failed: ${result.error}`)
   }
 
   // Always record for accountability, whether real, simulated, or failed —
-  // this audit trail is what lets you tell the three cases apart later.
+  // this audit trail is what lets you tell the cases apart later.
   const id = randomUUID()
   await db.insert(auditLog).values({
     id,
     userId,
-    action: "billing.sms_sent",
+    action: auditAction,
     entityType: "sms_outbox",
-    entityId: to,
+    entityId: recipient || to,
     details: {
       message,
-      recipient: to,
-      status: !isConfigured ? "simulated" : result.ok ? "sent" : "failed",
-      ...(result.error && isConfigured ? { error: result.error } : {}),
+      recipient: recipient || to,
+      ...(recipient && recipient !== to ? { submitted: to } : {}),
+      status:
+        reason === null ? "sent" : reason === "not_configured" ? "simulated" : "failed",
+      ...(reason && reason !== "not_configured" ? { error: result.error } : {}),
     },
     createdAt: new Date(),
   })
@@ -194,5 +229,5 @@ export async function sendSMS(to: string, message: string, userId?: string) {
   // Never throw: a down/unconfigured SMS gateway must not block billing —
   // it's a secondary notification channel, not the source of truth. The
   // audit log above is what makes a failed/simulated send traceable.
-  return { ok: true, id, delivered: isConfigured && result.ok }
+  return { ok: true, id, delivered: reason === null, reason, error: result.error }
 }

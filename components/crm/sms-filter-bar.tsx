@@ -22,6 +22,7 @@ export function SmsFilterBar() {
   const [till, setTill] = useState(searchParams.get("till") ?? "")
   const [status, setStatus] = useState(searchParams.get("status") ?? "all")
   const [category, setCategory] = useState(searchParams.get("category") ?? "all")
+  const [query, setQuery] = useState(searchParams.get("q") ?? "")
 
   function applyFilters() {
     const params = new URLSearchParams()
@@ -29,6 +30,7 @@ export function SmsFilterBar() {
     if (till) params.set("till", till)
     if (status !== "all") params.set("status", status)
     if (category !== "all") params.set("category", category)
+    if (query) params.set("q", query)
 
     startTransition(() => {
       router.push(`/dashboard/crm/sms?${params.toString()}`)
@@ -38,7 +40,17 @@ export function SmsFilterBar() {
   return (
     <Card className="shadow-sm border-none bg-slate-50/50">
       <CardContent className="p-6">
-        <div className="grid gap-4 md:grid-cols-5 items-end">
+        <div className="grid gap-4 md:grid-cols-3 lg:grid-cols-6 items-end">
+          <div className="space-y-1.5">
+            <label className="text-[10px] font-bold uppercase text-muted-foreground ml-1">List / Creator</label>
+            <Input
+              placeholder="Search..."
+              className="h-9 bg-white"
+              value={query}
+              onChange={e => setQuery(e.target.value)}
+              onKeyDown={e => e.key === "Enter" && applyFilters()}
+            />
+          </div>
           <div className="space-y-1.5">
             <label className="text-[10px] font-bold uppercase text-muted-foreground ml-1">From</label>
             <Input type="date" className="h-9 bg-white" value={from} onChange={e => setFrom(e.target.value)} />
@@ -56,7 +68,9 @@ export function SmsFilterBar() {
               <SelectContent>
                 <SelectItem value="all">All</SelectItem>
                 <SelectItem value="pending">Pending</SelectItem>
+                <SelectItem value="processing">Processing</SelectItem>
                 <SelectItem value="completed">Completed</SelectItem>
+                <SelectItem value="failed">Failed</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -69,6 +83,7 @@ export function SmsFilterBar() {
               <SelectContent>
                 <SelectItem value="all">All</SelectItem>
                 <SelectItem value="Bill Reminders">Bill Reminders</SelectItem>
+                <SelectItem value="Seasonal Greetings">Seasonal Greetings</SelectItem>
                 <SelectItem value="Alerts">Alerts</SelectItem>
               </SelectContent>
             </Select>

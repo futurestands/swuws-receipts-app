@@ -33,6 +33,7 @@ function ComplaintCard({ complaint }: ComplaintCardProps) {
   const statusColors: Record<string, string> = {
     open: "bg-rose-50 text-rose-700 border-rose-100",
     assigned: "bg-amber-50 text-amber-700 border-amber-100",
+    in_progress: "bg-sky-50 text-sky-700 border-sky-100",
     resolved: "bg-emerald-50 text-emerald-700 border-emerald-100",
     closed: "bg-slate-50 text-slate-700 border-slate-200",
   }
@@ -85,7 +86,7 @@ function ComplaintCard({ complaint }: ComplaintCardProps) {
              <span className="text-[10px] font-bold text-slate-500">{complaint.assignedToName || "Unassigned"}</span>
           </div>
           <Badge variant="outline" className={cn("text-[9px] font-black uppercase border px-1.5 h-5", statusColors[complaint.status])}>
-            {complaint.status}
+            {complaint.status.replace("_", " ")}
           </Badge>
         </div>
       </CardContent>

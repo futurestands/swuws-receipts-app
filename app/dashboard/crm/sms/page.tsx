@@ -1,18 +1,19 @@
 import { requireUser } from "@/lib/session"
 import { canViewCrm } from "@/lib/permissions"
-import { listSmsBatches, getCrmStats } from "@/app/actions/crm"
+import { listSmsBatches, getCrmStats, seedCrmReferenceData } from "@/app/actions/crm"
 import { PageHeader } from "@/components/ui/page-header"
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
 import { formatDateTime } from "@/lib/format"
 import { Button } from "@/components/ui/button"
-import { Send, Smartphone, List, Clock, CheckCircle2, MoreHorizontal, Info, RefreshCw } from "lucide-react"
+import { Send, List, Clock } from "lucide-react"
 import { SmsImportModal } from "@/components/crm/sms-import-modal"
 import { SmsFilterBar } from "@/components/crm/sms-filter-bar"
 import { SmsBatchActions } from "@/components/crm/sms-batch-actions"
 import { RefreshButton } from "@/components/ui/refresh-button"
 import { cn } from "@/lib/utils"
+import Link from "next/link"
 
 export default async function SmsHubPage({
   searchParams: searchParamsPromise,
@@ -23,18 +24,42 @@ export default async function SmsHubPage({
   const user = await requireUser()
   if (!canViewCrm(user)) throw new Error("Forbidden")
 
+  await seedCrmReferenceData()
+
+  const readParam = (key: string) =>
+    typeof searchParams[key] === "string" ? (searchParams[key] as string) : undefined
+
+  const pageNum = Math.max(1, Number(readParam("page")) || 1)
+
   const filters = {
-    startDate: typeof searchParams.from === 'string' ? searchParams.from : undefined,
-    endDate: typeof searchParams.till === 'string' ? searchParams.till : undefined,
-    category: typeof searchParams.category === 'string' ? searchParams.category : undefined,
-    status: typeof searchParams.status === 'string' ? searchParams.status : undefined,
-    search: typeof searchParams.q === 'string' ? searchParams.q : undefined,
+    page: pageNum,
+    startDate: readParam("from"),
+    endDate: readParam("till"),
+    category: readParam("category"),
+    status: readParam("status"),
+    search: readParam("q"),
   }
 
-  const [batches, stats] = await Promise.all([
+  const [{ batches, total, totalPages }, stats] = await Promise.all([
     listSmsBatches(filters),
     getCrmStats()
   ])
+
+  const filterQuery = new URLSearchParams(
+    Object.entries({
+      from: filters.startDate,
+      till: filters.endDate,
+      category: filters.category,
+      status: filters.status,
+      q: filters.search,
+    }).filter((entry): entry is [string, string] => Boolean(entry[1])),
+  )
+
+  const pageHref = (target: number) => {
+    const params = new URLSearchParams(filterQuery)
+    params.set("page", String(target))
+    return `/dashboard/crm/sms?${params.toString()}`
+  }
 
   return (
     <div className="space-y-6">
@@ -135,14 +160,20 @@ export default async function SmsHubPage({
                           "h-5 px-1.5 text-[9px] uppercase font-black",
                           b.status === 'completed' ? 'bg-emerald-100 text-emerald-700 border-emerald-200 hover:bg-emerald-100' :
                           b.status === 'processing' ? 'bg-blue-100 text-blue-700 border-blue-200 animate-pulse' :
+                          b.status === 'failed' ? 'bg-rose-100 text-rose-700 border-rose-200' :
                           'bg-amber-100 text-amber-700 border-amber-200'
                         )}
                        >
                          {b.status === 'completed' ? 'Sent Out' : b.status}
                        </Badge>
+                       {b.status !== 'pending' && (
+                         <p className="text-[9px] font-bold text-slate-400 mt-1">
+                           {b.sentMessages} sent · {b.failedMessages} failed
+                         </p>
+                       )}
                     </TableCell>
                     <TableCell className="text-right pr-6">
-                      <SmsBatchActions batchId={b.id} status={b.status} />
+                      <SmsBatchActions batchId={b.id} batchName={b.name} status={b.status} />
                     </TableCell>
                   </TableRow>
                 ))
@@ -151,6 +182,32 @@ export default async function SmsHubPage({
           </Table>
         </CardContent>
       </Card>
+
+      {totalPages > 1 && (
+        <div className="flex items-center justify-center gap-4 pt-2">
+          <Button
+            variant="outline"
+            size="sm"
+            asChild={pageNum > 1}
+            disabled={pageNum <= 1}
+            className="h-10 text-[10px] font-black uppercase tracking-widest"
+          >
+            {pageNum > 1 ? <Link href={pageHref(pageNum - 1)}>Previous</Link> : <span>Previous</span>}
+          </Button>
+          <span className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">
+            Page {pageNum} of {totalPages} · {total} list(s)
+          </span>
+          <Button
+            variant="outline"
+            size="sm"
+            asChild={pageNum < totalPages}
+            disabled={pageNum >= totalPages}
+            className="h-10 text-[10px] font-black uppercase tracking-widest"
+          >
+            {pageNum < totalPages ? <Link href={pageHref(pageNum + 1)}>Next</Link> : <span>Next</span>}
+          </Button>
+        </div>
+      )}
     </div>
   )
 }

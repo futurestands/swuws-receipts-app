@@ -11,6 +11,7 @@ import { Search, RotateCcw, Filter, Loader2 } from "lucide-react"
 interface ComplaintsFilterBarProps {
   areas: { id: string; name: string }[]
   staff: { id: string; name: string }[]
+  categories: { id: string; name: string }[]
 }
 
 /**
@@ -22,7 +23,7 @@ interface ComplaintsFilterBarProps {
  * following the same useTransition + router.push pattern already used in
  * app/dashboard/customers/customer-search-bar.tsx.
  */
-export function ComplaintsFilterBar({ areas, staff }: ComplaintsFilterBarProps) {
+export function ComplaintsFilterBar({ areas, staff, categories }: ComplaintsFilterBarProps) {
   const router = useRouter()
   const searchParams = useSearchParams()
   const [pending, startTransition] = useTransition()
@@ -33,6 +34,8 @@ export function ComplaintsFilterBar({ areas, staff }: ComplaintsFilterBarProps) 
   const [status, setStatus] = useState(searchParams.get("status") ?? "all")
   const [area, setArea] = useState(searchParams.get("area") ?? "all")
   const [staffId, setStaffId] = useState(searchParams.get("staff") ?? "all")
+  const [category, setCategory] = useState(searchParams.get("category") ?? "all")
+  const [priority, setPriority] = useState(searchParams.get("priority") ?? "all")
 
   function applyFilters() {
     const params = new URLSearchParams()
@@ -42,6 +45,8 @@ export function ComplaintsFilterBar({ areas, staff }: ComplaintsFilterBarProps) 
     if (status !== "all") params.set("status", status)
     if (area !== "all") params.set("area", area)
     if (staffId !== "all") params.set("staff", staffId)
+    if (category !== "all") params.set("category", category)
+    if (priority !== "all") params.set("priority", priority)
 
     startTransition(() => {
       router.push(`/dashboard/crm/complaints?${params.toString()}`)
@@ -55,6 +60,8 @@ export function ComplaintsFilterBar({ areas, staff }: ComplaintsFilterBarProps) 
     setStatus("all")
     setArea("all")
     setStaffId("all")
+    setCategory("all")
+    setPriority("all")
     startTransition(() => {
       router.push("/dashboard/crm/complaints")
     })
@@ -98,8 +105,36 @@ export function ComplaintsFilterBar({ areas, staff }: ComplaintsFilterBarProps) 
                 <SelectItem value="all">All</SelectItem>
                 <SelectItem value="open">Open</SelectItem>
                 <SelectItem value="assigned">Assigned</SelectItem>
+                <SelectItem value="in_progress">In Progress</SelectItem>
                 <SelectItem value="resolved">Resolved</SelectItem>
                 <SelectItem value="closed">Closed</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <label className="text-[10px] font-bold uppercase text-slate-400 tracking-tight ml-1">Nature of Issue</label>
+            <Select value={category} onValueChange={v => setCategory(v ?? "all")}>
+              <SelectTrigger className="h-10 bg-slate-50 border-slate-200 text-xs font-bold uppercase">
+                <SelectValue placeholder="All Categories" />
+              </SelectTrigger>
+              <SelectContent className="max-h-60">
+                <SelectItem value="all">All Categories</SelectItem>
+                {categories.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <label className="text-[10px] font-bold uppercase text-slate-400 tracking-tight ml-1">Priority</label>
+            <Select value={priority} onValueChange={v => setPriority(v ?? "all")}>
+              <SelectTrigger className="h-10 bg-slate-50 border-slate-200 text-xs font-bold uppercase">
+                <SelectValue placeholder="All Priorities" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Priorities</SelectItem>
+                <SelectItem value="low">Low</SelectItem>
+                <SelectItem value="medium">Medium</SelectItem>
+                <SelectItem value="high">High</SelectItem>
+                <SelectItem value="critical">Critical</SelectItem>
               </SelectContent>
             </Select>
           </div>

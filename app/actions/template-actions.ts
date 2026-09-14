@@ -393,14 +393,14 @@ export async function seedSystemTemplates() {
       name: 'Complaint Registration Confirmation',
       category: 'CRM',
       type: 'SMS',
-      content: 'Dear {{customer_name}}, your complaint #{{ticket_id}} has been registered. Nature: {{category}}. Status: OPEN. SWUWS IT.'
+      content: 'Dear {{customer_name}}, your complaint {{ticket_id}} about {{category}} has been received. We will update you shortly. SWUWS Customer Care.'
     },
     {
       code: 'crm.complaint.resolved.sms',
       name: 'Complaint Resolution Notification',
       category: 'CRM',
       type: 'SMS',
-      content: 'Dear {{customer_name}}, your complaint #{{ticket_id}} has been RESOLVED. Resolution: {{notes}}. Thank you for your patience. SWUWS IT.'
+      content: 'Dear {{customer_name}}, complaint {{ticket_id}} has been resolved: {{notes}} Thank you for your patience. SWUWS Customer Care.'
     },
     {
       code: 'crm.bulk.general.sms',
@@ -408,6 +408,34 @@ export async function seedSystemTemplates() {
       category: 'CRM',
       type: 'SMS',
       content: 'SWUWS NOTICE: {{message}}'
+    },
+    {
+      code: 'crm.notice.interruption.sms',
+      name: 'Planned Supply Interruption',
+      category: 'CRM',
+      type: 'SMS',
+      content: 'SWUWS NOTICE: Water supply in {{scheme_name}} will be interrupted on {{date}} from {{start_time}} to {{end_time}} for maintenance. We apologise for the inconvenience.'
+    },
+    {
+      code: 'crm.notice.disconnection.sms',
+      name: 'Disconnection Warning',
+      category: 'CRM',
+      type: 'SMS',
+      content: 'Dear {{customer_name}}, your account is in arrears of USh {{total_due}}. Please pay within {{grace_days}} days to avoid disconnection. SWUWS.'
+    },
+    {
+      code: 'crm.payment.received.sms',
+      name: 'Payment Received Confirmation',
+      category: 'CRM',
+      type: 'SMS',
+      content: 'Dear {{customer_name}}, we have received USh {{amount}}. Receipt {{receipt_number}}. New balance USh {{balance}}. Thank you. SWUWS.'
+    },
+    {
+      code: 'crm.seasonal.greeting.sms',
+      name: 'Seasonal Greeting',
+      category: 'CRM',
+      type: 'SMS',
+      content: 'Dear {{customer_name}}, SWUWS wishes you a happy {{occasion}}. Thank you for paying your water bill on time.'
     }
   ]
 

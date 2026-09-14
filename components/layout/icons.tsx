@@ -29,6 +29,8 @@ import {
   Usb,
   Bluetooth,
   Settings2,
+  MessageSquare,
+  Smartphone,
   type LucideIcon
 } from "lucide-react"
 
@@ -61,6 +63,8 @@ export const ICON_MAP = {
   Usb,
   Bluetooth,
   Settings2,
+  MessageSquare,
+  Smartphone,
 } as const
 
 export type IconName = keyof typeof ICON_MAP

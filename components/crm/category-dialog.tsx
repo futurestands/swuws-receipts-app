@@ -141,9 +141,16 @@ export function CategoryDialog({
                     </FormControl>
                     <SelectContent>
                       <SelectItem value="none">No Department</SelectItem>
-                      {departments.map(d => (
-                        <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
-                      ))}
+                      {/* Retired departments are hidden, except the one this
+                          category already routes to — otherwise editing an
+                          unrelated field would blank out its handler. */}
+                      {departments
+                        .filter(d => d.active || d.id === category?.defaultHandlerDepartmentId)
+                        .map(d => (
+                          <SelectItem key={d.id} value={d.id}>
+                            {d.name}{d.active ? "" : " (inactive)"}
+                          </SelectItem>
+                        ))}
                     </SelectContent>
                   </Select>
                   <FormMessage />

@@ -16,6 +16,7 @@ import { useToast } from "@/hooks/use-toast"
 import { Loader2, Plus, User, Tag, UserCheck, ShieldCheck, CheckCircle2, FileText } from "lucide-react"
 import type { CrmComplaintCategory, CrmDepartment, Branch } from "@/lib/db/schema"
 import { format } from "date-fns"
+import { useRouter } from "next/navigation"
 
 const formSchema = z.object({
   complainantName: z.string().min(2, "Name is required"),
@@ -40,6 +41,7 @@ interface RegisterComplaintModalProps {
 }
 
 export function RegisterComplaintModal({ categories, areas, userName }: RegisterComplaintModalProps) {
+  const router = useRouter()
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
   const [areaUsers, setAreaUsers] = useState<{ id: string, name: string, role: string }[]>([])
@@ -119,9 +121,10 @@ export function RegisterComplaintModal({ categories, areas, userName }: Register
         assignedDepartmentId: values.assignedDepartmentId || null
       })
       if (res.ok) {
-        toast({ title: "Success", description: "Complaint registered and staff notified." })
+        toast({ title: "Success", description: `Complaint ${res.complaintNumber} registered.` })
         setOpen(false)
         form.reset()
+        router.refresh()
       }
     } catch (err) {
       toast({ title: "Submission Error", description: err instanceof Error ? err.message : String(err), variant: "destructive" })

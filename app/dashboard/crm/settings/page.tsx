@@ -1,6 +1,6 @@
 import { requireUser } from "@/lib/session"
 import { canConfigureCrm } from "@/lib/permissions"
-import { listCrmDepartments, listCrmComplaintCategories } from "@/app/actions/crm"
+import { listCrmDepartments, listCrmComplaintCategories, seedCrmReferenceData } from "@/app/actions/crm"
 import { PageHeader } from "@/components/ui/page-header"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -14,9 +14,14 @@ export default async function CrmSettingsPage() {
   const user = await requireUser()
   if (!canConfigureCrm(user)) throw new Error("Forbidden")
 
+  await seedCrmReferenceData()
+
+  // includeInactive: this is the only screen that can edit these records, so
+  // filtering out inactive ones made switching a department or category off
+  // an irreversible action.
   const [departments, categories] = await Promise.all([
-    listCrmDepartments(),
-    listCrmComplaintCategories()
+    listCrmDepartments({ includeInactive: true }),
+    listCrmComplaintCategories({ includeInactive: true })
   ])
 
   return (
@@ -92,6 +97,7 @@ export default async function CrmSettingsPage() {
                   <TableRow className="bg-muted/30">
                     <TableHead className="text-[10px] uppercase font-bold">Category Name</TableHead>
                     <TableHead className="text-[10px] uppercase font-bold">Handler</TableHead>
+                    <TableHead className="text-[10px] uppercase font-bold">Status</TableHead>
                     <TableHead className="text-right text-[10px] uppercase font-bold">Action</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -103,6 +109,11 @@ export default async function CrmSettingsPage() {
                          <div className="text-[10px] font-bold text-slate-500 truncate max-w-[120px]">
                            {departments.find(d => d.id === c.defaultHandlerDepartmentId)?.name || 'None'}
                          </div>
+                      </TableCell>
+                      <TableCell>
+                         <Badge variant={c.active ? "default" : "secondary"} className="text-[8px] uppercase h-4 px-1.5">
+                            {c.active ? 'Active' : 'Inactive'}
+                         </Badge>
                       </TableCell>
                       <TableCell className="text-right">
                          <CategoryDialog

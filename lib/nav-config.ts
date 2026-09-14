@@ -88,8 +88,13 @@ export function getNavSections(current: UserPermissionsContext): NavSection[] {
   }
 
   if (canViewCrm(current)) {
+    // The sub-pages are where call-centre staff spend their day; linking only
+    // the hub meant every task started with an extra click through a card.
     const crmItems: NavItem[] = [
       { href: "/dashboard/crm", label: "CRM Hub", icon: "Users", activeMatch: "/dashboard/crm" },
+      { href: "/dashboard/crm/complaints", label: "Complaints", icon: "MessageSquare", activeMatch: "/dashboard/crm/complaints" },
+      { href: "/dashboard/crm/sms", label: "SMS Communications", icon: "Smartphone", activeMatch: "/dashboard/crm/sms" },
+      { href: "/dashboard/crm/reports", label: "Call Center Reports", icon: "FileBarChart", activeMatch: "/dashboard/crm/reports" },
     ]
     sections.push({ label: "Customer Relationship", items: crmItems })
   }

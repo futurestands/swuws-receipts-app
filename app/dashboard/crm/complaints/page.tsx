@@ -5,7 +5,8 @@ import {
   listCrmComplaintCategories,
   getCrmStats,
   listCrmAreas,
-  listCrmStaff
+  listCrmStaff,
+  seedCrmReferenceData,
 } from "@/app/actions/crm"
 import { PageHeader } from "@/components/ui/page-header"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -13,7 +14,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge"
 import { formatDateTime } from "@/lib/format"
 import { Button } from "@/components/ui/button"
-import { Filter, User, PlayCircle, CheckCircle2, MessageSquare, ClipboardList } from "lucide-react"
+import { Filter, User, PlayCircle, CheckCircle2, MessageSquare, ClipboardList, Archive } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { RegisterComplaintModal } from "@/components/crm/register-complaint-modal"
 import { ComplaintRowActions } from "@/components/crm/complaint-row-actions"
@@ -22,6 +23,7 @@ import { ScrollableTableContainer } from "@/components/ui/responsive-table"
 import { ComplaintsServiceBoard } from "@/components/crm/complaints-service-board"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { LayoutGrid, List as ListIcon } from "lucide-react"
+import Link from "next/link"
 import type { CrmComplaint } from "@/lib/db/schema"
 
 type ComplaintRow = CrmComplaint & {
@@ -44,17 +46,24 @@ export default async function ComplaintsPage({
   const user = await requireUser()
   if (!canViewCrm(user)) throw new Error("Forbidden")
 
+  await seedCrmReferenceData()
+
+  const readParam = (key: string) =>
+    typeof searchParams[key] === 'string' ? (searchParams[key] as string) : undefined
+
+  const pageNum = Math.max(1, Number(readParam('page')) || 1)
+
   const filters = {
-    page: 1,
+    page: pageNum,
     limit: 50,
-    status: typeof searchParams.status === 'string' ? searchParams.status : undefined,
-    priority: typeof searchParams.priority === 'string' ? searchParams.priority : undefined,
-    area: typeof searchParams.area === 'string' ? searchParams.area : undefined,
-    categoryId: typeof searchParams.category === 'string' ? searchParams.category : undefined,
-    staffId: typeof searchParams.staff === 'string' ? searchParams.staff : undefined,
-    from: typeof searchParams.from === 'string' ? searchParams.from : undefined,
-    till: typeof searchParams.till === 'string' ? searchParams.till : undefined,
-    complaintNumber: typeof searchParams.no === 'string' ? searchParams.no : undefined,
+    status: readParam('status'),
+    priority: readParam('priority'),
+    area: readParam('area'),
+    categoryId: readParam('category'),
+    staffId: readParam('staff'),
+    from: readParam('from'),
+    till: readParam('till'),
+    complaintNumber: readParam('no'),
   }
 
   const [complaintData, categories, stats, areas, staff] = await Promise.all([
@@ -64,6 +73,26 @@ export default async function ComplaintsPage({
     listCrmAreas(),
     listCrmStaff()
   ])
+
+  // Preserved across page links so paging never silently drops the filters.
+  const filterQuery = new URLSearchParams(
+    Object.entries({
+      no: filters.complaintNumber,
+      from: filters.from,
+      till: filters.till,
+      status: filters.status,
+      priority: filters.priority,
+      area: filters.area,
+      category: filters.categoryId,
+      staff: filters.staffId,
+    }).filter((entry): entry is [string, string] => Boolean(entry[1])),
+  )
+
+  const pageHref = (target: number) => {
+    const params = new URLSearchParams(filterQuery)
+    params.set('page', String(target))
+    return `/dashboard/crm/complaints?${params.toString()}`
+  }
 
   return (
     <div className="space-y-6 max-w-full overflow-hidden">
@@ -82,7 +111,7 @@ export default async function ComplaintsPage({
       </div>
 
       {/* Status Cards - Fixed Responsive Grid */}
-      <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-5">
         <Card className="border-t-4 border-t-sky-500 shadow-sm bg-white">
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
@@ -116,7 +145,9 @@ export default async function ComplaintsPage({
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">In Progress</p>
-                <p className="text-2xl font-black text-amber-600 mt-1">{stats.complaints.assigned}</p>
+                <p className="text-2xl font-black text-amber-600 mt-1">
+                  {stats.complaints.assigned + stats.complaints.inProgress}
+                </p>
               </div>
               <div className="h-10 w-10 rounded-full bg-amber-50 flex items-center justify-center">
                  <User className="h-5 w-5 text-amber-400" />
@@ -130,7 +161,7 @@ export default async function ComplaintsPage({
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Resolved</p>
-                <p className="text-2xl font-black text-emerald-600 mt-1">{stats.complaints.closed}</p>
+                <p className="text-2xl font-black text-emerald-600 mt-1">{stats.complaints.resolved}</p>
               </div>
               <div className="h-10 w-10 rounded-full bg-emerald-50 flex items-center justify-center">
                  <CheckCircle2 className="h-5 w-5 text-emerald-400" />
@@ -138,9 +169,23 @@ export default async function ComplaintsPage({
             </div>
           </CardContent>
         </Card>
+
+        <Card className="border-t-4 border-t-slate-400 shadow-sm bg-white">
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Closed</p>
+                <p className="text-2xl font-black text-slate-700 mt-1">{stats.complaints.closed}</p>
+              </div>
+              <div className="h-10 w-10 rounded-full bg-slate-100 flex items-center justify-center">
+                 <Archive className="h-5 w-5 text-slate-400" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
-      <ComplaintsFilterBar areas={areas} staff={staff} />
+      <ComplaintsFilterBar areas={areas} staff={staff} categories={categories} />
 
       <Tabs defaultValue="board" className="w-full">
         <div className="flex items-center justify-between mb-4">
@@ -231,11 +276,12 @@ export default async function ComplaintsPage({
                                 "h-5 px-2 text-[9px] uppercase font-black border shadow-sm",
                                 c.status === 'open' ? 'bg-rose-50 text-rose-700 border-rose-100' :
                                 c.status === 'assigned' ? 'bg-amber-50 text-amber-700 border-amber-100' :
+                                c.status === 'in_progress' ? 'bg-sky-50 text-sky-700 border-sky-100' :
                                 c.status === 'resolved' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' :
                                 'bg-slate-50 text-slate-700 border-slate-200'
                               )}
                             >
-                              {c.status}
+                              {c.status.replace('_', ' ')}
                             </Badge>
                           </TableCell>
                           <TableCell className="text-right pr-8">
@@ -251,6 +297,34 @@ export default async function ComplaintsPage({
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/* listComplaints has always returned totalPages, but nothing rendered
+          a pager -- so only the newest 50 tickets were ever reachable. */}
+      {complaintData.totalPages > 1 && (
+        <div className="flex items-center justify-center gap-4 pt-2">
+          <Button
+            variant="outline"
+            size="sm"
+            asChild={pageNum > 1}
+            disabled={pageNum <= 1}
+            className="h-10 text-[10px] font-black uppercase tracking-widest"
+          >
+            {pageNum > 1 ? <Link href={pageHref(pageNum - 1)}>Previous</Link> : <span>Previous</span>}
+          </Button>
+          <span className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">
+            Page {pageNum} of {complaintData.totalPages} · {complaintData.total} ticket(s)
+          </span>
+          <Button
+            variant="outline"
+            size="sm"
+            asChild={pageNum < complaintData.totalPages}
+            disabled={pageNum >= complaintData.totalPages}
+            className="h-10 text-[10px] font-black uppercase tracking-widest"
+          >
+            {pageNum < complaintData.totalPages ? <Link href={pageHref(pageNum + 1)}>Next</Link> : <span>Next</span>}
+          </Button>
+        </div>
+      )}
     </div>
   )
 }

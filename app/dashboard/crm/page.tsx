@@ -1,6 +1,6 @@
 import { requireUser } from "@/lib/session"
 import { canViewCrm, canConfigureCrm } from "@/lib/permissions"
-import { getCrmStats } from "@/app/actions/crm"
+import { getCrmStats, seedCrmReferenceData } from "@/app/actions/crm"
 import { PageHeader } from "@/components/ui/page-header"
 import { StatCard, StatCardGrid } from "@/components/ui/stat-card"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
@@ -10,9 +10,10 @@ import { MessageSquare, Smartphone, CheckCircle2, AlertCircle, Clock, FileBarCha
 import Link from "next/link"
 
 export default async function CrmDashboardPage() {
-  console.log("CRM Dashboard Page Hit");
   const user = await requireUser()
   if (!canViewCrm(user)) throw new Error("Forbidden")
+
+  await seedCrmReferenceData()
 
   const [stats, canConfig] = await Promise.all([
     getCrmStats(),
