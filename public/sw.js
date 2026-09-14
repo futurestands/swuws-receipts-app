@@ -1,11 +1,19 @@
-const CACHE_NAME = 'swuws-cache-v2';
-const STATIC_CACHE_NAME = 'swuws-static-v2';
+const CACHE_NAME = 'swuws-cache-v3';
+const STATIC_CACHE_NAME = 'swuws-static-v3';
 
+// Served for any navigation that fails while offline. Unlike
+// /dashboard/offline this route has no auth gate and reads no server data,
+// so a cached copy still renders when the device is disconnected. It lives
+// on the app origin, which is the only origin where Capacitor injects the
+// native bridge — public/offline.html (server.errorPath) cannot reach
+// CapacitorSQLite at all.
+const OFFLINE_SHELL_URL = '/offline-shell';
 const OFFLINE_URL = '/dashboard/offline';
 const LOGS_URL = '/dashboard/offline/logs';
 const SETTINGS_URL = '/dashboard/settings/printer';
 
-// Core assets that MUST be cached during installation
+// Best-effort warm cache. Auth-gated routes may come back as login
+// redirects here, which is why precaching is per-URL and tolerant below.
 const PRECACHE_ASSETS = [
   '/',
   OFFLINE_URL,
@@ -15,12 +23,37 @@ const PRECACHE_ASSETS = [
   '/logo.jpg'
 ];
 
+/**
+ * Caches the offline shell plus the /_next/static chunks its HTML
+ * references. Caching the HTML alone is not enough: without its JS the
+ * shell renders as a dead page, and the chunk URLs are only discoverable
+ * from the markup.
+ */
+async function precacheOfflineShell(cache) {
+  const response = await fetch(OFFLINE_SHELL_URL, { credentials: 'same-origin' });
+  if (!response.ok || response.redirected) return;
+
+  const html = await response.clone().text();
+  await cache.put(OFFLINE_SHELL_URL, response);
+
+  const assets = new Set(html.match(/\/_next\/static\/[^"'\\\s>]+/g) || []);
+  const staticCache = await caches.open(STATIC_CACHE_NAME);
+  await Promise.all([...assets].map((url) => staticCache.add(url).catch(() => {})));
+}
+
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    Promise.all([
-      caches.open(CACHE_NAME).then((cache) => cache.addAll(PRECACHE_ASSETS)),
-      self.skipWaiting()
-    ])
+    (async () => {
+      const cache = await caches.open(CACHE_NAME);
+
+      // Per-URL and failure-tolerant on purpose: cache.addAll() is
+      // all-or-nothing, so a single redirect or 404 in the list aborted the
+      // whole installation and left the device with no service worker —
+      // meaning no offline fallback whatsoever.
+      await Promise.all(PRECACHE_ASSETS.map((url) => cache.add(url).catch(() => {})));
+      await precacheOfflineShell(cache).catch(() => {});
+      await self.skipWaiting();
+    })()
   );
 });
 
@@ -69,8 +102,11 @@ self.addEventListener('fetch', (event) => {
   event.respondWith(
     fetch(request)
       .then((response) => {
-        // Cache successful responses for future offline use
-        if (response && response.status === 200) {
+        // Cache successful responses for future offline use. Redirected
+        // responses are skipped: a navigation FetchEvent cannot be fulfilled
+        // with one, so caching it would make the offline navigation throw
+        // instead of rendering.
+        if (response && response.status === 200 && !response.redirected) {
           const responseToCache = response.clone();
           caches.open(CACHE_NAME).then((cache) => {
             cache.put(request, responseToCache);
@@ -78,16 +114,20 @@ self.addEventListener('fetch', (event) => {
         }
         return response;
       })
-      .catch(() => {
+      .catch(async () => {
         // OFFLINE FALLBACK
-        return caches.match(request).then((cachedResponse) => {
-          if (cachedResponse) return cachedResponse;
+        const cachedResponse = await caches.match(request);
+        if (cachedResponse) return cachedResponse;
 
-          // If a page was requested and it's not in cache, show the offline page
-          if (request.mode === 'navigate') {
-            return caches.match(OFFLINE_URL);
-          }
-        });
+        // If a page was requested and it's not in cache, hand over to the
+        // offline workspace. Falling through to a network error here is what
+        // drops the user onto the errorPath shell, which has no bridge.
+        if (request.mode === 'navigate') {
+          const shell = (await caches.match(OFFLINE_SHELL_URL)) || (await caches.match(OFFLINE_URL));
+          if (shell) return shell;
+        }
+
+        return Response.error();
       })
   );
 });

@@ -95,8 +95,12 @@
         <p style="text-align: center; font-size: 0.7rem; color: #94a3b8; margin-top: 1rem;">v1.6 (Hardened Offline Shell)</p>
     </div>
 
-    <!-- Required for Capacitor Bridge in local files -->
-    <script src="capacitor.js"></script>
+    <!--
+      There is deliberately no capacitor.js script tag here.
+      WebViewLocalServer only serves cordova.js and cordova_plugins.js from
+      assets, so that request 404s. The bridge arrives from the native layer
+      (see MainActivity.exposeBridgeToOfflineShell) or not at all.
+    -->
 
     <script>
         function log(msg, type = '') {
@@ -108,6 +112,14 @@
             console.log(`[OfflineShell] ${msg}`);
         }
 
+        function showBridgeUnavailable() {
+            document.getElementById('search').disabled = true;
+            document.getElementById('results').innerHTML =
+                '<div class="empty">Local search is unavailable on this screen.</div>';
+            document.getElementById('queue-status').innerText =
+                'Queued items stay on the device and upload once the app reconnects.';
+        }
+
         class SimpleSQLite {
             constructor() {
                 this.dbName = "swuws_offline_cache";
@@ -116,7 +128,14 @@
 
             async findPlugin() {
                 log("Waiting for Capacitor bridge...");
-                const maxWait = 20000; // Increased to 20s for slow device initialization
+                // Short probe on purpose. When this page is reached through
+                // server.errorPath the bridge is never injected (Capacitor
+                // scopes its document-start script to the server.url origin
+                // and skips injection for error URLs), so a long wait only
+                // delays the message below. It stays a probe rather than a
+                // hard "no" so the page still works if the native layer is
+                // ever taught to inject the bridge for this origin.
+                const maxWait = 2500;
                 const start = Date.now();
 
                 while (Date.now() - start < maxWait) {
@@ -136,6 +155,10 @@
                 }
 
                 log(`SQLite plugin NOT found after ${Math.round((Date.now()-start)/1000)}s.`, "error");
+                log("This fallback screen has no native bridge, so the local", "error");
+                log("customer cache cannot be opened from here. Your queued", "error");
+                log("work is safe -- reconnect and reopen the app to reach it.", "error");
+                showBridgeUnavailable();
                 document.getElementById('init-retry').style.display = 'block';
                 return false;
             }
