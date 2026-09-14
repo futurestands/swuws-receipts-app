@@ -30,3 +30,8 @@ scratch/test.zip
 tsconfig.tsbuildinfo
 # Large binary distribution artifacts
 # public/*.apk
+
+# Android signing secrets (passwords + private keys)
+android/keystore.properties
+android/**/*.jks
+android/**/*.keystore
