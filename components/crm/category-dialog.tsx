@@ -49,11 +49,9 @@ type CategoryFormValues = z.infer<typeof categorySchema>
 export function CategoryDialog({
   category,
   departments,
-  trigger,
 }: {
   category?: CrmComplaintCategory
   departments: CrmDepartment[]
-  trigger?: React.ReactNode
 }) {
   const router = useRouter()
   const [open, setOpen] = useState(false)
@@ -91,7 +89,11 @@ export function CategoryDialog({
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        {trigger || (
+        {category ? (
+          <Button variant="ghost" size="sm" className="h-7 text-[10px] font-bold">
+            Update
+          </Button>
+        ) : (
           <Button size="sm" variant="outline" className="h-8 text-[10px] font-black uppercase tracking-tighter">
             <Plus className="mr-1 h-3 w-3" /> Add Category
           </Button>

@@ -16,13 +16,19 @@ function SheetTrigger({
   children,
   ...props
 }: SheetPrimitive.Trigger.Props & { asChild?: boolean }) {
+  if (asChild) {
+    return (
+      <SheetPrimitive.Trigger
+        data-slot="sheet-trigger"
+        render={children as React.ReactElement}
+        {...props}
+      />
+    )
+  }
+
   return (
-    <SheetPrimitive.Trigger
-      data-slot="sheet-trigger"
-      render={asChild ? (children as React.ReactElement) : undefined}
-      {...props}
-    >
-      {asChild ? undefined : children}
+    <SheetPrimitive.Trigger data-slot="sheet-trigger" {...props}>
+      {children}
     </SheetPrimitive.Trigger>
   )
 }
