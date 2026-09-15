@@ -5,7 +5,8 @@ import { useRouter } from "next/navigation"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import * as z from "zod"
-import { Button } from "@/components/ui/button"
+import { Button, buttonVariants } from "@/components/ui/button"
+import { cn } from "@/lib/utils"
 import {
   Dialog,
   DialogContent,
@@ -40,10 +41,8 @@ type DeptFormValues = z.infer<typeof deptSchema>
 
 export function DepartmentDialog({
   department,
-  trigger,
 }: {
   department?: CrmDepartment
-  trigger?: React.ReactNode
 }) {
   const router = useRouter()
   const [open, setOpen] = useState(false)
@@ -79,11 +78,21 @@ export function DepartmentDialog({
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        {trigger || (
-          <Button size="sm" variant="outline" className="h-8 text-[10px] font-black uppercase tracking-tighter">
+      <DialogTrigger
+        className={cn(
+          buttonVariants({
+            variant: department ? "ghost" : "outline",
+            size: "sm",
+          }),
+          department
+            ? "h-7 text-[10px] font-bold"
+            : "h-8 text-[10px] font-black uppercase tracking-tighter",
+        )}
+      >
+        {department ? "Update" : (
+          <>
             <Plus className="mr-1 h-3 w-3" /> Add Dept
-          </Button>
+          </>
         )}
       </DialogTrigger>
       <DialogContent className="sm:max-w-[425px]">

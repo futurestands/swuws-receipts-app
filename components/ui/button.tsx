@@ -51,19 +51,32 @@ function Button({
   onClick,
   ...props
 }: ButtonPrimitive.Props & VariantProps<typeof buttonVariants> & { asChild?: boolean }) {
+  const handleClick = (e: any) => {
+    hapticFeedback()
+    if (onClick) onClick(e)
+  }
+
+  if (asChild) {
+    return (
+      <ButtonPrimitive
+        data-slot="button"
+        nativeButton={false}
+        render={children as React.ReactElement}
+        className={cn(buttonVariants({ variant, size, className }))}
+        onClick={handleClick}
+        {...props}
+      />
+    )
+  }
+
   return (
     <ButtonPrimitive
       data-slot="button"
-      nativeButton={asChild ? false : undefined}
-      render={asChild ? (children as React.ReactElement) : undefined}
       className={cn(buttonVariants({ variant, size, className }))}
-      onClick={(e: any) => {
-        hapticFeedback()
-        if (onClick) onClick(e)
-      }}
+      onClick={handleClick}
       {...props}
     >
-      {asChild ? undefined : children}
+      {children}
     </ButtonPrimitive>
   )
 }
