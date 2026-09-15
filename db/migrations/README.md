@@ -87,3 +87,7 @@ If any of these statements succeed, the corresponding migration was not
 applied correctly — do not consider the system production-ready until all
 four fail as shown above.
 
+After `0054_receipt_recon_status_allowlist.sql`, a `reconciliationStatus`-only
+update (matched / void) must succeed. Changing any other receipt column must
+still raise.
+

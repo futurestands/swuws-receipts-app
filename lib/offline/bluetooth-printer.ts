@@ -1,6 +1,7 @@
 import { BleClient } from '@capacitor-community/bluetooth-le';
 import { isNative } from '../mobile-hardware';
 import { generateReceiptCommands, encodeESC, ReceiptData } from './esc-pos-helper';
+import { sqliteService } from './sqlite-service';
 
 /**
  * NATIVE BLUETOOTH PRINTER SERVICE (BLE)
@@ -48,15 +49,45 @@ class BluetoothPrinterService {
   }
 
   async printReceipt(data: ReceiptData, paperWidth: '58mm' | '80mm' = '58mm') {
-    const connected = await this.scanAndConnect();
-    if (!connected) throw new Error('No printer connected');
+    await this.init();
+    const settings = await sqliteService.getPrinterSettings();
+    let connected = false;
+
+    if (settings?.deviceId) {
+      try {
+        this.deviceId = settings.deviceId;
+        await BleClient.connect(this.deviceId);
+        connected = true;
+      } catch {
+        this.deviceId = null;
+      }
+    }
+
+    if (!connected) {
+      connected = await this.scanAndConnect();
+      if (connected && this.deviceId) {
+        try {
+          await sqliteService.updatePrinterSettings({
+            type: settings?.type || 'auto',
+            deviceId: this.deviceId,
+            deviceName: settings?.deviceName,
+            paperWidth: settings?.paperWidth || paperWidth,
+            networkIp: settings?.networkIp,
+          });
+        } catch {
+          /* settings persist is best-effort */
+        }
+      }
+    }
+
+    if (!connected || !this.deviceId) throw new Error('No Bluetooth printer connected');
 
     try {
       const commands = generateReceiptCommands(data, paperWidth);
       const bytes = encodeESC(commands);
       const dataView = new DataView(bytes.buffer);
 
-      await BleClient.write(this.deviceId!, PRINTER_SERVICE_UUID, PRINTER_CHARACTERISTIC_UUID, dataView);
+      await BleClient.write(this.deviceId, PRINTER_SERVICE_UUID, PRINTER_CHARACTERISTIC_UUID, dataView);
 
       return true;
     } catch (err) {

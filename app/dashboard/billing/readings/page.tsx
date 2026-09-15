@@ -44,7 +44,7 @@ export default async function MeterReadingsPage() {
             <ReadingEntryForm
               activePeriod={activePeriod}
               initialHistory={recentReadings}
-              currentUser={{ id: user.id, role: user.role }}
+              currentUser={{ id: user.id, role: user.role, roleLevel: user.roleLevel }}
             />
           ) : (
             <div className="p-8 text-center border-2 border-dashed rounded-xl bg-muted/20 no-print">

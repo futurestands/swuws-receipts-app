@@ -20,7 +20,11 @@ public class MainActivity extends BridgeActivity {
      * this minimal: every entry is exposed to a page served from the local
      * asset origin.
      */
-    private static final String[] OFFLINE_SHELL_PLUGINS = { "CapacitorSQLite" };
+    private static final String[] OFFLINE_SHELL_PLUGINS = {
+        "CapacitorSQLite",
+        "BluetoothLe",
+        "TcpSocket"
+    };
 
     @Override
     public void onCreate(Bundle savedInstanceState) {

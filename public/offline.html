@@ -3,74 +3,180 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <title>SWUWS Offline Mode</title>
+    <title>SWUWS Portal</title>
     <style>
-        :root { --brand-blue: #2c4a5e; --bg-gray: #f8fafc; --primary: #3b82f6; --destructive: #ef4444; }
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background: var(--bg-gray); margin: 0; color: #1e293b; display: flex; flex-direction: column; height: 100vh; }
-        .header { background: var(--brand-blue); color: white; padding: 1.5rem 1rem; padding-top: calc(1rem + env(safe-area-inset-top)); text-align: center; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-        .status-bar { background: #fee2e2; color: #991b1b; padding: 0.5rem; padding-top: calc(0.5rem + env(safe-area-inset-top)); text-align: center; font-size: 0.75rem; font-weight: bold; border-bottom: 1px solid #fecaca; }
-        .content { flex: 1; padding: 1rem; overflow-y: auto; }
-        .card { background: white; border-radius: 0.75rem; padding: 1rem; margin-bottom: 1rem; border: 1px solid #e2e8f0; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
-        .btn { background: var(--brand-blue); color: white; border: none; padding: 0.75rem 1rem; border-radius: 0.5rem; font-weight: 600; width: 100%; cursor: pointer; margin-top: 1rem; }
-        .btn-sm { padding: 0.4rem 0.75rem; font-size: 0.8rem; margin-top: 0; width: auto; }
-        .btn-outline { background: white; color: var(--brand-blue); border: 1px solid var(--brand-blue); }
-        .search-box { width: 100%; padding: 0.75rem; border-radius: 0.5rem; border: 1px solid #cbd5e1; box-sizing: border-box; font-size: 1rem; }
-        .customer-item { padding: 0.75rem 0; border-bottom: 1px solid #f1f5f9; display: flex; justify-content: space-between; align-items: center; }
-        .customer-item:last-child { border-bottom: none; }
-        .customer-name { font-weight: bold; margin: 0; }
-        .customer-meta { font-size: 0.85rem; color: #64748b; margin-top: 0.25rem; }
-        .empty { text-align: center; color: #94a3b8; padding: 2rem 0; }
-        .retry-container { padding: 1rem; background: white; border-top: 1px solid #e2e8f0; }
-
-        .diagnostics { margin-top: 1rem; font-size: 0.65rem; color: #64748b; background: #f1f5f9; padding: 0.75rem; border-radius: 0.4rem; font-family: monospace; white-space: pre-wrap; line-height: 1.4; border: 1px solid #e2e8f0; }
-        .diagnostics.active { display: block; }
-        .log-entry { margin-bottom: 2px; }
-        .log-error { color: #ef4444; font-weight: bold; }
-        .log-success { color: #10b981; font-weight: bold; }
-
-        /* Modal Styles */
-        #payment-modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 100; align-items: center; justify-content: center; padding: 1rem; }
-        .modal-content { background: white; width: 100%; max-width: 400px; border-radius: 1rem; padding: 1.5rem; box-sizing: border-box; }
-        .form-group { margin-bottom: 1rem; }
-        .form-group label { display: block; font-size: 0.75rem; font-weight: bold; color: #64748b; margin-bottom: 0.25rem; text-transform: uppercase; }
-        .form-group input, .form-group select { width: 100%; padding: 0.6rem; border-radius: 0.4rem; border: 1px solid #cbd5e1; box-sizing: border-box; }
+        :root {
+            --primary: #2563eb;
+            --primary-dark: #1d4ed8;
+            --brand: #2c4a5e;
+            --text: #0f172a;
+            --muted: #64748b;
+            --line: #e2e8f0;
+            --bg: #f8fafc;
+            --danger: #dc2626;
+            --card: #ffffff;
+        }
+        * { box-sizing: border-box; }
+        html, body { height: 100%; }
+        body {
+            margin: 0;
+            font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            display: flex;
+            flex-direction: column;
+        }
+        .app-header {
+            position: sticky;
+            top: 0;
+            z-index: 40;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            min-height: 3.5rem;
+            padding: calc(0.5rem + env(safe-area-inset-top)) 0.85rem 0.5rem;
+            background: rgba(255,255,255,0.95);
+            border-bottom: 1px solid var(--line);
+            backdrop-filter: blur(8px);
+        }
+        .icon-btn, .text-btn {
+            background: none;
+            border: none;
+            padding: 0.4rem;
+            border-radius: 0.5rem;
+            color: var(--text);
+            cursor: pointer;
+        }
+        .brand { display: flex; flex-direction: column; line-height: 1; min-width: 0; }
+        .brand-top { font-size: 11px; font-weight: 900; letter-spacing: -0.04em; text-transform: uppercase; color: var(--primary); }
+        .brand-sub { font-size: 8px; font-weight: 700; text-transform: uppercase; color: #60a5fa; }
+        .header-right { margin-left: auto; display: flex; align-items: center; gap: 0.65rem; }
+        .status-dot { width: 8px; height: 8px; border-radius: 999px; background: #22c55e; display: inline-block; }
+        .text-btn { font-size: 0.875rem; color: var(--muted); padding: 0.35rem 0.2rem; }
+        main { flex: 1; overflow-y: auto; padding: 1rem 1rem 2rem; }
+        .wrap { max-width: 42rem; margin: 0 auto; }
+        .search-wrap { position: relative; margin-bottom: 0.85rem; }
+        .search-wrap svg { position: absolute; left: 0.85rem; top: 50%; transform: translateY(-50%); color: var(--muted); }
+        .search-box {
+            width: 100%;
+            height: 2.75rem;
+            padding: 0 0.9rem 0 2.4rem;
+            border: 1px solid var(--line);
+            border-radius: 0.55rem;
+            background: var(--card);
+            font-size: 0.95rem;
+            box-shadow: 0 1px 2px rgba(15,23,42,0.04);
+        }
+        .search-box:focus { outline: 2px solid #93c5fd; border-color: var(--primary); }
+        .cust-card {
+            background: var(--card);
+            border: 1px solid #e8eef3;
+            border-radius: 0.75rem;
+            padding: 1rem;
+            margin-bottom: 0.75rem;
+            box-shadow: 0 1px 2px rgba(15,23,42,0.04);
+        }
+        .cust-row { display: flex; justify-content: space-between; align-items: center; gap: 0.75rem; }
+        .cust-name { margin: 0; font-size: 1rem; font-weight: 700; line-height: 1.2; }
+        .cust-meta { display: flex; flex-wrap: wrap; gap: 0.35rem 0.5rem; margin-top: 0.4rem; }
+        .acct {
+            font-size: 10px; font-weight: 800; letter-spacing: 0.02em; text-transform: uppercase;
+            color: var(--muted); background: #f1f5f9; padding: 0.1rem 0.3rem; border-radius: 0.25rem;
+        }
+        .phone { font-size: 10px; font-weight: 800; letter-spacing: 0.02em; text-transform: uppercase; color: var(--muted); }
+        .arrears { margin-top: 0.55rem; display: flex; align-items: center; gap: 0.4rem; }
+        .arrears-label { font-size: 11px; font-weight: 800; text-transform: uppercase; color: var(--muted); }
+        .arrears-val { font-size: 0.9rem; font-weight: 900; }
+        .arrears-val.due { color: var(--danger); }
+        .arrears-val.credit { color: var(--primary); }
+        .cust-actions { display: flex; gap: 0.5rem; flex-shrink: 0; }
+        .btn-reading, .btn-collect, .btn-print, .btn-primary, .btn-ghost {
+            border-radius: 0.45rem; font-weight: 600; font-size: 0.8rem; height: 2.5rem; padding: 0 0.75rem; cursor: pointer;
+        }
+        .btn-reading { background: #fff; color: var(--text); border: 1px solid var(--line); }
+        .btn-collect, .btn-primary { background: var(--primary); color: #fff; border: 1px solid var(--primary); }
+        .btn-ghost { background: #fff; color: var(--primary); border: 1px solid var(--primary); }
+        .empty { text-align: center; color: var(--muted); padding: 3rem 1rem; border: 2px dashed var(--line); border-radius: 0.9rem; background: #f8fafc; }
+        .queue {
+            display: none; background: var(--card); border: 1px solid var(--line); border-radius: 0.75rem;
+            margin-bottom: 0.85rem; overflow: hidden;
+        }
+        .queue.show { display: block; }
+        .queue-head { padding: 0.75rem 1rem; border-bottom: 1px solid var(--line); font-size: 0.8rem; font-weight: 700; }
+        .queue-row { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; padding: 0.75rem 1rem; border-bottom: 1px solid #f1f5f9; font-size: 0.85rem; }
+        .queue-row:last-child { border-bottom: none; }
+        .muted { color: var(--muted); font-size: 0.75rem; }
+        .drawer-bg { display: none; position: fixed; inset: 0; background: rgba(15,23,42,0.4); z-index: 50; }
+        .drawer-bg.open { display: block; }
+        .drawer {
+            position: absolute; left: 0; top: 0; bottom: 0; width: min(18rem, 85vw);
+            background: #fff; padding-top: env(safe-area-inset-top); box-shadow: 4px 0 24px rgba(15,23,42,0.12);
+        }
+        .drawer h2 { font-size: 0.85rem; font-weight: 900; letter-spacing: 0.04em; text-transform: uppercase; color: var(--brand); padding: 1.25rem 1rem 0.75rem; margin: 0; border-bottom: 1px solid var(--line); }
+        .drawer button { display: block; width: 100%; text-align: left; background: none; border: none; padding: 0.9rem 1rem; font-size: 0.95rem; font-weight: 600; }
+        .diagnostics { display: none; margin-top: 1rem; font-size: 0.65rem; color: var(--muted); background: #f1f5f9; padding: 0.75rem; border-radius: 0.4rem; font-family: ui-monospace, monospace; white-space: pre-wrap; }
+        .diagnostics.show { display: block; }
+        .log-error { color: var(--danger); font-weight: 700; }
+        .log-success { color: #059669; font-weight: 700; }
+        #payment-modal, #reading-modal { display: none; position: fixed; inset: 0; background: rgba(15,23,42,0.45); z-index: 60; align-items: center; justify-content: center; padding: 1rem; }
+        .modal-content { background: #fff; width: 100%; max-width: 400px; border-radius: 1rem; padding: 1.35rem; }
+        .form-group { margin-bottom: 0.9rem; }
+        .form-group label { display: block; font-size: 0.7rem; font-weight: 800; color: var(--muted); margin-bottom: 0.3rem; text-transform: uppercase; }
+        .form-group input, .form-group select { width: 100%; padding: 0.65rem; border-radius: 0.45rem; border: 1px solid var(--line); }
+        .modal-actions { display: flex; gap: 0.5rem; margin-top: 1.1rem; }
+        .modal-actions button { flex: 1; }
+        #init-retry { display: none; margin-top: 0.75rem; }
     </style>
 </head>
 <body>
-    <div class="status-bar">📴 OFFLINE MODE: Connection to server failed</div>
-    <header class="header">
-        <h1 style="margin: 0; font-size: 1.25rem;">SWUWS Portal</h1>
-        <p style="margin: 0.25rem 0 0; font-size: 0.85rem; opacity: 0.8;">Regional Field Operations</p>
+    <header class="app-header">
+        <button class="icon-btn" type="button" onclick="toggleMenu()" aria-label="Open menu">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+        </button>
+        <div class="brand">
+            <span class="brand-top">SWUWS</span>
+            <span class="brand-sub">Portal</span>
+        </div>
+        <div class="header-right">
+            <span class="status-dot" title="Connected to local cache"></span>
+            <button class="icon-btn" type="button" aria-label="Notifications">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10 21a2 2 0 0 0 4 0"/></svg>
+            </button>
+            <button class="text-btn" type="button" onclick="window.location.reload()">Sign out</button>
+        </div>
     </header>
 
-    <main class="content">
-        <div class="card">
-            <h3 style="margin-top: 0;">Offline Search</h3>
-            <p style="font-size: 0.85rem; color: #64748b; margin-bottom: 1rem;">Access customers you synced while online.</p>
-            <input type="text" id="search" class="search-box" placeholder="Search by name or account..." oninput="handleSearch()">
+    <div id="drawer-bg" class="drawer-bg" onclick="toggleMenu()">
+        <div class="drawer" onclick="event.stopPropagation()">
+            <h2>SWUWS Collection<br>Portal</h2>
+            <button type="button" onclick="toggleMenu()">Customers</button>
+            <button type="button" onclick="window.location.reload()">Reconnect</button>
+        </div>
+    </div>
 
-            <div id="results" class="results-container">
-                <div class="empty">Type to search local database...</div>
+    <main>
+        <div class="wrap">
+            <div id="queue" class="queue">
+                <div class="queue-head" id="queue-status">Waiting to send</div>
+                <div id="queue-list"></div>
             </div>
-        </div>
 
-        <div class="card" id="sync-card">
-            <h3 style="margin-top: 0;">Pending Uploads</h3>
-            <div id="queue-status" class="customer-meta">Checking queue...</div>
+            <div class="search-wrap">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3-3"/></svg>
+                <input type="text" id="search" class="search-box" placeholder="Find customer in cache..." oninput="handleSearch()">
+            </div>
+            <div id="results"></div>
+            <div id="diag-box" class="diagnostics"></div>
+            <button id="init-retry" class="btn-ghost" type="button" onclick="initDatabase()">Retry</button>
         </div>
-
-        <div id="diag-box" class="diagnostics active">
-            <div class="log-entry">Initializing robust shell...</div>
-        </div>
-        <button id="init-retry" class="btn btn-sm btn-outline" style="display:none; margin-top: 0.5rem;" onclick="initDatabase()">Retry Initialization</button>
     </main>
 
     <div id="payment-modal">
         <div class="modal-content">
-            <h3 id="modal-title" style="margin-top: 0;">Record Payment</h3>
+            <h3 id="modal-title" style="margin-top:0">Record payment</h3>
             <div class="form-group">
                 <label>Amount (UGX)</label>
-                <input type="number" id="pay-amount" placeholder="Enter amount">
+                <input type="number" id="pay-amount" placeholder="e.g. 50000">
             </div>
             <div class="form-group">
                 <label>Method</label>
@@ -80,84 +186,129 @@
                 </select>
             </div>
             <div class="form-group">
-                <label>Reference (Optional)</label>
+                <label>Reference (optional)</label>
                 <input type="text" id="pay-ref" placeholder="Ref #">
             </div>
-            <div style="display: flex; gap: 0.5rem; margin-top: 1.5rem;">
-                <button class="btn btn-outline" style="margin-top: 0;" onclick="closeModal()">Cancel</button>
-                <button class="btn" style="margin-top: 0; flex: 1;" onclick="queueReceipt()">Save Offline</button>
+            <div class="modal-actions">
+                <button class="btn-reading" type="button" onclick="closeModal()">Cancel</button>
+                <button class="btn-collect" type="button" onclick="queueReceipt()">Save &amp; Print</button>
             </div>
         </div>
     </div>
 
-    <div class="retry-container">
-        <button class="btn" onclick="window.location.reload()">Try Reconnect to Live Server</button>
-        <p style="text-align: center; font-size: 0.7rem; color: #94a3b8; margin-top: 1rem;">v1.7 (Paged Offline Cache)</p>
+    <div id="reading-modal">
+        <div class="modal-content">
+            <h3 id="reading-title" style="margin-top:0">Meter reading</h3>
+            <p id="reading-previous" class="muted">Previous: —</p>
+            <div class="form-group">
+                <label>Current reading (m³)</label>
+                <input type="number" id="reading-current" placeholder="Enter reading">
+            </div>
+            <div class="form-group">
+                <label>Notes (optional)</label>
+                <input type="text" id="reading-notes" placeholder="Broken meter, leak...">
+            </div>
+            <div class="modal-actions">
+                <button class="btn-reading" type="button" onclick="closeReadingModal()">Cancel</button>
+                <button class="btn-collect" type="button" onclick="queueReading()">Save reading</button>
+            </div>
+        </div>
     </div>
 
-    <!--
-      There is deliberately no capacitor.js script tag here.
-      WebViewLocalServer only serves cordova.js and cordova_plugins.js from
-      assets, so that request 404s. The bridge arrives from the native layer
-      (see MainActivity.exposeBridgeToOfflineShell) or not at all.
-    -->
-
     <script>
-        function log(msg, type = '') {
+        const PRINTER_SERVICE = '0000ff00-0000-1000-8000-00805f9b34fb';
+        const PRINTER_CHAR = '0000ff01-0000-1000-8000-00805f9b34fb';
+
+        function toggleMenu() {
+            document.getElementById('drawer-bg').classList.toggle('open');
+        }
+
+        function log(msg, type) {
             const box = document.getElementById('diag-box');
+            if (type === 'error') box.classList.add('show');
             const entry = document.createElement('div');
-            entry.className = 'log-entry ' + (type ? 'log-' + type : '');
-            entry.innerText = `> ${msg}`;
+            entry.className = type ? 'log-' + type : '';
+            entry.innerText = msg;
             box.appendChild(entry);
-            console.log(`[OfflineShell] ${msg}`);
+            console.log('[OfflineShell] ' + msg);
         }
 
         function showBridgeUnavailable() {
             document.getElementById('search').disabled = true;
             document.getElementById('results').innerHTML =
-                '<div class="empty">Local search is unavailable on this screen.</div>';
-            document.getElementById('queue-status').innerText =
-                'Queued items stay on the device and upload once the app reconnects.';
+                '<div class="empty">Customer cache is not ready on this device yet. Reconnect, open Customers, and tap Sync Cache.</div>';
+        }
+
+        function escapeHtml(s) {
+            return String(s || '').replace(/[&<>"']/g, function (c) {
+                return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c];
+            });
+        }
+
+        function displayPhone(p) {
+            if (!p || String(p).toUpperCase() === 'NULL') return '';
+            return String(p);
+        }
+
+        function formatUGX(n) {
+            const v = Number(n);
+            if (!isFinite(v)) return 'UGX 0';
+            return 'UGX ' + Math.abs(v).toLocaleString();
+        }
+
+        function safeId() {
+            return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
+                const r = Math.random() * 16 | 0;
+                return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+            });
+        }
+
+        function bytesToBase64(bytes) {
+            let binary = '';
+            for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+            return btoa(binary);
+        }
+
+        function buildReceiptEscPos(data) {
+            const ESC = '\u001b';
+            const GS = '\u001d';
+            const line = '--------------------------------';
+            let c = ESC + '@';
+            c += ESC + 'a\u0001' + ESC + 'E\u0001' + GS + '!\u0010' + (data.orgName || 'SWUWS PORTAL') + GS + '!\u0000' + ESC + 'E\u0000' + '\n';
+            c += 'Collection Receipt\n' + line + '\n';
+            c += ESC + 'E\u0001PROVISIONAL RECEIPT' + ESC + 'E\u0000\n';
+            c += '(Pending Server Sync)\n';
+            c += ESC + 'a\u0000\n';
+            c += 'Receipt #: ' + data.receiptNumber + '\n';
+            c += 'Date: ' + new Date(data.paymentDate).toLocaleString() + '\n';
+            c += 'Customer: ' + data.customerName + '\n';
+            if (data.customerAccount) c += 'Account: ' + data.customerAccount + '\n';
+            c += 'Method: ' + String(data.paymentMethod || 'cash').toUpperCase() + '\n';
+            c += line + '\n';
+            c += ESC + 'E\u0001TOTAL PAID: UGX ' + Number(data.amount).toLocaleString() + ESC + 'E\u0000\n';
+            c += line + '\n\nThank you for your payment.\nWater is Life. Save it.\n\n\n\n';
+            const out = new Uint8Array(c.length);
+            for (let i = 0; i < c.length; i++) out[i] = c.charCodeAt(i) & 0xff;
+            return out;
         }
 
         class SimpleSQLite {
             constructor() {
-                this.dbName = "swuws_offline_cache";
+                this.dbName = 'swuws_offline_cache';
                 this.plugin = null;
             }
 
             async findPlugin() {
-                log("Waiting for Capacitor bridge...");
-                // Short probe on purpose. When this page is reached through
-                // server.errorPath the bridge is never injected (Capacitor
-                // scopes its document-start script to the server.url origin
-                // and skips injection for error URLs), so a long wait only
-                // delays the message below. It stays a probe rather than a
-                // hard "no" so the page still works if the native layer is
-                // ever taught to inject the bridge for this origin.
-                const maxWait = 2500;
+                const maxWait = 8000;
                 const start = Date.now();
-
                 while (Date.now() - start < maxWait) {
-                    if (window.Capacitor && window.Capacitor.Plugins) {
-                        const plugins = Object.keys(window.Capacitor.Plugins);
-                        if (plugins.length > 0 && !this._loggedPlugins) {
-                            log("Plugins available: " + plugins.join(', '));
-                            this._loggedPlugins = true;
-                        }
-                        if (window.Capacitor.Plugins.CapacitorSQLite) {
-                            this.plugin = window.Capacitor.Plugins.CapacitorSQLite;
-                            log("SQLite plugin found.", "success");
-                            return true;
-                        }
+                    if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.CapacitorSQLite) {
+                        this.plugin = window.Capacitor.Plugins.CapacitorSQLite;
+                        return true;
                     }
-                    await new Promise(r => setTimeout(r, 200));
+                    await new Promise(function (r) { setTimeout(r, 200); });
                 }
-
-                log(`SQLite plugin NOT found after ${Math.round((Date.now()-start)/1000)}s.`, "error");
-                log("This fallback screen has no native bridge, so the local", "error");
-                log("customer cache cannot be opened from here. Your queued", "error");
-                log("work is safe -- reconnect and reopen the app to reach it.", "error");
+                log('Local database plugin not found.', 'error');
                 showBridgeUnavailable();
                 document.getElementById('init-retry').style.display = 'block';
                 return false;
@@ -166,203 +317,334 @@
             async execute(sql) {
                 return await this.plugin.execute({ database: this.dbName, statements: sql });
             }
-
-            async query(sql, params = []) {
-                return await this.plugin.query({ database: this.dbName, statement: sql, values: params });
+            async query(sql, params) {
+                return await this.plugin.query({ database: this.dbName, statement: sql, values: params || [] });
             }
-
-            async run(sql, params = []) {
-                return await this.plugin.run({ database: this.dbName, statement: sql, values: params });
+            async run(sql, params) {
+                return await this.plugin.run({ database: this.dbName, statement: sql, values: params || [] });
             }
-
             async open() {
                 try {
-                    log(`Opening database: ${this.dbName}`);
                     try {
                         await this.plugin.createConnection({
-                            database: this.dbName,
-                            encrypted: false,
-                            mode: "no-encryption",
-                            version: 1,
-                            readonly: false
+                            database: this.dbName, encrypted: false, mode: 'no-encryption', version: 1, readonly: false
                         });
-                    } catch (e) {
-                        // Connection likely exists
-                    }
+                    } catch (e) {}
                     await this.plugin.open({ database: this.dbName });
-                    log("Database opened.", "success");
                     return true;
                 } catch (e) {
-                    log("Open Failed: " + e.message, "error");
+                    log('Could not open customer cache: ' + e.message, 'error');
                     return false;
                 }
             }
         }
 
         const db = new SimpleSQLite();
-        let selectedCustomerId = null;
+        let selectedCustomer = null;
 
-        function safeId() {
-            return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
-                const r = Math.random() * 16 | 0;
-                return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
-            });
+        async function printProvisional(data) {
+            const payload = bytesToBase64(buildReceiptEscPos(data));
+            const plugins = (window.Capacitor && window.Capacitor.Plugins) || {};
+            let settings = {};
+            try {
+                const res = await db.query('SELECT * FROM printer_settings WHERE id = 1;');
+                settings = (res && res.values && res.values[0]) || {};
+            } catch (e) {}
+
+            if (plugins.TcpSocket && settings.networkIp) {
+                let client = null;
+                try {
+                    const conn = await plugins.TcpSocket.connect({ ipAddress: settings.networkIp, port: 9100 });
+                    client = conn.client;
+                    await plugins.TcpSocket.send({ client: client, data: payload, encoding: 'base64' });
+                    await plugins.TcpSocket.disconnect({ client: client });
+                    return;
+                } catch (e) {
+                    if (client !== null) {
+                        try { await plugins.TcpSocket.disconnect({ client: client }); } catch (x) {}
+                    }
+                }
+            }
+
+            const ble = plugins.BluetoothLe;
+            if (!ble) throw new Error('Printer not available. Pair it in Printer Settings while you have signal.');
+
+            await ble.initialize({});
+            let deviceId = settings.deviceId || null;
+            if (deviceId) {
+                try { await ble.connect({ deviceId: deviceId }); }
+                catch (e) { deviceId = null; }
+            }
+            if (!deviceId) {
+                const device = await ble.requestDevice({ optionalServices: [PRINTER_SERVICE] });
+                deviceId = device.deviceId;
+                await ble.connect({ deviceId: deviceId });
+                try {
+                    await db.run(
+                        'INSERT OR REPLACE INTO printer_settings (id, type, deviceId, deviceName, paperWidth, networkIp) VALUES (1, ?, ?, ?, ?, ?)',
+                        [settings.type || 'auto', deviceId, settings.deviceName || device.name || null, settings.paperWidth || '58mm', settings.networkIp || null]
+                    );
+                } catch (e) {}
+            }
+            try {
+                await ble.write({
+                    deviceId: deviceId, service: PRINTER_SERVICE, characteristic: PRINTER_CHAR, value: payload
+                });
+            } finally {
+                try { await ble.disconnect({ deviceId: deviceId }); } catch (e) {}
+            }
         }
 
         async function initDatabase() {
             document.getElementById('init-retry').style.display = 'none';
             if (!(await db.findPlugin())) return;
-
-            const success = await db.open();
-            if (!success) return;
+            if (!(await db.open())) return;
 
             try {
-                log("Verifying tables...");
                 const tables = [
                     `CREATE TABLE IF NOT EXISTS local_customers (
-                        id TEXT PRIMARY KEY,
-                        customerAccount TEXT,
-                        name TEXT,
-                        phone TEXT,
-                        address TEXT,
-                        accountBalance TEXT,
-                        category TEXT,
-                        active INTEGER,
-                        updatedAt TEXT,
-                        lastReading INTEGER DEFAULT 0
+                        id TEXT PRIMARY KEY, customerAccount TEXT, name TEXT, phone TEXT, address TEXT,
+                        accountBalance TEXT, category TEXT, active INTEGER, updatedAt TEXT, lastReading INTEGER DEFAULT 0
                     );`,
                     `CREATE INDEX IF NOT EXISTS idx_local_customers_account ON local_customers(customerAccount);`,
                     `CREATE INDEX IF NOT EXISTS idx_local_customers_name ON local_customers(name);`,
+                    `CREATE TABLE IF NOT EXISTS local_billing_records (
+                        id TEXT PRIMARY KEY, customerId TEXT, totalDue TEXT, arrears TEXT, billAmount TEXT, status TEXT, billingPeriodId TEXT
+                    );`,
+                    `CREATE TABLE IF NOT EXISTS sync_meta (
+                        deviceId TEXT PRIMARY KEY, lastSuccessfulPullAt TEXT, scopedAgentId TEXT, activePeriodId TEXT, customerCount INTEGER
+                    );`,
                     `CREATE TABLE IF NOT EXISTS local_receipt_queue (
-                        id TEXT PRIMARY KEY,
-                        customerId TEXT,
-                        billingRecordId TEXT,
-                        amount REAL,
-                        paymentMethod TEXT,
-                        paymentReference TEXT,
-                        notes TEXT,
-                        paymentDate TEXT,
-                        idempotencyKey TEXT,
-                        status TEXT DEFAULT 'queued',
-                        serverReceiptId TEXT,
-                        error TEXT,
-                        createdAt TEXT DEFAULT CURRENT_TIMESTAMP
+                        id TEXT PRIMARY KEY, customerId TEXT, billingRecordId TEXT, amount REAL, paymentMethod TEXT,
+                        paymentReference TEXT, notes TEXT, paymentDate TEXT, idempotencyKey TEXT, status TEXT DEFAULT 'queued',
+                        serverReceiptId TEXT, error TEXT, createdAt TEXT DEFAULT CURRENT_TIMESTAMP
+                    );`,
+                    `CREATE TABLE IF NOT EXISTS local_meter_readings (
+                        id TEXT PRIMARY KEY, customerId TEXT, billingPeriodId TEXT, previousReading INTEGER, currentReading INTEGER,
+                        notes TEXT, idempotencyKey TEXT, status TEXT DEFAULT 'queued', error TEXT, createdAt TEXT DEFAULT CURRENT_TIMESTAMP
+                    );`,
+                    `CREATE TABLE IF NOT EXISTS printer_settings (
+                        id INTEGER PRIMARY KEY CHECK (id = 1), type TEXT DEFAULT 'auto', deviceId TEXT, deviceName TEXT,
+                        paperWidth TEXT DEFAULT '58mm', networkIp TEXT
                     );`
                 ];
-
-                for (const sql of tables) {
-                    await db.execute(sql);
-                }
-                log("Database ready!", "success");
-
-                // Hide diagnostics after 3s if everything is okay
-                setTimeout(() => {
-                    const box = document.getElementById('diag-box');
-                    if (!box.querySelector('.log-error')) {
-                        box.style.display = 'none';
-                    }
-                }, 3000);
-
-                checkQueue();
+                for (let i = 0; i < tables.length; i++) await db.execute(tables[i]);
+                try { await db.execute('ALTER TABLE local_customers ADD COLUMN lastReading INTEGER DEFAULT 0;'); } catch (e) {}
+                await checkQueue();
+                await handleSearch();
             } catch (e) {
-                log("Table Init Failed: " + e.message, "error");
+                log('Could not prepare customer cache: ' + e.message, 'error');
             }
+        }
+
+        function renderCustomers(rows) {
+            const resultsDiv = document.getElementById('results');
+            if (!rows || rows.length === 0) {
+                resultsDiv.innerHTML = '<div class="empty">No matching customers in the cache yet.</div>';
+                return;
+            }
+            resultsDiv.innerHTML = rows.map(function (c) {
+                const bal = Number(c.accountBalance);
+                const due = isFinite(bal) && bal > 0;
+                const credit = isFinite(bal) && bal < 0;
+                const phone = displayPhone(c.phone);
+                return '<article class="cust-card"><div class="cust-row"><div style="min-width:0;flex:1">' +
+                    '<h3 class="cust-name">' + escapeHtml(c.name) + '</h3>' +
+                    '<div class="cust-meta"><span class="acct">' + escapeHtml(c.customerAccount || 'No Account') + '</span>' +
+                    (phone ? '<span class="phone">' + escapeHtml(phone) + '</span>' : '') + '</div>' +
+                    '<div class="arrears"><span class="arrears-label">Arrears:</span>' +
+                    '<span class="arrears-val ' + (due ? 'due' : 'credit') + '">' + formatUGX(bal) + (credit ? ' (CR)' : '') + '</span></div></div>' +
+                    '<div class="cust-actions">' +
+                    '<button class="btn-reading" type="button" onclick="openReadingModal(\'' + c.id + '\')">Reading</button>' +
+                    '<button class="btn-collect" type="button" onclick="openPaymentModal(\'' + c.id + '\')">Collect</button>' +
+                    '</div></div></article>';
+            }).join('');
         }
 
         async function handleSearch() {
-            const query = document.getElementById('search').value;
+            const query = (document.getElementById('search').value || '').trim();
             const resultsDiv = document.getElementById('results');
-
-            if (query.length < 2) {
-                resultsDiv.innerHTML = '<div class="empty">Type at least 2 characters...</div>';
-                return;
-            }
-
             if (!db.plugin) {
-                resultsDiv.innerHTML = '<div class="empty">System not initialized.</div>';
+                resultsDiv.innerHTML = '<div class="empty">Opening customer cache…</div>';
                 return;
             }
-
             try {
-                const res = await db.query(
-                    "SELECT * FROM local_customers WHERE name LIKE ? OR customerAccount LIKE ? LIMIT 20;",
-                    [`%${query}%`, `%${query}%`]
-                );
-
-                if (!res || !res.values || res.values.length === 0) {
-                    resultsDiv.innerHTML = '<div class="empty">No local matches found.</div>';
-                    return;
-                }
-
-                resultsDiv.innerHTML = res.values.map(c => `
-                    <div class="customer-item">
-                        <div style="flex: 1; min-width: 0; padding-right: 0.5rem;">
-                            <p class="customer-name" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${c.name}</p>
-                            <p class="customer-meta">${c.customerAccount || 'No Account'} | Bal: UGX ${c.accountBalance}</p>
-                        </div>
-                        <button class="btn btn-sm" onclick="openPaymentModal('${c.id}', '${c.name.replace(/'/g, "\\'")}')">Pay</button>
-                    </div>
-                `).join('');
-
+                const res = query
+                    ? await db.query(
+                        'SELECT * FROM local_customers WHERE name LIKE ? OR customerAccount LIKE ? OR phone LIKE ? ORDER BY name LIMIT 50;',
+                        ['%' + query + '%', '%' + query + '%', '%' + query + '%']
+                    )
+                    : await db.query('SELECT * FROM local_customers ORDER BY name LIMIT 50;');
+                renderCustomers(res && res.values);
             } catch (err) {
-                resultsDiv.innerHTML = '<div class="empty">Search failed.</div>';
-                log("Search Error: " + err.message, "error");
+                resultsDiv.innerHTML = '<div class="empty">Could not search the cache.</div>';
+                log('Search Error: ' + err.message, 'error');
             }
         }
 
-        function openPaymentModal(id, name) {
-            selectedCustomerId = id;
-            document.getElementById('modal-title').innerText = `Payment for ${name}`;
-            document.getElementById('payment-modal').style.display = 'flex';
+        async function loadCustomer(id) {
+            const custRes = await db.query('SELECT * FROM local_customers WHERE id = ?;', [id]);
+            const customer = custRes && custRes.values && custRes.values[0];
+            if (!customer) throw new Error('Customer not in local cache');
+            const billRes = await db.query('SELECT * FROM local_billing_records WHERE customerId = ? LIMIT 1;', [id]);
+            const bill = billRes && billRes.values && billRes.values[0];
+            return { customer: customer, bill: bill };
+        }
+
+        async function openPaymentModal(id) {
+            try {
+                selectedCustomer = await loadCustomer(id);
+                document.getElementById('modal-title').innerText = selectedCustomer.customer.name;
+                document.getElementById('pay-amount').value = '';
+                document.getElementById('pay-ref').value = '';
+                document.getElementById('payment-modal').style.display = 'flex';
+            } catch (e) {
+                alert(e.message || 'Could not open customer');
+            }
         }
 
         function closeModal() {
             document.getElementById('payment-modal').style.display = 'none';
-            selectedCustomerId = null;
+            selectedCustomer = null;
+        }
+
+        async function openReadingModal(id) {
+            try {
+                selectedCustomer = await loadCustomer(id);
+                document.getElementById('reading-title').innerText = selectedCustomer.customer.name;
+                document.getElementById('reading-previous').innerText = 'Previous: ' + (selectedCustomer.customer.lastReading || 0) + ' m³';
+                document.getElementById('reading-current').value = '';
+                document.getElementById('reading-notes').value = '';
+                document.getElementById('reading-modal').style.display = 'flex';
+            } catch (e) {
+                alert(e.message || 'Could not open customer');
+            }
+        }
+
+        function closeReadingModal() {
+            document.getElementById('reading-modal').style.display = 'none';
+            selectedCustomer = null;
         }
 
         async function queueReceipt() {
             const amount = parseFloat(document.getElementById('pay-amount').value);
             const method = document.getElementById('pay-method').value;
             const ref = document.getElementById('pay-ref').value;
-
-            if (isNaN(amount) || amount <= 0) {
-                alert("Please enter a valid amount.");
+            if (!selectedCustomer || isNaN(amount) || amount <= 0) {
+                alert('Please enter a valid amount.');
                 return;
             }
-
             try {
                 const id = safeId();
-                const idempotencyKey = safeId();
                 const date = new Date().toISOString();
-
+                const billId = selectedCustomer.bill ? selectedCustomer.bill.id : null;
                 await db.run(
-                    `INSERT INTO local_receipt_queue (id, customerId, amount, paymentMethod, paymentReference, idempotencyKey, paymentDate)
-                     VALUES (?, ?, ?, ?, ?, ?, ?);`,
-                    [id, selectedCustomerId, amount, method, ref, idempotencyKey, date]
+                    'INSERT INTO local_receipt_queue (id, customerId, billingRecordId, amount, paymentMethod, paymentReference, idempotencyKey, paymentDate) VALUES (?, ?, ?, ?, ?, ?, ?, ?);',
+                    [id, selectedCustomer.customer.id, billId, amount, method, ref, safeId(), date]
                 );
-
-                alert("Receipt queued offline. It will sync automatically when you are back online.");
+                const printData = {
+                    receiptNumber: id.slice(0, 8).toUpperCase(),
+                    customerName: selectedCustomer.customer.name,
+                    customerAccount: selectedCustomer.customer.customerAccount,
+                    amount: amount, paymentMethod: method, paymentDate: date
+                };
                 closeModal();
                 checkQueue();
+                try {
+                    await printProvisional(printData);
+                } catch (printErr) {
+                    alert('Saved. Print failed: ' + printErr.message);
+                }
             } catch (e) {
-                log("Queue Failed: " + e.message, "error");
-                alert("Failed to save offline receipt.");
+                alert('Could not save this receipt.');
+            }
+        }
+
+        async function queueReading() {
+            const current = parseInt(document.getElementById('reading-current').value, 10);
+            const notes = document.getElementById('reading-notes').value;
+            if (!selectedCustomer || isNaN(current) || current < 0) {
+                alert('Please enter a valid reading.');
+                return;
+            }
+            const previous = Number(selectedCustomer.customer.lastReading || 0);
+            if (current < previous) {
+                alert('Current reading cannot be lower than previous (' + previous + ').');
+                return;
+            }
+            try {
+                let periodId = selectedCustomer.bill && selectedCustomer.bill.billingPeriodId;
+                if (!periodId) {
+                    const meta = await db.query('SELECT activePeriodId FROM sync_meta LIMIT 1;');
+                    periodId = meta && meta.values && meta.values[0] && meta.values[0].activePeriodId;
+                }
+                if (!periodId) {
+                    alert('No billing period in the cache yet. Sync while you have signal, then retry.');
+                    return;
+                }
+                await db.run(
+                    'INSERT INTO local_meter_readings (id, customerId, billingPeriodId, previousReading, currentReading, notes, idempotencyKey) VALUES (?, ?, ?, ?, ?, ?, ?);',
+                    [safeId(), selectedCustomer.customer.id, periodId, previous, current, notes || null, safeId()]
+                );
+                closeReadingModal();
+                checkQueue();
+            } catch (e) {
+                alert('Could not save this reading.');
+            }
+        }
+
+        async function reprintQueued(id) {
+            try {
+                const res = await db.query(
+                    'SELECT q.*, c.name as customerName, c.customerAccount FROM local_receipt_queue q LEFT JOIN local_customers c ON q.customerId = c.id WHERE q.id = ?;',
+                    [id]
+                );
+                const row = res && res.values && res.values[0];
+                if (!row) return;
+                await printProvisional({
+                    receiptNumber: String(row.id).slice(0, 8).toUpperCase(),
+                    customerName: row.customerName || 'Customer',
+                    customerAccount: row.customerAccount,
+                    amount: row.amount, paymentMethod: row.paymentMethod, paymentDate: row.paymentDate
+                });
+            } catch (e) {
+                alert('Print failed: ' + e.message);
             }
         }
 
         async function checkQueue() {
-            if (!db.plugin) return;
+            const card = document.getElementById('queue');
+            if (!db.plugin) { card.classList.remove('show'); return; }
             try {
-                const res = await db.query("SELECT COUNT(*) as count FROM local_receipt_queue WHERE status != 'synced';");
-                const count = (res && res.values && res.values[0]) ? res.values[0].count : 0;
-                document.getElementById('queue-status').innerText = `${count} receipt(s) waiting to be uploaded.`;
+                const receipts = await db.query(
+                    "SELECT q.id, q.amount, c.name as customerName FROM local_receipt_queue q LEFT JOIN local_customers c ON q.customerId = c.id WHERE q.status != 'synced' ORDER BY q.createdAt DESC LIMIT 20;"
+                );
+                const readings = await db.query(
+                    "SELECT q.currentReading, c.name as customerName FROM local_meter_readings q LEFT JOIN local_customers c ON q.customerId = c.id WHERE q.status != 'synced' ORDER BY q.createdAt DESC LIMIT 20;"
+                );
+                const rRows = (receipts && receipts.values) || [];
+                const mRows = (readings && readings.values) || [];
+                if (rRows.length + mRows.length === 0) {
+                    card.classList.remove('show');
+                    return;
+                }
+                card.classList.add('show');
+                document.getElementById('queue-status').innerText = 'Waiting to send · ' + (rRows.length + mRows.length);
+                let html = '';
+                rRows.forEach(function (row) {
+                    html += '<div class="queue-row"><div><strong>' + escapeHtml(row.customerName || 'Customer') + '</strong><div class="muted">Receipt · ' + formatUGX(row.amount) + '</div></div>' +
+                        '<button class="btn-ghost btn-print" type="button" onclick="reprintQueued(\'' + row.id + '\')">Print</button></div>';
+                });
+                mRows.forEach(function (row) {
+                    html += '<div class="queue-row"><div><strong>' + escapeHtml(row.customerName || 'Customer') + '</strong><div class="muted">Reading · ' + escapeHtml(row.currentReading) + ' m³</div></div></div>';
+                });
+                document.getElementById('queue-list').innerHTML = html;
             } catch (e) {
-                document.getElementById('queue-status').innerText = "Sync status unknown.";
+                card.classList.remove('show');
             }
         }
 
-        document.addEventListener('DOMContentLoaded', () => {
+        document.addEventListener('DOMContentLoaded', function () {
             initDatabase();
         });
     </script>

@@ -38,8 +38,9 @@ export function OfflineMeterReadingForm({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
-    if (!syncMeta?.lastSuccessfulPullAt) {
-      toast.error("Sync meta not found. Please sync cache first.")
+    const periodId = syncMeta?.activePeriodId || data?.bill?.billingPeriodId
+    if (!periodId) {
+      toast.error("No billing period in the offline cache. Sync Cache while you still have signal.")
       return
     }
 
@@ -61,7 +62,7 @@ export function OfflineMeterReadingForm({
       await sqliteService.enqueueMeterReading({
         id,
         customerId,
-        billingPeriodId: syncMeta.activePeriodId || 'unknown', // We should ensure activePeriodId is in sync_meta
+        billingPeriodId: periodId,
         previousReading: previous,
         currentReading: current,
         notes

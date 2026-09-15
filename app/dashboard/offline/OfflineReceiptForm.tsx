@@ -16,6 +16,8 @@ import {
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { toast } from "sonner"
 import { formatUGX } from "@/lib/format"
+import { printerManager } from "@/lib/offline/printer-manager"
+import { isNative } from "@/lib/mobile-hardware"
 
 export function OfflineReceiptForm({
   customerId,
@@ -47,6 +49,7 @@ export function OfflineReceiptForm({
     setPending(true)
     try {
       const id = safeId()
+      const paymentDate = new Date().toISOString()
       await sqliteService.enqueueReceipt({
         id,
         customerId,
@@ -55,9 +58,26 @@ export function OfflineReceiptForm({
         paymentMethod: method,
         paymentReference: ref,
         notes,
-        paymentDate: new Date().toISOString()
+        paymentDate
       })
-      toast.success("Receipt queued for sync")
+      if (isNative()) {
+        try {
+          await printerManager.print({
+            receiptNumber: id.slice(0, 8).toUpperCase(),
+            customerName: data?.customer?.name || "Customer",
+            customerAccount: data?.customer?.customerAccount,
+            amount: parseFloat(amount),
+            paymentMethod: method,
+            paymentDate,
+            isProvisional: true,
+          })
+          toast.success("Receipt queued and sent to printer")
+        } catch (printErr: any) {
+          toast.success("Receipt saved offline. Print failed: " + (printErr?.message || "no printer"))
+        }
+      } else {
+        toast.success("Receipt queued for sync")
+      }
       onSuccess()
     } catch (err) {
       console.error(err)

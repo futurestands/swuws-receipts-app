@@ -1,6 +1,11 @@
+import dns from "node:dns"
 import { drizzle } from "drizzle-orm/node-postgres"
 import { Pool } from "pg"
 import * as schema from "./schema"
+
+// Prefer IPv4 to the Ireland pooler. Trying IPv6 first from this network
+// can sit until connectionTimeoutMillis before falling back.
+dns.setDefaultResultOrder("ipv4first")
 
 /**
  * PRODUCTION-CERTIFIED DATABASE CONNECTION LAYER
@@ -52,8 +57,12 @@ function createPool(): Pool {
       // - Remote (Supabase): Increase to 15 for local dev breathing room.
       // - Local: Cap at 20 (Speed for development)
       max: isVercel ? 1 : (useSsl ? 15 : 20),
-      idleTimeoutMillis: 30_000,
-      connectionTimeoutMillis: 60_000, // 60s timeout for slow rebuilds
+      idleTimeoutMillis: 10_000,
+      connectionTimeoutMillis: 12_000,
+      keepAlive: true,
+      keepAliveInitialDelayMillis: 10_000,
+      // Kill queries that never return instead of holding a pool slot.
+      options: "-c statement_timeout=20000",
     }
 
     console.log(`[DB Init] Connection config: ${config.user}@${config.host}:${config.port}/${config.database} (SSL: ${!!config.ssl})`)
@@ -64,7 +73,11 @@ function createPool(): Pool {
       connectionString: urlString,
       ssl: sslConfig,
       max: isVercel ? 1 : (useSsl ? 15 : 20),
-      connectionTimeoutMillis: 60_000,
+      idleTimeoutMillis: 10_000,
+      connectionTimeoutMillis: 12_000,
+      keepAlive: true,
+      keepAliveInitialDelayMillis: 10_000,
+      options: "-c statement_timeout=20000",
     })
   }
 }

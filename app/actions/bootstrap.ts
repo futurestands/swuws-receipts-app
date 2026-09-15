@@ -7,6 +7,7 @@ import { writeAudit } from "@/lib/audit"
 import { eq, and } from "drizzle-orm"
 import { headers } from "next/headers"
 import { logEvent } from "@/lib/logger"
+import { unstable_cache } from "next/cache"
 
 import { ROLES } from "@/lib/permissions/roles"
 
@@ -15,9 +16,11 @@ async function hasAdmin() {
   return Boolean(row)
 }
 
-export async function adminExistsPublic() {
-  return hasAdmin()
-}
+export const adminExistsPublic = unstable_cache(
+  async () => hasAdmin(),
+  ["admin-exists-v1"],
+  { revalidate: 300 },
+)
 
 /**
  * Creates the very first admin account. Only works while no admin exists,

@@ -8,6 +8,8 @@ import { Button } from "@/components/ui/button"
 import { PageHeader } from "@/components/ui/page-header"
 import { EmptyState } from "@/components/ui/empty-state"
 
+export const maxDuration = 300
+
 export default async function BillingUploadPage() {
   const current = await requireUser()
   if (!canUploadBilling(current)) {

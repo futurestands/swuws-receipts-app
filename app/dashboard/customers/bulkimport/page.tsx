@@ -3,6 +3,8 @@ import { CustomerBulkImportClient } from "./bulk-import-client"
 import { Button } from "@/components/ui/button"
 import { ChevronLeft } from "lucide-react"
 
+export const maxDuration = 300
+
 export default function CustomerBulkImportPage() {
   return (
     <div className="space-y-6">

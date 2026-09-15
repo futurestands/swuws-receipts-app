@@ -483,11 +483,29 @@ export async function registerComplaint(input: RegisterComplaintInput) {
   }
 
   let customerId = data.customerId || null
+  const customerScope = applyCustomerScope(user)
 
-  // Resolve customerId from account number if provided
+  // Resolve / verify the customer inside the caller's hierarchy. An unscoped
+  // account lookup used to attach tickets to customers in other areas.
   if (!customerId && data.customerAccount) {
-    const [c] = await db.select({ id: customer.id }).from(customer).where(eq(customer.customerAccount, data.customerAccount)).limit(1)
-    if (c) customerId = c.id
+    const accountConds = [eq(customer.customerAccount, data.customerAccount)]
+    if (customerScope) accountConds.push(customerScope)
+    const [c] = await db
+      .select({ id: customer.id })
+      .from(customer)
+      .where(and(...accountConds))
+      .limit(1)
+    if (!c) throw new Error("Customer account not found in your assigned area")
+    customerId = c.id
+  } else if (customerId) {
+    const idConds = [eq(customer.id, customerId)]
+    if (customerScope) idConds.push(customerScope)
+    const [c] = await db
+      .select({ id: customer.id })
+      .from(customer)
+      .where(and(...idConds))
+      .limit(1)
+    if (!c) throw new Error("Customer not found or you are not authorized to file a ticket for this account")
   }
 
   const id = randomUUID()

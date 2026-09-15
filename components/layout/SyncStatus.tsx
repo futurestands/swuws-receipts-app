@@ -75,8 +75,8 @@ export function SyncStatus({ agentId }: { agentId: string }) {
       {status === 'syncing' && (
         <span>Syncing...</span>
       )}
-      {status === 'offline' && (
-        <span>Offline · {pendingCount} Pending</span>
+      {status === 'offline' && pendingCount > 0 && (
+        <span>{pendingCount} pending</span>
       )}
     </Link>
   )

@@ -11,7 +11,7 @@ import { Badge } from "@/components/ui/badge"
 import { toast } from "sonner"
 import { formatUGX } from "@/lib/format"
 import { cn } from "@/lib/utils"
-import { Search, RefreshCw, Wifi, WifiOff, Banknote, Clock, Calculator, AlertTriangle, Printer } from "lucide-react"
+import { Search, RefreshCw, Wifi, Banknote, Clock, Calculator, AlertTriangle, Printer } from "lucide-react"
 import { OfflineReceiptForm } from "./OfflineReceiptForm"
 import { OfflineMeterReadingForm } from "./OfflineMeterReadingForm"
 import { printerManager } from "@/lib/offline/printer-manager"
@@ -265,26 +265,24 @@ export function OfflineSearchClient({ agentId }: { agentId: string }) {
     <div className="space-y-6 pb-20">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-primary">Offline Mode</h1>
+          <h1 className="text-2xl font-bold tracking-tight text-primary">Customers</h1>
           <p className="text-muted-foreground">
-            Issue receipts and capture readings while disconnected.
+            Search, collect payments, and capture readings.
           </p>
         </div>
         <div className="flex items-center gap-3">
-          <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold uppercase ${isOnline ? 'bg-green-100 text-green-700 border border-green-200' : 'bg-orange-100 text-orange-700 border border-orange-200'}`}>
-            {isOnline ? <Wifi className="h-3.5 w-3.5" /> : <WifiOff className="h-3.5 w-3.5" />}
-            {isOnline ? 'Online' : 'Offline Mode'}
-          </div>
-          <Button
-            onClick={handleSyncPull}
-            disabled={syncing || !isOnline}
-            size="sm"
-            variant="outline"
-            className="gap-2"
-          >
-            <RefreshCw className={cn("h-4 w-4", syncing && "animate-spin")} />
-            {syncing ? syncStep : "Sync Cache"}
-          </Button>
+          {isOnline && (
+            <Button
+              onClick={handleSyncPull}
+              disabled={syncing}
+              size="sm"
+              variant="outline"
+              className="gap-2"
+            >
+              <RefreshCw className={cn("h-4 w-4", syncing && "animate-spin")} />
+              {syncing ? syncStep : "Sync Cache"}
+            </Button>
+          )}
         </div>
       </div>
 

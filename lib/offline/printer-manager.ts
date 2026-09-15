@@ -1,78 +1,49 @@
 import { sqliteService } from './sqlite-service';
 import { bluetoothLePrinter } from './bluetooth-printer';
-import { bluetoothClassicPrinter } from './bluetooth-classic-printer';
-import { usbPrinter } from './usb-printer';
 import { networkPrinter } from './network-printer';
-import { inbuiltPrinter } from './inbuilt-printer';
 import { ReceiptData } from './esc-pos-helper';
 
 /**
  * UNIFIED PRINTER MANAGER
  *
- * Handles auto-fallback and user preferences for printing.
- * Fallback order: USB -> Network -> Inbuilt -> Bluetooth (Classic -> LE)
+ * Working drivers on Capacitor 8: Network (TCP 9100) and Bluetooth LE.
+ * USB / inbuilt / classic are stubs and are skipped.
  */
 
 export class PrinterManager {
   async print(data: ReceiptData) {
     const settings = await sqliteService.getPrinterSettings();
     const type = settings?.type || 'auto';
-    const paperWidth = settings?.paperWidth || '58mm';
+    const paperWidth = (settings?.paperWidth || '58mm') as '58mm' | '80mm';
     let usedType = type;
 
-    try {
-      if (type === 'usb') {
-        usedType = 'usb';
-        await usbPrinter.printReceipt(data, paperWidth as any);
-      } else if (type === 'network') {
-        usedType = 'network';
-        await networkPrinter.printReceipt(data, settings?.networkIp || '', paperWidth as any);
-      } else if (type === 'inbuilt') {
-        usedType = 'inbuilt';
-        await inbuiltPrinter.printReceipt(data, paperWidth as any);
-      } else if (type === 'bluetooth') {
-        // For manual Bluetooth, try Classic first, then LE
-        try {
-          usedType = 'bluetooth-classic';
-          await bluetoothClassicPrinter.printReceipt(data, paperWidth as any);
-        } catch (err) {
-          usedType = 'bluetooth-le';
-          await bluetoothLePrinter.printReceipt(data, paperWidth as any);
-        }
-      } else {
-        // Auto-fallback logic: USB -> Network -> Inbuilt -> Bluetooth
-        try {
-          console.log('Attempting USB print (auto)...');
-          usedType = 'usb';
-          await usbPrinter.printReceipt(data, paperWidth as any);
-        } catch (err) {
-          console.log('USB failed, attempting Network (auto)...');
-          if (settings?.networkIp) {
-            try {
-              usedType = 'network';
-              await networkPrinter.printReceipt(data, settings.networkIp, paperWidth as any);
-              await sqliteService.logPrint({ receiptId: data.receiptNumber, printerType: usedType, status: 'success' });
-              return true;
-            } catch (netErr) {
-              console.log('Network failed...');
-            }
-          }
+    const tryNetwork = async () => {
+      if (!settings?.networkIp) throw new Error('No printer IP saved. Open Printer Settings while online.');
+      await networkPrinter.printReceipt(data, settings.networkIp, paperWidth);
+      return 'network';
+    };
 
+    const tryBle = async () => {
+      await bluetoothLePrinter.printReceipt(data, paperWidth);
+      return 'bluetooth-le';
+    };
+
+    try {
+      if (type === 'network') {
+        usedType = await tryNetwork();
+      } else if (type === 'bluetooth' || type === 'bluetooth-le') {
+        usedType = await tryBle();
+      } else {
+        // USB / inbuilt / classic are stubs on Capacitor 8. Auto and
+        // leftover settings from those modes must use a working driver.
+        if (settings?.networkIp) {
           try {
-            console.log('Attempting Inbuilt fallback (auto)...');
-            usedType = 'inbuilt';
-            await inbuiltPrinter.printReceipt(data, paperWidth as any);
-          } catch (inbuiltErr) {
-            console.log('Inbuilt failed, attempting Bluetooth Classic fallback (auto)...');
-            try {
-              usedType = 'bluetooth-classic';
-              await bluetoothClassicPrinter.printReceipt(data, paperWidth as any);
-            } catch (btCErr) {
-              console.log('BT Classic failed, attempting Bluetooth LE fallback (auto)...');
-              usedType = 'bluetooth-le';
-              await bluetoothLePrinter.printReceipt(data, paperWidth as any);
-            }
+            usedType = await tryNetwork();
+          } catch {
+            usedType = await tryBle();
           }
+        } else {
+          usedType = await tryBle();
         }
       }
 

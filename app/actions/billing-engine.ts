@@ -1,7 +1,7 @@
 "use server"
 
 import { db } from "@/lib/db"
-import { customer, tariffConfiguration, meterReading, waterScheme, billingPeriod, managedTemplate, templateVersion, branch, billingRecord, billingDiscrepancy, user as userTable } from "@/lib/db/schema"
+import { customer, tariffConfiguration, meterReading, waterScheme, billingPeriod, managedTemplate, templateVersion, branch, billingRecord, billingRun, billingDiscrepancy, user as userTable } from "@/lib/db/schema"
 import { eq, and, desc, or, ilike, inArray, gt, sql } from "drizzle-orm"
 import { randomUUID } from "crypto"
 import { requireUser } from "@/lib/session"
@@ -16,6 +16,7 @@ import { sendSMS } from "@/lib/sms-service"
 import { createNotification } from "./notifications"
 import { getSettings } from "./settings"
 import { normalizeCategory, getCategoryEquivalents } from "@/lib/utils/category"
+import { isUniqueViolation } from "@/lib/db/errors"
 
 /**
  * Searches customers by name, account, or meter ref.
@@ -92,6 +93,47 @@ export async function getTariffForCustomer(customerId: string) {
   }
 
   return null
+}
+
+type BillingTx = Parameters<Parameters<typeof db.transaction>[0]>[0]
+
+async function ensureSchemeBillingRun(
+  tx: BillingTx,
+  schemeId: string,
+  billingPeriodId: string,
+  userId: string,
+): Promise<string> {
+  const [existing] = await tx
+    .select({ id: billingRun.id })
+    .from(billingRun)
+    .where(and(eq(billingRun.schemeId, schemeId), eq(billingRun.billingPeriodId, billingPeriodId)))
+    .limit(1)
+  if (existing) return existing.id
+
+  const id = randomUUID()
+  try {
+    await tx.insert(billingRun).values({
+      id,
+      schemeId,
+      billingPeriodId,
+      uploadedById: userId,
+      sourceFile: null,
+      status: "completed",
+      remarks: "Field meter readings",
+      totalCustomers: 0,
+      totalAmount: 0,
+    })
+    return id
+  } catch (err) {
+    if (!isUniqueViolation(err)) throw err
+    const [raced] = await tx
+      .select({ id: billingRun.id })
+      .from(billingRun)
+      .where(and(eq(billingRun.schemeId, schemeId), eq(billingRun.billingPeriodId, billingPeriodId)))
+      .limit(1)
+    if (!raced) throw err
+    return raced.id
+  }
 }
 
 export async function submitMeterReading(data: {
@@ -179,6 +221,10 @@ export async function submitMeterReading(data: {
     throw new Error(`This customer has already been billed via the monthly import for this period. Manual readings are disabled for this customer to prevent double billing. If you believe the imported data is incorrect, please report this to your supervisor.`)
   }
 
+  if (!cust.waterSchemeId) {
+    throw new Error("This customer has no water scheme assigned, so a bill cannot be created from the reading.")
+  }
+
   const tariff = await getTariffForCustomer(data.customerId)
   if (!tariff) throw new Error("No active tariff configured for this area. Contact Admin.")
 
@@ -192,9 +238,34 @@ export async function submitMeterReading(data: {
   const grandTotalDue = calc.totalNewBill + totalArrears
 
   const readingId = randomUUID()
+  const billId = randomUUID()
   const finalPhone = data.phoneNumber?.trim() || cust.phone
+  const settings = await getSettings()
+  const dueDate = new Date(period.endDate)
+  dueDate.setDate(dueDate.getDate() + (settings.billingGraceDays ?? 14))
 
   await db.transaction(async (tx) => {
+    const runId = await ensureSchemeBillingRun(tx, cust.waterSchemeId!, data.billingPeriodId, user.id)
+
+    // Same table Excel import uses. Live accountBalance is still EBS-only —
+    // this row is the bill EBS will reconcile against on the next sync.
+    await tx.insert(billingRecord).values({
+      id: billId,
+      billingRunId: runId,
+      billingPeriodId: data.billingPeriodId,
+      customerId: data.customerId,
+      accountNumber: cust.customerAccount || "",
+      billAmount: String(calc.totalNewBill),
+      arrears: String(totalArrears),
+      currentCharges: String(calc.totalNewBill),
+      totalDue: String(grandTotalDue),
+      recoveryAmount: "0",
+      arrearsRecovery: "0",
+      dueDate,
+      billingDate: new Date(),
+      status: grandTotalDue <= 0 ? "paid" : "pending",
+    })
+
     await tx.insert(meterReading).values({
       id: readingId,
       customerId: data.customerId,
@@ -212,29 +283,31 @@ export async function submitMeterReading(data: {
       recordedById: user.id,
       notes: data.notes,
       idempotencyKey: data.idempotencyKey || null,
+      billingRecordId: billId,
     })
 
     // EBS (the daily collection sync / monthly bill import) is the single
     // source of truth for customer.accountBalance -- a meter reading is a
     // field observation of what the customer should be billed, the same
     // way a receipt is a field observation of what was paid. Neither
-    // should move the live balance directly. The bill this reading
-    // produces lives on the meterReading row itself (billedAmount,
-    // previousBalanceSnapshot, totalDueSnapshot) for reconciliation and
-    // reporting; only an EBS event may change accountBalance.
+    // should move the live balance directly.
     await tx
       .update(customer)
       .set({
         lastReading: data.currentReading,
         lastReadingDate: new Date(),
-        phone: finalPhone, // Update phone if changed
+        phone: finalPhone,
         updatedAt: new Date(),
       })
       .where(eq(customer.id, data.customerId))
   })
 
   // SMS Notification
+  // SMS is best-effort. The reading is already committed; failing the whole
+  // action here made offline retry look like a failed insert even though the
+  // row exists (idempotency then returns success without sending SMS).
   if (data.sendSms && finalPhone) {
+    try {
     const [template] = await db.select().from(managedTemplate).where(eq(managedTemplate.code, 'notif.billing.sms')).limit(1)
     if (template?.activeVersionId) {
       const [version] = await db.select().from(templateVersion).where(eq(templateVersion.id, template.activeVersionId)).limit(1)
@@ -263,6 +336,9 @@ export async function submitMeterReading(data: {
           .set({ isNotified: true, notifiedAt: new Date() })
           .where(eq(meterReading.id, readingId))
       }
+    }
+    } catch (err) {
+      console.error("Meter reading saved but SMS notification failed", err)
     }
   }
 
@@ -319,7 +395,7 @@ export async function reportBillingDiscrepancy(data: {
  */
 export async function getBillingDiscrepancies() {
   const user = await requireUser()
-  if (user.role !== 'admin') throw new Error("Forbidden")
+  if (user.role !== ROLES.SYSTEM_ADMIN && (user.roleLevel ?? 0) < 10) throw new Error("Forbidden")
 
   return db
     .select({
@@ -430,15 +506,12 @@ export async function resolveBillingDiscrepancy(id: string, action: 'accept' | '
   if (!discrepancy) throw new Error("Discrepancy not found")
 
   await db.transaction(async (tx) => {
-    if (action === 'accept') {
+    if (action === 'accept' && (discrepancy.sourceType === 'field_reading' || discrepancy.sourceType === 'bulk_import')) {
       // EBS (daily collection sync / monthly bill import) is the single
       // source of truth for customer.accountBalance -- accepting a field
       // discrepancy corrects the BILL (billingRecord.totalDue), not the
-      // live balance. The live balance is left untouched here; the next
-      // EBS sync reconciles it against the corrected bill. Previously this
-      // blindly overwrote accountBalance with a value frozen at the moment
-      // the discrepancy was reported, silently erasing any real payment
-      // collected while it sat open.
+      // live balance. Cross-period payment flags are review-only: accept
+      // acknowledges the warning without rewriting totals.
       await tx.update(billingRecord)
         .set({ totalDue: String(discrepancy.attemptedValue), updatedAt: new Date() })
         .where(and(
@@ -524,6 +597,7 @@ export async function cancelMeterReading(readingId: string) {
       previousReading: meterReading.previousReading,
       recordedById: meterReading.recordedById,
       billingPeriodId: meterReading.billingPeriodId,
+      billingRecordId: meterReading.billingRecordId,
       status: billingPeriod.status,
     })
     .from(meterReading)
@@ -546,8 +620,13 @@ export async function cancelMeterReading(readingId: string) {
   }
 
   await db.transaction(async (tx) => {
-    // 1. DELETE the reading (Atomic logic)
     await tx.delete(meterReading).where(eq(meterReading.id, readingId))
+
+    // Remove the field-created bill only. If Excel import replaced it, the
+    // FK is already null and the EBS bill stays. Never touch accountBalance.
+    if (reading.billingRecordId) {
+      await tx.delete(billingRecord).where(eq(billingRecord.id, reading.billingRecordId))
+    }
 
     // 2. DATA INTEGRITY (Aug 26 Hardening): Only restore lastReading if no newer readings exist.
     // If we blindly restore previousReading, we could create a "Time Travel" gap

@@ -302,40 +302,28 @@ export async function getDashboardStats(params: {
         totalBilled: sum(meterReading.billedAmount),
         totalArrearsBilled: sum(meterReading.previousBalanceSnapshot),
         totalCurrentBilled: sum(meterReading.billedAmount),
-        // FIELD RECOVERY MATH: Detect satisfaction for field-captured bills
-        verifiedArrears: sum(sql`
-          least(
-            greatest(0, coalesce(${meterReading.previousBalanceSnapshot}, 0)::numeric),
-            greatest(0, (coalesce(${meterReading.previousBalanceSnapshot}, 0)::numeric + coalesce(${meterReading.billedAmount}, 0)::numeric) - coalesce(${customer.accountBalance}, 0)::numeric)
-          )
-        `),
-        verifiedCurrent: sum(sql`
-          greatest(0, coalesce(${meterReading.billedAmount}, 0)::numeric - greatest(0, coalesce(${customer.accountBalance}, 0)::numeric))
-        `),
-        // FIELD CASH MATH: Isolate physical cash portion
-        cashToArrears: sum(sql`
-          least(
-            greatest(0, coalesce(${meterReading.previousBalanceSnapshot}, 0)::numeric),
-            greatest(0, (coalesce(${meterReading.previousBalanceSnapshot}, 0)::numeric + coalesce(${meterReading.billedAmount}, 0)::numeric) - coalesce(${customer.accountBalance}, 0)::numeric)
-          )
-        `),
-        cashToCurrent: sum(sql`
-          least(
-            coalesce(${meterReading.billedAmount}, 0)::numeric,
-            greatest(0, ((coalesce(${meterReading.previousBalanceSnapshot}, 0)::numeric + coalesce(${meterReading.billedAmount}, 0)::numeric) - coalesce(${customer.accountBalance}, 0)::numeric) -
-            least(
-              greatest(0, coalesce(${meterReading.previousBalanceSnapshot}, 0)::numeric),
-              greatest(0, (coalesce(${meterReading.previousBalanceSnapshot}, 0)::numeric + coalesce(${meterReading.billedAmount}, 0)::numeric) - coalesce(${customer.accountBalance}, 0)::numeric)
-            ))
-          )
-        `),
+        // Leftover readings with no billing_record have no EBS recovery.
+        // New field bills recover on billing_record (importStats) like Excel.
+        verifiedArrears: sql<string>`0`,
+        verifiedCurrent: sql<string>`0`,
+        cashToArrears: sql<string>`0`,
+        cashToCurrent: sql<string>`0`,
         billedCount: count(meterReading.id),
       })
       .from(meterReading)
       .innerJoin(customer, eq(meterReading.customerId, customer.id))
       .innerJoin(waterScheme, eq(customer.waterSchemeId, waterScheme.id))
       .innerJoin(branch, eq(waterScheme.branchId, branch.id))
-      .where(and(...readingConditions))
+      .where(and(
+        ...readingConditions,
+        // New field bills live on billing_record. Only leftover readings
+        // that never got a bill row still contribute to billed demand.
+        sql`NOT EXISTS (
+          SELECT 1 FROM billing_record br
+          WHERE br."customerId" = ${meterReading.customerId}
+          AND br."billingPeriodId" = ${meterReading.billingPeriodId}
+        )`,
+      ))
       .then(rows => rows[0]),
   ])
 

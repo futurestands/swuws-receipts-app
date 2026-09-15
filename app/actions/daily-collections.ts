@@ -7,7 +7,8 @@ import {
   user as userTable,
   customer,
   billingPeriod,
-  billingRecord
+  billingRecord,
+  billingDiscrepancy,
 } from "@/lib/db/schema"
 import { requireUser } from "@/lib/session"
 import { canUploadBilling } from "@/lib/permissions"
@@ -20,6 +21,9 @@ import { writeAudit } from "@/lib/audit"
 import { getImportMapping, processExcelImport } from "@/lib/import-engine"
 import { DEFAULT_DAILY_SYNC_MAPPING } from "@/lib/import-mappings"
 import { applyCustomerScope, applyBillingRecordScope, applyUserScope } from "@/lib/scopes"
+import { pgInsertChunkSize } from "@/lib/db/bulk"
+import { getSettings } from "@/app/actions/settings"
+import { findClosedPeriodForLatePayment } from "@/lib/billing/cross-period"
 
 const REQUIRED_COLUMNS = [
   "Account Number",
@@ -250,7 +254,7 @@ export async function commitDailyCollectionImport(formData: FormData) {
       })
 
       // 2. Chunked Inserts for Records (500 at a time for safety)
-      const CHUNK = 500
+      const CHUNK = pgInsertChunkSize(14)
       for (let i = 0; i < validRecords.length; i += CHUNK) {
         const chunk = validRecords.slice(i, i + CHUNK)
         console.log(`[DailyImport] Inserting chunk ${Math.floor(i / CHUNK) + 1} of ${Math.ceil(validRecords.length / CHUNK)}`)
@@ -461,6 +465,7 @@ export async function commitDailyBalanceSync(formData: FormData) {
     const periods = await db.select().from(billingPeriod).where(ne(billingPeriod.status, 'archived'))
     const activePeriod = periods.find(p => p.status === 'active')
     if (!activePeriod) return { ok: false, error: "No active billing period found." }
+    const graceDays = (await getSettings()).billingGraceDays ?? 14
 
     // 1. Map all valid data in memory
     const validRows: { accountNumber: string, totalDue: number, paymentDate: Date | null, resolvedPeriodId: string }[] = []
@@ -499,7 +504,7 @@ export async function commitDailyBalanceSync(formData: FormData) {
     const customerScope = applyCustomerScope(current)
     const custMap = new Map<string, { id: string, account: string, name: string, balance: number }>()
     const accountArray = Array.from(accountsInFile)
-    const CHUNK_SIZE = 1000
+    const CHUNK_SIZE = pgInsertChunkSize(4)
 
     console.log(`[BalanceSync] Fetching ${accountArray.length} customers in chunks...`)
     for (let i = 0; i < accountArray.length; i += CHUNK_SIZE) {
@@ -536,6 +541,23 @@ export async function commitDailyBalanceSync(formData: FormData) {
 
     let totalCollection = 0
     let successfulRecords = 0
+
+    const existingFlagKeys = new Set<string>()
+    for (let i = 0; i < customerIds.length; i += CHUNK_SIZE) {
+      const chunk = customerIds.slice(i, i + CHUNK_SIZE)
+      const openFlags = await db
+        .select({
+          customerId: billingDiscrepancy.customerId,
+          billingPeriodId: billingDiscrepancy.billingPeriodId,
+        })
+        .from(billingDiscrepancy)
+        .where(and(
+          eq(billingDiscrepancy.sourceType, "cross_period_payment"),
+          eq(billingDiscrepancy.status, "open"),
+          inArray(billingDiscrepancy.customerId, chunk),
+        ))
+      openFlags.forEach((f) => existingFlagKeys.add(`${f.customerId}_${f.billingPeriodId}`))
+    }
 
     await db.transaction(async (tx) => {
       // 4. Metadata
@@ -603,6 +625,14 @@ export async function commitDailyBalanceSync(formData: FormData) {
         // C. Collections and Recoveries
         const collectionsToInsert: any[] = []
         const billUpdateValues: any[] = []
+        const crossPeriodFlags: Array<{
+          id: string
+          customerId: string
+          billingPeriodId: string
+          existingValue: number
+          attemptedValue: number
+          reason: string
+        }> = []
 
         for (const row of findable) {
           const cust = custMap.get(row.accountNumber.toLowerCase().trim())!
@@ -633,6 +663,29 @@ export async function commitDailyBalanceSync(formData: FormData) {
           if (collection <= 0) {
             successfulRecords++
             continue
+          }
+
+          const attributedName = periods.find(p => p.id === row.resolvedPeriodId)?.periodName || "the active period"
+          const lateFor = findClosedPeriodForLatePayment(
+            row.paymentDate,
+            row.resolvedPeriodId,
+            periods,
+            graceDays,
+          )
+          if (lateFor) {
+            const flagKey = `${cust.id}_${lateFor.id}`
+            if (!existingFlagKeys.has(flagKey)) {
+              existingFlagKeys.add(flagKey)
+              const daysAfterEnd = Math.ceil((row.paymentDate!.getTime() - lateFor.endDate.getTime()) / 86_400_000)
+              crossPeriodFlags.push({
+                id: randomUUID(),
+                customerId: cust.id,
+                billingPeriodId: lateFor.id,
+                existingValue: Math.round(collection),
+                attemptedValue: daysAfterEnd,
+                reason: `Payment dated ${row.paymentDate!.toISOString().slice(0, 10)} posted to ${attributedName} but is ${daysAfterEnd} day(s) after ${lateFor.periodName} ended. It may belong to the closed period.`,
+              })
+            }
           }
 
           totalCollection += collection
@@ -677,7 +730,29 @@ export async function commitDailyBalanceSync(formData: FormData) {
         }
 
         if (collectionsToInsert.length > 0) {
-          await tx.insert(dailyCollectionRecord).values(collectionsToInsert)
+          const INSERT_CHUNK = pgInsertChunkSize(14)
+          for (let c = 0; c < collectionsToInsert.length; c += INSERT_CHUNK) {
+            await tx.insert(dailyCollectionRecord).values(collectionsToInsert.slice(c, c + INSERT_CHUNK))
+          }
+        }
+
+        if (crossPeriodFlags.length > 0) {
+          const FLAG_CHUNK = pgInsertChunkSize(10)
+          for (let c = 0; c < crossPeriodFlags.length; c += FLAG_CHUNK) {
+            await tx.insert(billingDiscrepancy).values(
+              crossPeriodFlags.slice(c, c + FLAG_CHUNK).map((f) => ({
+                id: f.id,
+                customerId: f.customerId,
+                billingPeriodId: f.billingPeriodId,
+                sourceType: "cross_period_payment",
+                reportedById: current.id,
+                existingValue: f.existingValue,
+                attemptedValue: f.attemptedValue,
+                reason: f.reason,
+                status: "open",
+              })),
+            )
+          }
         }
       }
 

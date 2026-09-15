@@ -30,7 +30,7 @@ export function ReadingEntryForm({
 }: {
   activePeriod: BillingPeriod
   initialHistory?: Array<Record<string, unknown>>
-  currentUser: { id: string; role: string }
+  currentUser: { id: string; role: string; roleLevel?: number }
 }) {
   const [searchQuery, setSearchQuery] = useState("")
   const [searchResults, setSearchResults] = useState<Customer[]>([])
@@ -774,7 +774,7 @@ export function ReadingEntryForm({
                           <Printer className="h-3 w-3" /> Reprint
                         </Button>
 
-                        {(item.recordedById === currentUser.id || currentUser.role === 'admin') && (
+                        {(item.recordedById === currentUser.id || currentUser.role === 'admin' || (currentUser.roleLevel ?? 0) >= 10) && (
                           <Button
                             variant="ghost"
                             size="sm"

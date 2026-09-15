@@ -13,6 +13,8 @@ import { PageHeader } from "@/components/ui/page-header"
 import { ScrollableTableContainer } from "@/components/ui/responsive-table"
 import { EmptyState } from "@/components/ui/empty-state"
 
+export const maxDuration = 300
+
 /**
  * DAILY COLLECTION IMPORT PAGE (Phase 2B Engine)
  *

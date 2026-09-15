@@ -35,6 +35,7 @@ import { processExcelImport, getImportMapping, type ImportSummary } from "@/lib/
 import { DEFAULT_BILLING_IMPORT_MAPPING } from "@/lib/import-mappings"
 import { billingImportSchema, type BillingImportRow } from "@/lib/import-schemas"
 import { logEvent, logFinancial } from "@/lib/logger"
+import { pgInsertChunkSize } from "@/lib/db/bulk"
 
 export type BillingImportSummary = ImportSummary<BillingImportRow> & {
   schemeId: string
@@ -378,14 +379,16 @@ export async function validateBillingImport(
       return { ok: false, error: "You are not authorized to upload for this scheme" }
     }
 
-    // 3. Prevent duplicate uploads for the same scheme/period
+    // 3. Prevent duplicate Excel uploads for the same scheme/period.
+    // A field-reading run (sourceFile null) is not an Excel import — those
+    // bills share this table and Excel may still land on the same run.
     const [existingRun] = await db
-      .select({ id: billingRun.id })
+      .select({ id: billingRun.id, sourceFile: billingRun.sourceFile })
       .from(billingRun)
       .where(and(eq(billingRun.schemeId, schemeId), eq(billingRun.billingPeriodId, billingPeriodId)))
       .limit(1)
 
-    if (existingRun) {
+    if (existingRun?.sourceFile) {
       return {
         ok: false,
         error: "Monthly billing has already been imported for this scheme and period",
@@ -590,24 +593,45 @@ export async function importBilling(
      * This prevents long-lived database locks and timeouts for large 18,000+ record uploads.
      */
     for (const [sId, rows] of recordsByScheme.entries()) {
-      const runId = randomUUID()
       let schemeBillTotal = 0
       let schemeRecoveryBill = 0
       let schemeRecoveryArrears = 0
 
       await db.transaction(async (tx) => {
-        await tx.insert(billingRun).values({
-          id: runId,
-          schemeId: sId,
-          billingPeriodId: summary.billingPeriodId,
-          uploadedById: current.id,
-          sourceFile: filename,
-          status: "completed",
-          totalCustomers: rows.length,
-          totalAmount: 0, // Placeholder
-          totalRecovered: "0",
-          arrearsRecovered: "0",
-        })
+        let runId: string = randomUUID()
+        const [existingRun] = await tx
+          .select({ id: billingRun.id, sourceFile: billingRun.sourceFile })
+          .from(billingRun)
+          .where(and(eq(billingRun.schemeId, sId), eq(billingRun.billingPeriodId, summary.billingPeriodId)))
+          .limit(1)
+
+        if (existingRun?.sourceFile) {
+          throw new Error("Monthly billing has already been imported for this scheme and period")
+        }
+
+        if (existingRun) {
+          runId = existingRun.id
+          await tx.update(billingRun).set({
+            sourceFile: filename,
+            uploadedById: current.id,
+            status: "completed",
+            totalCustomers: rows.length,
+            updatedAt: new Date(),
+          }).where(eq(billingRun.id, runId))
+        } else {
+          await tx.insert(billingRun).values({
+            id: runId,
+            schemeId: sId,
+            billingPeriodId: summary.billingPeriodId,
+            uploadedById: current.id,
+            sourceFile: filename,
+            status: "completed",
+            totalCustomers: rows.length,
+            totalAmount: 0, // Placeholder
+            totalRecovered: "0",
+            arrearsRecovered: "0",
+          })
+        }
 
         const recordsToInsertRaw = rows.map((row) => {
           const cust = customerMap.get(row.data.accountNumber.toLowerCase())!
@@ -669,7 +693,7 @@ export async function importBilling(
           }, new Map<string, typeof recordsToInsertRaw[0]>()).values()
         )
 
-        const CHUNK_SIZE = 400
+        const CHUNK_SIZE = pgInsertChunkSize(16)
         for (let i = 0; i < recordsToInsert.length; i += CHUNK_SIZE) {
           const chunk = recordsToInsert.slice(i, i + CHUNK_SIZE)
           const customerIds = chunk.map(r => r.customerId)
@@ -695,7 +719,7 @@ export async function importBilling(
         }).where(eq(billingRun.id, runId))
 
         // Balance Sync: OVERWRITE system balance with the new Total Due
-        const BAL_CHUNK_SIZE = 400
+        const BAL_CHUNK_SIZE = pgInsertChunkSize(2)
         for (let i = 0; i < recordsToInsert.length; i += BAL_CHUNK_SIZE) {
           const chunk = recordsToInsert.slice(i, i + BAL_CHUNK_SIZE)
           const valuesList = chunk.map(r => sql`(${r.customerId}, ${r.totalDue}::numeric)`).reduce((acc, curr) => sql`${acc}, ${curr}`)
@@ -917,20 +941,22 @@ export async function getCollectionSummary() {
         totalReadings: count(meterReading.id),
         totalMonthlyBilled: sum(meterReading.billedAmount),
         totalArrearsBilled: sum(meterReading.previousBalanceSnapshot),
-        // Same fix as reports.ts's fieldStats: this compared reading demand
-        // against customer.accountBalance, which used to be bumped by the
-        // reading itself -- now that meter readings never touch
-        // accountBalance (EBS-only, matching how receipts already work),
-        // this would report every unconfirmed reading's full bill as
-        // "recovered" immediately. Hardcoded to 0 until field-billed
-        // customers have a real EBS-reconciled path.
+        // Leftover readings with no billing_record have no EBS recovery path.
+        // New field bills recover through billing_record (importStats) like Excel.
         totalRecovered: sql<string>`0`,
       })
       .from(meterReading)
       .innerJoin(customer, eq(meterReading.customerId, customer.id))
       .innerJoin(waterScheme, eq(customer.waterSchemeId, waterScheme.id))
       .innerJoin(branch, eq(waterScheme.branchId, branch.id))
-      .where(and(...mrConditions))
+      .where(and(
+        ...mrConditions,
+        sql`NOT EXISTS (
+          SELECT 1 FROM billing_record br
+          WHERE br."customerId" = ${meterReading.customerId}
+          AND br."billingPeriodId" = ${meterReading.billingPeriodId}
+        )`,
+      ))
       .then(rows => rows[0])
       .catch(() => ({ totalReadings: 0, totalMonthlyBilled: "0", totalArrearsBilled: "0", totalRecovered: "0" })),
 
@@ -1233,7 +1259,7 @@ export async function deleteBillingRun(runId: string) {
         .where(eq(billingRecord.billingRunId, runId))
 
       // 2. Restore customer balances in chunks
-      const CHUNK_SIZE = 400
+      const CHUNK_SIZE = pgInsertChunkSize(2)
       for (let i = 0; i < records.length; i += CHUNK_SIZE) {
         const chunk = records.slice(i, i + CHUNK_SIZE)
         const valuesList = chunk
@@ -1319,7 +1345,7 @@ export async function bulkDeleteBillingRuns(runIds: string[]) {
         .where(inArray(billingRecord.billingRunId, runIds))
 
       // 2. Restore balances
-      const CHUNK_SIZE = 400
+      const CHUNK_SIZE = pgInsertChunkSize(2)
       for (let i = 0; i < records.length; i += CHUNK_SIZE) {
         const chunk = records.slice(i, i + CHUNK_SIZE)
         const valuesList = chunk

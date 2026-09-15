@@ -54,9 +54,12 @@ export const getCurrentUser = cache(async (): Promise<SessionUser | null> => {
 
     if (!row || !row.active) return null
 
-    // Fetch effective permissions, scopes, and role level
-    const grants = row.iamRoleId ? await getEffectivePermissions(row.iamRoleId) : []
-    const roleLevel = row.iamRoleId ? await getOwnRoleLevel(row.iamRoleId) : 0
+    const [grants, roleLevel] = row.iamRoleId
+      ? await Promise.all([
+          getEffectivePermissions(row.iamRoleId),
+          getOwnRoleLevel(row.iamRoleId),
+        ])
+      : [[], 0] as const
     const permissions = grants.map(g => ({ code: g.code, scope: g.scope }))
 
     return {

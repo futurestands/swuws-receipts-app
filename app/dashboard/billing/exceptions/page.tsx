@@ -16,7 +16,7 @@ export default async function BillingExceptionsPage() {
     <div className="space-y-6">
       <PageHeader
         title="Billing Discrepancies"
-        description="Review and resolve conflicts between manual field readings and monthly imports."
+        description="Review field-vs-import conflicts and payments that landed just after a period closed."
       />
 
       <Card>
@@ -26,7 +26,7 @@ export default async function BillingExceptionsPage() {
             Active Conflicts
           </CardTitle>
           <CardDescription>
-            These records represent instances where field agents and bulk imports disagree on a customer&apos;s billing data.
+            Field-vs-import conflicts and payments dated just after a period closed. Late-payment flags are review-only.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -61,14 +61,20 @@ export default async function BillingExceptionsPage() {
                       <TableCell className="text-xs">{d.periodName}</TableCell>
                       <TableCell>
                         <Badge variant="outline" className="capitalize text-[10px]">
-                          {d.sourceType.replace('_', ' ')}
+                          {d.sourceType.replaceAll('_', ' ')}
                         </Badge>
                       </TableCell>
                       <TableCell className="text-xs font-mono">
-                        {d.sourceType === 'bulk_import' ? `${d.existingValue} (Rdg)` : formatUGX(d.existingValue)}
+                        {d.sourceType === 'bulk_import'
+                          ? `${d.existingValue} (Rdg)`
+                          : formatUGX(d.existingValue)}
                       </TableCell>
                       <TableCell className="text-xs font-mono text-amber-600 font-bold">
-                        {d.sourceType === 'bulk_import' ? formatUGX(d.attemptedValue) : d.attemptedValue}
+                        {d.sourceType === 'bulk_import'
+                          ? formatUGX(d.attemptedValue)
+                          : d.sourceType === 'cross_period_payment'
+                            ? `${d.attemptedValue}d after close`
+                            : d.attemptedValue}
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-1 text-[10px]">
@@ -81,7 +87,7 @@ export default async function BillingExceptionsPage() {
                       </TableCell>
                       <TableCell className="text-right">
                         {d.status === 'open' ? (
-                          <DiscrepancyResolutionCell id={d.id} customerName={d.customerName} />
+                          <DiscrepancyResolutionCell id={d.id} customerName={d.customerName} sourceType={d.sourceType} />
                         ) : (
                           <Badge variant="secondary" className="capitalize">{d.status}</Badge>
                         )}

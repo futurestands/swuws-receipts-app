@@ -218,6 +218,7 @@ export const meterReading = pgTable(
     notifiedAt: timestamp("notifiedAt"),
     notes: text("notes"),
     idempotencyKey: text("idempotencyKey"),
+    billingRecordId: text("billingRecordId").references(() => billingRecord.id, { onDelete: "set null" }),
     createdAt: timestamp("createdAt").notNull().defaultNow(),
     updatedAt: timestamp("updatedAt").notNull().defaultNow(),
   },
@@ -229,12 +230,14 @@ export const meterReading = pgTable(
     customerIdx: index("meter_reading_customer_idx").on(table.customerId),
     periodIdx: index("meter_reading_period_idx").on(table.billingPeriodId),
     idempotencyKeyIdx: uniqueIndex("meter_reading_idempotency_key_idx").on(table.idempotencyKey),
+    billingRecordIdx: index("meter_reading_billing_record_idx").on(table.billingRecordId),
     billedAmountCheck: check("meter_reading_billed_amount_non_negative", sql`CAST(${table.billedAmount} AS NUMERIC) >= 0`),
   }),
 )
 
 /**
- * Tracks contradictions between manual field readings and bulk imports.
+ * Tracks field-vs-import conflicts and late payments that may belong
+ * to a period that already closed.
  */
 export const billingDiscrepancy = pgTable(
   "billing_discrepancy",
@@ -246,7 +249,7 @@ export const billingDiscrepancy = pgTable(
     billingPeriodId: text("billingPeriodId")
       .notNull()
       .references(() => billingPeriod.id, { onDelete: "cascade" }),
-    sourceType: text("sourceType").notNull(), // 'field_reading' or 'bulk_import'
+    sourceType: text("sourceType").notNull(), // 'field_reading' | 'bulk_import' | 'cross_period_payment'
     reportedById: text("reportedById").references(() => user.id),
 
     // Values that caused the conflict

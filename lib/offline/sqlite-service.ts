@@ -285,7 +285,7 @@ class SQLiteService {
     notes?: string;
     paymentDate: string;
   }): Promise<void> {
-    if (!this.db) return;
+    if (!this.db) throw new Error("Local database is not open. Open Offline Mode and sync the cache first.");
     const idempotencyKey = safeId();
     await this.db.run(
       `INSERT INTO local_receipt_queue (id, customerId, billingRecordId, amount, paymentMethod, paymentReference, notes, paymentDate, idempotencyKey)
@@ -328,7 +328,7 @@ class SQLiteService {
     currentReading: number;
     notes?: string;
   }): Promise<void> {
-    if (!this.db) return;
+    if (!this.db) throw new Error("Local database is not open. Open Offline Mode and sync the cache first.");
     const idempotencyKey = safeId();
     await this.db.run(
       `INSERT INTO local_meter_readings (id, customerId, billingPeriodId, previousReading, currentReading, notes, idempotencyKey)

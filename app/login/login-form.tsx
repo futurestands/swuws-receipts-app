@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { useRouter, useSearchParams } from "next/navigation"
+import { useSearchParams } from "next/navigation"
 import { signIn } from "@/lib/auth-client"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -10,7 +10,6 @@ import Link from "next/link"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 
 export function LoginForm() {
-  const router = useRouter()
   const searchParams = useSearchParams()
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
@@ -22,13 +21,15 @@ export function LoginForm() {
     setError(null)
     setLoading(true)
     const { error: signInError } = await signIn.email({ email, password })
-    setLoading(false)
     if (signInError) {
+      setLoading(false)
       setError(signInError.message || "Invalid email or password")
       return
     }
-    router.push(searchParams.get("redirect") || "/dashboard")
-    router.refresh()
+    // Full navigation so the dashboard loading screen appears immediately.
+    // router.push + refresh kept you on /login and re-queried the DB twice
+    // while the dashboard was still waiting on Ireland.
+    window.location.assign(searchParams.get("redirect") || "/dashboard")
   }
 
   return (
@@ -63,7 +64,7 @@ export function LoginForm() {
           </div>
           {error && <p className="text-sm text-destructive">{error}</p>}
           <Button type="submit" className="w-full" disabled={loading}>
-            {loading ? "Signing in…" : "Sign in"}
+            {loading ? "Opening portal…" : "Sign in"}
           </Button>
         </form>
         <p className="text-xs text-muted-foreground mt-4 text-center">

@@ -20,6 +20,7 @@ import { DEFAULT_CUSTOMER_IMPORT_MAPPING } from "@/lib/import-mappings"
 import { customerImportSchema, type CustomerImportRow } from "@/lib/import-schemas"
 import { logEvent } from "@/lib/logger"
 import { normalizeCategory } from "@/lib/utils/category"
+import { pgInsertChunkSize } from "@/lib/db/bulk"
 
 export type CustomerImportSummary = ImportSummary<CustomerImportRow>
 
@@ -99,7 +100,7 @@ export async function importCustomers(summary: CustomerImportSummary): Promise<{
   const startTime = Date.now()
 
   // PERFORMANCE UPGRADE: Use Bulk Chunking (Batch size 400 for balance of speed and reliability)
-  const CHUNK_SIZE = 400
+  const CHUNK_SIZE = pgInsertChunkSize(16)
   for (let i = 0; i < validRows.length; i += CHUNK_SIZE) {
     const chunk = validRows.slice(i, i + CHUNK_SIZE)
 
