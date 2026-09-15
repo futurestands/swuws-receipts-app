@@ -15,10 +15,11 @@ import {
 } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { toast } from "sonner"
-import { Printer, Usb, Bluetooth, Settings2, RefreshCw, Wifi, Tablet, CheckCircle2, Search, Loader2, WifiOff } from "lucide-react"
+import { Printer, Usb, Bluetooth, RefreshCw, Wifi, Tablet, CheckCircle2, Search, Loader2 } from "lucide-react"
 import { isNative } from "@/lib/mobile-hardware"
 import { printerManager } from "@/lib/offline/printer-manager"
 import { networkPrinter } from "@/lib/offline/network-printer"
+import { bluetoothLePrinter } from "@/lib/offline/bluetooth-printer"
 
 export function PrinterSettingsClient() {
   const [settings, setSettings] = useState<any>({ type: 'auto', paperWidth: '58mm', networkIp: '' })
@@ -103,14 +104,31 @@ export function PrinterSettingsClient() {
     setConnecting(ip)
     setConnectionVerified(false)
     try {
-      const result = await networkPrinter.testConnection(ip)
+      const result = await networkPrinter.testConnection(ip.trim(), { timeoutMs: 8000, sendReset: true })
       if (result.ok) {
-        await handleSave({ networkIp: ip, type: 'network' })
+        await handleSave({ networkIp: ip.trim(), type: 'network' })
         setConnectionVerified(true)
-        toast.success(`Connected to printer at ${ip}`)
+        toast.success(`Printer at ${ip.trim()} is ready`)
       } else {
-        toast.error(`Could not connect to ${ip}: ${result.error || 'no response'}`)
+        toast.error(result.error || `No printer answered at ${ip}`)
       }
+    } finally {
+      setConnecting(null)
+    }
+  }
+
+  const handlePairBluetooth = async () => {
+    setConnecting('bluetooth')
+    try {
+      const result = await bluetoothLePrinter.pair()
+      if (result.ok && result.deviceId) {
+        await handleSave({ type: 'bluetooth', deviceId: result.deviceId })
+        toast.success("Bluetooth printer saved. Use Print test receipt below.")
+      } else {
+        toast.error(result.error || "Bluetooth pairing cancelled")
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Bluetooth pairing failed")
     } finally {
       setConnecting(null)
     }
@@ -142,7 +160,7 @@ export function PrinterSettingsClient() {
         </div>
       </div>
 
-      <Tabs defaultValue={settings.type === 'auto' ? 'usb' : settings.type} className="w-full">
+      <Tabs defaultValue="network" className="w-full">
         <TabsList className="grid w-full grid-cols-4 h-14 bg-muted/30 p-1 rounded-xl">
           <TabsTrigger value="usb" className="rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-sm flex flex-col gap-0.5 py-1">
             <Usb className="h-4 w-4" />
@@ -176,14 +194,10 @@ export function PrinterSettingsClient() {
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="p-3 bg-muted/50 rounded-lg text-[11px] leading-relaxed text-muted-foreground">
-                Connect your thermal printer using a **USB OTG cable**. Compatible with most 58mm/80mm USB printers.
+                USB OTG is not available in this Android build. Use WiFi (printer IP) or Bluetooth.
               </div>
-              <Button
-                onClick={() => { handleSave({ type: 'usb' }); toast.success("USB mode active"); }}
-                variant={settings.type === 'usb' ? 'default' : 'outline'}
-                className="w-full h-12 font-bold shadow-sm"
-              >
-                {settings.type === 'usb' ? 'USB Mode Enabled' : 'Switch to USB'}
+              <Button disabled variant="outline" className="w-full h-12 font-bold">
+                USB not available
               </Button>
             </CardContent>
           </Card>
@@ -205,25 +219,48 @@ export function PrinterSettingsClient() {
               {settings.type === 'network' && settings.networkIp && connectionVerified && (
                 <div className="flex items-center gap-2 p-3 bg-green-50 border border-green-100 rounded-lg text-xs text-green-800 font-bold">
                   <CheckCircle2 className="h-4 w-4 shrink-0" />
-                  Connected and verified: {settings.networkIp}
+                  Ready: {settings.networkIp}
                 </div>
               )}
 
               <div className="space-y-2">
+                <Label htmlFor="printer-ip" className="text-xs font-bold uppercase text-muted-foreground">Printer IP</Label>
+                <div className="flex gap-2">
+                  <Input
+                    id="printer-ip"
+                    placeholder="e.g. 192.168.1.100"
+                    value={manualIp}
+                    onChange={(e) => { setManualIp(e.target.value); setConnectionVerified(false); }}
+                    className="h-12 font-mono text-base flex-1"
+                  />
+                  <Button
+                    onClick={() => handleConnectToIp(manualIp)}
+                    disabled={connecting !== null || !manualIp}
+                    className="h-12 font-bold shrink-0"
+                  >
+                    {connecting === manualIp ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Connect'}
+                  </Button>
+                </div>
+                <p className="text-[11px] text-muted-foreground">
+                  Phone and printer must be on the same WiFi. Type the IP from the printer sticker or router, then Connect. Wait up to 8 seconds.
+                </p>
+              </div>
+
+              <div className="space-y-2 pt-2 border-t">
                 <Button
                   onClick={handleScanNetwork}
-                  disabled={scanning}
+                  disabled={scanning || connecting !== null}
                   variant="outline"
                   className="w-full h-12 font-bold shadow-sm"
                 >
                   {scanning ? (
                     <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Scanning... {scanProgress}%</>
                   ) : (
-                    <><Search className="h-4 w-4 mr-2" /> Scan for Printers</>
+                    <><Search className="h-4 w-4 mr-2" /> Scan network</>
                   )}
                 </Button>
                 <p className="text-[11px] text-muted-foreground text-center">
-                  Make sure the printer is powered on and the phone is on the same WiFi network first.
+                  Scan is slow on purpose so it does not knock the phone off WiFi. Prefer typing the IP if you know it.
                 </p>
               </div>
 
@@ -250,36 +287,6 @@ export function PrinterSettingsClient() {
                   ))}
                 </div>
               )}
-
-              {!scanning && foundPrinters.length === 0 && (
-                <div className="flex items-center gap-2 p-3 bg-muted/50 rounded-lg text-[11px] text-muted-foreground">
-                  <WifiOff className="h-4 w-4 shrink-0" />
-                  No scan run yet, or nothing found -- you can still enter an IP manually below.
-                </div>
-              )}
-
-              <div className="space-y-2 pt-2 border-t">
-                <Label htmlFor="printer-ip" className="text-xs font-bold uppercase text-muted-foreground">Or enter IP manually</Label>
-                <div className="flex gap-2">
-                  <Input
-                    id="printer-ip"
-                    placeholder="e.g. 192.168.1.100"
-                    value={manualIp}
-                    onChange={(e) => { setManualIp(e.target.value); setConnectionVerified(false); }}
-                    className="h-12 font-mono text-base flex-1"
-                  />
-                  <Button
-                    onClick={() => handleConnectToIp(manualIp)}
-                    disabled={connecting !== null || !manualIp}
-                    className="h-12 font-bold shrink-0"
-                  >
-                    {connecting === manualIp ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Connect'}
-                  </Button>
-                </div>
-                <p className="text-[11px] text-muted-foreground">
-                  &quot;Connect&quot; attempts a real connection before saving &mdash; it won&apos;t be set as your active printer unless it actually responds.
-                </p>
-              </div>
             </CardContent>
           </Card>
         </TabsContent>
@@ -297,16 +304,11 @@ export function PrinterSettingsClient() {
               </div>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="p-4 bg-orange-50/50 border border-orange-100 rounded-lg text-xs text-orange-800">
-                <p className="font-bold mb-1 uppercase tracking-tighter">Hardware Support</p>
-                This mode uses the manufacturer&apos;s native library. Recommended for handheld POS terminals.
+              <div className="p-4 bg-muted/50 rounded-lg text-xs text-muted-foreground">
+                Built-in Sunmi / PAX printing is not available in this Android build. Use WiFi or Bluetooth.
               </div>
-              <Button
-                onClick={() => { handleSave({ type: 'inbuilt' }); toast.success("Inbuilt mode active"); }}
-                variant={settings.type === 'inbuilt' ? 'default' : 'outline'}
-                className="w-full h-12 font-bold shadow-sm"
-              >
-                {settings.type === 'inbuilt' ? 'Inbuilt Mode Enabled' : 'Switch to Inbuilt'}
+              <Button disabled variant="outline" className="w-full h-12 font-bold">
+                Built-in not available
               </Button>
             </CardContent>
           </Card>
@@ -319,21 +321,23 @@ export function PrinterSettingsClient() {
               <div className="flex justify-between items-start">
                 <div>
                   <CardTitle className="text-sm font-black uppercase tracking-tight">Bluetooth Wireless</CardTitle>
-                  <CardDescription className="text-xs">SPP (Classic) & BLE supported.</CardDescription>
+                  <CardDescription className="text-xs">Bluetooth LE printers only.</CardDescription>
                 </div>
                 {settings.type === 'bluetooth' && <CheckCircle2 className="h-5 w-5 text-green-600" />}
               </div>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="p-3 bg-muted/50 rounded-lg text-[11px] leading-relaxed text-muted-foreground">
-                Ensure your printer is **Paired** in Android Bluetooth settings before connecting here.
+                Turn the printer on, then tap Pair. Pick it in the Android list. Bluetooth Classic (SPP) dongles are not supported in this build — BLE printers are.
               </div>
               <Button
-                onClick={() => { handleSave({ type: 'bluetooth' }); toast.success("Bluetooth mode active"); }}
+                onClick={handlePairBluetooth}
+                disabled={connecting !== null}
                 variant={settings.type === 'bluetooth' ? 'default' : 'outline'}
                 className="w-full h-12 font-bold shadow-sm"
               >
-                {settings.type === 'bluetooth' ? 'Bluetooth Mode Enabled' : 'Switch to Bluetooth'}
+                {connecting === 'bluetooth' ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Bluetooth className="h-4 w-4 mr-2" />}
+                {settings.type === 'bluetooth' && settings.deviceId ? 'Re-pair Bluetooth printer' : 'Pair Bluetooth printer'}
               </Button>
             </CardContent>
           </Card>
@@ -380,7 +384,7 @@ export function PrinterSettingsClient() {
 
       <div className="flex items-center justify-center gap-4 text-[10px] font-bold text-muted-foreground/60 uppercase tracking-[0.2em] pt-4">
         <div className="h-[1px] flex-1 bg-muted-foreground/10" />
-        Fallback: USB → WIFI → POS → BT
+        WiFi IP or Bluetooth LE
         <div className="h-[1px] flex-1 bg-muted-foreground/10" />
       </div>
     </div>

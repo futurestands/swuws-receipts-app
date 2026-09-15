@@ -9,7 +9,8 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "db:migrate": "node db/migrate.js"
+    "db:migrate": "node db/migrate.js",
+    "postinstall": "node scripts/apply-tcp-socket-timeout.cjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.5.0",

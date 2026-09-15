@@ -41,9 +41,23 @@ class BluetoothPrinterService {
     }
   }
 
+  async pair(): Promise<{ ok: boolean; deviceId?: string; error?: string }> {
+    const connected = await this.scanAndConnect();
+    if (!connected || !this.deviceId) {
+      return { ok: false, error: 'No Bluetooth printer selected' };
+    }
+    const deviceId = this.deviceId;
+    await this.disconnect();
+    return { ok: true, deviceId };
+  }
+
   async disconnect() {
     if (this.deviceId) {
-      await BleClient.disconnect(this.deviceId);
+      try {
+        await BleClient.disconnect(this.deviceId);
+      } catch {
+        /* already gone */
+      }
       this.deviceId = null;
     }
   }

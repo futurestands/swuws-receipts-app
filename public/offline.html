@@ -354,7 +354,7 @@
             if (plugins.TcpSocket && settings.networkIp) {
                 let client = null;
                 try {
-                    const conn = await plugins.TcpSocket.connect({ ipAddress: settings.networkIp, port: 9100 });
+                    const conn = await plugins.TcpSocket.connect({ ipAddress: settings.networkIp, port: 9100, timeout: 8000 });
                     client = conn.client;
                     await plugins.TcpSocket.send({ client: client, data: payload, encoding: 'base64' });
                     await plugins.TcpSocket.disconnect({ client: client });
