@@ -24,7 +24,7 @@ describe("DepartmentDialog SSR", () => {
   it("includes the Update label in server HTML", async () => {
     const { DepartmentDialog } = await import("./department-dialog")
     const html = renderToString(createElement(DepartmentDialog, { department }))
-    expect(html).toContain("Update")
+    expect(html).toMatch(/<button[^>]*>Update<\/button>/)
   })
 
   it("includes the Add Dept label when creating", async () => {
