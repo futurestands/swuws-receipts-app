@@ -55,8 +55,9 @@ class BluetoothPrinterService {
 
     if (settings?.deviceId) {
       try {
-        this.deviceId = settings.deviceId;
-        await BleClient.connect(this.deviceId);
+        const savedId = settings.deviceId
+        this.deviceId = savedId;
+        await BleClient.connect(savedId);
         connected = true;
       } catch {
         this.deviceId = null;

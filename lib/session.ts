@@ -59,7 +59,7 @@ export const getCurrentUser = cache(async (): Promise<SessionUser | null> => {
           getEffectivePermissions(row.iamRoleId),
           getOwnRoleLevel(row.iamRoleId),
         ])
-      : [[], 0] as const
+      : [[], 0] as [PermissionGrant[], number]
     const permissions = grants.map(g => ({ code: g.code, scope: g.scope }))
 
     return {
