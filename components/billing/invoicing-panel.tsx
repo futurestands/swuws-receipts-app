@@ -11,6 +11,8 @@ import { FileText, Printer, Search, User, XCircle, Loader2 } from "lucide-react"
 import { searchCustomersForReading, getCustomerInvoiceData } from "@/app/actions/billing-engine"
 import type { Customer } from "@/lib/db/schema"
 import { cn } from "@/lib/utils"
+import { isNative } from "@/lib/mobile-hardware"
+import { printerManager } from "@/lib/offline/printer-manager"
 
 export function InvoicingPanel() {
   const [searchQuery, setSearchQuery] = useState("")
@@ -18,6 +20,7 @@ export function InvoicingPanel() {
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null)
   const [invoiceData, setInvoiceData] = useState<any>(null)
   const [isLoading, setIsLoading] = useState(false)
+  const [isPrinting, setIsPrinting] = useState(false)
   const [isPending, startTransition] = useTransition()
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -59,8 +62,35 @@ export function InvoicingPanel() {
     }
   }, [selectedCustomer])
 
-  const handlePrint = () => {
-    window.print()
+  const handlePrint = async () => {
+    if (!invoiceData) return
+    if (!isNative()) {
+      window.print()
+      return
+    }
+    setIsPrinting(true)
+    try {
+      const monthlyBill = invoiceData.reading?.billedAmount || invoiceData.importBill?.currentCharges || 0
+      const pastArrears = invoiceData.customer.accountBalance - monthlyBill
+      await printerManager.printInvoice({
+        customerName: invoiceData.customer.name,
+        customerAccount: invoiceData.customer.customerAccount,
+        areaName: invoiceData.areaName,
+        schemeName: invoiceData.schemeName,
+        periodName: invoiceData.reading?.periodName || invoiceData.importBill?.periodName || "Current",
+        previousReading: invoiceData.reading?.previousReading ?? null,
+        currentReading: invoiceData.reading?.currentReading ?? null,
+        consumption: invoiceData.reading?.consumption ?? null,
+        monthlyBill,
+        pastArrears,
+        grandTotal: invoiceData.customer.accountBalance,
+      })
+      toast.success("Choose the office printer in the Android sheet. If the list is empty, install Mopria Print Service (the driver).")
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not print invoice")
+    } finally {
+      setIsPrinting(false)
+    }
   }
 
   return (
@@ -161,8 +191,9 @@ export function InvoicingPanel() {
                 </Card>
 
                 <div className="flex justify-center">
-                   <Button onClick={handlePrint} className="h-14 px-8 text-lg font-black gap-3 shadow-xl">
-                      <Printer className="h-6 w-6" /> PRINT INVOICE / DEMAND NOTE
+                   <Button onClick={handlePrint} disabled={isPrinting} className="h-14 px-8 text-lg font-black gap-3 shadow-xl">
+                      {isPrinting ? <Loader2 className="h-6 w-6 animate-spin" /> : <Printer className="h-6 w-6" />}
+                      PRINT INVOICE / DEMAND NOTE
                    </Button>
                 </div>
               </div>

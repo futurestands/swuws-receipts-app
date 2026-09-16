@@ -2,17 +2,49 @@ import { sqliteService } from './sqlite-service';
 import { bluetoothLePrinter } from './bluetooth-printer';
 import { networkPrinter } from './network-printer';
 import { ReceiptData } from './esc-pos-helper';
+import { officeInvoiceHtml, officeReceiptHtml, printOfficeHtml } from './office-print';
+import type { PrinterKind } from './printer-kind';
+
+const OFFICE_DRIVER_HINT =
+  'No office printer appeared. Install Mopria Print Service from Play Store (that is the driver for HP, Epson and Kyocera), turn the printer on, then try again.';
+
+function resolvedKind(settings: { type?: string; printerKind?: string | null } | null): PrinterKind {
+  if (settings?.printerKind === 'office' || settings?.printerKind === 'thermal') {
+    return settings.printerKind;
+  }
+  if (settings?.type === 'bluetooth' || settings?.type === 'bluetooth-le') return 'thermal';
+  return 'thermal';
+}
 
 /**
  * UNIFIED PRINTER MANAGER
  *
- * Working drivers on Capacitor 8: Network (TCP 9100) and Bluetooth LE.
- * USB / inbuilt / classic are stubs and are skipped.
+ * Thermal roll printers: Network TCP 9100 and Bluetooth LE (ESC/POS).
+ * Office A4 (HP / Epson / Kyocera): Android PrintManager. USB / inbuilt /
+ * classic are stubs and are skipped.
  */
-
 export class PrinterManager {
   async print(data: ReceiptData) {
     const settings = await sqliteService.getPrinterSettings();
+    const kind = resolvedKind(settings);
+
+    if (kind === 'office') {
+      try {
+        await printOfficeHtml(officeReceiptHtml(data), `Receipt ${data.receiptNumber}`);
+        await sqliteService.logPrint({ receiptId: data.receiptNumber, printerType: 'office', status: 'success' });
+        return true;
+      } catch (err: any) {
+        const message = err?.message || OFFICE_DRIVER_HINT;
+        await sqliteService.logPrint({
+          receiptId: data.receiptNumber,
+          printerType: 'office',
+          status: 'failed',
+          error: message,
+        });
+        throw new Error(message.includes('Mopria') ? message : OFFICE_DRIVER_HINT);
+      }
+    }
+
     const type = settings?.type || 'auto';
     const paperWidth = (settings?.paperWidth || '58mm') as '58mm' | '80mm';
     let usedType = type;
@@ -58,6 +90,27 @@ export class PrinterManager {
         error: err.message || 'Unknown error'
       });
       throw err;
+    }
+  }
+
+  async printInvoice(data: Parameters<typeof officeInvoiceHtml>[0]) {
+    try {
+      await printOfficeHtml(officeInvoiceHtml(data), `Invoice ${data.customerAccount || data.customerName}`);
+      await sqliteService.logPrint({
+        receiptId: `INV-${data.customerAccount || data.customerName}`,
+        printerType: 'office',
+        status: 'success',
+      });
+      return true;
+    } catch (err: any) {
+      const message = err?.message || OFFICE_DRIVER_HINT;
+      await sqliteService.logPrint({
+        receiptId: `INV-${data.customerAccount || data.customerName}`,
+        printerType: 'office',
+        status: 'failed',
+        error: message,
+      });
+      throw new Error(message.includes('Mopria') ? message : OFFICE_DRIVER_HINT);
     }
   }
 

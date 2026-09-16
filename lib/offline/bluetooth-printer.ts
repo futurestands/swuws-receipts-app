@@ -88,6 +88,7 @@ class BluetoothPrinterService {
             deviceName: settings?.deviceName,
             paperWidth: settings?.paperWidth || paperWidth,
             networkIp: settings?.networkIp,
+            printerKind: settings?.printerKind || 'thermal',
           });
         } catch {
           /* settings persist is best-effort */

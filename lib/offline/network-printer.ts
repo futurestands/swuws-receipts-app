@@ -1,6 +1,7 @@
 import { TcpSocket, DataEncoding } from 'capacitor-tcp-socket';
 import { isNative } from '../mobile-hardware';
 import { generateReceiptCommands, encodeESC, ReceiptData, INIT } from './esc-pos-helper';
+import { classifyPrinterKind, type PrinterKind } from './printer-kind';
 
 /**
  * WiFi / LAN thermal printers (JetDirect TCP 9100).
@@ -25,10 +26,10 @@ const SCAN_BATCH_SIZE = 4;
 
 type TcpConnectOpts = Parameters<typeof TcpSocket.connect>[0] & { timeout: number };
 
-function tcpConnect(ip: string, timeoutMs: number) {
+function tcpConnect(ip: string, timeoutMs: number, port = 9100) {
   return TcpSocket.connect({
     ipAddress: ip.trim(),
-    port: 9100,
+    port,
     timeout: timeoutMs,
   } as TcpConnectOpts);
 }
@@ -64,9 +65,72 @@ class NetworkPrinterService {
     }
   }
 
+  private async probePort(ip: string, port: number, timeoutMs: number): Promise<boolean> {
+    let clientId: number | null = null;
+    try {
+      const connectRes = await withTimeout(
+        tcpConnect(ip, timeoutMs, port),
+        timeoutMs + 500,
+        `No answer from ${ip}:${port}`,
+      );
+      clientId = connectRes.client;
+      await this.close(clientId);
+      return true;
+    } catch {
+      await this.close(clientId);
+      return false;
+    }
+  }
+
+  /**
+   * Decide thermal vs office without sending ESC/POS to a laser.
+   * IPP 631 = HP/Epson/Kyocera. 9100-only = receipt roll. Never send ESC @
+   * when 631 is open.
+   */
+  async classifyHost(ip: string): Promise<{
+    reachable: boolean
+    kind: PrinterKind
+    port9100: boolean
+    port631: boolean
+    error?: string
+  }> {
+    if (!isNative()) {
+      return {
+        reachable: false,
+        kind: 'unknown',
+        port9100: false,
+        port631: false,
+        error: 'Open this screen in the Android app',
+      };
+    }
+
+    const [port631, port9100] = await Promise.all([
+      this.probePort(ip, 631, 4_000),
+      this.probePort(ip, 9100, 4_000),
+    ]);
+    const kind = classifyPrinterKind({ port631, port9100 });
+
+    if (!port631 && !port9100) {
+      return {
+        reachable: false,
+        kind: 'unknown',
+        port9100,
+        port631,
+        error: `Nothing answered at ${ip} on 9100 (receipt) or 631 (office). Check WiFi and the IP.`,
+      };
+    }
+
+    if (kind === 'thermal' && port9100) {
+      await this.testConnection(ip, { timeoutMs: 5_000, sendReset: true });
+    }
+
+    return { reachable: true, kind, port9100, port631 };
+  }
+
   /**
    * Probe one IP. Scan uses a short TCP-only check. Connect uses a longer
    * timeout and sends ESC @ so we know port 9100 is actually a printer.
+   * Never call this with sendReset on an office (HP/Epson/Kyocera) printer.
    */
   async testConnection(
     ip: string,

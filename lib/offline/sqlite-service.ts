@@ -126,8 +126,15 @@ class SQLiteService {
           deviceId TEXT,
           deviceName TEXT,
           paperWidth TEXT DEFAULT '58mm',
-          networkIp TEXT
+          networkIp TEXT,
+          printerKind TEXT
         );`);
+
+      try {
+        await this.db.execute(`ALTER TABLE printer_settings ADD COLUMN printerKind TEXT;`);
+      } catch {
+        /* column already present */
+      }
 
       await this.db.execute(`
         CREATE TABLE IF NOT EXISTS local_print_logs (
@@ -412,14 +419,29 @@ class SQLiteService {
   async getPrinterSettings() {
     if (!this.db) return null;
     const res = await this.db.query('SELECT * FROM printer_settings WHERE id = 1;');
-    return res.values?.[0] || { type: 'auto', paperWidth: '58mm' };
+    return res.values?.[0] || { type: 'auto', paperWidth: '58mm', printerKind: null };
   }
 
-  async updatePrinterSettings(settings: { type: string, deviceId?: string | null, deviceName?: string | null, paperWidth?: string, networkIp?: string | null }) {
+  async updatePrinterSettings(settings: {
+    type: string
+    deviceId?: string | null
+    deviceName?: string | null
+    paperWidth?: string
+    networkIp?: string | null
+    printerKind?: string | null
+  }) {
     if (!this.db) return;
+    const current = (await this.getPrinterSettings()) || {}
     await this.db.run(
-      `INSERT OR REPLACE INTO printer_settings (id, type, deviceId, deviceName, paperWidth, networkIp) VALUES (1, ?, ?, ?, ?, ?)`,
-      [settings.type, settings.deviceId || null, settings.deviceName || null, settings.paperWidth || '58mm', settings.networkIp || null]
+      `INSERT OR REPLACE INTO printer_settings (id, type, deviceId, deviceName, paperWidth, networkIp, printerKind) VALUES (1, ?, ?, ?, ?, ?, ?)`,
+      [
+        settings.type,
+        settings.deviceId !== undefined ? settings.deviceId : current.deviceId || null,
+        settings.deviceName !== undefined ? settings.deviceName : current.deviceName || null,
+        settings.paperWidth || current.paperWidth || '58mm',
+        settings.networkIp !== undefined ? settings.networkIp : current.networkIp || null,
+        settings.printerKind !== undefined ? settings.printerKind : current.printerKind || null,
+      ]
     );
   }
 

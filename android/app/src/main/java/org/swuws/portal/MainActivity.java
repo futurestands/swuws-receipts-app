@@ -34,6 +34,7 @@ public class MainActivity extends BridgeActivity {
         // already-created Bridge, so this call did nothing. It worked anyway
         // because capacitor.plugins.json auto-registers the plugin.
         registerPlugin(CapacitorSQLitePlugin.class);
+        registerPlugin(OfficePrintPlugin.class);
         super.onCreate(savedInstanceState);
         exposeBridgeToOfflineShell();
     }

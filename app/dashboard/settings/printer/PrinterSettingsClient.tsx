@@ -15,11 +15,13 @@ import {
 } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { toast } from "sonner"
-import { Printer, Usb, Bluetooth, RefreshCw, Wifi, Tablet, CheckCircle2, Search, Loader2 } from "lucide-react"
+import { Printer, Usb, Bluetooth, RefreshCw, Wifi, Tablet, CheckCircle2, Search, Loader2, Download } from "lucide-react"
 import { isNative } from "@/lib/mobile-hardware"
 import { printerManager } from "@/lib/offline/printer-manager"
 import { networkPrinter } from "@/lib/offline/network-printer"
 import { bluetoothLePrinter } from "@/lib/offline/bluetooth-printer"
+import { printerKindLabel } from "@/lib/offline/printer-kind"
+import { openPrinterDriverStore } from "@/lib/offline/office-print"
 
 export function PrinterSettingsClient() {
   const [settings, setSettings] = useState<any>({ type: 'auto', paperWidth: '58mm', networkIp: '' })
@@ -91,11 +93,6 @@ export function PrinterSettingsClient() {
     }
   }
 
-  // The actual "connect" step: attempts a real connection (and a small
-  // real ESC/POS command, not just an open socket) before this IP is
-  // trusted as the active printer. Nothing gets saved as 'network' mode
-  // until this succeeds -- replacing "type an IP and hope" with a
-  // confirmed, verified connection.
   const handleConnectToIp = async (ip: string) => {
     if (!ip) {
       toast.error("Enter or select a printer IP first")
@@ -104,13 +101,18 @@ export function PrinterSettingsClient() {
     setConnecting(ip)
     setConnectionVerified(false)
     try {
-      const result = await networkPrinter.testConnection(ip.trim(), { timeoutMs: 8000, sendReset: true })
-      if (result.ok) {
-        await handleSave({ networkIp: ip.trim(), type: 'network' })
+      const classified = await networkPrinter.classifyHost(ip.trim())
+      if (classified.reachable) {
+        const kind = classified.kind === 'unknown' ? 'thermal' : classified.kind
+        await handleSave({ networkIp: ip.trim(), type: 'network', printerKind: kind })
         setConnectionVerified(true)
-        toast.success(`Printer at ${ip.trim()} is ready`)
+        if (kind === 'office') {
+          toast.success(`Office printer at ${ip.trim()}. Print opens Android's sheet — install Mopria if the list is empty.`)
+        } else {
+          toast.success(`Receipt printer at ${ip.trim()} is ready`)
+        }
       } else {
-        toast.error(result.error || `No printer answered at ${ip}`)
+        toast.error(classified.error || `No printer answered at ${ip}`)
       }
     } finally {
       setConnecting(null)
@@ -122,7 +124,7 @@ export function PrinterSettingsClient() {
     try {
       const result = await bluetoothLePrinter.pair()
       if (result.ok && result.deviceId) {
-        await handleSave({ type: 'bluetooth', deviceId: result.deviceId })
+        await handleSave({ type: 'bluetooth', deviceId: result.deviceId, printerKind: 'thermal' })
         toast.success("Bluetooth printer saved. Use Print test receipt below.")
       } else {
         toast.error(result.error || "Bluetooth pairing cancelled")
@@ -131,6 +133,14 @@ export function PrinterSettingsClient() {
       toast.error(err.message || "Bluetooth pairing failed")
     } finally {
       setConnecting(null)
+    }
+  }
+
+  const handleInstallDrivers = async () => {
+    try {
+      await openPrinterDriverStore()
+    } catch {
+      toast.error("Could not open Play Store. Search for Mopria Print Service.")
     }
   }
 
@@ -155,10 +165,56 @@ export function PrinterSettingsClient() {
           <h1 className="text-2xl font-bold tracking-tight text-primary">Printer Hardware</h1>
           <p className="text-sm text-muted-foreground font-medium">Manage and test offline printing.</p>
         </div>
-        <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[10px] font-black uppercase border shadow-sm ${settings.type === 'auto' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-blue-50 text-blue-700 border-blue-200'}`}>
-          Mode: {settings.type}
+        <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[10px] font-black uppercase border shadow-sm ${settings.printerKind === 'office' ? 'bg-amber-50 text-amber-800 border-amber-200' : settings.type === 'auto' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-blue-50 text-blue-700 border-blue-200'}`}>
+          {printerKindLabel(settings.printerKind)}
         </div>
       </div>
+
+      <Card className="border-primary/20">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm font-black uppercase tracking-tight">What kind of printer?</CardTitle>
+          <CardDescription className="text-xs">
+            Receipts go to a thermal roll. Walk-in invoices go A4 to HP, Epson or Kyocera. The app picks the format from this setting — we do not install Windows drivers.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="grid grid-cols-2 gap-2">
+            <Button
+              type="button"
+              variant={settings.printerKind !== 'office' ? 'default' : 'outline'}
+              className="h-12 font-bold"
+              onClick={() => {
+                handleSave({ printerKind: 'thermal' })
+                toast.info("Receipt roll printer. Field collections will use ESC/POS.")
+              }}
+            >
+              Receipt roll
+            </Button>
+            <Button
+              type="button"
+              variant={settings.printerKind === 'office' ? 'default' : 'outline'}
+              className="h-12 font-bold"
+              onClick={() => {
+                handleSave({ printerKind: 'office' })
+                toast.info("Office A4. Print opens Android's sheet — pick HP, Epson or Kyocera.")
+              }}
+            >
+              Office A4
+            </Button>
+          </div>
+          {settings.printerKind === 'office' && (
+            <div className="space-y-2 rounded-lg border border-amber-200 bg-amber-50 p-3">
+              <p className="text-xs text-amber-950 leading-relaxed">
+                HP, Epson and Kyocera need a print service on this phone — that is the driver. Install Mopria Print Service (works with all three). Brand apps from HP / Epson / Kyocera also work if Mopria does not list yours.
+              </p>
+              <Button type="button" variant="outline" className="w-full h-11 font-bold bg-white" onClick={handleInstallDrivers}>
+                <Download className="h-4 w-4 mr-2" />
+                Install Mopria Print Service
+              </Button>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       <Tabs defaultValue="network" className="w-full">
         <TabsList className="grid w-full grid-cols-4 h-14 bg-muted/30 p-1 rounded-xl">
@@ -210,7 +266,7 @@ export function PrinterSettingsClient() {
               <div className="flex justify-between items-start">
                 <div>
                   <CardTitle className="text-sm font-black uppercase tracking-tight">WiFi / Network</CardTitle>
-                  <CardDescription className="text-xs">TCP/IP printing via Port 9100.</CardDescription>
+                  <CardDescription className="text-xs">Receipt printers on port 9100. Office lasers are classified on 631 and never sent ESC/POS.</CardDescription>
                 </div>
                 {settings.type === 'network' && connectionVerified && <CheckCircle2 className="h-5 w-5 text-green-600" />}
               </div>
@@ -242,7 +298,7 @@ export function PrinterSettingsClient() {
                   </Button>
                 </div>
                 <p className="text-[11px] text-muted-foreground">
-                  Phone and printer must be on the same WiFi. Type the IP from the printer sticker or router, then Connect. Wait up to 8 seconds.
+                  Phone and printer must be on the same WiFi. Connect classifies thermal vs HP/Epson/Kyocera. Office printers can skip the IP and use Office A4 above.
                 </p>
               </div>
 
@@ -384,7 +440,7 @@ export function PrinterSettingsClient() {
 
       <div className="flex items-center justify-center gap-4 text-[10px] font-bold text-muted-foreground/60 uppercase tracking-[0.2em] pt-4">
         <div className="h-[1px] flex-1 bg-muted-foreground/10" />
-        WiFi IP or Bluetooth LE
+        Thermal roll or office A4
         <div className="h-[1px] flex-1 bg-muted-foreground/10" />
       </div>
     </div>
