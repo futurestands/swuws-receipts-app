@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { SearchableSelect } from "@/components/ui/searchable-select"
 import { Search, RotateCcw, Loader2 } from "lucide-react"
 
 interface ReportsFilterBarProps {
@@ -107,13 +108,16 @@ export function ReportsFilterBar({ areas, staff, categories }: ReportsFilterBarP
           </div>
           <div className="space-y-1.5">
             <label className="text-[10px] font-bold uppercase text-muted-foreground">District / Area</label>
-            <Select value={district} onValueChange={v => setDistrict(v ?? "all")}>
-              <SelectTrigger className="h-9"><SelectValue placeholder="All" /></SelectTrigger>
-              <SelectContent className="max-h-60">
-                <SelectItem value="all">All Areas</SelectItem>
-                {areas.map(a => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}
-              </SelectContent>
-            </Select>
+            <SearchableSelect
+              value={district}
+              onValueChange={(v) => setDistrict(v || "all")}
+              options={[
+                { value: "all", label: "All Areas" },
+                ...areas.map((a) => ({ value: a.id, label: a.name })),
+              ]}
+              placeholder="All Areas"
+              className="h-9"
+            />
           </div>
           <div className="space-y-1.5">
             <label className="text-[10px] font-bold uppercase text-muted-foreground">Complaint Type</label>

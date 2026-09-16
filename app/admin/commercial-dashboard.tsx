@@ -4,6 +4,7 @@ import { useState, useEffect } from "react"
 import { getDashboardStats, getCollectionTrends } from "@/app/actions/reports"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { SearchableSelect } from "@/components/ui/searchable-select"
 import { formatUGX } from "@/lib/format"
 import type { Cluster, Branch, WaterScheme, BillingPeriod } from "@/lib/db/schema"
 
@@ -101,32 +102,30 @@ export function CommercialDashboard({
 
         <div className="space-y-2">
           <label className="text-xs font-medium text-muted-foreground">Area (Branch)</label>
-          <Select value={filters.branchId} onValueChange={(v) => setFilters(f => ({ ...f, branchId: v ?? "all", schemeId: "all" }))}>
-            <SelectTrigger className="h-9 w-full">
-              <span className="flex-1 text-left truncate">
-                {filters.branchId === "all" ? "All Areas" : (branches.find(b => b.id === filters.branchId)?.name || filters.branchId)}
-              </span>
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Areas</SelectItem>
-              {filteredBranches.map(b => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}
-            </SelectContent>
-          </Select>
+          <SearchableSelect
+            value={filters.branchId}
+            onValueChange={(v) => setFilters((f) => ({ ...f, branchId: v || "all", schemeId: "all" }))}
+            options={[
+              { value: "all", label: "All Areas" },
+              ...filteredBranches.map((b) => ({ value: b.id, label: b.name })),
+            ]}
+            placeholder="All Areas"
+            className="h-9"
+          />
         </div>
 
         <div className="space-y-2">
           <label className="text-xs font-medium text-muted-foreground">Water Scheme</label>
-          <Select value={filters.schemeId} onValueChange={(v) => setFilters(f => ({ ...f, schemeId: v ?? "all" }))}>
-            <SelectTrigger className="h-9 w-full">
-              <span className="flex-1 text-left truncate">
-                {filters.schemeId === "all" ? "All Schemes" : (schemes.find(s => s.id === filters.schemeId)?.name || filters.schemeId)}
-              </span>
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Schemes</SelectItem>
-              {filteredSchemes.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
-            </SelectContent>
-          </Select>
+          <SearchableSelect
+            value={filters.schemeId}
+            onValueChange={(v) => setFilters((f) => ({ ...f, schemeId: v || "all" }))}
+            options={[
+              { value: "all", label: "All Schemes" },
+              ...filteredSchemes.map((s) => ({ value: s.id, label: s.name })),
+            ]}
+            placeholder="All Schemes"
+            className="h-9"
+          />
         </div>
       </div>
 

@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { SearchableSelect } from "@/components/ui/searchable-select"
 import {
   importSmsBatch,
   listCrmSmsTemplates,
@@ -270,47 +271,33 @@ export function SmsImportModal() {
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label className="text-xs font-bold uppercase text-slate-500">Area</Label>
-              <Select
+              <SearchableSelect
+                value={selectedBranchId}
                 onValueChange={(val) => {
                   setSelectedBranchId(val || "all")
                   setSelectedSchemeId("all")
                 }}
-                value={selectedBranchId}
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="All areas">
-                    {selectedBranchId === "all"
-                      ? "All areas"
-                      : branches.find((b) => b.id === selectedBranchId)?.name || "All areas"}
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All areas</SelectItem>
-                  {branches.map((b) => (
-                    <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                options={[
+                  { value: "all", label: "All areas" },
+                  ...branches.map((b) => ({ value: b.id, label: b.name })),
+                ]}
+                placeholder="All areas"
+              />
             </div>
             <div className="space-y-2">
               <Label className="text-xs font-bold uppercase text-slate-500">Water scheme</Label>
-              <Select onValueChange={(val) => setSelectedSchemeId(val || "all")} value={selectedSchemeId}>
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Select a scheme">
-                    {selectedSchemeId === "all"
-                      ? selectedBranchId === "all"
-                        ? "Select a scheme"
-                        : "All schemes in this area"
-                      : visibleSchemes.find((s) => s.id === selectedSchemeId)?.name || "Select a scheme"}
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">{selectedBranchId === "all" ? "Select a scheme" : "All schemes in this area"}</SelectItem>
-                  {visibleSchemes.map((s) => (
-                    <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <SearchableSelect
+                value={selectedSchemeId}
+                onValueChange={(val) => setSelectedSchemeId(val || "all")}
+                options={[
+                  {
+                    value: "all",
+                    label: selectedBranchId === "all" ? "Select a scheme" : "All schemes in this area",
+                  },
+                  ...visibleSchemes.map((s) => ({ value: s.id, label: s.name })),
+                ]}
+                placeholder="Select a scheme"
+              />
             </div>
           </div>
 

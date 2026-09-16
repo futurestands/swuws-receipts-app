@@ -25,6 +25,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { SearchableSelect } from "@/components/ui/searchable-select"
 import {
   Dialog,
   DialogContent,
@@ -408,35 +409,33 @@ export function AgentsPanel({
                   </div>
                   <div className="space-y-2">
                     <Label className="text-[10px] uppercase text-muted-foreground">Area (Branch)</Label>
-                    <Select value={selectedBranchId || "none"} onValueChange={(v) => {
-                      const id = v === "none" ? null : v
-                      setSelectedBranchId(id)
-                      setSelectedSchemeId(null)
-                    }}>
-                      <SelectTrigger className="bg-background w-full h-11">
-                        <span className="flex-1 text-left truncate">
-                          {selectedBranchId === null ? "No Area" : (branches.find(b => b.id === selectedBranchId)?.name || selectedBranchId)}
-                        </span>
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="none">No Area</SelectItem>
-                        {availableBranches.map(b => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}
-                      </SelectContent>
-                    </Select>
+                    <SearchableSelect
+                      value={selectedBranchId || "none"}
+                      onValueChange={(v) => {
+                        const id = v === "none" ? null : v
+                        setSelectedBranchId(id)
+                        setSelectedSchemeId(null)
+                      }}
+                      options={[
+                        { value: "none", label: "No Area" },
+                        ...availableBranches.map((b) => ({ value: b.id, label: b.name })),
+                      ]}
+                      placeholder="No Area"
+                      className="h-11"
+                    />
                   </div>
                   <div className="space-y-2">
                     <Label className="text-[10px] uppercase text-muted-foreground">Scheme</Label>
-                    <Select value={selectedSchemeId || "none"} onValueChange={(v) => setSelectedSchemeId(v === "none" ? null : v)}>
-                      <SelectTrigger className="bg-background w-full h-11">
-                        <span className="flex-1 text-left truncate">
-                          {selectedSchemeId === null ? "No Scheme" : (schemes.find(s => s.id === selectedSchemeId)?.name || selectedSchemeId)}
-                        </span>
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="none">No Scheme</SelectItem>
-                        {availableSchemes.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
-                      </SelectContent>
-                    </Select>
+                    <SearchableSelect
+                      value={selectedSchemeId || "none"}
+                      onValueChange={(v) => setSelectedSchemeId(v === "none" ? null : v)}
+                      options={[
+                        { value: "none", label: "No Scheme" },
+                        ...availableSchemes.map((s) => ({ value: s.id, label: s.name })),
+                      ]}
+                      placeholder="No Scheme"
+                      className="h-11"
+                    />
                   </div>
                 </div>
               </div>
@@ -794,31 +793,29 @@ function EditAgentDialog({
                 </div>
                 <div className="space-y-1">
                    <Label className="text-[9px] uppercase">Area</Label>
-                   <Select value={branchId} onValueChange={(v) => { setBranchId(v || "none"); setSchemeId("none"); }}>
-                      <SelectTrigger className="h-8 text-xs w-full">
-                        <span className="flex-1 text-left truncate">
-                          {branchId === "none" ? "None" : (branches.find(b => b.id === branchId)?.name || branchId)}
-                        </span>
-                      </SelectTrigger>
-                      <SelectContent>
-                         <SelectItem value="none">None</SelectItem>
-                         {availableBranches.map(b => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}
-                      </SelectContent>
-                   </Select>
+                   <SearchableSelect
+                      value={branchId}
+                      onValueChange={(v) => { setBranchId(v || "none"); setSchemeId("none"); }}
+                      options={[
+                        { value: "none", label: "None" },
+                        ...availableBranches.map((b) => ({ value: b.id, label: b.name })),
+                      ]}
+                      placeholder="None"
+                      className="h-8 text-xs"
+                    />
                 </div>
                 <div className="space-y-1">
                    <Label className="text-[9px] uppercase">Scheme</Label>
-                   <Select value={schemeId} onValueChange={(v) => setSchemeId(v || "none")}>
-                      <SelectTrigger className="h-8 text-xs w-full">
-                        <span className="flex-1 text-left truncate">
-                          {schemeId === "none" ? "None" : (schemes.find(s => s.id === schemeId)?.name || schemeId)}
-                        </span>
-                      </SelectTrigger>
-                      <SelectContent>
-                         <SelectItem value="none">None</SelectItem>
-                         {availableSchemes.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
-                      </SelectContent>
-                   </Select>
+                   <SearchableSelect
+                      value={schemeId}
+                      onValueChange={(v) => setSchemeId(v || "none")}
+                      options={[
+                        { value: "none", label: "None" },
+                        ...availableSchemes.map((s) => ({ value: s.id, label: s.name })),
+                      ]}
+                      placeholder="None"
+                      className="h-8 text-xs"
+                    />
                 </div>
              </div>
           </div>

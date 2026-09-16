@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge"
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select"
+import { SearchableSelect } from "@/components/ui/searchable-select"
 import { Textarea } from "@/components/ui/textarea"
 import { registerComplaint, listUsersByArea, listSchemesByArea, lookupComplaintCustomer } from "@/app/actions/crm"
 import { useToast } from "@/hooks/use-toast"
@@ -93,8 +94,6 @@ export function RegisterComplaintModal({ categories, areas, userName }: Register
   })
 
   // Mappings to avoid showing UUIDs in the UI (Background use only)
-  const areaNameMap = useMemo(() => new Map((areas || []).map(a => [a.id, a.name])), [areas])
-  const schemeNameMap = useMemo(() => new Map((areaSchemes || []).map(s => [s.id, s.name])), [areaSchemes])
   const categoryNameMap = useMemo(() => new Map((categories || []).map(c => [c.id, c.name])), [categories])
 
   // Fetch users and schemes when area changes
@@ -338,31 +337,29 @@ export function RegisterComplaintModal({ categories, areas, userName }: Register
                     <FormField control={form.control} name="area" render={({ field }) => (
                       <FormItem>
                         <FormLabel className="text-[8px] font-black text-slate-400 uppercase">Branch / Area</FormLabel>
-                        <Select onValueChange={field.onChange} value={field.value || ""}>
-                          <FormControl>
-                            <SelectTrigger className="h-8 bg-slate-50 border-slate-200 text-xs font-bold w-full truncate">
-                               {field.value ? (areaNameMap.get(field.value) || "Select...") : "Select Area"}
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent className="max-h-48">
-                             {areas.map(a => <SelectItem key={a.id} value={a.id} className="text-xs font-bold">{a.name}</SelectItem>)}
-                          </SelectContent>
-                        </Select>
+                        <SearchableSelect
+                          value={field.value || ""}
+                          onValueChange={(v) => {
+                            field.onChange(v)
+                            form.setValue("schemeId", "")
+                          }}
+                          options={areas.map((a) => ({ value: a.id, label: a.name }))}
+                          placeholder="Select Area"
+                          className="h-8 bg-slate-50 border-slate-200 text-xs font-bold"
+                        />
                       </FormItem>
                     )} />
                     <FormField control={form.control} name="schemeId" render={({ field }) => (
                       <FormItem>
                         <FormLabel className="text-[8px] font-black text-slate-400 uppercase flex items-center gap-1.5">Scheme {loadingSchemes && <Loader2 className="h-2 w-2 animate-spin" />}</FormLabel>
-                        <Select onValueChange={field.onChange} value={field.value || ""} disabled={!selectedAreaId || loadingSchemes}>
-                          <FormControl>
-                            <SelectTrigger className="h-8 bg-slate-50 border-slate-200 text-xs font-bold w-full truncate">
-                               {field.value ? (schemeNameMap.get(field.value) || "Select...") : (selectedAreaId ? "Select Scheme" : "← Area")}
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent className="max-h-48">
-                             {(areaSchemes || []).map(s => <SelectItem key={s.id} value={s.id} className="text-xs font-bold">{s.name}</SelectItem>)}
-                          </SelectContent>
-                        </Select>
+                        <SearchableSelect
+                          value={field.value || ""}
+                          onValueChange={field.onChange}
+                          options={(areaSchemes || []).map((s) => ({ value: s.id, label: s.name }))}
+                          placeholder={selectedAreaId ? "Select Scheme" : "← Area"}
+                          disabled={!selectedAreaId || loadingSchemes}
+                          className="h-8 bg-slate-50 border-slate-200 text-xs font-bold"
+                        />
                       </FormItem>
                     )} />
                     <FormField control={form.control} name="categoryId" render={({ field }) => (

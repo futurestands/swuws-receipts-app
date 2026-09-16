@@ -17,6 +17,7 @@ import { canConfigureSystem } from "@/lib/permissions"
 import { writeAudit } from "@/lib/audit"
 import { eq } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
+import { normalizeSmsProvider, providerCredentialsReady } from "@/lib/sms-providers"
 
 function maskKey(key: string | null) {
   if (!key) return null
@@ -65,14 +66,35 @@ export async function updateSmsGatewaySettings(input: {
   const current = await requireUser()
   if (!canConfigureSystem(current)) throw new Error("Forbidden")
 
+  const provider = normalizeSmsProvider(input.provider)
+  if (!provider) {
+    return { ok: false as const, error: "Choose Africa's Talking, Twilio, or Infobip" }
+  }
+
   const [existing] = await db.select().from(smsGatewayConfig).where(eq(smsGatewayConfig.id, 1)).limit(1)
+  const apiKey = input.apiKey && input.apiKey.trim() ? input.apiKey.trim() : (existing?.apiKey ?? null)
+
+  if (input.active && !providerCredentialsReady(provider, {
+    active: true,
+    apiKey,
+    username: input.username,
+    senderId: input.senderId,
+  })) {
+    const hint =
+      provider === "twilio"
+        ? "Twilio needs Account SID, Auth Token, and a From number (or Messaging Service SID)"
+        : provider === "africastalking"
+          ? "Africa's Talking needs a username and API key"
+          : "Infobip needs an API key"
+    return { ok: false as const, error: hint }
+  }
 
   const values = {
-    provider: input.provider,
+    provider,
     username: input.username,
     senderId: input.senderId || null,
     active: input.active,
-    apiKey: input.apiKey && input.apiKey.trim() ? input.apiKey.trim() : (existing?.apiKey ?? null),
+    apiKey,
     updatedById: current.id,
     updatedAt: new Date(),
   }
@@ -90,7 +112,7 @@ export async function updateSmsGatewaySettings(input: {
     action: "settings.sms_gateway.update",
     entityType: "sms_gateway_config",
     entityId: "1",
-    details: { provider: input.provider, keyChanged: !!(input.apiKey && input.apiKey.trim()), active: input.active }
+    details: { provider, keyChanged: !!(input.apiKey && input.apiKey.trim()), active: input.active }
   })
 
   revalidatePath("/admin")

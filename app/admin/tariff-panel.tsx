@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { SearchableSelect } from "@/components/ui/searchable-select"
 import { toast } from "sonner"
 import { formatUGX } from "@/lib/format"
 import { Settings2, Plus, Trash2, Globe, Home, Edit2, Loader2 } from "lucide-react"
@@ -141,18 +142,16 @@ export function TariffPanel({
                   </div>
                   <div className="space-y-2">
                     <Label>Select {formData.targetType === 'branch' ? 'Branch' : 'Scheme'}</Label>
-                    <Select
+                    <SearchableSelect
                       value={formData.targetId}
-                      onValueChange={(v) => setFormData(f => ({ ...f, targetId: v || "" }))}
-                    >
-                      <SelectTrigger><SelectValue placeholder="Choose..." /></SelectTrigger>
-                      <SelectContent>
-                        {formData.targetType === 'branch'
-                          ? branches.map(b => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)
-                          : schemes.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)
-                        }
-                      </SelectContent>
-                    </Select>
+                      onValueChange={(v) => setFormData((f) => ({ ...f, targetId: v || "" }))}
+                      options={
+                        formData.targetType === "branch"
+                          ? branches.map((b) => ({ value: b.id, label: b.name }))
+                          : schemes.map((s) => ({ value: s.id, label: s.name }))
+                      }
+                      placeholder="Choose..."
+                    />
                   </div>
                 </div>
 

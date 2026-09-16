@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { SearchableSelect } from "@/components/ui/searchable-select"
 import { toast } from "sonner"
 import {
   Download,
@@ -194,17 +195,17 @@ export function BillingImportClient({ schemes, periods }: Props) {
             </CardHeader>
             <CardContent className="space-y-4">
               <FormField label="Water Scheme" htmlFor="schemeSelectTrigger">
-                <Select value={schemeId} onValueChange={(v) => setSchemeId(v ?? "")}>
-                  <SelectTrigger id="schemeSelectTrigger" className="h-11">
-                    <SelectValue placeholder="Select scheme" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all" className="font-bold text-primary">--- ALL AUTHORIZED SCHEMES ---</SelectItem>
-                    {schemes.map((s) => (
-                      <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <SearchableSelect
+                  id="schemeSelectTrigger"
+                  value={schemeId}
+                  onValueChange={(v) => setSchemeId(v ?? "")}
+                  options={[
+                    { value: "all", label: "--- ALL AUTHORIZED SCHEMES ---" },
+                    ...schemes.map((s) => ({ value: s.id, label: s.name })),
+                  ]}
+                  placeholder="Select scheme"
+                  className="h-11"
+                />
               </FormField>
               <FormField label="Billing Period" htmlFor="periodSelectTrigger">
                 <Select value={periodId} onValueChange={(v) => setPeriodId(v ?? "")}>

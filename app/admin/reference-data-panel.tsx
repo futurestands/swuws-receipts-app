@@ -16,13 +16,7 @@ import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Switch } from "@/components/ui/switch"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
+import { SearchableSelect } from "@/components/ui/searchable-select"
 import { toast } from "sonner"
 import { FileUp, Download, Globe, Home, FileSpreadsheet } from "lucide-react"
 import Link from "next/link"
@@ -214,18 +208,12 @@ export function ReferenceDataPanel({
               </div>
               <div className="space-y-2 sm:col-span-1">
                 <Label>Area Office</Label>
-                <Select value={schemeBranchId} onValueChange={(v) => setSchemeBranchId(v ?? "")}>
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Select Area Office..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {branches.map((b) => (
-                      <SelectItem key={b.id} value={b.id}>
-                        {b.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <SearchableSelect
+                  value={schemeBranchId}
+                  onValueChange={(v) => setSchemeBranchId(v || "")}
+                  options={branches.map((b) => ({ value: b.id, label: b.name }))}
+                  placeholder="Select Area Office..."
+                />
               </div>
               <div className="space-y-2 sm:col-span-1">
                 <Label htmlFor="scheme-area">Service Area Description</Label>

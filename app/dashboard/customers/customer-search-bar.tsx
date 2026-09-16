@@ -21,6 +21,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { SearchableSelect } from "@/components/ui/searchable-select"
 import { toast } from "sonner"
 import { FileUp, Search, X, Camera, Loader2, Download } from "lucide-react"
 import Link from "next/link"
@@ -244,42 +245,32 @@ export function CustomerSearchBar({
             <Label className="text-[10px] uppercase font-bold text-muted-foreground ml-1">
               Branch
             </Label>
-            <Select value={branchId} onValueChange={(v) => handleBranchChange(v)}>
-              <SelectTrigger className="h-11 w-full">
-                <span className="flex-1 text-left truncate">
-                  {branchId === "all" ? "All Branches" : (branches.find(b => b.id === branchId)?.name || branchId)}
-                </span>
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Branches</SelectItem>
-                {branches.map((b) => (
-                  <SelectItem key={b.id} value={b.id}>
-                    {b.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <SearchableSelect
+              value={branchId}
+              onValueChange={(v) => handleBranchChange(v)}
+              options={[
+                { value: "all", label: "All Branches" },
+                ...branches.map((b) => ({ value: b.id, label: b.name })),
+              ]}
+              placeholder="All Branches"
+              className="h-11"
+            />
           </div>
 
           <div className="space-y-1">
             <Label className="text-[10px] uppercase font-bold text-muted-foreground ml-1">
               Water Scheme
             </Label>
-            <Select value={schemeId} onValueChange={(v) => handleSchemeChange(v)}>
-              <SelectTrigger className="h-11 w-full">
-                <span className="flex-1 text-left truncate">
-                  {schemeId === "all" ? "All Schemes" : (schemes.find(s => s.id === schemeId)?.name || schemeId)}
-                </span>
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Schemes</SelectItem>
-                {filteredSchemes.map((s) => (
-                  <SelectItem key={s.id} value={s.id}>
-                    {s.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <SearchableSelect
+              value={schemeId}
+              onValueChange={(v) => handleSchemeChange(v)}
+              options={[
+                { value: "all", label: "All Schemes" },
+                ...filteredSchemes.map((s) => ({ value: s.id, label: s.name })),
+              ]}
+              placeholder="All Schemes"
+              className="h-11"
+            />
           </div>
 
           <div className="space-y-1">

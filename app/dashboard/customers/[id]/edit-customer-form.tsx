@@ -8,13 +8,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
+import { SearchableSelect } from "@/components/ui/searchable-select"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -128,18 +122,12 @@ export function EditCustomerForm({
             {schemes.length > 0 && (
               <div className="space-y-2">
                 <Label>Water scheme</Label>
-                <Select value={waterSchemeId} onValueChange={(v) => setWaterSchemeId(v ?? "")}>
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder="None" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {schemes.map((s) => (
-                      <SelectItem key={s.id} value={s.id}>
-                        {s.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <SearchableSelect
+                  value={waterSchemeId}
+                  onValueChange={setWaterSchemeId}
+                  options={schemes.map((s) => ({ value: s.id, label: s.name }))}
+                  placeholder="None"
+                />
               </div>
             )}
             <div className="space-y-2">

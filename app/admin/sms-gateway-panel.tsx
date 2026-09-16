@@ -20,6 +20,33 @@ interface SmsGatewaySettings {
   hasApiKey: boolean
 }
 
+const PROVIDER_COPY = {
+  africastalking: {
+    username: "Username",
+    usernamePlaceholder: "Your Africa's Talking app username",
+    usernameHint: "Use sandbox for test, or your live app username.",
+    apiKey: "API Key",
+    sender: "Sender ID (optional)",
+    senderPlaceholder: "SWUWS",
+  },
+  twilio: {
+    username: "Account SID",
+    usernamePlaceholder: "ACxxxxxxxx",
+    usernameHint: "From the Twilio console. Auth Token goes in API Key.",
+    apiKey: "Auth Token",
+    sender: "From number or Messaging Service SID",
+    senderPlaceholder: "+2567… or MGxxxxxxxx",
+  },
+  infobip: {
+    username: "Base URL (optional)",
+    usernamePlaceholder: "api.infobip.com",
+    usernameHint: "Leave blank for api.infobip.com, or paste the host from your Infobip portal.",
+    apiKey: "API Key",
+    sender: "Sender ID",
+    senderPlaceholder: "SWUWS",
+  },
+} as const
+
 export function SmsGatewayPanel({ settings }: { settings: SmsGatewaySettings }) {
   const [provider, setProvider] = useState(settings.provider ?? "africastalking")
   const [username, setUsername] = useState(settings.username ?? "")
@@ -29,13 +56,14 @@ export function SmsGatewayPanel({ settings }: { settings: SmsGatewaySettings }) 
   const [testPhone, setTestPhone] = useState("")
   const [pending, startTransition] = useTransition()
   const [testing, startTestTransition] = useTransition()
+  const copy = PROVIDER_COPY[provider as keyof typeof PROVIDER_COPY] ?? PROVIDER_COPY.africastalking
 
   function handleSave(e: React.FormEvent) {
     e.preventDefault()
     startTransition(async () => {
       const result = await updateSmsGatewaySettings({ provider, username, senderId, apiKey, active })
       if (!result.ok) {
-        toast.error("Failed to save SMS gateway settings")
+        toast.error(result.error || "Failed to save SMS gateway settings")
         return
       }
       setApiKey("") // clear the input after a successful save -- it's masked again on reload anyway
@@ -53,7 +81,7 @@ export function SmsGatewayPanel({ settings }: { settings: SmsGatewaySettings }) 
       if (result.ok) {
         toast.success("Test message sent successfully")
       } else {
-        toast.error("Test send failed &mdash; check your credentials and try again")
+        toast.error("Test send failed — check your credentials and try again")
       }
     })
   }
@@ -66,8 +94,7 @@ export function SmsGatewayPanel({ settings }: { settings: SmsGatewaySettings }) 
           <CardTitle>SMS Gateway</CardTitle>
         </div>
         <CardDescription>
-          Manage your SMS provider subscription here. Once configured, bulk SMS and billing notifications
-          send for real &mdash; no code changes or redeploys needed to switch providers or update credentials.
+          Manage your SMS provider here. Africa's Talking, Twilio, and Infobip all send for real once the gateway is active and credentials are saved.
         </CardDescription>
       </CardHeader>
       <form onSubmit={handleSave}>
@@ -76,7 +103,7 @@ export function SmsGatewayPanel({ settings }: { settings: SmsGatewaySettings }) 
             <div className="space-y-0.5">
               <Label>Gateway active</Label>
               <p className="text-xs text-muted-foreground">
-                When off, messages are logged as simulated only &mdash; nothing actually sends.
+                When off, messages are logged as simulated only — nothing actually sends.
               </p>
             </div>
             <Switch checked={active} onCheckedChange={setActive} />
@@ -95,18 +122,19 @@ export function SmsGatewayPanel({ settings }: { settings: SmsGatewaySettings }) 
               </Select>
             </div>
             <div className="space-y-2">
-              <Label>Sender ID (optional)</Label>
-              <Input value={senderId} onChange={e => setSenderId(e.target.value)} placeholder="SWUWS" />
+              <Label>{copy.sender}</Label>
+              <Input value={senderId} onChange={e => setSenderId(e.target.value)} placeholder={copy.senderPlaceholder} />
             </div>
           </div>
 
           <div className="space-y-2">
-            <Label>Username</Label>
-            <Input value={username} onChange={e => setUsername(e.target.value)} placeholder="Your provider account username" />
+            <Label>{copy.username}</Label>
+            <Input value={username} onChange={e => setUsername(e.target.value)} placeholder={copy.usernamePlaceholder} />
+            <p className="text-xs text-muted-foreground">{copy.usernameHint}</p>
           </div>
 
           <div className="space-y-2">
-            <Label>API Key</Label>
+            <Label>{copy.apiKey}</Label>
             <Input
               type="password"
               value={apiKey}

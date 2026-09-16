@@ -122,7 +122,6 @@ export async function importCustomers(summary: CustomerImportSummary): Promise<{
             category: normalizeCategory(data.category),
             lastReading: data.lastReading || 0,
             openingArrears: data.openingArrears,
-            accountBalance: String(data.openingArrears),
             notes: data.notes || null,
             createdById: current.id,
             updatedAt: new Date(),
@@ -147,7 +146,9 @@ export async function importCustomers(summary: CustomerImportSummary): Promise<{
               category: sql`COALESCE(EXCLUDED.category, customer.category)`,
               lastReading: sql`COALESCE(EXCLUDED."lastReading", customer."lastReading")`,
               openingArrears: sql`EXCLUDED."openingArrears"`,
-              accountBalance: sql`EXCLUDED."accountBalance"`,
+              // Live accountBalance is EBS-only (daily sync / monthly billing
+              // import). Customer import never writes it — new rows keep the
+              // column default of 0 until the next EBS sync.
               updatedAt: new Date(),
             }
           })
@@ -191,7 +192,6 @@ export async function importCustomers(summary: CustomerImportSummary): Promise<{
               category: normalizeCategory(data.category),
               lastReading: data.lastReading || existing.lastReading,
               openingArrears: data.openingArrears,
-              accountBalance: String(data.openingArrears),
               updatedAt: new Date(),
             }).where(eq(customer.id, existing.id))
             updatedCount++
@@ -209,7 +209,6 @@ export async function importCustomers(summary: CustomerImportSummary): Promise<{
               category: normalizeCategory(data.category),
               lastReading: data.lastReading || 0,
               openingArrears: data.openingArrears,
-              accountBalance: String(data.openingArrears),
               notes: data.notes || null,
               createdById: current.id,
             })

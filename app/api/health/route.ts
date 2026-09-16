@@ -1,6 +1,7 @@
 import { db } from "@/lib/db"
 import { sql } from "drizzle-orm"
 import { NextResponse } from "next/server"
+import { CURRENT_APP_VERSION } from "@/lib/version"
 
 export async function GET() {
   const startTime = Date.now()
@@ -21,7 +22,7 @@ export async function GET() {
 
   // 2. Storage / Environment check
   checks.environment = process.env.NODE_ENV
-  checks.version = "1.0.0"
+  checks.version = CURRENT_APP_VERSION
 
   const responseStatus = checks.status === "healthy" ? 200 : 503
   return NextResponse.json(checks, { status: responseStatus })

@@ -552,12 +552,35 @@ export async function lookupComplaintCustomer(query: string) {
     .limit(8)
 }
 
+async function assertCrmAreaInTerritory(user: Awaited<ReturnType<typeof requireUser>>, branchId: string) {
+  if (canViewAllData(user)) return true
+  if (user.clusterId) {
+    const [row] = await db
+      .select({ clusterId: branch.clusterId })
+      .from(branch)
+      .where(eq(branch.id, branchId))
+      .limit(1)
+    return !!row && row.clusterId === user.clusterId
+  }
+  if (user.branchId) return user.branchId === branchId
+  if (user.schemeId) {
+    const [row] = await db
+      .select({ branchId: waterScheme.branchId })
+      .from(waterScheme)
+      .where(eq(waterScheme.id, user.schemeId))
+      .limit(1)
+    return !!row && row.branchId === branchId
+  }
+  return false
+}
+
 /**
  * USERS BY AREA
  */
 export async function listUsersByArea(branchId: string) {
   const user = await requireUser()
   if (!canViewCrm(user)) throw new Error("Forbidden")
+  if (!(await assertCrmAreaInTerritory(user, branchId))) return []
 
   return db
     .select({
@@ -601,14 +624,20 @@ export async function listCrmStaff() {
 export async function listSchemesByArea(branchId: string) {
   const user = await requireUser()
   if (!canViewCrm(user)) throw new Error("Forbidden")
+  if (!(await assertCrmAreaInTerritory(user, branchId))) return []
+
+  const conditions = [
+    eq(waterScheme.branchId, branchId),
+    eq(waterScheme.active, true),
+  ]
+  if (!canViewAllData(user) && user.schemeId) {
+    conditions.push(eq(waterScheme.id, user.schemeId))
+  }
 
   return db
     .select()
     .from(waterScheme)
-    .where(and(
-      eq(waterScheme.branchId, branchId),
-      eq(waterScheme.active, true)
-    ))
+    .where(and(...conditions))
     .orderBy(asc(waterScheme.name))
 }
 

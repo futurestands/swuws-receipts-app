@@ -8,6 +8,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { SearchableSelect } from "@/components/ui/searchable-select"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -78,44 +79,32 @@ export function ReportFilters({
 
       <div className="space-y-1.5">
         <Label className="text-xs text-muted-foreground uppercase font-bold">Branch (Area)</Label>
-        <Select
+        <SearchableSelect
           value={initialFilters.branchId || "all"}
           onValueChange={(v) => updateFilter("branchId", v)}
-        >
-          <SelectTrigger className="w-[180px] h-9 bg-background">
-            <SelectValue placeholder="All Branches" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Branches</SelectItem>
-            {branches.map((b) => (
-              <SelectItem key={b.id} value={b.id}>
-                {b.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+          options={[
+            { value: "all", label: "All Branches" },
+            ...branches.map((b) => ({ value: b.id, label: b.name })),
+          ]}
+          placeholder="All Branches"
+          className="h-9 w-[180px] bg-background"
+        />
       </div>
 
       <div className="space-y-1.5">
         <Label className="text-xs text-muted-foreground uppercase font-bold">Water Scheme</Label>
-        <Select
+        <SearchableSelect
           value={initialFilters.schemeId || "all"}
           onValueChange={(v) => updateFilter("schemeId", v)}
-        >
-          <SelectTrigger className="w-[180px] h-9 bg-background">
-            <SelectValue placeholder="All Schemes" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Schemes</SelectItem>
-            {schemes
+          options={[
+            { value: "all", label: "All Schemes" },
+            ...schemes
               .filter((s) => !initialFilters.branchId || s.branchId === initialFilters.branchId)
-              .map((s) => (
-                <SelectItem key={s.id} value={s.id}>
-                  {s.name}
-                </SelectItem>
-              ))}
-          </SelectContent>
-        </Select>
+              .map((s) => ({ value: s.id, label: s.name })),
+          ]}
+          placeholder="All Schemes"
+          className="h-9 w-[180px] bg-background"
+        />
       </div>
 
       <div className="space-y-1.5">

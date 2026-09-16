@@ -643,6 +643,13 @@ export async function listActiveBranches() {
       conditions.push(eq(branchTable.id, current.branchId))
     } else if (current.clusterId) {
       conditions.push(eq(branchTable.clusterId, current.clusterId))
+    } else if (current.schemeId) {
+      conditions.push(
+        inArray(
+          branchTable.id,
+          db.select({ id: waterScheme.branchId }).from(waterScheme).where(eq(waterScheme.id, current.schemeId)),
+        ),
+      )
     }
   }
 

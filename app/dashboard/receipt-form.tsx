@@ -18,6 +18,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { SearchableSelect } from "@/components/ui/searchable-select"
 import { toast } from "sonner"
 import { formatUGX } from "@/lib/format"
 import { cn } from "@/lib/utils"
@@ -455,24 +456,15 @@ export function ReceiptForm({
               </Select>
             </FormField>
             <FormField label="Scheme" htmlFor="schemeTrigger">
-              <Select
+              <SearchableSelect
+                id="schemeTrigger"
                 value={form.schemeId}
-                onValueChange={(v) => set("schemeId", v ?? "")}
+                onValueChange={(v) => set("schemeId", v || "")}
                 disabled={!!form.billingRecordId}
-              >
-                <SelectTrigger id="schemeTrigger" className="w-full h-11">
-                  <span className="flex-1 text-left truncate">
-                    {form.schemeId ? (schemes.find(s => s.id === form.schemeId)?.name || form.schemeId) : "Select scheme"}
-                  </span>
-                </SelectTrigger>
-                <SelectContent>
-                  {schemes.map((s) => (
-                    <SelectItem key={s.id} value={s.id}>
-                      {s.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                options={schemes.map((s) => ({ value: s.id, label: s.name }))}
+                placeholder="Select scheme"
+                className="h-11"
+              />
             </FormField>
           </div>
 
@@ -563,18 +555,14 @@ export function ReceiptForm({
 
             {branches.length > 0 && (
               <FormField label="Branch" htmlFor="branchTrigger">
-                <Select value={form.branchId} onValueChange={(v) => set("branchId", v ?? "")}>
-                  <SelectTrigger id="branchTrigger" className="w-full h-11">
-                    <SelectValue placeholder="Select a branch" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {branches.map((b) => (
-                      <SelectItem key={b.id} value={b.id}>
-                        {b.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <SearchableSelect
+                  id="branchTrigger"
+                  value={form.branchId}
+                  onValueChange={(v) => set("branchId", v || "")}
+                  options={branches.map((b) => ({ value: b.id, label: b.name }))}
+                  placeholder="Select a branch"
+                  className="h-11"
+                />
               </FormField>
             )}
           </div>
