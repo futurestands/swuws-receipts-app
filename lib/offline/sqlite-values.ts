@@ -28,6 +28,25 @@ export function toSqliteValue(value: unknown): SqliteValue {
   return String(value)
 }
 
+/** Capacitor SQLite COUNT rows arrive as {total}, {["COUNT(*)"]}, or [n]. */
+export function readSqliteCount(row: unknown): number {
+  if (row == null) return 0
+  if (typeof row === "number") return Number.isFinite(row) ? row : 0
+  if (typeof row === "bigint") return Number(row)
+  if (typeof row === "string") {
+    const n = Number(row)
+    return Number.isFinite(n) ? n : 0
+  }
+  if (Array.isArray(row)) return readSqliteCount(row[0])
+  if (typeof row === "object") {
+    const rec = row as Record<string, unknown>
+    return readSqliteCount(
+      rec.total ?? rec.COUNT ?? rec["COUNT(*)"] ?? rec["count(*)"] ?? rec["COUNT(id)"] ?? Object.values(rec)[0],
+    )
+  }
+  return 0
+}
+
 export function customerInsertValues(c: {
   id: unknown
   customerAccount?: unknown

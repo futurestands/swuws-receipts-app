@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { billingInsertValues, customerInsertValues, toSqliteValue } from "./sqlite-values"
+import { billingInsertValues, customerInsertValues, readSqliteCount, toSqliteValue } from "./sqlite-values"
 
 describe("toSqliteValue", () => {
   it("keeps strings, numbers, and null", () => {
@@ -38,6 +38,16 @@ describe("customerInsertValues", () => {
     expect(values.every((v) => v == null || typeof v === "string" || typeof v === "number")).toBe(true)
     expect(values[8]).toBe("2026-09-16T09:00:00.000Z")
     expect(values[7]).toBe(1)
+  })
+})
+
+describe("readSqliteCount", () => {
+  it("reads named, aliased, and array COUNT rows", () => {
+    expect(readSqliteCount({ total: 18968 })).toBe(18968)
+    expect(readSqliteCount({ "COUNT(*)": 50 })).toBe(50)
+    expect(readSqliteCount({ "COUNT(id)": 18968 })).toBe(18968)
+    expect(readSqliteCount([1200])).toBe(1200)
+    expect(readSqliteCount(null)).toBe(0)
   })
 })
 

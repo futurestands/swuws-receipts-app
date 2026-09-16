@@ -54,8 +54,10 @@ public class OfficePrintPlugin extends Plugin {
                     public void onPageFinished(WebView view, String url) {
                         try {
                             PrintDocumentAdapter adapter = view.createPrintDocumentAdapter(jobName);
+                            // Do not force ISO_A4 — that preview on a phone is a
+                            // mostly blank page with a tiny receipt. Let the
+                            // printer dialog pick the paper the device supports.
                             PrintAttributes attrs = new PrintAttributes.Builder()
-                                .setMediaSize(PrintAttributes.MediaSize.ISO_A4)
                                 .setMinMargins(PrintAttributes.Margins.NO_MARGINS)
                                 .build();
                             printManager.print(jobName, adapter, attrs);

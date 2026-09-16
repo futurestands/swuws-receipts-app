@@ -5,4 +5,4 @@
  * In a native build, this helps the app determine if an update
  * is available on the server.
  */
-export const CURRENT_APP_VERSION = "1.2.4";
+export const CURRENT_APP_VERSION = "1.2.5";

@@ -61,10 +61,12 @@ function documentShell(title: string, body: string) {
 <html>
 <head>
   <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>${escapeHtml(title)}</title>
   <style>
-    @page { size: A4; margin: 16mm; }
-    body { font-family: Georgia, "Times New Roman", serif; color: #0f172a; font-size: 13px; }
+    @page { size: auto; margin: 10mm; }
+    html, body { width: 100%; max-width: 100%; margin: 0; }
+    body { font-family: Georgia, "Times New Roman", serif; color: #0f172a; font-size: 13px; box-sizing: border-box; padding: 8px; }
     h1 { font-size: 18px; letter-spacing: 0.08em; margin: 0; }
     h2 { font-size: 12px; font-weight: 600; margin: 4px 0 16px; }
     table { width: 100%; border-collapse: collapse; }

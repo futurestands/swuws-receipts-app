@@ -12,7 +12,28 @@ import { canUploadCustomers } from "@/lib/permissions"
 import { PageHeader } from "@/components/ui/page-header"
 import { EmptyState } from "@/components/ui/empty-state"
 import { ScrollableTableContainer } from "@/components/ui/responsive-table"
-import { Users } from "lucide-react"
+import { Users, ChevronLeft, ChevronRight } from "lucide-react"
+
+function customersListHref(params: {
+  q?: string
+  branchId?: string
+  schemeId?: string
+  category?: string
+  minBalance?: string
+  maxBalance?: string
+  page: number
+}) {
+  const sp = new URLSearchParams()
+  if (params.q) sp.set("q", params.q)
+  if (params.branchId) sp.set("branchId", params.branchId)
+  if (params.schemeId) sp.set("schemeId", params.schemeId)
+  if (params.category) sp.set("category", params.category)
+  if (params.minBalance) sp.set("minBalance", params.minBalance)
+  if (params.maxBalance) sp.set("maxBalance", params.maxBalance)
+  if (params.page > 1) sp.set("page", String(params.page))
+  const qs = sp.toString()
+  return qs ? `/dashboard/customers?${qs}` : "/dashboard/customers"
+}
 
 export default async function CustomersPage({
   searchParams,
@@ -86,12 +107,12 @@ export default async function CustomersPage({
                   <TableRow>
                     <TableHead>Name</TableHead>
                     <TableHead>Account #</TableHead>
-                    <TableHead>Category</TableHead>
-                    <TableHead>Branch</TableHead>
-                    <TableHead>Scheme</TableHead>
+                    <TableHead className="hidden sm:table-cell">Category</TableHead>
+                    <TableHead className="hidden md:table-cell">Branch</TableHead>
+                    <TableHead className="hidden md:table-cell">Scheme</TableHead>
                     <TableHead className="text-right">Arrears</TableHead>
-                    <TableHead>Phone</TableHead>
-                    <TableHead>Registered</TableHead>
+                    <TableHead className="hidden sm:table-cell">Phone</TableHead>
+                    <TableHead className="hidden lg:table-cell">Registered</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -108,20 +129,20 @@ export default async function CustomersPage({
                       <TableCell className="text-muted-foreground">
                         {c.customerAccount || "—"}
                       </TableCell>
-                      <TableCell>
+                      <TableCell className="hidden sm:table-cell">
                          <Badge variant="outline" className="capitalize text-[10px] py-0">{c.category}</Badge>
                       </TableCell>
-                      <TableCell className="text-muted-foreground">
+                      <TableCell className="hidden md:table-cell text-muted-foreground">
                         {c.branchName || "—"}
                       </TableCell>
-                      <TableCell className="text-muted-foreground">
+                      <TableCell className="hidden md:table-cell text-muted-foreground">
                         {c.schemeName || "—"}
                       </TableCell>
-                      <TableCell className={`text-right font-mono font-bold ${Number(c.accountBalance) > 0 ? 'text-destructive' : 'text-primary'}`}>
+                      <TableCell className={`text-right font-mono font-bold whitespace-nowrap ${Number(c.accountBalance) > 0 ? 'text-destructive' : 'text-primary'}`}>
                         {formatUGX(Number(c.accountBalance))}
                       </TableCell>
-                      <TableCell className="text-muted-foreground font-medium text-xs">{c.phone || "—"}</TableCell>
-                      <TableCell className="text-muted-foreground text-sm">
+                      <TableCell className="hidden sm:table-cell text-muted-foreground font-medium text-xs">{c.phone || "—"}</TableCell>
+                      <TableCell className="hidden lg:table-cell text-muted-foreground text-sm">
                         {formatDate(c.createdAt)}
                       </TableCell>
                     </TableRow>
@@ -132,40 +153,42 @@ export default async function CustomersPage({
           )}
 
           {totalPages > 1 && (
-            <div className="flex items-center justify-center gap-2 pt-4">
-              <Button variant="outline" size="sm" asChild disabled={pageNum <= 1} className="h-11">
-                <Link
-                  href={`/dashboard/customers?${new URLSearchParams({
-                    ...(q ? { q } : {}),
-                    ...(branchId ? { branchId } : {}),
-                    ...(schemeId ? { schemeId } : {}),
-                    ...(category ? { category } : {}),
-                    ...(minBalance ? { minBalance } : {}),
-                    ...(maxBalance ? { maxBalance } : {}),
-                    page: String(pageNum - 1)
-                  })}`}
-                >
-                  Previous
-                </Link>
-              </Button>
-              <span className="text-sm text-muted-foreground">
+            <div className="flex flex-wrap items-center justify-between gap-2 pt-4">
+              <p className="w-full text-center text-sm text-muted-foreground sm:w-auto sm:order-2 sm:flex-1">
                 Page {pageNum} of {totalPages}
-              </span>
-              <Button variant="outline" size="sm" asChild disabled={pageNum >= totalPages} className="h-11">
-                <Link
-                  href={`/dashboard/customers?${new URLSearchParams({
-                    ...(q ? { q } : {}),
-                    ...(branchId ? { branchId } : {}),
-                    ...(schemeId ? { schemeId } : {}),
-                    ...(category ? { category } : {}),
-                    ...(minBalance ? { minBalance } : {}),
-                    ...(maxBalance ? { maxBalance } : {}),
-                    page: String(pageNum + 1)
-                  })}`}
-                >
-                  Next
-                </Link>
-              </Button>
+              </p>
+              {pageNum > 1 ? (
+                <Button variant="outline" size="sm" asChild className="h-11 flex-1 sm:flex-none sm:order-1 min-w-[40%]">
+                  <Link
+                    href={customersListHref({
+                      q, branchId, schemeId, category, minBalance, maxBalance,
+                      page: pageNum - 1,
+                    })}
+                  >
+                    <ChevronLeft className="h-4 w-4 mr-1" /> Previous
+                  </Link>
+                </Button>
+              ) : (
+                <Button variant="outline" size="sm" disabled className="h-11 flex-1 sm:flex-none sm:order-1 min-w-[40%]">
+                  <ChevronLeft className="h-4 w-4 mr-1" /> Previous
+                </Button>
+              )}
+              {pageNum < totalPages ? (
+                <Button variant="outline" size="sm" asChild className="h-11 flex-1 sm:flex-none sm:order-3 min-w-[40%]">
+                  <Link
+                    href={customersListHref({
+                      q, branchId, schemeId, category, minBalance, maxBalance,
+                      page: pageNum + 1,
+                    })}
+                  >
+                    Next <ChevronRight className="h-4 w-4 ml-1" />
+                  </Link>
+                </Button>
+              ) : (
+                <Button variant="outline" size="sm" disabled className="h-11 flex-1 sm:flex-none sm:order-3 min-w-[40%]">
+                  Next <ChevronRight className="h-4 w-4 ml-1" />
+                </Button>
+              )}
             </div>
           )}
         </CardContent>

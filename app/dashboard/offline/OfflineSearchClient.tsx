@@ -448,8 +448,11 @@ export function OfflineSearchClient({ agentId }: { agentId: string }) {
         )}
       </div>
 
-      {localTotalPages > 1 && (
-        <div className="flex items-center justify-between gap-3 pt-1 pb-4">
+      { (page > 1 || localCustomers.length >= PAGE_SIZE || localTotalPages > 1) && (
+        <div className="flex flex-wrap items-center justify-between gap-2 pt-1 pb-4">
+          <p className="w-full text-center text-xs font-bold text-slate-600 uppercase tracking-widest sm:w-auto sm:order-2 sm:flex-1">
+            Page {page} of {Math.max(page, localTotalPages)}
+          </p>
           <Button
             variant="outline"
             size="sm"
@@ -458,22 +461,19 @@ export function OfflineSearchClient({ agentId }: { agentId: string }) {
               setPage((p) => Math.max(1, p - 1))
               window.scrollTo({ top: 0, behavior: "smooth" })
             }}
-            className="h-11 px-4 font-black uppercase tracking-widest text-[10px]"
+            className="h-11 px-4 flex-1 sm:flex-none sm:order-1 font-black uppercase tracking-widest text-[10px] min-w-[40%]"
           >
             <ChevronLeft className="h-4 w-4 mr-1" /> Previous
           </Button>
-          <span className="text-xs font-bold text-slate-600 uppercase tracking-widest">
-            Page {page} of {localTotalPages}
-          </span>
           <Button
             variant="outline"
             size="sm"
-            disabled={page >= localTotalPages}
+            disabled={page >= localTotalPages && localCustomers.length < PAGE_SIZE}
             onClick={() => {
               setPage((p) => p + 1)
               window.scrollTo({ top: 0, behavior: "smooth" })
             }}
-            className="h-11 px-4 font-black uppercase tracking-widest text-[10px]"
+            className="h-11 px-4 flex-1 sm:flex-none sm:order-3 font-black uppercase tracking-widest text-[10px] min-w-[40%]"
           >
             Next <ChevronRight className="h-4 w-4 ml-1" />
           </Button>

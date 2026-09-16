@@ -1,7 +1,7 @@
 import { CapacitorSQLite, SQLiteConnection, SQLiteDBConnection } from '@capacitor-community/sqlite';
 import { Device } from '@capacitor/device';
 import { isNative } from '../mobile-hardware';
-import { billingInsertValues, customerInsertValues } from './sqlite-values';
+import { billingInsertValues, customerInsertValues, readSqliteCount } from './sqlite-values';
 
 const DB_NAME = 'swuws_offline_cache';
 
@@ -329,28 +329,32 @@ class SQLiteService {
     const likeParams = trimmed ? [`%${trimmed}%`, `%${trimmed}%`, `%${trimmed}%`] : []
 
     const countRes = await this.db.query(
-      `SELECT COUNT(*) AS total FROM local_customers ${where};`,
+      `SELECT COUNT(id) AS total FROM local_customers ${where};`,
       likeParams,
     )
-    const countRow = countRes.values?.[0]
-    const total = Number(
-      countRow?.total ??
-      (Array.isArray(countRow) ? countRow[0] : Object.values(countRow || {})[0]) ??
-      0,
-    )
-    const totalPages = Math.max(1, Math.ceil(total / safePageSize))
-    const pageClamped = Math.min(safePage, totalPages)
-    const offsetClamped = (pageClamped - 1) * safePageSize
+    const counted = readSqliteCount(countRes.values?.[0])
+    // If COUNT came back 0/NaN but rows exist, do not clamp the page back to 1.
+    const offset = (safePage - 1) * safePageSize
 
     const res = await this.db.query(
-      `SELECT * FROM local_customers ${where} ORDER BY name LIMIT ${safePageSize} OFFSET ${offsetClamped};`,
+      `SELECT * FROM local_customers ${where} ORDER BY name LIMIT ${safePageSize} OFFSET ${offset};`,
       likeParams,
+    )
+    const customers = res.values || []
+    const hasMore = customers.length === safePageSize
+    const inferredTotal = offset + customers.length + (hasMore ? 1 : 0)
+    const total = counted > 0 ? counted : inferredTotal
+    const totalPages = Math.max(
+      1,
+      counted > 0
+        ? Math.ceil(total / safePageSize)
+        : Math.max(safePage, Math.ceil(inferredTotal / safePageSize)),
     )
 
     return {
-      customers: res.values || [],
+      customers,
       total,
-      page: pageClamped,
+      page: safePage,
       pageSize: safePageSize,
       totalPages,
     }

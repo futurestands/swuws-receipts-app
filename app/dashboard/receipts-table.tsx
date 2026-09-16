@@ -80,12 +80,12 @@ export function ReceiptsTable({ receipts, isAdmin }: { receipts: Receipt[]; isAd
                 <TableRow>
                   <TableHead>Receipt #</TableHead>
                   <TableHead>Customer</TableHead>
-                  <TableHead>Period</TableHead>
+                  <TableHead className="hidden sm:table-cell">Period</TableHead>
                   <TableHead>Amount</TableHead>
-                  <TableHead>Recon</TableHead>
-                  {isAdmin && <TableHead>Agent</TableHead>}
-                  <TableHead>Date</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
+                  <TableHead className="hidden sm:table-cell">Recon</TableHead>
+                  {isAdmin && <TableHead className="hidden md:table-cell">Agent</TableHead>}
+                  <TableHead className="hidden sm:table-cell">Date</TableHead>
+                  <TableHead className="text-right hidden sm:table-cell">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -100,24 +100,24 @@ export function ReceiptsTable({ receipts, isAdmin }: { receipts: Receipt[]; isAd
                       </Link>
                     </TableCell>
                     <TableCell>{r.customerName}</TableCell>
-                    <TableCell className="text-xs">
+                    <TableCell className="hidden sm:table-cell text-xs">
                       {r.billingPeriodSnapshot || "—"}
                     </TableCell>
-                    <TableCell>{formatUGX(Number(r.amount))}</TableCell>
-                    <TableCell>
+                    <TableCell className="whitespace-nowrap">{formatUGX(Number(r.amount))}</TableCell>
+                    <TableCell className="hidden sm:table-cell">
                        <Badge variant="outline" className={`text-[10px] px-1.5 py-0 capitalize ${r.reconciliationStatus === 'matched' ? 'bg-green-50 text-green-600 border-green-200' : ''}`}>
                           {r.reconciliationStatus}
                        </Badge>
                     </TableCell>
                     {isAdmin && (
-                      <TableCell>
+                      <TableCell className="hidden md:table-cell">
                         <Badge variant="secondary">{r.agentName}</Badge>
                       </TableCell>
                     )}
-                    <TableCell className="text-muted-foreground text-sm">
+                    <TableCell className="hidden sm:table-cell text-muted-foreground text-sm">
                       {formatDateTime(r.createdAt)}
                     </TableCell>
-                    <TableCell className="text-right">
+                    <TableCell className="text-right hidden sm:table-cell">
                       <VoidReceiptButton
                         receiptId={r.id}
                         variant="small"
