@@ -16,6 +16,7 @@ import { OfflineReceiptForm } from "./OfflineReceiptForm"
 import { OfflineMeterReadingForm } from "./OfflineMeterReadingForm"
 import { printerManager } from "@/lib/offline/printer-manager"
 import { searchCustomers } from "@/app/actions/customers"
+import { isNative } from "@/lib/mobile-hardware"
 
 const PAGE_SIZE = 50
 
@@ -92,23 +93,38 @@ export function OfflineSearchClient({ agentId }: { agentId: string }) {
   useEffect(() => {
     let active = true
     const init = async () => {
-      await sqliteService.initialize()
+      try {
+        await sqliteService.initialize()
+      } catch (err) {
+        console.error("SQLite init failed", err)
+      }
       if (active) await refreshData()
     }
     init()
 
-    const updateOnlineStatus = () => setIsOnline(navigator.onLine)
-    window.addEventListener("online", updateOnlineStatus)
-    window.addEventListener("offline", updateOnlineStatus)
-
-    if (typeof navigator !== 'undefined') {
-      setIsOnline(navigator.onLine)
+    const updateOnlineStatus = async () => {
+      if (isNative()) {
+        try {
+          const { Network } = await import("@capacitor/network")
+          const net = await Network.getStatus()
+          if (active) setIsOnline(net.connected)
+          return
+        } catch {
+          /* fall through to navigator */
+        }
+      }
+      if (active) setIsOnline(navigator.onLine)
     }
+    updateOnlineStatus()
+    const onOnline = () => { void updateOnlineStatus() }
+    const onOffline = () => { void updateOnlineStatus() }
+    window.addEventListener("online", onOnline)
+    window.addEventListener("offline", onOffline)
 
     return () => {
       active = false
-      window.removeEventListener("online", updateOnlineStatus)
-      window.removeEventListener("offline", updateOnlineStatus)
+      window.removeEventListener("online", onOnline)
+      window.removeEventListener("offline", onOffline)
     }
   }, [])
 
@@ -190,14 +206,24 @@ export function OfflineSearchClient({ agentId }: { agentId: string }) {
   }, [isOnline, hasNewItems, uploading])
 
   const handleSyncPull = async () => {
-    if (!isOnline) {
-      toast.error("You must be online to sync data")
-      return
-    }
-
     setSyncing(true)
-    setSyncStep("Fetching customers...")
+    setSyncStep("Opening phone database...")
     try {
+      await sqliteService.ensureReady()
+
+      if (isNative()) {
+        const { Network } = await import("@capacitor/network")
+        const net = await Network.getStatus()
+        if (!net.connected) {
+          toast.error("Connect to the network, then tap Sync Cache.")
+          return
+        }
+      } else if (typeof navigator !== "undefined" && !navigator.onLine) {
+        toast.error("You must be online to sync data")
+        return
+      }
+
+      setSyncStep("Fetching customers...")
       const result = await pullOfflineCache({
         agentId,
         onProgress: ({ loaded, total }) => {
@@ -207,15 +233,17 @@ export function OfflineSearchClient({ agentId }: { agentId: string }) {
       })
       setPage(1)
       await refreshData(1)
-      if (result.truncated) {
+      if (result.loaded === 0) {
+        toast.error("Sync reached the server but returned 0 customers. This account may lack customers.view or a scheme/area assignment.")
+      } else if (result.truncated) {
         toast.success(`Cached ${result.loaded.toLocaleString()} of ${result.total.toLocaleString()} customers (device cap).`)
       } else {
         toast.success(`Offline cache updated · ${result.loaded.toLocaleString()} customers`)
       }
     } catch (err: any) {
       console.error(err)
-      const msg = err.message || "Unknown error"
-      toast.error(`Sync failed: ${msg.slice(0, 50)}`)
+      const msg = err?.message || "Unknown error"
+      toast.error(`Sync failed: ${msg.slice(0, 120)}`)
     } finally {
       setSyncing(false)
       setSyncStep("")
@@ -278,18 +306,16 @@ export function OfflineSearchClient({ agentId }: { agentId: string }) {
           </p>
         </div>
         <div className="flex items-center gap-3">
-          {isOnline && (
-            <Button
-              onClick={handleSyncPull}
-              disabled={syncing}
-              size="sm"
-              variant="outline"
-              className="gap-2"
-            >
-              <RefreshCw className={cn("h-4 w-4", syncing && "animate-spin")} />
-              {syncing ? syncStep : "Sync Cache"}
-            </Button>
-          )}
+          <Button
+            onClick={handleSyncPull}
+            disabled={syncing}
+            size="sm"
+            variant="outline"
+            className="gap-2"
+          >
+            <RefreshCw className={cn("h-4 w-4", syncing && "animate-spin")} />
+            {syncing ? syncStep : "Sync Cache"}
+          </Button>
         </div>
       </div>
 
@@ -379,7 +405,7 @@ export function OfflineSearchClient({ agentId }: { agentId: string }) {
         </p>
         <p className="text-xs font-medium text-sky-800">
           {localTotal === 0
-            ? (syncMeta ? "Cache is empty. Tap Sync Cache while online." : "Tap Sync Cache to download your area.")
+            ? (syncMeta ? "Cache is empty. Tap Sync Cache while you have signal." : "Tap Sync Cache to download your area. This stores customers on the phone so they are still here with no network.")
             : `Showing ${Math.min(localTotal, (page - 1) * PAGE_SIZE + 1)}–${Math.min(localTotal, page * PAGE_SIZE)} of ${localTotal.toLocaleString()}. Use Next to walk the full list.`}
         </p>
         {syncMeta?.lastSuccessfulPullAt && (

@@ -20,6 +20,12 @@ export async function pullOfflineCache(opts: {
   agentId: string
   onProgress?: (progress: OfflinePullProgress) => void
 }): Promise<OfflinePullResult> {
+  // Fail before we touch the network if this phone cannot store the cache.
+  // Previously beginFullPull/insertPullPage returned silently when SQLite
+  // was never opened, so Sync Cache toasted success and airplane mode
+  // showed an empty list.
+  await sqliteService.ensureReady()
+
   let cursor: string | null = null
   let loaded = 0
   let total = 0

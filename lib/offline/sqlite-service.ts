@@ -1,6 +1,7 @@
 import { CapacitorSQLite, SQLiteConnection, SQLiteDBConnection } from '@capacitor-community/sqlite';
 import { Device } from '@capacitor/device';
 import { isNative } from '../mobile-hardware';
+import { billingInsertValues, customerInsertValues } from './sqlite-values';
 
 const DB_NAME = 'swuws_offline_cache';
 
@@ -17,12 +18,68 @@ export function safeId() {
 class SQLiteService {
   private sqlite: SQLiteConnection = new SQLiteConnection(CapacitorSQLite);
   private db: SQLiteDBConnection | null = null;
+  private initPromise: Promise<void> | null = null;
+  private lastError: string | null = null;
 
+  /**
+   * Opens the native DB. Safe to call repeatedly. On the browser this is a
+   * no-op — the cache lives on the Android app, not in Chrome.
+   */
   async initialize(): Promise<void> {
     if (!isNative()) return;
+    if (this.db) {
+      try {
+        const open = await this.db.isDBOpen();
+        if (open?.result) return;
+      } catch {
+        /* reconnect below */
+      }
+      this.db = null;
+      this.initPromise = null;
+    }
+    if (this.initPromise) {
+      await this.initPromise;
+      return;
+    }
+    this.initPromise = this.openConnection();
+    try {
+      await this.initPromise;
+    } finally {
+      if (!this.db) this.initPromise = null;
+    }
+  }
+
+  /**
+   * Pulls must call this. Unlike initialize(), a missing DB is an error so
+   * Sync Cache cannot toast success after writing nowhere.
+   */
+  async ensureReady(): Promise<void> {
+    await this.initialize();
+    if (!isNative()) {
+      throw new Error("Offline cache only works in the SWUWS Android app.");
+    }
+    if (!this.db) {
+      throw new Error(this.lastError || "Could not open the phone database. Force-close the app and tap Sync Cache again.");
+    }
+  }
+
+  private async openConnection(): Promise<void> {
+    if (this.db) {
+      try {
+        const open = await this.db.isDBOpen();
+        if (open?.result) return;
+      } catch {
+        this.db = null;
+      }
+    }
 
     try {
-      // Robust connection management
+      try {
+        await this.sqlite.checkConnectionsConsistency();
+      } catch {
+        /* first launch — no connections to reconcile */
+      }
+
       const checkResult = await this.sqlite.isConnection(DB_NAME, false);
       if (checkResult.result) {
         this.db = await this.sqlite.retrieveConnection(DB_NAME, false);
@@ -32,6 +89,7 @@ class SQLiteService {
 
       if (!this.db) throw new Error("Could not establish SQLite connection");
       await this.db.open();
+      this.lastError = null;
 
       // Ensure all tables exist individually for driver stability
       await this.db.execute(`
@@ -165,37 +223,29 @@ class SQLiteService {
           createdAt TEXT DEFAULT CURRENT_TIMESTAMP
         );`);
     } catch (err) {
+      this.db = null;
+      this.lastError = err instanceof Error ? err.message : String(err);
       console.error('SQLite initialization failed', err);
     }
   }
 
   async beginFullPull(): Promise<void> {
-    if (!this.db) return;
+    await this.ensureReady();
     // Receipt / reading queues are kept. Only the searchable cache is replaced.
-    await this.db.execute(`DELETE FROM local_billing_records;`);
-    await this.db.execute(`DELETE FROM local_customers;`);
+    await this.db!.execute(`DELETE FROM local_billing_records;`);
+    await this.db!.execute(`DELETE FROM local_customers;`);
   }
 
   async insertPullPage(customers: any[], billingRecords: any[]): Promise<void> {
-    if (!this.db) return;
+    await this.ensureReady();
+    if (customers.length === 0 && billingRecords.length === 0) return;
 
     const set: any[] = [];
     for (const c of customers) {
       set.push({
         statement: `INSERT INTO local_customers (id, customerAccount, name, phone, address, accountBalance, category, active, updatedAt, lastReading)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        values: [
-          c.id,
-          c.customerAccount,
-          c.name,
-          c.phone,
-          c.address,
-          String(c.accountBalance ?? 0),
-          c.category,
-          c.active ? 1 : 0,
-          c.updatedAt,
-          Number(c.lastReading ?? 0),
-        ],
+        values: customerInsertValues(c),
       });
     }
 
@@ -203,7 +253,7 @@ class SQLiteService {
       set.push({
         statement: `INSERT INTO local_billing_records (id, customerId, totalDue, arrears, billAmount, status, billingPeriodId)
                     VALUES (?, ?, ?, ?, ?, ?, ?)`,
-        values: [br.id, br.customerId, String(br.totalDue ?? 0), String(br.arrears ?? 0), String(br.billAmount ?? 0), br.status, br.billingPeriodId],
+        values: billingInsertValues(br),
       });
     }
 
@@ -211,7 +261,7 @@ class SQLiteService {
     // callers must page before they reach this method.
     const CHUNK_SIZE = 200;
     for (let i = 0; i < set.length; i += CHUNK_SIZE) {
-      await this.db.executeSet(set.slice(i, i + CHUNK_SIZE));
+      await this.db!.executeSet(set.slice(i, i + CHUNK_SIZE));
     }
   }
 
@@ -221,9 +271,14 @@ class SQLiteService {
     activePeriodId: string | null;
     customerCount: number;
   }): Promise<void> {
-    if (!this.db) return;
-    const deviceId = (await Device.getId()).identifier;
-    await this.db.run(
+    await this.ensureReady();
+    let deviceId = "default";
+    try {
+      deviceId = (await Device.getId()).identifier || "default";
+    } catch {
+      /* Device plugin missing — still record that this phone has a cache */
+    }
+    await this.db!.run(
       `INSERT OR REPLACE INTO sync_meta (deviceId, lastSuccessfulPullAt, scopedAgentId, activePeriodId, customerCount) VALUES (?, ?, ?, ?, ?)`,
       [deviceId, data.timestamp, data.agentId, data.activePeriodId, data.customerCount]
     );

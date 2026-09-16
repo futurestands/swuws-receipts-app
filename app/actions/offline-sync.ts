@@ -19,7 +19,7 @@ export type AgentOfflinePage = {
     accountBalance: string
     category: string
     active: boolean
-    updatedAt: Date
+    updatedAt: string
     lastReading: number
   }>
   billingRecords: Array<{
@@ -109,6 +109,15 @@ export async function getAgentOfflinePage(input?: {
   if (page.length === 0) return empty
 
   const customerIds = page.map((c) => c.id)
+  const customers: AgentOfflinePage["customers"] = page.map((c) => ({
+    ...c,
+    accountBalance: String(c.accountBalance ?? 0),
+    lastReading: Number(c.lastReading ?? 0),
+    updatedAt:
+      c.updatedAt instanceof Date
+        ? c.updatedAt.toISOString()
+        : String(c.updatedAt ?? ""),
+  }))
   const activeBillingRecords: AgentOfflinePage["billingRecords"] = []
 
   if (activePeriod) {
@@ -131,12 +140,19 @@ export async function getAgentOfflinePage(input?: {
             inArray(billingRecord.customerId, chunk)
           )
         )
-      activeBillingRecords.push(...records)
+      activeBillingRecords.push(
+        ...records.map((r) => ({
+          ...r,
+          totalDue: r.totalDue != null ? String(r.totalDue) : null,
+          arrears: r.arrears != null ? String(r.arrears) : null,
+          billAmount: r.billAmount != null ? String(r.billAmount) : null,
+        }))
+      )
     }
   }
 
   return {
-    customers: page,
+    customers,
     billingRecords: activeBillingRecords,
     activePeriodId: activePeriod?.id || null,
     timestamp: new Date().toISOString(),

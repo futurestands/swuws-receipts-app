@@ -23,8 +23,18 @@ export function SyncStatus({ agentId }: { agentId: string }) {
   useEffect(() => {
     if (!mounted || !isNative()) return;
 
-    // 1. Initialize Sync Manager
-    syncManager.initialize(agentId)
+    let cancelled = false
+
+    const start = async () => {
+      try {
+        await sqliteService.initialize()
+      } catch (err) {
+        console.error("SQLite init failed", err)
+      }
+      if (cancelled) return
+      syncManager.initialize(agentId)
+    }
+    start()
 
     // 2. Poll for status updates (every 10 seconds for UI)
     const interval = setInterval(async () => {
@@ -47,7 +57,10 @@ export function SyncStatus({ agentId }: { agentId: string }) {
       else setStatus('synced')
     }, 5000)
 
-    return () => clearInterval(interval)
+    return () => {
+      cancelled = true
+      clearInterval(interval)
+    }
   }, [agentId])
 
   if (!mounted || !isNative()) return null
