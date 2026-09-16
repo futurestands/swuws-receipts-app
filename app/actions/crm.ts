@@ -17,7 +17,7 @@ import {
   managedTemplate,
   templateVersion
 } from "@/lib/db/schema"
-import { eq, and, desc, asc, sql, or, ilike, count, getTableColumns, gte, lte, inArray } from "drizzle-orm"
+import { eq, and, desc, asc, sql, or, ilike, count, getTableColumns, gte, lte, inArray, ne, isNull, isNotNull } from "drizzle-orm"
 import { requireUser } from "@/lib/session"
 import {
   canViewCrm,
@@ -40,8 +40,9 @@ import {
 } from "@/lib/crm-schemas"
 import { processExcelImport } from "@/lib/import-engine"
 import { sendSMS } from "@/lib/sms-service"
+import { sendOperationalEmail } from "@/lib/email-service"
 import { renderTemplate } from "@/lib/templates/template-engine"
-import { normalizePhone } from "@/lib/phone"
+import { normalizeSendablePhone } from "@/lib/phone"
 import { z } from "zod"
 
 /**
@@ -58,15 +59,220 @@ async function resolveTemplateContent(code: string, fallback: string) {
   return version?.content || fallback
 }
 
+/** Old CRM: remaining balance below this is treated as paid — thank, do not remind. */
+const THANKS_BALANCE_THRESHOLD = 1500
+const DEFAULT_BILLING_REMINDER =
+  "Dear {{customer_name}}, your water bill for {{period}} is due. Balance: USh {{balance}}. SWUWS."
+const DEFAULT_PAYMENT_THANKS =
+  "Dear {{name}}, thank you for paying your water bill. Your account is in good standing. SWUWS."
+
+function isThanksBalance(balance: number) {
+  return Number.isFinite(balance) && balance < THANKS_BALANCE_THRESHOLD
+}
+
+const BILL_REMINDER_CATEGORY = "Bill Reminders"
+const ALREADY_MESSAGED_ERROR = "Already messaged this billing period"
+const CONTACTED_THIS_PERIOD = ["queued", "sent", "delivered"] as const
+
+async function getActiveBillingPeriod() {
+  const [period] = await db
+    .select({
+      periodName: billingPeriod.periodName,
+      startDate: billingPeriod.startDate,
+      endDate: billingPeriod.endDate,
+    })
+    .from(billingPeriod)
+    .where(eq(billingPeriod.status, "active"))
+    .limit(1)
+  return period ?? null
+}
+
+/**
+ * Accounts (or phones) that already have a bill-reminder SMS queued or sent
+ * in the active billing period. Failed sends are left out so they can be retried.
+ */
+async function loadAlreadyContactedThisPeriod(input: {
+  category: string
+  period: { startDate: Date; endDate: Date } | null
+  customerIds: string[]
+  phones: string[]
+  exceptBatchId?: string
+}) {
+  const contactedCustomerIds = new Set<string>()
+  const contactedPhones = new Set<string>()
+  if (input.category !== BILL_REMINDER_CATEGORY || !input.period) {
+    return { contactedCustomerIds, contactedPhones }
+  }
+
+  const until = new Date(input.period.endDate.getTime() + 24 * 60 * 60 * 1000)
+  let window = and(
+    eq(crmSmsBatch.category, BILL_REMINDER_CATEGORY),
+    inArray(crmSmsRecord.status, [...CONTACTED_THIS_PERIOD]),
+    gte(crmSmsRecord.createdAt, input.period.startDate),
+    sql`${crmSmsRecord.createdAt} < ${until}`,
+  )
+  if (input.exceptBatchId) {
+    window = and(window, ne(crmSmsRecord.batchId, input.exceptBatchId))
+  }
+
+  const CHUNK = 500
+  const pull = async (extra: ReturnType<typeof inArray>) => {
+    return db
+      .select({
+        customerId: crmSmsRecord.customerId,
+        phoneNumber: crmSmsRecord.phoneNumber,
+      })
+      .from(crmSmsRecord)
+      .innerJoin(crmSmsBatch, eq(crmSmsRecord.batchId, crmSmsBatch.id))
+      .where(and(window, extra))
+  }
+
+  for (let i = 0; i < input.customerIds.length; i += CHUNK) {
+    const chunk = input.customerIds.slice(i, i + CHUNK)
+    if (chunk.length === 0) continue
+    const rows = await pull(inArray(crmSmsRecord.customerId, chunk))
+    for (const row of rows) {
+      if (row.customerId) contactedCustomerIds.add(row.customerId)
+      if (row.phoneNumber) contactedPhones.add(row.phoneNumber)
+    }
+  }
+
+  const leftoverPhones = input.phones.filter((p) => !contactedPhones.has(p))
+  for (let i = 0; i < leftoverPhones.length; i += CHUNK) {
+    const chunk = leftoverPhones.slice(i, i + CHUNK)
+    if (chunk.length === 0) continue
+    const rows = await pull(inArray(crmSmsRecord.phoneNumber, chunk))
+    for (const row of rows) {
+      if (row.customerId) contactedCustomerIds.add(row.customerId)
+      if (row.phoneNumber) contactedPhones.add(row.phoneNumber)
+    }
+  }
+
+  return { contactedCustomerIds, contactedPhones }
+}
+
+function wasContactedThisPeriod(
+  contacted: { contactedCustomerIds: Set<string>; contactedPhones: Set<string> },
+  customerId: string | null | undefined,
+  phone: string,
+) {
+  if (customerId && contacted.contactedCustomerIds.has(customerId)) return true
+  return contacted.contactedPhones.has(phone)
+}
+
+function escapeEmailHtml(value: string) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+}
+
+async function notifySenderOfUndeliveredSms(
+  user: Awaited<ReturnType<typeof requireUser>>,
+  batch: { id: string; name: string },
+  failed: Array<{ phoneNumber: string; error: string | null }>,
+) {
+  if (failed.length === 0) return
+
+  const reportable = failed.filter((row) => row.error !== ALREADY_MESSAGED_ERROR)
+  if (reportable.length === 0) return
+
+  const shown = reportable.slice(0, 200)
+  const extra = reportable.length - shown.length
+  const rows = shown
+    .map(
+      (row) =>
+        `<tr><td style="padding:6px 8px;border-bottom:1px solid #e2e8f0;font-family:monospace">${escapeEmailHtml(row.phoneNumber)}</td><td style="padding:6px 8px;border-bottom:1px solid #e2e8f0">${escapeEmailHtml(row.error || "Not delivered")}</td></tr>`,
+    )
+    .join("")
+
+  try {
+    await sendOperationalEmail({
+      to: user.email,
+      subject: `SWUWS SMS: ${reportable.length} not delivered — ${batch.name}`,
+      html: `
+        <p>Hello ${escapeEmailHtml(user.name)},</p>
+        <p>List <strong>${escapeEmailHtml(batch.name)}</strong> finished sending. ${reportable.length} number(s) were not delivered (invalid, disconnected, or rejected by the gateway).</p>
+        <table style="border-collapse:collapse;font-size:14px">
+          <thead><tr><th align="left" style="padding:6px 8px;border-bottom:2px solid #0f172a">Number</th><th align="left" style="padding:6px 8px;border-bottom:2px solid #0f172a">Reason</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+        ${extra > 0 ? `<p>${extra} more not shown. Open the list in the portal for the full log.</p>` : ""}
+        <p>SWUWS Collection Portal</p>
+      `,
+    })
+  } catch (err) {
+    console.error("[CRM SMS] Could not email undelivered digest:", err)
+  }
+
+  try {
+    await createNotification({
+      userId: user.id,
+      type: "crm.sms.undelivered",
+      title: `${reportable.length} SMS not delivered`,
+      message: `List "${batch.name}" had ${reportable.length} number(s) the gateway could not deliver. A copy was sent to ${user.email}.`,
+      relatedEntityType: "crm_sms_batch",
+      relatedEntityId: batch.id,
+    })
+  } catch (err) {
+    console.error("[CRM SMS] Could not create undelivered notification:", err)
+  }
+}
+
+/**
+ * Walk-in tickets have no customer row, so customer-table scope cannot
+ * see them. Keep them inside the caller's territory via the branch/scheme
+ * stamped on the ticket at registration.
+ */
+function walkInComplaintScope(user: Awaited<ReturnType<typeof requireUser>>) {
+  if (user.clusterId) {
+    return or(
+      inArray(crmComplaint.area, sql`(SELECT id FROM branch WHERE "clusterId" = ${user.clusterId})`),
+      inArray(
+        crmComplaint.schemeId,
+        sql`(SELECT id FROM water_scheme WHERE "branchId" IN (SELECT id FROM branch WHERE "clusterId" = ${user.clusterId}))`,
+      ),
+    )
+  }
+  if (user.branchId) {
+    return or(
+      eq(crmComplaint.area, user.branchId),
+      inArray(crmComplaint.schemeId, sql`(SELECT id FROM water_scheme WHERE "branchId" = ${user.branchId})`),
+    )
+  }
+  if (user.schemeId) {
+    return or(
+      eq(crmComplaint.schemeId, user.schemeId),
+      eq(crmComplaint.area, sql`(SELECT "branchId" FROM water_scheme WHERE id = ${user.schemeId})`),
+    )
+  }
+  return sql`false`
+}
+
+/**
+ * Linked ticket (customer in scope) OR walk-in filed in this territory.
+ * Callers must leftJoin customer so the customer-scope fragment is valid.
+ */
+function applyComplaintListScope(user: Awaited<ReturnType<typeof requireUser>>) {
+  if (canViewAllData(user)) return undefined
+
+  const customerScope = applyCustomerScope(user)
+  const linked = customerScope
+    ? and(isNotNull(crmComplaint.customerId), customerScope)
+    : undefined
+  const walkIns = and(isNull(crmComplaint.customerId), walkInComplaintScope(user))
+  return linked ? or(linked, walkIns) : walkIns
+}
+
 /**
  * Loads a complaint and confirms the caller is allowed to act on it.
  *
  * canManageComplaints only answers "may this user touch the complaints
  * module", not "may this user touch *this* complaint". Without the scope
  * check a regional user could mutate any ticket org-wide by guessing ids.
- * Complaints with no linked customer are only reachable by users with
- * global data access — deny by default rather than assume they are safe to
- * expose broadly.
+ * Walk-ins are visible when their area/scheme falls in the caller's
+ * territory — not only when a customer record is attached.
  */
 async function requireComplaintInScope(user: Awaited<ReturnType<typeof requireUser>>, id: string) {
   if (canViewAllData(user)) {
@@ -75,12 +281,11 @@ async function requireComplaintInScope(user: Awaited<ReturnType<typeof requireUs
     return existing
   }
 
-  const customerScope = applyCustomerScope(user)
   const [existing] = await db
     .select(getTableColumns(crmComplaint))
     .from(crmComplaint)
-    .innerJoin(customer, eq(crmComplaint.customerId, customer.id))
-    .where(and(eq(crmComplaint.id, id), customerScope ?? sql`1=1`))
+    .leftJoin(customer, eq(crmComplaint.customerId, customer.id))
+    .where(and(eq(crmComplaint.id, id), applyComplaintListScope(user)))
     .limit(1)
 
   if (!existing) throw new Error("Forbidden: complaint is outside your assigned scope")
@@ -169,6 +374,11 @@ const CRM_SMS_TEMPLATE_SEED = [
     code: "crm.payment.received.sms",
     name: "Payment Received Confirmation",
     content: "Dear {{customer_name}}, we have received USh {{amount}}. Receipt {{receipt_number}}. New balance USh {{balance}}. Thank you. SWUWS.",
+  },
+  {
+    code: "crm.payment.thanks.sms",
+    name: "Payment Appreciation (balance below USh 1,500)",
+    content: "Dear {{name}}, thank you for paying your water bill. Your account is in good standing. SWUWS.",
   },
   {
     code: "crm.seasonal.greeting.sms",
@@ -286,7 +496,60 @@ export async function listCrmDepartments(options: { includeInactive?: boolean } 
 export async function listCrmAreas() {
   const user = await requireUser()
   if (!canViewCrm(user)) throw new Error("Forbidden")
-  return db.select().from(branch).where(eq(branch.active, true)).orderBy(asc(branch.name))
+
+  const conds = [eq(branch.active, true)]
+  if (!canViewAllData(user)) {
+    if (user.clusterId) conds.push(eq(branch.clusterId, user.clusterId))
+    else if (user.branchId) conds.push(eq(branch.id, user.branchId))
+    else if (user.schemeId) {
+      conds.push(inArray(branch.id, sql`(SELECT "branchId" FROM water_scheme WHERE id = ${user.schemeId})`))
+    } else {
+      return []
+    }
+  }
+
+  return db.select().from(branch).where(and(...conds)).orderBy(asc(branch.name))
+}
+
+/**
+ * Account / name / phone lookup used by the ticket registrar so staff do
+ * not retype a customer that is already on file.
+ */
+export async function lookupComplaintCustomer(query: string) {
+  const user = await requireUser()
+  if (!canManageComplaints(user)) throw new Error("Forbidden")
+
+  const q = query.trim()
+  if (q.length < 3) return []
+
+  const customerScope = applyCustomerScope(user)
+  const pattern = `%${q}%`
+  const search = or(
+    ilike(customer.customerAccount, pattern),
+    ilike(customer.name, pattern),
+    ilike(customer.phone, pattern),
+    ilike(customer.meterRef, pattern),
+  )
+
+  const conds = [eq(customer.active, true), search]
+  if (customerScope) conds.push(customerScope)
+
+  return db
+    .select({
+      id: customer.id,
+      name: customer.name,
+      phone: customer.phone,
+      address: customer.address,
+      customerAccount: customer.customerAccount,
+      waterSchemeId: customer.waterSchemeId,
+      branchId: waterScheme.branchId,
+      schemeName: waterScheme.name,
+    })
+    .from(customer)
+    .leftJoin(waterScheme, eq(customer.waterSchemeId, waterScheme.id))
+    .where(and(...conds))
+    .orderBy(asc(customer.name))
+    .limit(8)
 }
 
 /**
@@ -487,6 +750,8 @@ export async function registerComplaint(input: RegisterComplaintInput) {
 
   // Resolve / verify the customer inside the caller's hierarchy. An unscoped
   // account lookup used to attach tickets to customers in other areas.
+  // Unknown accounts stay walk-in — staff still log the visit instead of
+  // being blocked because the person is not yet on the customer file.
   if (!customerId && data.customerAccount) {
     const accountConds = [eq(customer.customerAccount, data.customerAccount)]
     if (customerScope) accountConds.push(customerScope)
@@ -495,8 +760,7 @@ export async function registerComplaint(input: RegisterComplaintInput) {
       .from(customer)
       .where(and(...accountConds))
       .limit(1)
-    if (!c) throw new Error("Customer account not found in your assigned area")
-    customerId = c.id
+    if (c) customerId = c.id
   } else if (customerId) {
     const idConds = [eq(customer.id, customerId)]
     if (customerScope) idConds.push(customerScope)
@@ -585,6 +849,7 @@ export async function registerComplaint(input: RegisterComplaintInput) {
   })
 
   revalidatePath("/dashboard/crm/complaints")
+  if (customerId) revalidatePath(`/dashboard/customers/${customerId}`)
   return { ok: true, complaintNumber }
 }
 
@@ -601,6 +866,7 @@ export async function listComplaints(params: {
   from?: string;
   till?: string;
   complaintNumber?: string;
+  excludeClosed?: boolean;
 }) {
   const user = await requireUser()
   if (!canViewCrm(user)) throw new Error("Forbidden")
@@ -608,7 +874,12 @@ export async function listComplaints(params: {
   const offset = (params.page - 1) * params.limit
   const conds = []
 
-  if (params.status && params.status !== "all") conds.push(eq(crmComplaint.status, params.status))
+  if (params.status === "working") {
+    conds.push(inArray(crmComplaint.status, ["assigned", "in_progress"]))
+  } else if (params.status && params.status !== "all") {
+    conds.push(eq(crmComplaint.status, params.status))
+  }
+  if (params.excludeClosed) conds.push(ne(crmComplaint.status, "closed"))
   if (params.priority && params.priority !== "all") conds.push(eq(crmComplaint.priority, params.priority))
   if (params.departmentId && params.departmentId !== "all") conds.push(eq(crmComplaint.assignedDepartmentId, params.departmentId))
   if (params.categoryId && params.categoryId !== "all") conds.push(eq(crmComplaint.categoryId, params.categoryId))
@@ -623,53 +894,48 @@ export async function listComplaints(params: {
   if (params.complaintNumber) conds.push(ilike(crmComplaint.complaintNumber, `%${params.complaintNumber}%`))
 
   if (params.search) {
-    const q = `%${params.search.toLowerCase()}%`
+    const q = `%${params.search}%`
     conds.push(or(
       ilike(crmComplaint.complaintNumber, q),
       ilike(crmComplaint.complainantName, q),
       ilike(crmComplaint.complainantPhone, q),
-      ilike(crmComplaint.details, q)
+      ilike(crmComplaint.details, q),
+      ilike(customer.customerAccount, q),
     ))
   }
 
-  // HIERARCHY SCOPING: without this, any user with crm.view sees every
-  // complaint org-wide regardless of branch/cluster/scheme assignment.
-  // Complaints with no linked customer (walk-in/anonymous) are excluded
-  // for non-global users by the inner join below — deny by default rather
-  // than assume they're safe to show broadly.
-  const customerScope = applyCustomerScope(user)
-  const needsCustomerJoin = !canViewAllData(user)
-  if (customerScope) conds.push(customerScope)
+  const territory = applyComplaintListScope(user)
+  if (territory) conds.push(territory)
 
-  const baseQuery = db
+  const whereClause = conds.length ? and(...conds) : undefined
+
+  const [totalRes] = await db
+    .select({ count: count() })
+    .from(crmComplaint)
+    .leftJoin(customer, eq(crmComplaint.customerId, customer.id))
+    .where(whereClause)
+
+  const rows = await db
     .select({
       ...getTableColumns(crmComplaint),
       categoryName: crmComplaintCategory.name,
       departmentName: crmDepartment.name,
       assignedToName: userTable.name,
       customerAccount: customer.customerAccount,
-      // crmComplaint.area is a plain text column storing a branch id (set
-      // from the registration form's area SelectItem, whose value is
-      // branch.id) -- resolve it to a real name here instead of every
-      // consumer having to display the raw id (which is exactly what
-      // complaint-details-sheet.tsx was doing: "Branch ID: {complaint.area}").
-      areaName: branch.name
+      areaName: branch.name,
+      schemeName: waterScheme.name,
     })
     .from(crmComplaint)
     .leftJoin(crmComplaintCategory, eq(crmComplaint.categoryId, crmComplaintCategory.id))
     .leftJoin(crmDepartment, eq(crmComplaint.assignedDepartmentId, crmDepartment.id))
     .leftJoin(userTable, eq(crmComplaint.assignedToId, userTable.id))
     .leftJoin(branch, eq(crmComplaint.area, branch.id))
-
-  const countQuery = db.select({ count: count() }).from(crmComplaint)
-
-  const [totalRes] = needsCustomerJoin
-    ? await countQuery.innerJoin(customer, eq(crmComplaint.customerId, customer.id)).where(and(...conds))
-    : await countQuery.leftJoin(customer, eq(crmComplaint.customerId, customer.id)).where(and(...conds))
-
-  const rows = needsCustomerJoin
-    ? await baseQuery.innerJoin(customer, eq(crmComplaint.customerId, customer.id)).where(and(...conds)).orderBy(desc(crmComplaint.createdAt)).limit(params.limit).offset(offset)
-    : await baseQuery.leftJoin(customer, eq(crmComplaint.customerId, customer.id)).where(and(...conds)).orderBy(desc(crmComplaint.createdAt)).limit(params.limit).offset(offset)
+    .leftJoin(customer, eq(crmComplaint.customerId, customer.id))
+    .leftJoin(waterScheme, eq(crmComplaint.schemeId, waterScheme.id))
+    .where(whereClause)
+    .orderBy(desc(crmComplaint.createdAt))
+    .limit(params.limit)
+    .offset(offset)
 
   return {
     complaints: rows,
@@ -677,6 +943,32 @@ export async function listComplaints(params: {
     page: params.page,
     totalPages: Math.ceil(Number(totalRes?.count || 0) / params.limit)
   }
+}
+
+export async function listComplaintsForCustomer(customerId: string) {
+  const user = await requireUser()
+  if (!canViewCrm(user)) return []
+
+  const customerScope = applyCustomerScope(user)
+  const idConds = [eq(customer.id, customerId)]
+  if (customerScope) idConds.push(customerScope)
+  const [owned] = await db.select({ id: customer.id }).from(customer).where(and(...idConds)).limit(1)
+  if (!owned) return []
+
+  return db
+    .select({
+      id: crmComplaint.id,
+      complaintNumber: crmComplaint.complaintNumber,
+      status: crmComplaint.status,
+      priority: crmComplaint.priority,
+      createdAt: crmComplaint.createdAt,
+      categoryName: crmComplaintCategory.name,
+    })
+    .from(crmComplaint)
+    .leftJoin(crmComplaintCategory, eq(crmComplaint.categoryId, crmComplaintCategory.id))
+    .where(eq(crmComplaint.customerId, customerId))
+    .orderBy(desc(crmComplaint.createdAt))
+    .limit(20)
 }
 
 /**
@@ -716,40 +1008,30 @@ export async function getComplaintReports(params: {
     conds.push(eq(crmComplaint.area, params.district))
   }
 
-  // Same scoping rule as listComplaints, including the customer join only
-  // when the caller is territory-limited. This used to join unconditionally,
-  // which silently dropped every walk-in/anonymous ticket from reporting
-  // even for system admins, so report totals never matched the dashboard.
-  const needsCustomerJoin = !canViewAllData(user)
-  const customerScope = applyCustomerScope(user)
-  if (customerScope) conds.push(customerScope)
+  const territory = applyComplaintListScope(user)
+  if (territory) conds.push(territory)
+  const whereClause = conds.length ? and(...conds) : undefined
 
-  const base = db
+  const rows = await db
     .select({
       ...getTableColumns(crmComplaint),
       categoryName: crmComplaintCategory.name,
       departmentName: crmDepartment.name,
       assignedToName: userTable.name,
       customerAccount: customer.customerAccount,
-      areaName: branch.name
+      areaName: branch.name,
+      schemeName: waterScheme.name,
     })
     .from(crmComplaint)
     .leftJoin(crmComplaintCategory, eq(crmComplaint.categoryId, crmComplaintCategory.id))
     .leftJoin(crmDepartment, eq(crmComplaint.assignedDepartmentId, crmDepartment.id))
     .leftJoin(userTable, eq(crmComplaint.assignedToId, userTable.id))
     .leftJoin(branch, eq(crmComplaint.area, branch.id))
-
-  const rows = needsCustomerJoin
-    ? await base
-        .innerJoin(customer, eq(crmComplaint.customerId, customer.id))
-        .where(and(...conds))
-        .orderBy(desc(crmComplaint.createdAt))
-        .limit(REPORT_ROW_LIMIT)
-    : await base
-        .leftJoin(customer, eq(crmComplaint.customerId, customer.id))
-        .where(and(...conds))
-        .orderBy(desc(crmComplaint.createdAt))
-        .limit(REPORT_ROW_LIMIT)
+    .leftJoin(customer, eq(crmComplaint.customerId, customer.id))
+    .leftJoin(waterScheme, eq(crmComplaint.schemeId, waterScheme.id))
+    .where(whereClause)
+    .orderBy(desc(crmComplaint.createdAt))
+    .limit(REPORT_ROW_LIMIT)
 
   return { rows, summary: summariseComplaints(rows) }
 }
@@ -1128,38 +1410,68 @@ export async function importSmsBatch(formData: FormData) {
     }
   }
   if (!content) {
-    content = await resolveTemplateContent(
-      "notif.billing.sms",
-      "Dear {{customer_name}}, your water bill for {{period}} is due. Balance: USh {{balance}}. SWUWS.",
-    )
+    content = await resolveTemplateContent("notif.billing.sms", DEFAULT_BILLING_REMINDER)
   }
+
+  const autoThanks = !manualMessage?.trim() && !templateId
+  const thanksContent = autoThanks
+    ? await resolveTemplateContent("crm.payment.thanks.sms", DEFAULT_PAYMENT_THANKS)
+    : null
+
+  const period = await getActiveBillingPeriod()
+  const prePhones: string[] = []
+  const preCustomerIds: string[] = []
+  for (const row of scoped) {
+    const phoneNumber = normalizeSendablePhone(String(row.phoneNumber))
+    if (!phoneNumber) continue
+    prePhones.push(phoneNumber)
+    const linked = row.customerRef ? customerByAccount.get(row.customerRef.trim())?.id : undefined
+    if (linked) preCustomerIds.push(linked)
+  }
+  const contacted = await loadAlreadyContactedThisPeriod({
+    category,
+    period,
+    customerIds: preCustomerIds,
+    phones: prePhones,
+  })
 
   const batchId = randomUUID()
   const records: Array<typeof crmSmsRecord.$inferInsert> = []
   let skippedNumbers = 0
+  let thanked = 0
+  let alreadyContacted = 0
 
   for (const row of scoped) {
-    const phoneNumber = normalizePhone(String(row.phoneNumber))
+    const phoneNumber = normalizeSendablePhone(String(row.phoneNumber))
     if (!phoneNumber) {
       skippedNumbers++
       continue
     }
 
+    const customerId = row.customerRef ? customerByAccount.get(row.customerRef.trim())?.id ?? null : null
+    if (wasContactedThisPeriod(contacted, customerId, phoneNumber)) {
+      alreadyContacted++
+      continue
+    }
+
     const customerName = row.customerName || "Customer"
+    const balance = Number(row.balance ?? 0)
+    const useThanks = Boolean(thanksContent) && isThanksBalance(balance)
+    if (useThanks) thanked++
     records.push({
       id: randomUUID(),
       batchId,
-      customerId: row.customerRef ? customerByAccount.get(row.customerRef.trim())?.id ?? null : null,
+      customerId,
       phoneNumber,
-      message: renderTemplate(content, {
+      message: renderTemplate(useThanks && thanksContent ? thanksContent : content, {
         customer_name: customerName,
         // The import modal advertises {{name}}, so accept both spellings.
         name: customerName,
         account: row.customerRef || "",
-        period: row.billingPeriod || "",
-        balance: row.balance ?? 0,
-        total_due: row.balance ?? 0,
-        amount: row.balance ?? 0,
+        period: row.billingPeriod || period?.periodName || "",
+        balance,
+        total_due: balance,
+        amount: balance,
       }),
       status: "queued" as const,
       updatedAt: new Date(),
@@ -1167,6 +1479,13 @@ export async function importSmsBatch(formData: FormData) {
   }
 
   if (records.length === 0) {
+    if (alreadyContacted > 0 && skippedNumbers === 0) {
+      throw new Error(
+        period
+          ? `Everyone in this file was already messaged this billing period (${period.periodName})`
+          : "Everyone in this file was already messaged this billing period",
+      )
+    }
     throw new Error("None of the phone numbers in this file could be used")
   }
 
@@ -1193,7 +1512,7 @@ export async function importSmsBatch(formData: FormData) {
     action: "crm.sms.import",
     entityType: "crm_sms_batch",
     entityId: batchId,
-    details: { name: name.trim(), category, queued: records.length, schemeId: targetSchemeId, skippedNumbers },
+    details: { name: name.trim(), category, queued: records.length, schemeId: targetSchemeId, skippedNumbers, thanked, alreadyContacted },
   })
 
   revalidatePath("/dashboard/crm/sms")
@@ -1206,7 +1525,244 @@ export async function importSmsBatch(formData: FormData) {
       queued: records.length,
       skippedNumbers,
       filteredByScheme: validRows.length - scoped.length,
+      thanked,
+      alreadyContacted,
     },
+  }
+}
+
+const SMS_AUDIENCE_CAP = 50_000
+
+function smsAudienceConditions(
+  user: Awaited<ReturnType<typeof requireUser>>,
+  schemeId?: string | null,
+  branchId?: string | null,
+) {
+  const conditions = [
+    eq(customer.active, true),
+    sql`coalesce(trim(${customer.phone}), '') <> ''`,
+  ]
+  const scope = applyCustomerScope(user)
+  if (scope) conditions.push(scope)
+  if (schemeId && schemeId !== "all") {
+    conditions.push(eq(customer.waterSchemeId, schemeId))
+  } else if (branchId && branchId !== "all") {
+    conditions.push(eq(waterScheme.branchId, branchId))
+  } else {
+    return null
+  }
+  return conditions
+}
+
+/**
+ * How many active customers with a phone number sit in the selected scheme or area.
+ */
+export async function countSmsAudience(params: { schemeId?: string; branchId?: string; category?: string }) {
+  const user = await requireUser()
+  if (!canSendBulkSms(user)) throw new Error("Forbidden")
+
+  const conditions = smsAudienceConditions(user, params.schemeId, params.branchId)
+  if (!conditions) return { count: 0, skipped: 0, alreadyContacted: 0 }
+
+  const rows = await db
+    .select({ id: customer.id, phone: customer.phone })
+    .from(customer)
+    .innerJoin(waterScheme, eq(customer.waterSchemeId, waterScheme.id))
+    .where(and(...conditions))
+
+  const period = await getActiveBillingPeriod()
+  const sendableRows: Array<{ id: string; phone: string }> = []
+  let skipped = 0
+  for (const row of rows) {
+    const phone = normalizeSendablePhone(String(row.phone))
+    if (!phone) {
+      skipped++
+      continue
+    }
+    sendableRows.push({ id: row.id, phone })
+  }
+
+  const contacted = await loadAlreadyContactedThisPeriod({
+    category: params.category || BILL_REMINDER_CATEGORY,
+    period,
+    customerIds: sendableRows.map((r) => r.id),
+    phones: sendableRows.map((r) => r.phone),
+  })
+
+  let alreadyContacted = 0
+  let count = 0
+  for (const row of sendableRows) {
+    if (wasContactedThisPeriod(contacted, row.id, row.phone)) alreadyContacted++
+    else count++
+  }
+
+  return { count, skipped, alreadyContacted }
+}
+
+/**
+ * Build a contact list from customers already on the selected scheme or area.
+ * No CSV. Phones come from the customer record; balance is the live EBS figure.
+ */
+export async function createSmsBatchFromCustomers(input: {
+  name: string
+  category: string
+  schemeId?: string
+  branchId?: string
+  templateId?: string
+  manualMessage?: string
+}) {
+  const user = await requireUser()
+  if (!canSendBulkSms(user)) throw new Error("Forbidden")
+
+  const schemeId = input.schemeId && input.schemeId !== "all" ? input.schemeId : null
+  const branchId = input.branchId && input.branchId !== "all" ? input.branchId : null
+  const conditions = smsAudienceConditions(user, schemeId, branchId)
+  if (!conditions) {
+    throw new Error("Select a water scheme or an area first")
+  }
+
+  let scopeName = "selected area"
+  if (schemeId) {
+    const [scheme] = await db.select({ name: waterScheme.name }).from(waterScheme).where(eq(waterScheme.id, schemeId)).limit(1)
+    scopeName = scheme?.name || "scheme"
+  } else if (branchId) {
+    const [area] = await db.select({ name: branch.name }).from(branch).where(eq(branch.id, branchId)).limit(1)
+    scopeName = area?.name || "area"
+  }
+
+  const listName = input.name.trim() || `${scopeName} · ${new Date().toISOString().slice(0, 10)}`
+
+  const period = await getActiveBillingPeriod()
+
+  let content = input.manualMessage?.trim() || null
+  if (!content && input.templateId) {
+    const [chosen] = await db.select().from(managedTemplate).where(eq(managedTemplate.id, input.templateId)).limit(1)
+    if (chosen?.activeVersionId) {
+      const [version] = await db.select().from(templateVersion).where(eq(templateVersion.id, chosen.activeVersionId)).limit(1)
+      content = version?.content || null
+    }
+  }
+  if (!content) {
+    content = await resolveTemplateContent("notif.billing.sms", DEFAULT_BILLING_REMINDER)
+  }
+
+  const autoThanks = !input.manualMessage?.trim() && !input.templateId
+  const thanksContent = autoThanks
+    ? await resolveTemplateContent("crm.payment.thanks.sms", DEFAULT_PAYMENT_THANKS)
+    : null
+
+  const customers = await db
+    .select({
+      id: customer.id,
+      name: customer.name,
+      account: customer.customerAccount,
+      phone: customer.phone,
+      balance: customer.accountBalance,
+    })
+    .from(customer)
+    .innerJoin(waterScheme, eq(customer.waterSchemeId, waterScheme.id))
+    .where(and(...conditions))
+
+  if (customers.length === 0) {
+    throw new Error(`No active customers with a phone number in ${scopeName}`)
+  }
+  if (customers.length > SMS_AUDIENCE_CAP) {
+    throw new Error(`This selection has ${customers.length} customers. Choose a single scheme instead of the whole area.`)
+  }
+
+  const sendablePreview: Array<{ id: string; phone: string }> = []
+  for (const row of customers) {
+    const phoneNumber = normalizeSendablePhone(String(row.phone))
+    if (phoneNumber) sendablePreview.push({ id: row.id, phone: phoneNumber })
+  }
+  const contacted = await loadAlreadyContactedThisPeriod({
+    category: input.category,
+    period,
+    customerIds: sendablePreview.map((r) => r.id),
+    phones: sendablePreview.map((r) => r.phone),
+  })
+
+  const batchId = randomUUID()
+  const records: Array<typeof crmSmsRecord.$inferInsert> = []
+  let skippedNumbers = 0
+  let thanked = 0
+  let alreadyContacted = 0
+
+  for (const row of customers) {
+    const phoneNumber = normalizeSendablePhone(String(row.phone))
+    if (!phoneNumber) {
+      skippedNumbers++
+      continue
+    }
+    if (wasContactedThisPeriod(contacted, row.id, phoneNumber)) {
+      alreadyContacted++
+      continue
+    }
+    const customerName = row.name || "Customer"
+    const balance = Number(row.balance || 0)
+    const useThanks = Boolean(thanksContent) && isThanksBalance(balance)
+    if (useThanks) thanked++
+    records.push({
+      id: randomUUID(),
+      batchId,
+      customerId: row.id,
+      phoneNumber,
+      message: renderTemplate(useThanks && thanksContent ? thanksContent : content, {
+        customer_name: customerName,
+        name: customerName,
+        account: row.account || "",
+        period: period?.periodName || "",
+        balance,
+        total_due: balance,
+        amount: balance,
+      }),
+      status: "queued" as const,
+      updatedAt: new Date(),
+    })
+  }
+
+  if (records.length === 0) {
+    if (alreadyContacted > 0 && skippedNumbers === 0) {
+      throw new Error(
+        period
+          ? `Everyone in ${scopeName} was already messaged this billing period (${period.periodName})`
+          : `Everyone in ${scopeName} was already messaged this billing period`,
+      )
+    }
+    throw new Error("None of the phone numbers in this selection could be used")
+  }
+
+  await db.transaction(async (tx) => {
+    await tx.insert(crmSmsBatch).values({
+      id: batchId,
+      name: listName,
+      category: input.category,
+      templateId: input.templateId || null,
+      status: "pending",
+      totalMessages: records.length,
+      createdById: user.id,
+      updatedAt: new Date(),
+    })
+
+    const CHUNK = 500
+    for (let i = 0; i < records.length; i += CHUNK) {
+      await tx.insert(crmSmsRecord).values(records.slice(i, i + CHUNK))
+    }
+  })
+
+  await writeAudit({
+    user,
+    action: "crm.sms.from_customers",
+    entityType: "crm_sms_batch",
+    entityId: batchId,
+    details: { name: listName, category: input.category, queued: records.length, schemeId, branchId, skippedNumbers, thanked, alreadyContacted },
+  })
+
+  revalidatePath("/dashboard/crm/sms")
+  return {
+    ok: true as const,
+    batchId,
+    summary: { queued: records.length, skippedNumbers, scopeName, thanked, alreadyContacted },
   }
 }
 
@@ -1286,10 +1842,26 @@ export async function createSmsBatch(data: {
   // Normalise to E.164 up front and drop what cannot be dialled, so the
   // batch's totalMessages reflects what will actually be attempted rather
   // than queueing messages that are certain to be rejected by the gateway.
+  const period = await getActiveBillingPeriod()
+  const preview = data.recipients
+    .map((r) => {
+      const phoneNumber = normalizeSendablePhone(r.phoneNumber)
+      if (!phoneNumber) return null
+      return { customerId: r.customerId ?? null, phoneNumber }
+    })
+    .filter((r): r is NonNullable<typeof r> => r !== null)
+  const contacted = await loadAlreadyContactedThisPeriod({
+    category: data.category,
+    period,
+    customerIds: preview.map((r) => r.customerId).filter((id): id is string => Boolean(id)),
+    phones: preview.map((r) => r.phoneNumber),
+  })
+
   const records = data.recipients
     .map(r => {
-      const phoneNumber = normalizePhone(r.phoneNumber)
+      const phoneNumber = normalizeSendablePhone(r.phoneNumber)
       if (!phoneNumber) return null
+      if (wasContactedThisPeriod(contacted, r.customerId, phoneNumber)) return null
       return {
         id: randomUUID(),
         batchId,
@@ -1303,6 +1875,9 @@ export async function createSmsBatch(data: {
     .filter((r): r is NonNullable<typeof r> => r !== null)
 
   if (records.length === 0) {
+    if (preview.length > 0) {
+      return { ok: false as const, error: "Everyone in this list was already messaged this billing period" }
+    }
     return { ok: false as const, error: "None of the supplied phone numbers could be used" }
   }
 
@@ -1425,7 +2000,7 @@ export async function generateRemindersFromImport(runId: string) {
   // 4. Map to SMS records using dynamic rendering
   const recipients = records
     .map(r => {
-      const phoneNumber = normalizePhone(r.phoneNumber)
+      const phoneNumber = normalizeSendablePhone(r.phoneNumber)
       if (!phoneNumber) return null
       return {
         customerId: r.customerId,
@@ -1494,22 +2069,46 @@ export async function processSmsBatch(batchId: string) {
     .from(crmSmsRecord)
     .where(and(
       eq(crmSmsRecord.batchId, batchId),
-      inArray(crmSmsRecord.status, ["queued", "failed"]),
+      or(
+        eq(crmSmsRecord.status, "queued"),
+        and(
+          eq(crmSmsRecord.status, "failed"),
+          sql`coalesce(${crmSmsRecord.error}, '') <> ${ALREADY_MESSAGED_ERROR}`,
+        ),
+      ),
     ))
     .limit(SMS_SEND_BUDGET)
 
   let sent = 0
   let failed = 0
 
+  const period = batch.category === BILL_REMINDER_CATEGORY ? await getActiveBillingPeriod() : null
+  const contacted = period
+    ? await loadAlreadyContactedThisPeriod({
+        category: batch.category,
+        period,
+        customerIds: pending.map((r) => r.customerId).filter((id): id is string => Boolean(id)),
+        phones: pending.map((r) => r.phoneNumber),
+        exceptBatchId: batchId,
+      })
+    : { contactedCustomerIds: new Set<string>(), contactedPhones: new Set<string>() }
+
   for (let i = 0; i < pending.length; i += SMS_SEND_CONCURRENCY) {
     const slice = pending.slice(i, i + SMS_SEND_CONCURRENCY)
 
     await Promise.all(slice.map(async (record) => {
       try {
+        if (wasContactedThisPeriod(contacted, record.customerId, record.phoneNumber)) {
+          await db.update(crmSmsRecord)
+            .set({ status: "failed", error: ALREADY_MESSAGED_ERROR, updatedAt: new Date() })
+            .where(eq(crmSmsRecord.id, record.id))
+          failed++
+          return
+        }
         const result = await sendSMS(record.phoneNumber, record.message, user.id, { auditAction: "crm.sms_sent" })
         if (result.delivered) {
           await db.update(crmSmsRecord)
-            .set({ status: "sent", error: null, externalRef: result.id, updatedAt: new Date() })
+            .set({ status: "sent", error: null, externalRef: result.gatewayRef || result.id, updatedAt: new Date() })
             .where(eq(crmSmsRecord.id, record.id))
           sent++
         } else {
@@ -1576,6 +2175,17 @@ export async function processSmsBatch(batchId: string) {
     updatedAt: new Date()
   }).where(eq(crmSmsBatch.id, batchId))
 
+  if (remaining === 0 && totalFailed > 0) {
+    const failedRows = await db
+      .select({
+        phoneNumber: crmSmsRecord.phoneNumber,
+        error: crmSmsRecord.error,
+      })
+      .from(crmSmsRecord)
+      .where(and(eq(crmSmsRecord.batchId, batchId), eq(crmSmsRecord.status, "failed")))
+    await notifySenderOfUndeliveredSms(user, { id: batchId, name: batch.name }, failedRows)
+  }
+
   await writeAudit({
     user,
     action: "crm.sms.send",
@@ -1595,40 +2205,24 @@ export async function getCrmStats() {
   const user = await requireUser()
   if (!canViewCrm(user)) throw new Error("Forbidden")
 
-  // HIERARCHY SCOPING: same rule as listComplaints — a regional user should
-  // only see complaint counts for their own scope, not org-wide totals.
-  const needsCustomerJoin = !canViewAllData(user)
-  const customerScope = applyCustomerScope(user)
-  const scopeCond = customerScope ?? sql`1=1`
-
+  const complaintScope = applyComplaintListScope(user)
   const smsScope = applySmsBatchScope(user)
   const smsScopeCond = smsScope ?? sql`1=1`
 
   const [complaintStats, smsStats] = await Promise.all([
-    (needsCustomerJoin
-      ? db
-        .select({
-          total: count(crmComplaint.id),
-          open: sql<number>`count(case when ${crmComplaint.status} = 'open' then 1 end)::int`,
-          assigned: sql<number>`count(case when ${crmComplaint.status} = 'assigned' then 1 end)::int`,
-          inProgress: sql<number>`count(case when ${crmComplaint.status} = 'in_progress' then 1 end)::int`,
-          resolved: sql<number>`count(case when ${crmComplaint.status} = 'resolved' then 1 end)::int`,
-          closed: sql<number>`count(case when ${crmComplaint.status} = 'closed' then 1 end)::int`,
-        })
-        .from(crmComplaint)
-        .innerJoin(customer, eq(crmComplaint.customerId, customer.id))
-        .where(scopeCond)
-      : db
-        .select({
-          total: count(crmComplaint.id),
-          open: sql<number>`count(case when ${crmComplaint.status} = 'open' then 1 end)::int`,
-          assigned: sql<number>`count(case when ${crmComplaint.status} = 'assigned' then 1 end)::int`,
-          inProgress: sql<number>`count(case when ${crmComplaint.status} = 'in_progress' then 1 end)::int`,
-          resolved: sql<number>`count(case when ${crmComplaint.status} = 'resolved' then 1 end)::int`,
-          closed: sql<number>`count(case when ${crmComplaint.status} = 'closed' then 1 end)::int`,
-        })
-        .from(crmComplaint)
-    ).then(rows => rows[0]),
+    db
+      .select({
+        total: count(crmComplaint.id),
+        open: sql<number>`count(case when ${crmComplaint.status} = 'open' then 1 end)::int`,
+        assigned: sql<number>`count(case when ${crmComplaint.status} = 'assigned' then 1 end)::int`,
+        inProgress: sql<number>`count(case when ${crmComplaint.status} = 'in_progress' then 1 end)::int`,
+        resolved: sql<number>`count(case when ${crmComplaint.status} = 'resolved' then 1 end)::int`,
+        closed: sql<number>`count(case when ${crmComplaint.status} = 'closed' then 1 end)::int`,
+      })
+      .from(crmComplaint)
+      .leftJoin(customer, eq(crmComplaint.customerId, customer.id))
+      .where(complaintScope)
+      .then(rows => rows[0]),
     db
       .select({
         totalBatches: count(crmSmsBatch.id),

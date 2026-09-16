@@ -18,9 +18,17 @@ const MIN_SUBSCRIBER_DIGITS = 8
 const MAX_SUBSCRIBER_DIGITS = 12
 
 /**
+ * SWUWS only texts Uganda mobiles / 03 lines: 10 digits starting 07 or 03.
+ * E.164 is +256 then those same 9 subscriber digits (the leading 0 is dropped).
+ */
+const UGANDA_E164 = /^\+256[73]\d{8}$/
+/** Directory placeholder for customers with no phone — never send SMS here. */
+const UGANDA_PLACEHOLDER = /^\+256[73]0{8}$/
+
+/**
  * Converts a phone number to E.164, or returns null when it cannot be
- * salvaged. Callers should treat null as "unsendable" rather than passing
- * the raw value on to the gateway.
+ * salvaged. This does not decide whether SWUWS should spend an SMS on it —
+ * use normalizeSendablePhone for that.
  */
 export function normalizePhone(raw: string | null | undefined, countryCode = DEFAULT_COUNTRY_CODE): string | null {
   if (!raw) return null
@@ -53,7 +61,27 @@ export function normalizePhone(raw: string | null | undefined, countryCode = DEF
   return `+${countryCode}${subscriber}`
 }
 
-/** True when the value can be turned into something a gateway will accept. */
+/**
+ * E.164 number we are willing to spend an SMS credit on.
+ * For Uganda: 07xxxxxxxx or 03xxxxxxxx only. 0700000000 (and 0300000000)
+ * is the no-phone placeholder and is never sendable.
+ */
+export function normalizeSendablePhone(
+  raw: string | null | undefined,
+  countryCode = DEFAULT_COUNTRY_CODE,
+): string | null {
+  const e164 = normalizePhone(raw, countryCode)
+  if (!e164) return null
+
+  if (countryCode === "256") {
+    if (!UGANDA_E164.test(e164)) return null
+    if (UGANDA_PLACEHOLDER.test(e164)) return null
+  }
+
+  return e164
+}
+
+/** True when SWUWS will queue or send an SMS to this number. */
 export function isSendablePhone(raw: string | null | undefined): boolean {
-  return normalizePhone(raw) !== null
+  return normalizeSendablePhone(raw) !== null
 }

@@ -24,7 +24,8 @@ import {
   XCircle,
   PlayCircle,
   RotateCcw,
-  UserCog
+  UserCog,
+  ExternalLink
 } from "lucide-react"
 import {
   resolveComplaint,
@@ -40,6 +41,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { cn } from "@/lib/utils"
 import type { CrmComplaint } from "@/lib/db/schema"
+import Link from "next/link"
 
 interface ComplaintDetailsSheetProps {
   complaint: CrmComplaint & {
@@ -47,6 +49,7 @@ interface ComplaintDetailsSheetProps {
     assignedToName?: string;
     customerAccount?: string;
     areaName?: string;
+    schemeName?: string;
   }
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -180,11 +183,21 @@ export function ComplaintDetailsSheet({ complaint, open, onOpenChange }: Complai
                     <div className="grid grid-cols-2 gap-4">
                        <div>
                           <p className="text-[9px] font-bold text-slate-400 uppercase">Customer Name</p>
-                          <p className="text-sm font-black text-slate-800 uppercase mt-0.5">{complaint.complainantName}</p>
+                          {complaint.customerId ? (
+                             <Link
+                                href={`/dashboard/customers/${complaint.customerId}`}
+                                className="text-sm font-black text-sky-700 uppercase mt-0.5 hover:underline inline-flex items-center gap-1"
+                             >
+                                {complaint.complainantName}
+                                <ExternalLink className="h-3 w-3" />
+                             </Link>
+                          ) : (
+                             <p className="text-sm font-black text-slate-800 uppercase mt-0.5">{complaint.complainantName}</p>
+                          )}
                        </div>
                        <div>
                           <p className="text-[9px] font-bold text-slate-400 uppercase">Account Number</p>
-                          <p className="text-sm font-mono font-bold text-slate-600 mt-0.5">{complaint.customerAccount || 'N/A'}</p>
+                          <p className="text-sm font-mono font-bold text-slate-600 mt-0.5">{complaint.customerAccount || 'Walk-in'}</p>
                        </div>
                     </div>
                     <div className="grid grid-cols-2 gap-4 pt-4 border-t border-slate-50">
@@ -267,6 +280,9 @@ export function ComplaintDetailsSheet({ complaint, open, onOpenChange }: Complai
                     <div className="text-right">
                        <p className="text-[9px] font-bold text-slate-400 uppercase leading-none">Operational Area</p>
                        <p className="text-xs font-bold text-slate-600 mt-1.5 uppercase tracking-tighter">{complaint.areaName || 'Unassigned'}</p>
+                       {complaint.schemeName && (
+                          <p className="text-[10px] font-bold text-slate-400 mt-0.5 uppercase tracking-tighter">{complaint.schemeName}</p>
+                       )}
                     </div>
                  </div>
               </div>
@@ -322,8 +338,8 @@ export function ComplaintDetailsSheet({ complaint, open, onOpenChange }: Complai
                  </div>
               )}
 
-              {/* Resolution Info if exists */}
-              {complaint.status === 'resolved' && complaint.resolutionNotes && (
+              {/* Resolution Info if exists — keep visible after the ticket is archived */}
+              {isCompleted && complaint.resolutionNotes && (
                  <div className="space-y-4">
                     <h3 className="text-[10px] font-black text-emerald-500 uppercase tracking-widest flex items-center gap-2">
                        <CheckCircle2 className="h-3 w-3" /> Resolution Record
@@ -331,7 +347,9 @@ export function ComplaintDetailsSheet({ complaint, open, onOpenChange }: Complai
                     <div className="bg-emerald-600 rounded-2xl p-6 text-white shadow-xl shadow-emerald-900/20">
                        <p className="text-sm font-bold leading-relaxed whitespace-pre-wrap">{complaint.resolutionNotes}</p>
                        <div className="mt-4 pt-4 border-t border-white/10 flex items-center justify-between">
-                          <p className="text-[9px] font-black uppercase tracking-widest text-emerald-100">Resolved {complaint.resolvedAt ? formatDateTime(complaint.resolvedAt) : "N/A"}</p>
+                          <p className="text-[9px] font-black uppercase tracking-widest text-emerald-100">
+                             {complaint.status === "closed" ? "Closed" : "Resolved"} {complaint.resolvedAt ? formatDateTime(complaint.resolvedAt) : "N/A"}
+                          </p>
                           <CheckCircle2 className="h-4 w-4 text-emerald-200" />
                        </div>
                     </div>

@@ -11,6 +11,7 @@ interface ComplaintRowActionsProps {
     assignedToName?: string;
     customerAccount?: string;
     areaName?: string;
+    schemeName?: string;
   }
 }
 

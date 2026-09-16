@@ -2,7 +2,7 @@ import { db } from "@/lib/db"
 import { auditLog, smsGatewayConfig } from "@/lib/db/schema"
 import { randomUUID } from "crypto"
 import { eq } from "drizzle-orm"
-import { normalizePhone } from "@/lib/phone"
+import { normalizeSendablePhone } from "@/lib/phone"
 
 /**
  * Enterprise SMS Gateway Service
@@ -41,7 +41,23 @@ async function getGatewayCredentials() {
   return null
 }
 
-async function sendViaProvider(to: string, message: string): Promise<{ ok: boolean; error?: string }> {
+type ProviderResult = { ok: boolean; error?: string; messageId?: string }
+
+function africastalkingRecipientResult(data: unknown): ProviderResult {
+  const rec = (data as { SMSMessageData?: { Recipients?: Array<{ status?: string; messageId?: string }> } })
+    ?.SMSMessageData?.Recipients?.[0]
+  const status = String(rec?.status || "")
+  const messageId = rec?.messageId ? String(rec.messageId) : undefined
+  if (/invalid/i.test(status) || /unknownsubscriber/i.test(status) || /black.?list/i.test(status)) {
+    return { ok: false, error: "invalid_number", messageId }
+  }
+  if (status && status.toLowerCase() !== "success") {
+    return { ok: false, error: status, messageId }
+  }
+  return { ok: true, messageId }
+}
+
+async function sendViaProvider(to: string, message: string): Promise<ProviderResult> {
   const creds = await getGatewayCredentials()
 
   if (!creds) {
@@ -81,7 +97,8 @@ async function sendViaProvider(to: string, message: string): Promise<{ ok: boole
         return { ok: false, error: errText }
       }
 
-      return { ok: true }
+      const data = await res.json().catch(() => null)
+      return africastalkingRecipientResult(data)
     } catch (e) {
       console.error("[SMS Gateway] Failed to reach Africa's Talking:", e)
       return { ok: false, error: e instanceof Error ? e.message : "unknown_error" }
@@ -184,7 +201,7 @@ export async function sendSMS(
 
   // Normalise before anything else: gateways reject local trunk formats
   // ("0770000001"), and a whole imported batch is usually in that form.
-  const recipient = normalizePhone(to)
+  const recipient = normalizeSendablePhone(to)
 
   const result = recipient
     ? await sendViaProvider(recipient, message)
@@ -229,5 +246,12 @@ export async function sendSMS(
   // Never throw: a down/unconfigured SMS gateway must not block billing —
   // it's a secondary notification channel, not the source of truth. The
   // audit log above is what makes a failed/simulated send traceable.
-  return { ok: true, id, delivered: reason === null, reason, error: result.error }
+  return {
+    ok: true,
+    id,
+    delivered: reason === null,
+    reason,
+    error: result.error,
+    gatewayRef: result.messageId,
+  }
 }

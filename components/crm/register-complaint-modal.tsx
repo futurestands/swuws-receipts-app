@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useMemo } from "react"
+import { useState, useEffect, useMemo, useRef } from "react"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import * as z from "zod"
@@ -11,14 +11,15 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
-import { registerComplaint, listUsersByArea, listSchemesByArea } from "@/app/actions/crm"
+import { registerComplaint, listUsersByArea, listSchemesByArea, lookupComplaintCustomer } from "@/app/actions/crm"
 import { useToast } from "@/hooks/use-toast"
-import { Loader2, Plus, User, Tag, UserCheck, ShieldCheck, CheckCircle2, FileText } from "lucide-react"
+import { Loader2, Plus, User, Tag, UserCheck, ShieldCheck, CheckCircle2, FileText, Search, X } from "lucide-react"
 import type { CrmComplaintCategory, CrmDepartment, Branch } from "@/lib/db/schema"
 import { format } from "date-fns"
 import { useRouter } from "next/navigation"
 
 const formSchema = z.object({
+  customerId: z.string().optional().nullable(),
   complainantName: z.string().min(2, "Name is required"),
   complainantEmail: z.string().email().optional().or(z.literal("")),
   complainantPhone: z.string().min(9, "Phone number is required"),
@@ -34,6 +35,17 @@ const formSchema = z.object({
   assignedDepartmentId: z.string().optional().nullable(),
 })
 
+type CustomerMatch = {
+  id: string
+  name: string
+  phone: string | null
+  address: string | null
+  customerAccount: string | null
+  waterSchemeId: string | null
+  branchId: string | null
+  schemeName: string | null
+}
+
 interface RegisterComplaintModalProps {
   categories: CrmComplaintCategory[]
   areas: Branch[]
@@ -48,6 +60,10 @@ export function RegisterComplaintModal({ categories, areas, userName }: Register
   const [areaSchemes, setAreaSchemes] = useState<{ id: string, name: string }[]>([])
   const [loadingUsers, setLoadingUsers] = useState(false)
   const [loadingSchemes, setLoadingSchemes] = useState(false)
+  const [lookupQuery, setLookupQuery] = useState("")
+  const [matches, setMatches] = useState<CustomerMatch[]>([])
+  const [lookingUp, setLookingUp] = useState(false)
+  const pendingSchemeId = useRef<string | null>(null)
   const { toast } = useToast()
 
   // z.input, not z.infer/z.output: fields with .default() (like priority)
@@ -59,6 +75,7 @@ export function RegisterComplaintModal({ categories, areas, userName }: Register
   const form = useForm<z.input<typeof formSchema>>({
     resolver: zodResolver(formSchema),
     defaultValues: {
+      customerId: "",
       complainantName: "",
       complainantEmail: "",
       complainantPhone: "",
@@ -108,6 +125,60 @@ export function RegisterComplaintModal({ categories, areas, userName }: Register
     fetchData()
   }, [selectedAreaId])
 
+  useEffect(() => {
+    if (pendingSchemeId.current && areaSchemes.some(s => s.id === pendingSchemeId.current)) {
+      form.setValue("schemeId", pendingSchemeId.current)
+      pendingSchemeId.current = null
+    }
+  }, [areaSchemes, form])
+
+  useEffect(() => {
+    const q = lookupQuery.trim()
+    if (q.length < 3) {
+      setMatches([])
+      setLookingUp(false)
+      return
+    }
+    let cancelled = false
+    setLookingUp(true)
+    const handle = window.setTimeout(async () => {
+      try {
+        const rows = await lookupComplaintCustomer(q)
+        if (!cancelled) {
+          setMatches(rows)
+          const exact = rows.find(r => (r.customerAccount || "").toLowerCase() === q.toLowerCase())
+          if (exact && rows.length === 1) applyCustomerMatch(exact)
+        }
+      } catch {
+        if (!cancelled) setMatches([])
+      } finally {
+        if (!cancelled) setLookingUp(false)
+      }
+    }, 300)
+    return () => {
+      cancelled = true
+      window.clearTimeout(handle)
+    }
+  }, [lookupQuery])
+
+  function applyCustomerMatch(match: CustomerMatch) {
+    const phone = match.phone && match.phone.toUpperCase() !== "NULL" ? match.phone : ""
+    form.setValue("customerId", match.id)
+    form.setValue("complainantName", match.name)
+    form.setValue("complainantPhone", phone)
+    form.setValue("complainantAddress", match.address && match.address.toUpperCase() !== "NULL" ? match.address : "")
+    form.setValue("customerAccount", match.customerAccount || "")
+    pendingSchemeId.current = match.waterSchemeId
+    if (match.branchId) form.setValue("area", match.branchId)
+    setLookupQuery(match.customerAccount || match.name)
+    setMatches([])
+  }
+
+  function clearLinkedCustomer() {
+    form.setValue("customerId", "")
+    pendingSchemeId.current = null
+  }
+
   // z.input to match the form's own generic above -- values coming out of
   // handleSubmit are checked against this type, not the parsed/output type.
   async function onSubmit(values: z.input<typeof formSchema>) {
@@ -115,6 +186,7 @@ export function RegisterComplaintModal({ categories, areas, userName }: Register
     try {
       const res = await registerComplaint({
         ...values,
+        customerId: values.customerId || null,
         complainantEmail: values.complainantEmail || undefined,
         assignedToId: values.assignedToId === "unassigned" || !values.assignedToId ? null : values.assignedToId,
         schemeId: values.schemeId || null,
@@ -124,6 +196,8 @@ export function RegisterComplaintModal({ categories, areas, userName }: Register
         toast({ title: "Success", description: `Complaint ${res.complaintNumber} registered.` })
         setOpen(false)
         form.reset()
+        setLookupQuery("")
+        setMatches([])
         router.refresh()
       }
     } catch (err) {
@@ -133,8 +207,16 @@ export function RegisterComplaintModal({ categories, areas, userName }: Register
     }
   }
 
+  const linkedCustomerId = form.watch("customerId")
+
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={(next) => {
+      setOpen(next)
+      if (!next) {
+        setLookupQuery("")
+        setMatches([])
+      }
+    }}>
       <DialogTrigger asChild>
         <Button className="h-9 bg-primary hover:bg-primary/90 shadow-sm transition-all px-4 text-xs font-black">
           <Plus className="mr-1.5 h-3.5 w-3.5" /> REGISTER TICKET
@@ -168,6 +250,57 @@ export function RegisterComplaintModal({ categories, areas, userName }: Register
                   <div className="flex items-center gap-2.5 border-b border-slate-50 pb-2.5">
                      <User className="h-3.5 w-3.5 text-sky-500" />
                      <span className="text-[10px] font-black text-slate-800 uppercase tracking-widest">1. Customer Identification</span>
+                     {linkedCustomerId ? (
+                       <Badge className="ml-auto h-5 bg-emerald-50 text-emerald-700 border-emerald-100 text-[8px] font-black uppercase tracking-widest">
+                         <CheckCircle2 className="h-2.5 w-2.5 mr-1" /> On file
+                       </Badge>
+                     ) : (
+                       <span className="ml-auto text-[8px] font-bold text-slate-400 uppercase tracking-widest">Walk-in OK</span>
+                     )}
+                  </div>
+
+                  <div className="relative">
+                    <label className="text-[8px] font-black text-slate-400 uppercase">Find customer (A/C, name, phone, meter)</label>
+                    <div className="relative mt-1.5">
+                      <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+                      <Input
+                        value={lookupQuery}
+                        onChange={e => setLookupQuery(e.target.value)}
+                        placeholder="Type 3+ characters to fill name, phone, area, scheme..."
+                        className="h-8 bg-slate-50 border-slate-200 text-xs font-bold pl-8 pr-8"
+                      />
+                      {lookingUp && <Loader2 className="absolute right-2.5 top-1/2 -translate-y-1/2 h-3 w-3 animate-spin text-slate-400" />}
+                      {!lookingUp && lookupQuery && (
+                        <button
+                          type="button"
+                          onClick={() => { setLookupQuery(""); setMatches([]); clearLinkedCustomer() }}
+                          className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                          aria-label="Clear customer search"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      )}
+                    </div>
+                    {matches.length > 0 && (
+                      <div className="absolute z-20 mt-1 w-full rounded-lg border border-slate-200 bg-white shadow-xl max-h-48 overflow-y-auto">
+                        {matches.map(m => (
+                          <button
+                            key={m.id}
+                            type="button"
+                            onClick={() => applyCustomerMatch(m)}
+                            className="w-full text-left px-3 py-2 hover:bg-sky-50 border-b border-slate-50 last:border-0"
+                          >
+                            <p className="text-[11px] font-black text-slate-800 uppercase truncate">{m.name}</p>
+                            <p className="text-[10px] font-mono text-slate-500">
+                              {m.customerAccount || "No A/C"} · {m.phone && m.phone.toUpperCase() !== "NULL" ? m.phone : "No phone"} · {m.schemeName || "No scheme"}
+                            </p>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    {lookupQuery.trim().length >= 3 && !lookingUp && matches.length === 0 && !linkedCustomerId && (
+                      <p className="text-[10px] font-bold text-amber-600 mt-1">No match in your area — continue as a walk-in.</p>
+                    )}
                   </div>
 
                   <div className="grid grid-cols-3 gap-6">

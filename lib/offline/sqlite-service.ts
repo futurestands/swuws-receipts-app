@@ -250,16 +250,63 @@ class SQLiteService {
     return res.values?.[0] || null;
   }
 
-  async searchCustomers(query: string) {
-    if (!this.db) return [];
+  async searchCustomers(query: string, page = 1, pageSize = 50) {
+    const empty = { customers: [] as any[], total: 0, page: 1, pageSize, totalPages: 1 }
+    if (!this.db) return empty
 
-    const sql = query.trim()
-      ? `SELECT * FROM local_customers WHERE name LIKE ? OR customerAccount LIKE ? OR phone LIKE ? ORDER BY name LIMIT 50;`
-      : `SELECT * FROM local_customers ORDER BY name LIMIT 50;`;
+    const safePageSize = Math.min(100, Math.max(1, pageSize))
+    const safePage = Math.max(1, page)
+    const trimmed = query.trim()
+    const where = trimmed
+      ? `WHERE name LIKE ? OR customerAccount LIKE ? OR phone LIKE ?`
+      : ""
+    const likeParams = trimmed ? [`%${trimmed}%`, `%${trimmed}%`, `%${trimmed}%`] : []
 
-    const params = query.trim() ? [`%${query}%`, `%${query}%`, `%${query}%`] : [];
-    const res = await this.db.query(sql, params);
-    return res.values || [];
+    const countRes = await this.db.query(
+      `SELECT COUNT(*) AS total FROM local_customers ${where};`,
+      likeParams,
+    )
+    const countRow = countRes.values?.[0]
+    const total = Number(
+      countRow?.total ??
+      (Array.isArray(countRow) ? countRow[0] : Object.values(countRow || {})[0]) ??
+      0,
+    )
+    const totalPages = Math.max(1, Math.ceil(total / safePageSize))
+    const pageClamped = Math.min(safePage, totalPages)
+    const offsetClamped = (pageClamped - 1) * safePageSize
+
+    const res = await this.db.query(
+      `SELECT * FROM local_customers ${where} ORDER BY name LIMIT ${safePageSize} OFFSET ${offsetClamped};`,
+      likeParams,
+    )
+
+    return {
+      customers: res.values || [],
+      total,
+      page: pageClamped,
+      pageSize: safePageSize,
+      totalPages,
+    }
+  }
+
+  async filterCachedIds(ids: string[]) {
+    const found = new Set<string>()
+    if (!this.db || ids.length === 0) return found
+    const CHUNK = 200
+    for (let i = 0; i < ids.length; i += CHUNK) {
+      const chunk = ids.slice(i, i + CHUNK)
+      const placeholders = chunk.map(() => "?").join(",")
+      const res = await this.db.query(
+        `SELECT id FROM local_customers WHERE id IN (${placeholders});`,
+        chunk,
+      )
+      for (const row of res.values || []) {
+        const id = Array.isArray(row) ? row[0] : row.id
+        if (id) found.add(String(id))
+      }
+    }
+    return found
   }
 
   async getCustomerWithBill(customerId: string) {

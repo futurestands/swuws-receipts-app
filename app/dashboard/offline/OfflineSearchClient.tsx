@@ -11,15 +11,20 @@ import { Badge } from "@/components/ui/badge"
 import { toast } from "sonner"
 import { formatUGX } from "@/lib/format"
 import { cn } from "@/lib/utils"
-import { Search, RefreshCw, Wifi, Banknote, Clock, Calculator, AlertTriangle, Printer } from "lucide-react"
+import { Search, RefreshCw, Wifi, Banknote, Clock, Calculator, AlertTriangle, Printer, ChevronLeft, ChevronRight } from "lucide-react"
 import { OfflineReceiptForm } from "./OfflineReceiptForm"
 import { OfflineMeterReadingForm } from "./OfflineMeterReadingForm"
 import { printerManager } from "@/lib/offline/printer-manager"
 import { searchCustomers } from "@/app/actions/customers"
 
+const PAGE_SIZE = 50
+
 export function OfflineSearchClient({ agentId }: { agentId: string }) {
   const [query, setQuery] = useState("")
+  const [page, setPage] = useState(1)
   const [localCustomers, setLocalCustomers] = useState<any[]>([])
+  const [localTotal, setLocalTotal] = useState(0)
+  const [localTotalPages, setLocalTotalPages] = useState(1)
   const [serverCustomers, setServerCustomers] = useState<any[]>([])
   const [syncMeta, setSyncMeta] = useState<any>(null)
   const [isOnline, setIsOnline] = useState(true)
@@ -40,19 +45,20 @@ export function OfflineSearchClient({ agentId }: { agentId: string }) {
   const hasNewItems = queuedReceipts.some(r => r.status === 'queued') ||
                       queuedReadings.some(r => r.status === 'queued')
 
-  const handleSearch = async () => {
-    // Always search local SQLite
-    const local = await sqliteService.searchCustomers(query)
-    setLocalCustomers(local)
+  const handleSearch = async (pageNum = page) => {
+    const local = await sqliteService.searchCustomers(query, pageNum, PAGE_SIZE)
+    setLocalCustomers(local.customers)
+    setLocalTotal(local.total)
+    setLocalTotalPages(local.totalPages)
+    if (local.page !== pageNum) setPage(local.page)
 
     // If online, search server
     if (isOnline && query.trim().length >= 2) {
       setSearchingServer(true)
       try {
         const res = await searchCustomers({ query })
-        // Filter out customers already in local results
-        const localIds = new Set(local.map(c => c.id))
-        const filteredServer = res.customers.filter(c => !localIds.has(c.id))
+        const cachedIds = await sqliteService.filterCachedIds(res.customers.map(c => c.id))
+        const filteredServer = res.customers.filter(c => !cachedIds.has(c.id))
         setServerCustomers(filteredServer)
       } catch (err) {
         console.warn('Server search failed', err)
@@ -64,7 +70,7 @@ export function OfflineSearchClient({ agentId }: { agentId: string }) {
     }
   }
 
-  const refreshData = async () => {
+  const refreshData = async (pageNum = page) => {
     const [meta, queue, readings] = await Promise.all([
       sqliteService.getSyncMeta(),
       sqliteService.getQueuedReceipts(),
@@ -73,15 +79,15 @@ export function OfflineSearchClient({ agentId }: { agentId: string }) {
     setSyncMeta(meta)
     setQueuedReceipts(queue)
     setQueuedReadings(readings)
-    await handleSearch()
+    await handleSearch(pageNum)
   }
 
   useEffect(() => {
     const timer = setTimeout(() => {
-      handleSearch()
+      handleSearch(page)
     }, 300)
     return () => clearTimeout(timer)
-  }, [query, isOnline])
+  }, [query, isOnline, page])
 
   useEffect(() => {
     let active = true
@@ -199,7 +205,8 @@ export function OfflineSearchClient({ agentId }: { agentId: string }) {
           setSyncStep(`Saving ${loaded.toLocaleString()} / ${denom.toLocaleString()}...`)
         },
       })
-      await refreshData()
+      setPage(1)
+      await refreshData(1)
       if (result.truncated) {
         toast.success(`Cached ${result.loaded.toLocaleString()} of ${result.total.toLocaleString()} customers (device cap).`)
       } else {
@@ -355,21 +362,34 @@ export function OfflineSearchClient({ agentId }: { agentId: string }) {
       <div className="relative">
         <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
         <Input
-          placeholder="Find customer in cache..."
+          placeholder="Find customer by name, A/C, or phone..."
           value={query}
-          onChange={(e) => setQuery(e.target.value)}
+          onChange={(e) => {
+            setQuery(e.target.value)
+            setPage(1)
+          }}
           className="pl-9 h-11 shadow-sm"
         />
       </div>
 
-      {syncMeta && (
-        <p className="text-[10px] text-muted-foreground italic px-1 uppercase tracking-wider font-bold">
-          Last Pull: {new Date(syncMeta.lastSuccessfulPullAt).toLocaleString('en-GB', {
-            day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit'
-          })}
-          {syncMeta.customerCount != null && ` · ${Number(syncMeta.customerCount).toLocaleString()} customers cached`}
+      <div className="rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 space-y-1">
+        <p className="text-sm font-black text-sky-900">
+          {localTotal.toLocaleString()} customer{localTotal === 1 ? "" : "s"} on this phone
+          {query.trim() ? ` matching “${query.trim()}”` : ""}
         </p>
-      )}
+        <p className="text-xs font-medium text-sky-800">
+          {localTotal === 0
+            ? (syncMeta ? "Cache is empty. Tap Sync Cache while online." : "Tap Sync Cache to download your area.")
+            : `Showing ${Math.min(localTotal, (page - 1) * PAGE_SIZE + 1)}–${Math.min(localTotal, page * PAGE_SIZE)} of ${localTotal.toLocaleString()}. Use Next to walk the full list.`}
+        </p>
+        {syncMeta?.lastSuccessfulPullAt && (
+          <p className="text-[11px] font-bold text-sky-700/80">
+            Last sync {new Date(syncMeta.lastSuccessfulPullAt).toLocaleString("en-GB", {
+              day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit"
+            })}
+          </p>
+        )}
+      </div>
 
       <div className="grid grid-cols-1 gap-3">
         {localCustomers.map((c) => (
@@ -391,7 +411,7 @@ export function OfflineSearchClient({ agentId }: { agentId: string }) {
           <div className="py-12 text-center border-2 border-dashed rounded-xl bg-muted/30">
             <Search className="mx-auto h-8 w-8 text-muted-foreground/50 mb-3" />
             <p className="text-muted-foreground">
-              {query ? 'No matching customers found.' : 'Use the search bar to find customers.'}
+              {query ? 'No matching customers found.' : 'No customers on this phone yet.'}
             </p>
             {!syncMeta && (
               <p className="text-xs text-primary font-bold mt-2 animate-pulse">
@@ -401,6 +421,38 @@ export function OfflineSearchClient({ agentId }: { agentId: string }) {
           </div>
         )}
       </div>
+
+      {localTotalPages > 1 && (
+        <div className="flex items-center justify-between gap-3 pt-1 pb-4">
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={page <= 1}
+            onClick={() => {
+              setPage((p) => Math.max(1, p - 1))
+              window.scrollTo({ top: 0, behavior: "smooth" })
+            }}
+            className="h-11 px-4 font-black uppercase tracking-widest text-[10px]"
+          >
+            <ChevronLeft className="h-4 w-4 mr-1" /> Previous
+          </Button>
+          <span className="text-xs font-bold text-slate-600 uppercase tracking-widest">
+            Page {page} of {localTotalPages}
+          </span>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={page >= localTotalPages}
+            onClick={() => {
+              setPage((p) => p + 1)
+              window.scrollTo({ top: 0, behavior: "smooth" })
+            }}
+            className="h-11 px-4 font-black uppercase tracking-widest text-[10px]"
+          >
+            Next <ChevronRight className="h-4 w-4 ml-1" />
+          </Button>
+        </div>
+      )}
     </div>
   )
 }

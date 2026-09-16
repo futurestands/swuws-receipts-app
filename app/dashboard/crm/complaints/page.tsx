@@ -31,6 +31,7 @@ type ComplaintRow = CrmComplaint & {
   assignedToName?: string;
   customerAccount?: string;
   areaName?: string;
+  schemeName?: string;
 }
 
 /**
@@ -64,10 +65,19 @@ export default async function ComplaintsPage({
     from: readParam('from'),
     till: readParam('till'),
     complaintNumber: readParam('no'),
+    search: readParam('q'),
   }
 
-  const [complaintData, categories, stats, areas, staff] = await Promise.all([
+  const boardFilters = {
+    ...filters,
+    page: 1,
+    limit: 100,
+    excludeClosed: !filters.status,
+  }
+
+  const [complaintData, boardData, categories, stats, areas, staff] = await Promise.all([
     listComplaints(filters),
+    listComplaints(boardFilters),
     listCrmComplaintCategories(),
     getCrmStats(),
     listCrmAreas(),
@@ -77,6 +87,7 @@ export default async function ComplaintsPage({
   // Preserved across page links so paging never silently drops the filters.
   const filterQuery = new URLSearchParams(
     Object.entries({
+      q: filters.search,
       no: filters.complaintNumber,
       from: filters.from,
       till: filters.till,
@@ -92,6 +103,15 @@ export default async function ComplaintsPage({
     const params = new URLSearchParams(filterQuery)
     params.set('page', String(target))
     return `/dashboard/crm/complaints?${params.toString()}`
+  }
+
+  const statusHref = (status?: string) => {
+    const params = new URLSearchParams(filterQuery)
+    params.delete('page')
+    if (status) params.set('status', status)
+    else params.delete('status')
+    const qs = params.toString()
+    return qs ? `/dashboard/crm/complaints?${qs}` : '/dashboard/crm/complaints'
   }
 
   return (
@@ -112,77 +132,87 @@ export default async function ComplaintsPage({
 
       {/* Status Cards - Fixed Responsive Grid */}
       <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-5">
-        <Card className="border-t-4 border-t-sky-500 shadow-sm bg-white">
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Total Tickets</p>
-                <p className="text-2xl font-black text-sky-600 mt-1">{stats.complaints.total}</p>
+        <Link href={statusHref()} className="block">
+          <Card className={cn("border-t-4 border-t-sky-500 shadow-sm bg-white h-full hover:shadow-md transition-shadow", !filters.status && "ring-1 ring-sky-200")}>
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Total Tickets</p>
+                  <p className="text-2xl font-black text-sky-600 mt-1">{stats.complaints.total}</p>
+                </div>
+                <div className="h-10 w-10 rounded-full bg-sky-50 flex items-center justify-center">
+                   <MessageSquare className="h-5 w-5 text-sky-400" />
+                </div>
               </div>
-              <div className="h-10 w-10 rounded-full bg-sky-50 flex items-center justify-center">
-                 <MessageSquare className="h-5 w-5 text-sky-400" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        </Link>
 
-        <Card className="border-t-4 border-t-rose-500 shadow-sm bg-white">
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Open / New</p>
-                <p className="text-2xl font-black text-rose-600 mt-1">{stats.complaints.open}</p>
+        <Link href={statusHref("open")} className="block">
+          <Card className={cn("border-t-4 border-t-rose-500 shadow-sm bg-white h-full hover:shadow-md transition-shadow", filters.status === "open" && "ring-1 ring-rose-200")}>
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Open / New</p>
+                  <p className="text-2xl font-black text-rose-600 mt-1">{stats.complaints.open}</p>
+                </div>
+                <div className="h-10 w-10 rounded-full bg-rose-50 flex items-center justify-center">
+                   <PlayCircle className="h-5 w-5 text-rose-400" />
+                </div>
               </div>
-              <div className="h-10 w-10 rounded-full bg-rose-50 flex items-center justify-center">
-                 <PlayCircle className="h-5 w-5 text-rose-400" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        </Link>
 
-        <Card className="border-t-4 border-t-amber-500 shadow-sm bg-white">
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">In Progress</p>
-                <p className="text-2xl font-black text-amber-600 mt-1">
-                  {stats.complaints.assigned + stats.complaints.inProgress}
-                </p>
+        <Link href={statusHref("working")} className="block">
+          <Card className={cn("border-t-4 border-t-amber-500 shadow-sm bg-white h-full hover:shadow-md transition-shadow", filters.status === "working" && "ring-1 ring-amber-200")}>
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">In Progress</p>
+                  <p className="text-2xl font-black text-amber-600 mt-1">
+                    {stats.complaints.assigned + stats.complaints.inProgress}
+                  </p>
+                </div>
+                <div className="h-10 w-10 rounded-full bg-amber-50 flex items-center justify-center">
+                   <User className="h-5 w-5 text-amber-400" />
+                </div>
               </div>
-              <div className="h-10 w-10 rounded-full bg-amber-50 flex items-center justify-center">
-                 <User className="h-5 w-5 text-amber-400" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        </Link>
 
-        <Card className="border-t-4 border-t-emerald-500 shadow-sm bg-white">
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Resolved</p>
-                <p className="text-2xl font-black text-emerald-600 mt-1">{stats.complaints.resolved}</p>
+        <Link href={statusHref("resolved")} className="block">
+          <Card className={cn("border-t-4 border-t-emerald-500 shadow-sm bg-white h-full hover:shadow-md transition-shadow", filters.status === "resolved" && "ring-1 ring-emerald-200")}>
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Resolved</p>
+                  <p className="text-2xl font-black text-emerald-600 mt-1">{stats.complaints.resolved}</p>
+                </div>
+                <div className="h-10 w-10 rounded-full bg-emerald-50 flex items-center justify-center">
+                   <CheckCircle2 className="h-5 w-5 text-emerald-400" />
+                </div>
               </div>
-              <div className="h-10 w-10 rounded-full bg-emerald-50 flex items-center justify-center">
-                 <CheckCircle2 className="h-5 w-5 text-emerald-400" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        </Link>
 
-        <Card className="border-t-4 border-t-slate-400 shadow-sm bg-white">
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Closed</p>
-                <p className="text-2xl font-black text-slate-700 mt-1">{stats.complaints.closed}</p>
+        <Link href={statusHref("closed")} className="block">
+          <Card className={cn("border-t-4 border-t-slate-400 shadow-sm bg-white h-full hover:shadow-md transition-shadow", filters.status === "closed" && "ring-1 ring-slate-300")}>
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Closed</p>
+                  <p className="text-2xl font-black text-slate-700 mt-1">{stats.complaints.closed}</p>
+                </div>
+                <div className="h-10 w-10 rounded-full bg-slate-100 flex items-center justify-center">
+                   <Archive className="h-5 w-5 text-slate-400" />
+                </div>
               </div>
-              <div className="h-10 w-10 rounded-full bg-slate-100 flex items-center justify-center">
-                 <Archive className="h-5 w-5 text-slate-400" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        </Link>
       </div>
 
       <ComplaintsFilterBar areas={areas} staff={staff} categories={categories} />
@@ -201,7 +231,7 @@ export default async function ComplaintsPage({
         </div>
 
         <TabsContent value="board" className="mt-0">
-           <ComplaintsServiceBoard complaints={complaintData.complaints} />
+           <ComplaintsServiceBoard complaints={boardData.complaints} />
         </TabsContent>
 
         <TabsContent value="list" className="mt-0">

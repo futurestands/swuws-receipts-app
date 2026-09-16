@@ -93,7 +93,7 @@ export default async function ReportsPage({
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Performance Dashboard</h1>
         <p className="text-muted-foreground">
-          Monitor collections and billing performance across the organization.
+          EBS Balance Sync is the source for debt and recovery. Agent receipts are recorded separately and do not change live balances.
         </p>
       </div>
 
@@ -104,37 +104,41 @@ export default async function ReportsPage({
         initialFilters={params}
       />
 
+      <p className="text-xs text-muted-foreground bg-muted/40 border rounded-lg px-3 py-2">
+        <span className="font-semibold text-foreground">How to read this screen:</span> Green, amber, and blue recovery cards follow the <span className="font-medium">selected billing period</span>. Red debt, system credit, and top debtors are <span className="font-medium">live EBS balances today</span> — they do not change when you switch period.
+      </p>
+
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         <Card className="card-accent-red">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Total Cumulative Debt</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Live outstanding debt</CardTitle>
             <AlertCircle className="h-4 w-4 text-destructive" />
           </CardHeader>
           <CardContent>
             <div className="text-3xl font-black text-destructive">{formatUGX(arrears.totalArrears)}</div>
-            <p className="text-xs text-muted-foreground mt-1">Live snapshot of all outstanding balances</p>
+            <p className="text-xs text-muted-foreground mt-1">All customers, today (EBS). Not limited to the selected period.</p>
           </CardContent>
         </Card>
 
         <Card className="card-accent-green">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Old Debt Recovered</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Old debt recovered</CardTitle>
             <TrendingUp className="h-4 w-4 text-green-500" />
           </CardHeader>
           <CardContent>
             <div className="text-3xl font-black text-green-600">{formatUGX(collections.cashToArrears)}</div>
-            <p className="text-xs text-muted-foreground mt-1">Collections applied to historical arrears</p>
+            <p className="text-xs text-muted-foreground mt-1">This period: cash that cleared arrears brought into the selected bills.</p>
           </CardContent>
         </Card>
 
         <Card className="card-accent-blue">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Total System Credit</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Live customer credit</CardTitle>
             <Landmark className="h-4 w-4 text-brand-blue" />
           </CardHeader>
           <CardContent>
             <div className="text-3xl font-black text-brand-blue">{formatUGX(arrears.totalUpfront)}</div>
-            <p className="text-[10px] text-muted-foreground mt-2 italic">Sum of all customer credit balances (Pre-payments).</p>
+            <p className="text-xs text-muted-foreground mt-1">Prepayments on EBS today (negative balances). Not limited to the selected period.</p>
           </CardContent>
         </Card>
       </div>
@@ -142,34 +146,39 @@ export default async function ReportsPage({
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground uppercase">Total Period Demand</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground uppercase">Period demand (old + new)</CardTitle>
             <FileText className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{formatUGX(billing.totalBilled)}</div>
-            <p className="text-[10px] text-muted-foreground uppercase font-bold mt-1">{billing.billedCount} active bills</p>
+            <p className="text-[10px] text-muted-foreground mt-1">
+              Opening arrears {formatUGX(billing.arrearsBilled)} + this month&apos;s bills {formatUGX(billing.currentBilled)} · {billing.billedCount} bills
+            </p>
           </CardContent>
         </Card>
 
         <Card className="border-amber-100 bg-amber-50/20">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-amber-700 uppercase">Collections on Billing</CardTitle>
+            <CardTitle className="text-sm font-medium text-amber-700 uppercase">Recovered this period (EBS)</CardTitle>
             <TrendingUp className="h-4 w-4 text-amber-600" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-black text-amber-600">{formatUGX(collections.verifiedTotal)}</div>
-            <p className="text-[10px] text-amber-700/70 uppercase font-bold mt-1">Cash applied to current/old debt</p>
+            <p className="text-[10px] text-amber-700/70 mt-1">Cash applied to old debt plus this month&apos;s bill. Not agent receipt totals.</p>
           </CardContent>
         </Card>
 
         <Card className="border-primary/10">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground uppercase">Recovery Performance</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground uppercase">Cash vs this month&apos;s bill</CardTitle>
             <TrendingUp className="h-4 w-4 text-primary" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{formatPercent(collections.collectionRate)}</div>
-            <Progress value={collections.collectionRate} className="h-2 mt-2" />
+            <Progress value={Math.min(100, Math.max(0, collections.collectionRate || 0))} className="h-2 mt-2" />
+            <p className="text-[10px] text-muted-foreground mt-2">
+              All period cash (old + new debt) ÷ this month&apos;s bills only. Can exceed 100% when arrears are collected. This month&apos;s bill rate is the blue card below.
+            </p>
           </CardContent>
         </Card>
       </div>
@@ -178,8 +187,8 @@ export default async function ReportsPage({
       <div className="grid gap-4 md:grid-cols-2">
          <Card className="border-green-100">
            <CardHeader className="pb-2">
-             <CardTitle className="text-sm font-bold text-green-800">Arrears Recovery Performance</CardTitle>
-             <CardDescription>Efficiency in collecting old debt (Historical Arrears).</CardDescription>
+             <CardTitle className="text-sm font-bold text-green-800">This period: old debt</CardTitle>
+             <CardDescription>Opening arrears on the selected period&apos;s bills, and how much EBS cash cleared them.</CardDescription>
            </CardHeader>
            <CardContent className="space-y-4">
              <div className="flex justify-between items-end">
@@ -211,15 +220,15 @@ export default async function ReportsPage({
                   <span className="font-medium">Recovery Rate (Cash)</span>
                   <span className="font-black text-green-600">{formatPercent(collections.arrearsRate)}</span>
                 </div>
-                <Progress value={collections.arrearsRate} className="h-3 bg-green-50" />
+                <Progress value={Math.min(100, Math.max(0, collections.arrearsRate || 0))} className="h-3 bg-green-50" />
              </div>
            </CardContent>
          </Card>
 
          <Card className="border-blue-100">
            <CardHeader className="pb-2">
-             <CardTitle className="text-sm font-bold text-blue-800">Current Month Performance</CardTitle>
-             <CardDescription>Efficiency in collecting this month&apos;s generated revenue.</CardDescription>
+             <CardTitle className="text-sm font-bold text-blue-800">This period: this month&apos;s bills</CardTitle>
+             <CardDescription>This month&apos;s billed amount, and how much EBS cash cleared it.</CardDescription>
            </CardHeader>
            <CardContent className="space-y-4">
              <div className="flex justify-between items-end">
@@ -253,7 +262,7 @@ export default async function ReportsPage({
                   <span className="font-medium">Collection Rate (Cash)</span>
                   <span className="font-black text-blue-600">{formatPercent(collections.currentRate)}</span>
                 </div>
-                <Progress value={collections.currentRate} className="h-3 bg-blue-50" />
+                <Progress value={Math.min(100, Math.max(0, collections.currentRate || 0))} className="h-3 bg-blue-50" />
              </div>
            </CardContent>
          </Card>
@@ -262,8 +271,8 @@ export default async function ReportsPage({
       <div className="grid gap-6 md:grid-cols-2">
         <Card>
           <CardHeader>
-            <CardTitle>Billing Status Breakdown</CardTitle>
-            <CardDescription>Distribution of bill payment states for the selected filters.</CardDescription>
+            <CardTitle>Bill status counts</CardTitle>
+            <CardDescription>Number of bills in each status for the selected period. These counts are not the same as the money cards above.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
@@ -300,8 +309,8 @@ export default async function ReportsPage({
         {/* Top Debtors Card */}
         <Card>
           <CardHeader>
-            <CardTitle>Top Debtors</CardTitle>
-            <CardDescription>Customers with highest outstanding balances.</CardDescription>
+            <CardTitle>Top debtors (live EBS)</CardTitle>
+            <CardDescription>Highest outstanding balances today. Not filtered by billing period.</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="space-y-4 max-h-[600px] overflow-y-auto pr-2 scrollbar-hide">

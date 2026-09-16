@@ -28,7 +28,7 @@ export const smsImportSchema = z.object({
   phoneNumber: z
     .string()
     .min(9, "Invalid phone number")
-    .refine(isSendablePhone, "Phone number cannot be converted to international format"),
+    .refine(isSendablePhone, "Must be a Uganda 07 or 03 number, not 0700000000"),
   customerName: z.string().optional(),
   billingPeriod: z.string().optional(),
   balance: z.string().or(z.number()).optional(),

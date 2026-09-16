@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useTransition } from "react"
+import { useEffect, useState, useTransition } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -28,6 +28,7 @@ export function ComplaintsFilterBar({ areas, staff, categories }: ComplaintsFilt
   const searchParams = useSearchParams()
   const [pending, startTransition] = useTransition()
 
+  const [q, setQ] = useState(searchParams.get("q") ?? "")
   const [no, setNo] = useState(searchParams.get("no") ?? "")
   const [from, setFrom] = useState(searchParams.get("from") ?? "")
   const [till, setTill] = useState(searchParams.get("till") ?? "")
@@ -37,8 +38,21 @@ export function ComplaintsFilterBar({ areas, staff, categories }: ComplaintsFilt
   const [category, setCategory] = useState(searchParams.get("category") ?? "all")
   const [priority, setPriority] = useState(searchParams.get("priority") ?? "all")
 
+  useEffect(() => {
+    setQ(searchParams.get("q") ?? "")
+    setNo(searchParams.get("no") ?? "")
+    setFrom(searchParams.get("from") ?? "")
+    setTill(searchParams.get("till") ?? "")
+    setStatus(searchParams.get("status") ?? "all")
+    setArea(searchParams.get("area") ?? "all")
+    setStaffId(searchParams.get("staff") ?? "all")
+    setCategory(searchParams.get("category") ?? "all")
+    setPriority(searchParams.get("priority") ?? "all")
+  }, [searchParams])
+
   function applyFilters() {
     const params = new URLSearchParams()
+    if (q) params.set("q", q)
     if (no) params.set("no", no)
     if (from) params.set("from", from)
     if (till) params.set("till", till)
@@ -54,6 +68,7 @@ export function ComplaintsFilterBar({ areas, staff, categories }: ComplaintsFilt
   }
 
   function resetFilters() {
+    setQ("")
     setNo("")
     setFrom("")
     setTill("")
@@ -77,6 +92,16 @@ export function ComplaintsFilterBar({ areas, staff, categories }: ComplaintsFilt
       </CardHeader>
       <CardContent className="p-6">
         <div className="grid gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6 items-end">
+          <div className="space-y-2 sm:col-span-2">
+            <label className="text-[10px] font-bold uppercase text-slate-400 tracking-tight ml-1">Search name / phone / A/C</label>
+            <Input
+              placeholder="Customer, phone, or account..."
+              className="h-10 bg-slate-50 border-slate-200"
+              value={q}
+              onChange={e => setQ(e.target.value)}
+              onKeyDown={e => e.key === "Enter" && applyFilters()}
+            />
+          </div>
           <div className="space-y-2">
             <label className="text-[10px] font-bold uppercase text-slate-400 tracking-tight ml-1">Complaint Ref #</label>
             <Input
@@ -104,6 +129,7 @@ export function ComplaintsFilterBar({ areas, staff, categories }: ComplaintsFilt
               <SelectContent>
                 <SelectItem value="all">All</SelectItem>
                 <SelectItem value="open">Open</SelectItem>
+                <SelectItem value="working">Assigned / In Progress</SelectItem>
                 <SelectItem value="assigned">Assigned</SelectItem>
                 <SelectItem value="in_progress">In Progress</SelectItem>
                 <SelectItem value="resolved">Resolved</SelectItem>

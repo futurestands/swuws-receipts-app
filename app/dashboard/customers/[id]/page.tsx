@@ -2,6 +2,7 @@ import { notFound } from "next/navigation"
 import Link from "next/link"
 import { listActiveWaterSchemesForPicker } from "@/app/actions/customers"
 import { getCustomerStatement } from "@/app/actions/reports"
+import { listComplaintsForCustomer } from "@/app/actions/crm"
 import { EditCustomerForm } from "@/app/dashboard/customers/[id]/edit-customer-form"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -9,15 +10,16 @@ import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { formatUGX, formatDateTime, formatDate } from "@/lib/format"
 import { ArrowUpRight, ArrowDownLeft, ShieldAlert } from "lucide-react"
-import { canEditCustomer } from "@/lib/permissions"
+import { canEditCustomer, canViewCrm } from "@/lib/permissions"
 import { requireUser } from "@/lib/session"
 
 export default async function CustomerDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
   const current = await requireUser()
-  const [statement, schemes] = await Promise.all([
+  const [statement, schemes, tickets] = await Promise.all([
     getCustomerStatement(id),
     listActiveWaterSchemesForPicker(),
+    canViewCrm(current) ? listComplaintsForCustomer(id) : Promise.resolve([]),
   ])
 
   const { customer, bills, receipts, ledger, summary, lastReading } = statement
@@ -59,7 +61,7 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
           )}
           <div className="flex flex-col gap-1.5">
             <Card className="px-4 py-2 bg-primary/5 border-primary/20">
-              <p className="text-[10px] uppercase font-bold text-muted-foreground leading-none mb-1">Account Balance</p>
+              <p className="text-[10px] uppercase font-bold text-muted-foreground leading-none mb-1">EBS live balance</p>
               <p className="text-lg font-mono font-bold text-primary leading-none">
                 {formatUGX(Number(customer.accountBalance || 0))}
               </p>
@@ -94,33 +96,36 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
             <Card>
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm font-medium text-muted-foreground">
-                  Total billed
+                  Portal billed
                 </CardTitle>
               </CardHeader>
               <CardContent>
                 <p className="text-xl font-semibold">{formatUGX(summary.totalBilled)}</p>
+                <p className="text-[10px] text-muted-foreground mt-1">Sum of bills on this account</p>
               </CardContent>
             </Card>
             <Card>
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm font-medium text-muted-foreground">
-                  Total paid
+                  Portal receipts
                 </CardTitle>
               </CardHeader>
               <CardContent>
                 <p className="text-xl font-semibold">{formatUGX(summary.totalPaid)}</p>
+                <p className="text-[10px] text-muted-foreground mt-1">Agent receipts, excluding voids</p>
               </CardContent>
             </Card>
             <Card>
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm font-medium text-muted-foreground">
-                  Outstanding
+                  Portal outstanding
                 </CardTitle>
               </CardHeader>
               <CardContent>
                 <p className={`text-xl font-bold ${summary.currentBalance > 0 ? 'text-destructive' : 'text-primary'}`}>
                   {formatUGX(summary.currentBalance)}
                 </p>
+                <p className="text-[10px] text-muted-foreground mt-1">Bills minus receipts. EBS live balance is the figure at the top.</p>
               </CardContent>
             </Card>
           </div>
@@ -129,13 +134,16 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
             <TabsList>
               <TabsTrigger value="ledger">Chronological Ledger</TabsTrigger>
               <TabsTrigger value="history">History Tables</TabsTrigger>
+              {canViewCrm(current) && (
+                <TabsTrigger value="tickets">Service Tickets{tickets.length ? ` (${tickets.length})` : ""}</TabsTrigger>
+              )}
             </TabsList>
 
             <TabsContent value="ledger" className="space-y-4">
               <Card>
                 <CardHeader>
                   <CardTitle>Customer Ledger</CardTitle>
-                  <CardDescription>A chronological record of all bills and payments.</CardDescription>
+                  <CardDescription>Portal bills and receipts only. This ledger is not the EBS live balance.</CardDescription>
                 </CardHeader>
                 <CardContent>
                   <Table>
@@ -277,6 +285,56 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
                 </CardContent>
               </Card>
             </TabsContent>
+
+            {canViewCrm(current) && (
+            <TabsContent value="tickets">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Service tickets</CardTitle>
+                  <CardDescription>Complaints logged against this account.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {tickets.length === 0 ? (
+                    <p className="text-sm text-muted-foreground py-4 text-center">
+                      No service tickets on this account.
+                    </p>
+                  ) : (
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Logged</TableHead>
+                          <TableHead>Ticket</TableHead>
+                          <TableHead>Issue</TableHead>
+                          <TableHead>Status</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {tickets.map((t) => (
+                          <TableRow key={t.id}>
+                            <TableCell className="text-sm">{formatDateTime(t.createdAt)}</TableCell>
+                            <TableCell>
+                              <Link
+                                href={`/dashboard/crm/complaints?no=${encodeURIComponent(t.complaintNumber)}`}
+                                className="font-mono text-sm font-medium text-primary hover:underline"
+                              >
+                                {t.complaintNumber}
+                              </Link>
+                            </TableCell>
+                            <TableCell className="text-sm">{t.categoryName || "—"}</TableCell>
+                            <TableCell>
+                              <Badge variant="outline" className="text-[10px] uppercase">
+                                {t.status.replace("_", " ")}
+                              </Badge>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
+            )}
           </Tabs>
         </div>
       </div>

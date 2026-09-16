@@ -78,6 +78,11 @@ async function getTemplate(code: string) {
   return version?.content || null
 }
 
+/** Operational mail (SMS failure digest, etc.) — same Resend path as password reset. */
+export async function sendOperationalEmail(options: EmailOptions) {
+  return sendRawEmail(options)
+}
+
 export async function sendPasswordResetEmail(email: string, userName: string, resetLink: string) {
   const content = await getTemplate('email.auth.reset_password') || `Hello ${userName}, reset your password here: ${resetLink}`
 
