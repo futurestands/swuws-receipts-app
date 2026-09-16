@@ -59,7 +59,11 @@ class SQLiteService {
       throw new Error("Offline cache only works in the SWUWS Android app.");
     }
     if (!this.db) {
-      throw new Error(this.lastError || "Could not open the phone database. Force-close the app and tap Sync Cache again.");
+      const detail = this.lastError || "Could not open the phone database."
+      if (detail.includes("CapacitorSQLitePlugin")) {
+        throw new Error("Phone database plugin failed to start. Install SWUWS 1.2.4, then tap Sync Cache.")
+      }
+      throw new Error(detail)
     }
   }
 

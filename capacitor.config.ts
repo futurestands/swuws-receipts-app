@@ -82,7 +82,16 @@ const config: CapacitorConfig = {
       showSpinner: true,
       splashFullScreen: true,
       splashImmersive: true,
-    }
+    },
+    // Default is androidIsEncryption: true, which builds an Android
+    // Keystore + EncryptedSharedPreferences on plugin load. That path
+    // throws with a null message on several field devices, so the native
+    // plugin stays dead and Sync Cache reports "CapacitorSQLitePlugin: null".
+    // We store an unencrypted cache (createConnection ..., 'no-encryption').
+    CapacitorSQLite: {
+      iosIsEncryption: false,
+      androidIsEncryption: false,
+    },
   }
 };
 

@@ -33,6 +33,13 @@
 -keep @com.getcapacitor.NativePlugin class * { *; }
 -dontwarn com.getcapacitor.**
 
+# SQLite / SQLCipher used by the offline customer cache
+-keep class androidx.security.** { *; }
+-keep class net.sqlcipher.** { *; }
+-keep class net.zetetic.** { *; }
+-dontwarn net.sqlcipher.**
+-dontwarn net.zetetic.**
+
 # AndroidX - Narrowed down to components known to cause issues with R8
 -keep class androidx.appcompat.** { *; }
 -keep class androidx.coordinatorlayout.** { *; }
