@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react"
 import Link from "next/link"
-import { Menu, PanelLeftClose, PanelLeftOpen } from "lucide-react"
+import { usePathname } from "next/navigation"
+import { ArrowLeft, Menu, PanelLeftClose, PanelLeftOpen } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
@@ -45,6 +46,8 @@ export function AppShell({
   const [mobileOpen, setMobileOpen] = useState(false)
   const [imgError, setImgError] = useState(false)
   const [native, setNative] = useState(false)
+  const pathname = usePathname()
+  const hideSidebar = pathname.startsWith("/dashboard/offline")
 
   useEffect(() => {
     // 1. Initial collapsed state from localStorage (prevents hydration mismatch)
@@ -84,7 +87,9 @@ export function AppShell({
           - Mobile (<768px): Hidden, accessed via Sheet drawer.
           - Tablet (768px - 1024px): Navigation Rail (icon-only) by default.
           - Desktop (>1024px): Full Sidebar (expanded or user-collapsed).
+          - Offline Mode: no sidebar. Field staff only need search, collect, reading.
       */}
+      {!hideSidebar && (
       <aside
         className={cn(
           "sticky top-0 hidden h-screen shrink-0 flex-col border-r border-sidebar-border bg-sidebar transition-[width] duration-200 md:flex no-print",
@@ -151,8 +156,10 @@ export function AppShell({
           )}
         </div>
       </aside>
+      )}
 
       {/* Mobile drawer */}
+      {!hideSidebar && (
       <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
         <SheetContent side="left" className="w-72 max-w-[85vw] border-sidebar-border bg-sidebar p-0 flex flex-col h-full overflow-hidden">
           <SheetHeader className="flex flex-col items-start justify-center border-b border-sidebar-border px-4 shrink-0 h-24 pt-[env(safe-area-inset-top)]">
@@ -166,26 +173,38 @@ export function AppShell({
           </div>
         </SheetContent>
       </Sheet>
+      )}
 
       {/* Main column */}
       <div className="flex min-w-0 flex-1 flex-col h-screen overflow-hidden">
         <header className="sticky top-0 z-30 flex items-center gap-3 border-b bg-card/95 px-3 backdrop-blur supports-backdrop-filter:bg-card/80 sm:px-4 md:px-6 no-print h-auto min-h-14 pt-[env(safe-area-inset-top)] pb-2">
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            className="md:hidden"
-            onClick={() => setMobileOpen(true)}
-            aria-label="Open navigation menu"
-          >
-            <Menu />
-          </Button>
-          <div className="flex flex-col min-w-0 md:hidden leading-tight">
-            <Link href={brandHref} className="flex flex-col">
+          {hideSidebar ? (
+            <Link
+              href="/dashboard"
+              aria-label="Back to dashboard"
+              className="inline-flex size-7 items-center justify-center rounded-lg hover:bg-muted"
+            >
+              <ArrowLeft className="size-4" />
+            </Link>
+          ) : (
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              className="md:hidden"
+              onClick={() => setMobileOpen(true)}
+              aria-label="Open navigation menu"
+            >
+              <Menu />
+            </Button>
+          )}
+          <div className={cn("flex flex-col min-w-0 leading-tight", !hideSidebar && "md:hidden")}>
+            <Link href={hideSidebar ? "/dashboard" : brandHref} className="flex flex-col">
               <span className="text-[11px] font-black text-primary uppercase leading-none tracking-tighter">{receiptPrefix}</span>
               <span className="text-[8px] font-bold text-primary/60 uppercase leading-none">PORTAL</span>
             </Link>
           </div>
 
+          {!hideSidebar && (
           <div className="hidden md:flex items-center flex-1 px-20 min-w-0 justify-center gap-2">
             <p className="text-[10px] md:text-sm lg:text-base xl:text-lg font-black text-brand-blue tracking-[0.15em] text-center font-serif uppercase whitespace-nowrap">
               {orgName}
@@ -196,6 +215,7 @@ export function AppShell({
                </Badge>
             )}
           </div>
+          )}
 
           <div className="ml-auto flex items-center gap-2 sm:gap-3">
             <SyncStatus agentId={agentId} />

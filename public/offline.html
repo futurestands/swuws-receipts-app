@@ -106,14 +106,6 @@
         .queue-row { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; padding: 0.75rem 1rem; border-bottom: 1px solid #f1f5f9; font-size: 0.85rem; }
         .queue-row:last-child { border-bottom: none; }
         .muted { color: var(--muted); font-size: 0.75rem; }
-        .drawer-bg { display: none; position: fixed; inset: 0; background: rgba(15,23,42,0.4); z-index: 50; }
-        .drawer-bg.open { display: block; }
-        .drawer {
-            position: absolute; left: 0; top: 0; bottom: 0; width: min(18rem, 85vw);
-            background: #fff; padding-top: env(safe-area-inset-top); box-shadow: 4px 0 24px rgba(15,23,42,0.12);
-        }
-        .drawer h2 { font-size: 0.85rem; font-weight: 900; letter-spacing: 0.04em; text-transform: uppercase; color: var(--brand); padding: 1.25rem 1rem 0.75rem; margin: 0; border-bottom: 1px solid var(--line); }
-        .drawer button { display: block; width: 100%; text-align: left; background: none; border: none; padding: 0.9rem 1rem; font-size: 0.95rem; font-weight: 600; }
         .diagnostics { display: none; margin-top: 1rem; font-size: 0.65rem; color: var(--muted); background: #f1f5f9; padding: 0.75rem; border-radius: 0.4rem; font-family: ui-monospace, monospace; white-space: pre-wrap; }
         .diagnostics.show { display: block; }
         .log-error { color: var(--danger); font-weight: 700; }
@@ -130,29 +122,15 @@
 </head>
 <body>
     <header class="app-header">
-        <button class="icon-btn" type="button" onclick="toggleMenu()" aria-label="Open menu">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
-        </button>
         <div class="brand">
             <span class="brand-top">SWUWS</span>
             <span class="brand-sub">Portal</span>
         </div>
         <div class="header-right">
             <span class="status-dot" title="Connected to local cache"></span>
-            <button class="icon-btn" type="button" aria-label="Notifications">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10 21a2 2 0 0 0 4 0"/></svg>
-            </button>
-            <button class="text-btn" type="button" onclick="window.location.reload()">Sign out</button>
+            <button class="text-btn" type="button" onclick="window.location.reload()">Reconnect</button>
         </div>
     </header>
-
-    <div id="drawer-bg" class="drawer-bg" onclick="toggleMenu()">
-        <div class="drawer" onclick="event.stopPropagation()">
-            <h2>SWUWS Collection<br>Portal</h2>
-            <button type="button" onclick="toggleMenu()">Customers</button>
-            <button type="button" onclick="window.location.reload()">Reconnect</button>
-        </div>
-    </div>
 
     <main>
         <div class="wrap">
@@ -218,10 +196,6 @@
     <script>
         const PRINTER_SERVICE = '0000ff00-0000-1000-8000-00805f9b34fb';
         const PRINTER_CHAR = '0000ff01-0000-1000-8000-00805f9b34fb';
-
-        function toggleMenu() {
-            document.getElementById('drawer-bg').classList.toggle('open');
-        }
 
         function log(msg, type) {
             const box = document.getElementById('diag-box');
