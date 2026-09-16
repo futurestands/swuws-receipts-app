@@ -5,7 +5,7 @@ import { iamRole, iamPermission, iamRolePermission, user as userTable, type IamR
 import { requireUser } from "@/lib/session"
 import { writeAudit } from "@/lib/audit"
 import { hasPermission, getOwnRoleLevel } from "@/lib/iam"
-import { eq, and, sql, desc, asc, not, lte } from "drizzle-orm"
+import { eq, and, sql, desc, asc, not, lte, inArray } from "drizzle-orm"
 import { randomUUID } from "crypto"
 import { revalidatePath } from "next/cache"
 import { z } from "zod"
@@ -18,7 +18,13 @@ import { ROLES } from "@/lib/permissions/roles"
  */
 export async function listRoles() {
   const current = await requireUser()
-  if (!await hasPermission(current, "roles.view")) throw new Error("Forbidden")
+  if (
+    current.role !== ROLES.SYSTEM_ADMIN &&
+    (current.roleLevel ?? 0) < 10 &&
+    !await hasPermission(current, "roles.view")
+  ) {
+    throw new Error("Forbidden")
+  }
 
   if (current.role === ROLES.SYSTEM_ADMIN) {
     return db.select().from(iamRole).orderBy(desc(iamRole.level), asc(iamRole.name))
@@ -39,7 +45,13 @@ export async function listRoles() {
  */
 export async function listAllPermissions() {
   const current = await requireUser()
-  if (!await hasPermission(current, "permissions.view")) throw new Error("Forbidden")
+  if (
+    current.role !== ROLES.SYSTEM_ADMIN &&
+    (current.roleLevel ?? 0) < 10 &&
+    !await hasPermission(current, "permissions.view")
+  ) {
+    throw new Error("Forbidden")
+  }
 
   return db.select().from(iamPermission).orderBy(iamPermission.module, iamPermission.name)
 }
@@ -131,7 +143,11 @@ export async function seedV12Permissions() {
   const current = await requireUser()
   // This is a system-level setup action, so we gate it behind a core permission
   // that a system admin would already have from previous versions.
-  if (!await hasPermission(current, "branding.manage")) {
+  if (
+    current.role !== ROLES.SYSTEM_ADMIN &&
+    (current.roleLevel ?? 0) < 10 &&
+    !await hasPermission(current, "branding.manage")
+  ) {
     throw new Error("Forbidden: Insufficient permissions to seed system data")
   }
 
@@ -141,7 +157,9 @@ export async function seedV12Permissions() {
     { code: "crm.view", name: "View CRM Dashboard", module: "CRM", description: "Access the CRM module and overview" },
     { code: "crm.complaints.manage", name: "Manage Complaints", module: "CRM", description: "Register, edit, and resolve customer complaints" },
     { code: "crm.complaints.assign", name: "Assign Complaints", module: "CRM", description: "Assign complaints to specific handlers or departments" },
-    { code: "crm.sms.send", name: "Send Bulk SMS", module: "CRM", description: "Create and send bulk SMS communication batches" },
+    { code: "crm.sms.send", name: "Send Bulk SMS (legacy)", module: "CRM", description: "Legacy combined create+send. Prefer Create SMS lists and Approve and send SMS." },
+    { code: "crm.sms.create", name: "Create SMS lists", module: "CRM", description: "Build SMS contact lists and submit them for approval. Cannot send." },
+    { code: "crm.sms.approve", name: "Approve and send SMS", module: "CRM", description: "Approve submitted SMS lists and send them. Not granted to ordinary CRM users." },
     { code: "crm.settings.manage", name: "Manage CRM Settings", module: "CRM", description: "Configure CRM departments and complaint categories" },
   ]
 
@@ -152,6 +170,32 @@ export async function seedV12Permissions() {
         id: randomUUID(),
         ...p,
       })
+    } else {
+      await db.update(iamPermission).set({
+        name: p.name,
+        module: p.module,
+        description: p.description,
+      }).where(eq(iamPermission.id, exists.id))
+    }
+  }
+
+  const [adminRole] = await db.select({ id: iamRole.id }).from(iamRole).where(eq(iamRole.code, "admin")).limit(1)
+  if (adminRole) {
+    const smsCodes = ["crm.sms.create", "crm.sms.approve"]
+    const smsPerms = await db.select({ id: iamPermission.id }).from(iamPermission).where(inArray(iamPermission.code, smsCodes))
+    for (const p of smsPerms) {
+      const [granted] = await db.select({ id: iamRolePermission.id }).from(iamRolePermission).where(and(
+        eq(iamRolePermission.roleId, adminRole.id),
+        eq(iamRolePermission.permissionId, p.id),
+      )).limit(1)
+      if (!granted) {
+        await db.insert(iamRolePermission).values({
+          id: randomUUID(),
+          roleId: adminRole.id,
+          permissionId: p.id,
+          scope: "global",
+        })
+      }
     }
   }
 }
@@ -207,7 +251,13 @@ export async function updateRole(id: string, data: z.infer<typeof roleSchema>) {
  */
 export async function getRolePermissions(roleId: string) {
   const current = await requireUser()
-  if (!await hasPermission(current, "permissions.view")) throw new Error("Forbidden")
+  if (
+    current.role !== ROLES.SYSTEM_ADMIN &&
+    (current.roleLevel ?? 0) < 10 &&
+    !await hasPermission(current, "permissions.view")
+  ) {
+    throw new Error("Forbidden")
+  }
 
   return db.select({
     permissionId: iamRolePermission.permissionId,
@@ -224,7 +274,13 @@ export async function getRolePermissions(roleId: string) {
  */
 export async function updateRolePermissions(roleId: string, grants: { permissionId: string, scope: string }[]) {
   const current = await requireUser()
-  if (!await hasPermission(current, "roles.manage")) throw new Error("Forbidden")
+  if (
+    current.role !== ROLES.SYSTEM_ADMIN &&
+    (current.roleLevel ?? 0) < 10 &&
+    !await hasPermission(current, "roles.manage")
+  ) {
+    throw new Error("Forbidden")
+  }
 
   const [role] = await db.select().from(iamRole).where(eq(iamRole.id, roleId)).limit(1)
   if (!role) throw new Error("Role not found")
@@ -243,7 +299,8 @@ export async function updateRolePermissions(roleId: string, grants: { permission
       for (const g of grants) {
         // Find permission code first
         const [p] = await tx.select({ code: iamPermission.code }).from(iamPermission).where(eq(iamPermission.id, g.permissionId)).limit(1)
-        if (p && await hasPermission(current, p.code)) {
+        const dualAdmin = current.role === ROLES.SYSTEM_ADMIN || (current.roleLevel ?? 0) >= 10
+        if (p && (dualAdmin || await hasPermission(current, p.code))) {
           validGrants.push({
             id: randomUUID(),
             roleId,
@@ -289,6 +346,147 @@ export async function setRoleActive(id: string, active: boolean) {
     action: active ? "iam.role.activate" : "iam.role.deactivate",
     entityType: "iam_role",
     entityId: id,
+  })
+
+  revalidatePath("/admin")
+  return { ok: true as const }
+}
+
+const SMS_WORKFLOW_CODES = ["crm.sms.create", "crm.sms.approve", "crm.sms.send"] as const
+
+export type SmsWorkflowRow = {
+  roleId: string
+  roleName: string
+  roleCode: string
+  level: number
+  canCreate: boolean
+  canApprove: boolean
+}
+
+/**
+ * Role × SMS workflow grid for the Permission Matrix.
+ * Legacy crm.sms.send counts as both create and approve until it is saved off.
+ */
+export async function getSmsWorkflowMatrix(): Promise<SmsWorkflowRow[]> {
+  const current = await requireUser()
+  if (
+    current.role !== ROLES.SYSTEM_ADMIN &&
+    (current.roleLevel ?? 0) < 10 &&
+    !await hasPermission(current, "permissions.view")
+  ) {
+    throw new Error("Forbidden")
+  }
+
+  const [roles, perms] = await Promise.all([
+    db.select({
+      id: iamRole.id,
+      name: iamRole.name,
+      code: iamRole.code,
+      level: iamRole.level,
+    }).from(iamRole).where(eq(iamRole.active, true)).orderBy(desc(iamRole.level), asc(iamRole.name)),
+    db.select({ id: iamPermission.id, code: iamPermission.code }).from(iamPermission).where(inArray(iamPermission.code, [...SMS_WORKFLOW_CODES])),
+  ])
+
+  const permIds = perms.map((p) => p.id)
+  const grants = permIds.length === 0
+    ? []
+    : await db.select({
+        roleId: iamRolePermission.roleId,
+        permissionId: iamRolePermission.permissionId,
+      }).from(iamRolePermission).where(inArray(iamRolePermission.permissionId, permIds))
+
+  const idByCode = new Map(perms.map((p) => [p.code, p.id]))
+  const createId = idByCode.get("crm.sms.create")
+  const approveId = idByCode.get("crm.sms.approve")
+  const sendId = idByCode.get("crm.sms.send")
+  const granted = new Set(grants.map((g) => `${g.roleId}:${g.permissionId}`))
+
+  return roles.map((role) => {
+    const hasCreate = Boolean(createId && granted.has(`${role.id}:${createId}`))
+    const hasApprove = Boolean(approveId && granted.has(`${role.id}:${approveId}`))
+    const hasSend = Boolean(sendId && granted.has(`${role.id}:${sendId}`))
+    return {
+      roleId: role.id,
+      roleName: role.name,
+      roleCode: role.code,
+      level: role.level,
+      canCreate: hasCreate || hasSend,
+      canApprove: hasApprove || hasSend,
+    }
+  })
+}
+
+/**
+ * Writes only the two SMS workflow ticks. Other permissions on the role stay as they are.
+ */
+export async function saveSmsWorkflowMatrix(rows: { roleId: string; canCreate: boolean; canApprove: boolean }[]) {
+  const current = await requireUser()
+  if (
+    current.role !== ROLES.SYSTEM_ADMIN &&
+    (current.roleLevel ?? 0) < 10 &&
+    !await hasPermission(current, "roles.manage")
+  ) {
+    throw new Error("Forbidden")
+  }
+
+  const perms = await db
+    .select({ id: iamPermission.id, code: iamPermission.code })
+    .from(iamPermission)
+    .where(inArray(iamPermission.code, [...SMS_WORKFLOW_CODES]))
+
+  const create = perms.find((p) => p.code === "crm.sms.create")
+  const approve = perms.find((p) => p.code === "crm.sms.approve")
+  const send = perms.find((p) => p.code === "crm.sms.send")
+  if (!create || !approve) throw new Error("SMS workflow permissions are not seeded")
+
+  const defaultScope: Scope = "area"
+
+  await db.transaction(async (tx) => {
+    for (const row of rows) {
+      const [role] = await tx.select({ id: iamRole.id }).from(iamRole).where(eq(iamRole.id, row.roleId)).limit(1)
+      if (!role) continue
+
+      const existing = await tx
+        .select()
+        .from(iamRolePermission)
+        .where(and(
+          eq(iamRolePermission.roleId, row.roleId),
+          inArray(iamRolePermission.permissionId, [create.id, approve.id, ...(send ? [send.id] : [])]),
+        ))
+
+      const scopeFor = (permissionId: string) =>
+        (existing.find((g) => g.permissionId === permissionId)?.scope as Scope | undefined) || defaultScope
+
+      async function ensure(permissionId: string, on: boolean) {
+        const has = existing.some((g) => g.permissionId === permissionId)
+        if (on && !has) {
+          await tx.insert(iamRolePermission).values({
+            id: randomUUID(),
+            roleId: row.roleId,
+            permissionId,
+            scope: scopeFor(permissionId),
+          })
+        }
+        if (!on && has) {
+          await tx.delete(iamRolePermission).where(and(
+            eq(iamRolePermission.roleId, row.roleId),
+            eq(iamRolePermission.permissionId, permissionId),
+          ))
+        }
+      }
+
+      await ensure(create.id, row.canCreate || row.canApprove)
+      await ensure(approve.id, row.canApprove)
+      if (send) await ensure(send.id, false)
+    }
+
+    await writeAudit({
+      user: current,
+      action: "iam.sms_workflow.update",
+      entityType: "iam_permission",
+      entityId: "crm.sms",
+      details: { roles: rows.length },
+    }, tx)
   })
 
   revalidatePath("/admin")

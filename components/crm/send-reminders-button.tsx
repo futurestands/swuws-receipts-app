@@ -12,13 +12,13 @@ export function SendRemindersButton({ runId }: { runId: string }) {
   const router = useRouter()
 
   function handleSend() {
-    if (!confirm("Are you sure you want to generate and queue SMS bill reminders for everyone in this import batch?")) return
+    if (!confirm("Queue bill reminders for this import? The list will wait in CRM SMS for an approver before any message is sent.")) return
 
     startTransition(async () => {
       try {
         const res = await generateRemindersFromImport(runId)
         if (res.ok) {
-          toast.success("SMS reminders generated and queued in the CRM SMS Hub.")
+          toast.success("Reminder list saved as a draft in CRM SMS. An approver must release it before sending.")
           router.push("/dashboard/crm/sms")
         } else {
           const errorMessage = "error" in res ? res.error : "Failed to generate reminders"
@@ -39,7 +39,7 @@ export function SendRemindersButton({ runId }: { runId: string }) {
       disabled={isPending}
     >
       {isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
-      Reminders
+      Queue reminders
     </Button>
   )
 }

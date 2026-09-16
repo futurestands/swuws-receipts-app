@@ -67,7 +67,10 @@ export function SmsFilterBar() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All</SelectItem>
-                <SelectItem value="pending">Pending</SelectItem>
+                <SelectItem value="draft">Draft</SelectItem>
+                <SelectItem value="pending_approval">Awaiting approval</SelectItem>
+                <SelectItem value="rejected">Sent back</SelectItem>
+                <SelectItem value="approved">Approved</SelectItem>
                 <SelectItem value="processing">Processing</SelectItem>
                 <SelectItem value="completed">Completed</SelectItem>
                 <SelectItem value="failed">Failed</SelectItem>

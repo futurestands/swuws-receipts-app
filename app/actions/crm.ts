@@ -9,6 +9,8 @@ import {
   crmSmsRecord,
   customer,
   user as userTable,
+  iamPermission,
+  iamRolePermission,
   branch,
   waterScheme,
   billingRecord,
@@ -23,11 +25,13 @@ import {
   canViewCrm,
   canManageComplaints,
   canAssignComplaints,
-  canSendBulkSms,
+  canCreateSmsBatch,
+  canApproveSms,
   canConfigureCrm
 } from "@/lib/permissions"
 import { applyCustomerScope, applySmsBatchScope, validateWriteScope } from "@/lib/scopes"
 import { canViewAllData } from "@/lib/permissions"
+import { ROLES } from "@/lib/permissions/roles"
 import { randomUUID } from "crypto"
 import { revalidatePath } from "next/cache"
 import { writeAudit } from "@/lib/audit"
@@ -1368,7 +1372,7 @@ export async function reopenComplaint(id: string, reason: string) {
  */
 export async function importSmsBatch(formData: FormData) {
   const user = await requireUser()
-  if (!canSendBulkSms(user)) throw new Error("Forbidden")
+  if (!canCreateSmsBatch(user)) throw new Error("Forbidden")
 
   const file = formData.get("file") as File
   const name = formData.get("name") as string
@@ -1524,7 +1528,7 @@ export async function importSmsBatch(formData: FormData) {
       name: name.trim(),
       category,
       templateId: templateId || null,
-      status: "pending",
+      status: "draft",
       totalMessages: records.length,
       createdById: user.id,
       updatedAt: new Date()
@@ -1588,7 +1592,7 @@ function smsAudienceConditions(
  */
 export async function countSmsAudience(params: { schemeId?: string; branchId?: string; category?: string }) {
   const user = await requireUser()
-  if (!canSendBulkSms(user)) throw new Error("Forbidden")
+  if (!canCreateSmsBatch(user)) throw new Error("Forbidden")
 
   const conditions = smsAudienceConditions(user, params.schemeId, params.branchId)
   if (!conditions) return { count: 0, skipped: 0, alreadyContacted: 0 }
@@ -1641,7 +1645,7 @@ export async function createSmsBatchFromCustomers(input: {
   manualMessage?: string
 }) {
   const user = await requireUser()
-  if (!canSendBulkSms(user)) throw new Error("Forbidden")
+  if (!canCreateSmsBatch(user)) throw new Error("Forbidden")
 
   const schemeId = input.schemeId && input.schemeId !== "all" ? input.schemeId : null
   const branchId = input.branchId && input.branchId !== "all" ? input.branchId : null
@@ -1767,7 +1771,7 @@ export async function createSmsBatchFromCustomers(input: {
       name: listName,
       category: input.category,
       templateId: input.templateId || null,
-      status: "pending",
+      status: "draft",
       totalMessages: records.length,
       createdById: user.id,
       updatedAt: new Date(),
@@ -1864,7 +1868,7 @@ export async function createSmsBatch(data: {
   recipients: { customerId?: string; phoneNumber: string; message: string }[];
 }) {
   const user = await requireUser()
-  if (!canSendBulkSms(user)) throw new Error("Forbidden")
+  if (!canCreateSmsBatch(user)) throw new Error("Forbidden")
 
   const batchId = randomUUID()
 
@@ -1916,7 +1920,7 @@ export async function createSmsBatch(data: {
       name: data.name,
       category: data.category,
       templateId: data.templateId || null,
-      status: "pending",
+      status: "draft",
       totalMessages: records.length,
       createdById: user.id,
       updatedAt: new Date()
@@ -1979,14 +1983,192 @@ async function requireSmsBatchInScope(user: Awaited<ReturnType<typeof requireUse
   return batch
 }
 
+async function notifySmsApprovers(
+  batch: { id: string; name: string },
+  submittedByName: string,
+  submittedById: string,
+) {
+  const granted = await db
+    .selectDistinct({ id: userTable.id })
+    .from(userTable)
+    .innerJoin(iamRolePermission, eq(iamRolePermission.roleId, userTable.iamRoleId))
+    .innerJoin(iamPermission, eq(iamPermission.id, iamRolePermission.permissionId))
+    .where(and(
+      eq(userTable.active, true),
+      inArray(iamPermission.code, ["crm.sms.approve", "crm.sms.send"]),
+    ))
+
+  const admins = await db
+    .select({ id: userTable.id })
+    .from(userTable)
+    .where(and(eq(userTable.role, ROLES.SYSTEM_ADMIN), eq(userTable.active, true)))
+
+  const seen = new Set<string>()
+  const recipients = [...granted, ...admins].filter((row) => {
+    if (row.id === submittedById || seen.has(row.id)) return false
+    seen.add(row.id)
+    return true
+  })
+
+  for (const approver of recipients) {
+    try {
+      await createNotification({
+        userId: approver.id,
+        type: "crm.sms.pending_approval",
+        title: "SMS list waiting for approval",
+        message: `${submittedByName} submitted “${batch.name}”. Approve it in CRM → SMS before it can be sent.`,
+        relatedEntityType: "crm_sms_batch",
+        relatedEntityId: batch.id,
+        priority: "high",
+      })
+    } catch (err) {
+      console.error("[CRM SMS] Could not notify approver:", err)
+    }
+  }
+}
+
+/**
+ * Clerk step: move a draft (or rejected) list into the approval queue.
+ * Does not send any message.
+ */
+export async function submitSmsBatch(batchId: string) {
+  const user = await requireUser()
+  if (!canCreateSmsBatch(user)) throw new Error("Forbidden")
+
+  const batch = await requireSmsBatchInScope(user, batchId)
+  if (batch.status !== "draft" && batch.status !== "rejected") {
+    throw new Error("Only draft or rejected lists can be submitted for approval")
+  }
+  if (batch.totalMessages < 1) {
+    throw new Error("This list has no messages to submit")
+  }
+
+  await db.update(crmSmsBatch).set({
+    status: "pending_approval",
+    submittedAt: new Date(),
+    submittedById: user.id,
+    rejectedAt: null,
+    rejectedById: null,
+    rejectionReason: null,
+    updatedAt: new Date(),
+  }).where(eq(crmSmsBatch.id, batchId))
+
+  await writeAudit({
+    user,
+    action: "crm.sms.submit",
+    entityType: "crm_sms_batch",
+    entityId: batchId,
+    details: { name: batch.name, totalMessages: batch.totalMessages },
+  })
+
+  await notifySmsApprovers(batch, user.name, user.id)
+  revalidatePath("/dashboard/crm/sms")
+  return { ok: true as const }
+}
+
+/**
+ * Approver step: send the list back to the submitter.
+ */
+export async function rejectSmsBatch(batchId: string, reason: string) {
+  const user = await requireUser()
+  if (!canApproveSms(user)) throw new Error("Forbidden")
+
+  const batch = await requireSmsBatchInScope(user, batchId)
+  if (batch.status !== "pending_approval") {
+    throw new Error("Only lists waiting for approval can be rejected")
+  }
+
+  const trimmed = reason.trim()
+  if (!trimmed) throw new Error("Give a short reason so the submitter can fix the list")
+
+  await db.update(crmSmsBatch).set({
+    status: "rejected",
+    rejectedAt: new Date(),
+    rejectedById: user.id,
+    rejectionReason: trimmed,
+    updatedAt: new Date(),
+  }).where(eq(crmSmsBatch.id, batchId))
+
+  await writeAudit({
+    user,
+    action: "crm.sms.reject",
+    entityType: "crm_sms_batch",
+    entityId: batchId,
+    details: { name: batch.name, reason: trimmed },
+  })
+
+  if (batch.submittedById || batch.createdById) {
+    try {
+      await createNotification({
+        userId: batch.submittedById || batch.createdById!,
+        type: "crm.sms.rejected",
+        title: "SMS list was sent back",
+        message: `“${batch.name}” was not approved: ${trimmed}`,
+        relatedEntityType: "crm_sms_batch",
+        relatedEntityId: batchId,
+      })
+    } catch (err) {
+      console.error("[CRM SMS] Could not notify submitter of rejection:", err)
+    }
+  }
+
+  revalidatePath("/dashboard/crm/sms")
+  return { ok: true as const }
+}
+
+/**
+ * Approver step: mark approved and start sending.
+ */
+export async function approveSmsBatch(batchId: string) {
+  const user = await requireUser()
+  if (!canApproveSms(user)) throw new Error("Forbidden")
+
+  const batch = await requireSmsBatchInScope(user, batchId)
+  if (batch.status !== "pending_approval" && batch.status !== "draft") {
+    throw new Error("This list is not waiting for approval")
+  }
+  if (batch.totalMessages < 1) {
+    throw new Error("This list has no messages to send")
+  }
+
+  await db.update(crmSmsBatch).set({
+    status: "approved",
+    approvedAt: new Date(),
+    approvedById: user.id,
+    submittedAt: batch.submittedAt ?? new Date(),
+    submittedById: batch.submittedById ?? user.id,
+    rejectedAt: null,
+    rejectedById: null,
+    rejectionReason: null,
+    updatedAt: new Date(),
+  }).where(eq(crmSmsBatch.id, batchId))
+
+  await writeAudit({
+    user,
+    action: "crm.sms.approve",
+    entityType: "crm_sms_batch",
+    entityId: batchId,
+    details: { name: batch.name, totalMessages: batch.totalMessages },
+  })
+
+  return processSmsBatch(batchId)
+}
+
 /**
  * AUTOMATED REMINDERS
  */
 export async function generateRemindersFromImport(runId: string) {
   const user = await requireUser()
-  if (!canSendBulkSms(user)) throw new Error("Forbidden")
+  if (!canCreateSmsBatch(user)) throw new Error("Forbidden")
 
   // 1. Fetch billing records and customer phones
+  const reminderConds = [
+    eq(billingRecord.billingRunId, runId),
+    sql`${billingRecord.totalDue} > 0`,
+  ]
+  const customerScope = applyCustomerScope(user)
+  if (customerScope) reminderConds.push(customerScope)
+
   const records = await db
     .select({
       id: billingRecord.id,
@@ -2001,10 +2183,7 @@ export async function generateRemindersFromImport(runId: string) {
     .from(billingRecord)
     .innerJoin(customer, eq(billingRecord.customerId, customer.id))
     .innerJoin(billingPeriod, eq(billingRecord.billingPeriodId, billingPeriod.id))
-    .where(and(
-      eq(billingRecord.billingRunId, runId),
-      sql`${billingRecord.totalDue} > 0` // Only remind those who owe money
-    ))
+    .where(and(...reminderConds))
 
   if (records.length === 0) return { ok: false, error: "No debtors found in this import batch." }
 
@@ -2086,10 +2265,13 @@ function describeSendFailure(reason: string | null, error?: string) {
  */
 export async function processSmsBatch(batchId: string) {
   const user = await requireUser()
-  if (!canSendBulkSms(user)) throw new Error("Forbidden")
+  if (!canApproveSms(user)) throw new Error("Forbidden")
 
   const batch = await requireSmsBatchInScope(user, batchId)
   if (batch.status === "completed") return { ok: true as const, message: "Already sent", sent: batch.sentMessages, failed: batch.failedMessages, remaining: 0 }
+  if (batch.status !== "approved" && batch.status !== "processing" && batch.status !== "failed") {
+    throw new Error("This list has not been approved. Submit it for approval first.")
+  }
 
   await db.update(crmSmsBatch).set({ status: "processing", updatedAt: new Date() }).where(eq(crmSmsBatch.id, batchId))
 
@@ -2256,7 +2438,7 @@ export async function getCrmStats() {
       .select({
         totalBatches: count(crmSmsBatch.id),
         totalSent: sql<number>`coalesce(sum(${crmSmsBatch.sentMessages}), 0)::int`,
-        pendingCount: sql<number>`count(case when ${crmSmsBatch.status} = 'pending' then 1 end)::int`,
+        pendingCount: sql<number>`count(case when ${crmSmsBatch.status} in ('draft','pending_approval','approved') then 1 end)::int`,
       })
       .from(crmSmsBatch)
       .where(smsScopeCond)

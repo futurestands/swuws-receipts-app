@@ -109,11 +109,20 @@ export const crmSmsBatch = pgTable("crm_sms_batch", {
   name: text("name").notNull(),
   category: text("category").notNull(), // 'Bill Reminders', 'Seasonal Greetings', 'Alerts'
   templateId: text("templateId").references(() => managedTemplate.id, { onDelete: "set null" }),
-  status: text("status").notNull().default("pending"), // pending, processing, completed, failed
+  // draft → pending_approval → approved → processing → completed | failed
+  // rejected returns to the submitter. Sending is only allowed after approved.
+  status: text("status").notNull().default("draft"),
   totalMessages: integer("totalMessages").notNull().default(0),
   sentMessages: integer("sentMessages").notNull().default(0),
   failedMessages: integer("failedMessages").notNull().default(0),
   createdById: text("createdById").references(() => user.id, { onDelete: "set null" }),
+  submittedAt: timestamp("submittedAt"),
+  submittedById: text("submittedById").references(() => user.id, { onDelete: "set null" }),
+  approvedAt: timestamp("approvedAt"),
+  approvedById: text("approvedById").references(() => user.id, { onDelete: "set null" }),
+  rejectedAt: timestamp("rejectedAt"),
+  rejectedById: text("rejectedById").references(() => user.id, { onDelete: "set null" }),
+  rejectionReason: text("rejectionReason"),
   createdAt: timestamp("createdAt").notNull().defaultNow(),
   updatedAt: timestamp("updatedAt").notNull().defaultNow(),
 })

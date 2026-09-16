@@ -498,14 +498,33 @@ export function canAssignComplaints(user: UserPermissionsContext) {
 }
 
 /**
- * CRM: Who can send bulk SMS communications.
+ * CRM: Who can build SMS contact lists and submit them for approval.
+ * Ordinary CRM users get this. It does not let them send.
  */
-export function canSendBulkSms(user: UserPermissionsContext) {
+export function canCreateSmsBatch(user: UserPermissionsContext) {
   return (
     user.role === ROLES.SYSTEM_ADMIN ||
-    (user.roleLevel ?? 0) >= 10 ||
+    hasPerm(user, "crm.sms.create") ||
+    hasPerm(user, "crm.sms.send") ||
+    hasPerm(user, "crm.sms.approve")
+  ) ?? false
+}
+
+/**
+ * CRM: Who can approve a submitted SMS list and actually send it.
+ * Not granted by job grade alone — CRM access is not enough.
+ */
+export function canApproveSms(user: UserPermissionsContext) {
+  return (
+    user.role === ROLES.SYSTEM_ADMIN ||
+    hasPerm(user, "crm.sms.approve") ||
     hasPerm(user, "crm.sms.send")
   ) ?? false
+}
+
+/** @deprecated Use canApproveSms. Kept so older imports still compile. */
+export function canSendBulkSms(user: UserPermissionsContext) {
+  return canApproveSms(user)
 }
 
 /**

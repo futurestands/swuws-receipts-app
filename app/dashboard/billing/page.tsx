@@ -5,7 +5,7 @@ import {
   canActivateCollectionPeriod,
   canArchiveCollectionPeriod,
   canDeleteBilling,
-  canSendBulkSms
+  canCreateSmsBatch
 } from "@/lib/permissions"
 import { getCollectionSummary } from "@/app/actions/billing"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -38,7 +38,7 @@ export default async function CollectionManagementPage() {
   const summary = await getCollectionSummary()
   const canManage = canManageCollectionPeriods(current)
   const canDelete = canDeleteBilling(current)
-  const canSendSms = canSendBulkSms(current)
+  const canQueueSms = canCreateSmsBatch(current)
 
   return (
     <div className="space-y-8">
@@ -189,7 +189,7 @@ export default async function CollectionManagementPage() {
                 description="Billing data imported for this period will appear here."
               />
             ) : (
-              <RecentImportsTable uploads={summary.recentUploads} canDelete={canDelete} canSendSms={canSendSms} />
+              <RecentImportsTable uploads={summary.recentUploads} canDelete={canDelete} canSendSms={canQueueSms} />
             )}
           </CardContent>
         </Card>

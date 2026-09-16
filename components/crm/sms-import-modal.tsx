@@ -155,7 +155,7 @@ export function SmsImportModal() {
             res.summary.thanked > 0 ? `${res.summary.thanked} thank-you(s) for balance below USh 1,500` : null,
           ].filter(Boolean)
           toast.success(
-            `Queued ${res.summary.queued} message(s) for ${res.summary.scopeName}.${notes.length ? ` ${notes.join(". ")}.` : ""}`,
+            `Saved ${res.summary.queued} message(s) for ${res.summary.scopeName} as a draft. Submit it for approval before it can be sent.${notes.length ? ` ${notes.join(". ")}.` : ""}`,
           )
           setOpen(false)
           resetForm()
@@ -202,7 +202,7 @@ export function SmsImportModal() {
         ].filter(Boolean)
 
         toast.success(
-          `Queued ${queued} message(s).${notes.length ? ` ${notes.join(", ")}.` : ""}`,
+          `Saved ${queued} message(s) as a draft. Submit it for approval before it can be sent.${notes.length ? ` ${notes.join(", ")}.` : ""}`,
         )
         setOpen(false)
         resetForm()

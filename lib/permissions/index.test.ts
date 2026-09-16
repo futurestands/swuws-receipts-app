@@ -18,7 +18,7 @@ vi.mock('../iam', () => ({
   getOwnRoleLevel: vi.fn(() => Promise.resolve(0)),
 }))
 
-import { UserPermissionsContext } from "./index"
+import { UserPermissionsContext, canCreateSmsBatch, canApproveSms } from "./index"
 import { canCreateRole } from "./server"
 import { ROLES } from "./roles"
 
@@ -73,5 +73,38 @@ describe("canCreateRole (role-ceiling enforcement)", () => {
 
   it("rejects an unrecognized role string rather than assuming it's safe", async () => {
     expect(await canCreateRole(systemAdmin, "not_a_real_role")).toBe(false)
+  })
+})
+
+describe("SMS create vs approve", () => {
+  const clerk: UserPermissionsContext = {
+    id: "clerk-1",
+    role: ROLES.PLUMBER,
+    roleLevel: 10,
+    permissions: ["crm.view", "crm.sms.create"],
+  }
+
+  const approver: UserPermissionsContext = {
+    id: "mgr-1",
+    role: ROLES.COMMERCIAL_OFFICER,
+    permissions: ["crm.sms.approve"],
+  }
+
+  const gradeOnly: UserPermissionsContext = {
+    id: "grade-1",
+    role: ROLES.PLUMBER,
+    roleLevel: 10,
+    permissions: ["crm.view"],
+  }
+
+  it("lets a CRM clerk submit lists but not send them", () => {
+    expect(canCreateSmsBatch(clerk)).toBe(true)
+    expect(canApproveSms(clerk)).toBe(false)
+  })
+
+  it("lets an approver send without treating every CRM user as a sender", () => {
+    expect(canApproveSms(approver)).toBe(true)
+    expect(canApproveSms(gradeOnly)).toBe(false)
+    expect(canCreateSmsBatch(gradeOnly)).toBe(false)
   })
 })

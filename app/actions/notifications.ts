@@ -4,6 +4,7 @@ import { db } from "@/lib/db"
 import { notification, user as userTable } from "@/lib/db/schema"
 import { requireUser } from "@/lib/session"
 import { hasPermission } from "@/lib/iam"
+import { ROLES } from "@/lib/permissions/roles"
 import { eq, and, desc, sql, count } from "drizzle-orm"
 import { randomUUID } from "crypto"
 import { revalidatePath } from "next/cache"
@@ -87,12 +88,16 @@ export async function createNotification(data: {
 }, tx: any = db) {
   const current = await requireUser()
   const authorized =
+    current.role === ROLES.SYSTEM_ADMIN ||
     (await hasPermission(current, "reconciliation.run")) ||
     (await hasPermission(current, "reconciliation.approve")) ||
     (await hasPermission(current, "branding.manage")) ||
     (await hasPermission(current, "collection.view")) ||
     (await hasPermission(current, "crm.view")) ||
-    (await hasPermission(current, "crm.complaints.manage"))
+    (await hasPermission(current, "crm.complaints.manage")) ||
+    (await hasPermission(current, "crm.sms.create")) ||
+    (await hasPermission(current, "crm.sms.approve")) ||
+    (await hasPermission(current, "crm.sms.send"))
 
   if (!authorized) throw new Error("Forbidden")
 

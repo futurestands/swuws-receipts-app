@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useTransition } from "react"
+import { useState, useTransition, useEffect } from "react"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -10,7 +10,8 @@ import { Switch } from "@/components/ui/switch"
 import { Shield, Plus, Key, Users, Edit2, Loader2, ChevronRight } from "lucide-react"
 import { toast } from "sonner"
 import type { IamRole, IamPermission } from "@/lib/db/schema"
-import { listRoles, listAllPermissions, createRole, updateRole, setRoleActive, getRolePermissions, updateRolePermissions } from "@/app/actions/iam"
+import { listRoles, listAllPermissions, createRole, updateRole, setRoleActive, getRolePermissions, updateRolePermissions, getSmsWorkflowMatrix, saveSmsWorkflowMatrix } from "@/app/actions/iam"
+import type { SmsWorkflowRow } from "@/app/actions/iam"
 import {
   Dialog,
   DialogContent,
@@ -53,6 +54,27 @@ export function IamPanel({
   const [selectedRoleId, setSelectedRoleId] = useState<string | null>(initialRoles[0]?.id || null)
   const [rolePermissions, setRolePermissions] = useState<Record<string, string>>({})
   const [isPermissionsLoading, setIsPermissionsLoading] = useState(false)
+  const [smsRows, setSmsRows] = useState<SmsWorkflowRow[]>([])
+  const [smsLoading, setSmsLoading] = useState(false)
+
+  async function loadSmsMatrix() {
+    setSmsLoading(true)
+    try {
+      setSmsRows(await getSmsWorkflowMatrix())
+    } catch {
+      toast.error("Failed to load SMS workflow ticks")
+    } finally {
+      setSmsLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    if (activeTab === "permissions") {
+      void loadSmsMatrix()
+      if (selectedRoleId) void loadRolePermissions(selectedRoleId)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab])
 
   async function loadRolePermissions(roleId: string) {
     setIsPermissionsLoading(true)
@@ -108,6 +130,7 @@ export function IamPanel({
         // Refresh roles list
         const updated = await listRoles()
         setRoles(updated)
+        void loadSmsMatrix()
       } else {
         toast.error(result.error)
       }
@@ -134,6 +157,7 @@ export function IamPanel({
         const result = await updateRolePermissions(selectedRoleId, grants)
         if (result.ok) {
           toast.success("Permissions updated")
+          void loadSmsMatrix()
         }
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : "Failed to save permissions"
@@ -142,8 +166,30 @@ export function IamPanel({
     })
   }
 
-  // Group permissions by module
-  const modules = Array.from(new Set(allPermissions.map(p => p.module)))
+  async function saveSmsMatrix() {
+    startTransition(async () => {
+      try {
+        const result = await saveSmsWorkflowMatrix(
+          smsRows.map((row) => ({
+            roleId: row.roleId,
+            canCreate: row.canCreate,
+            canApprove: row.canApprove,
+          })),
+        )
+        if (result.ok) {
+          toast.success("SMS workflow ticks saved")
+          void loadSmsMatrix()
+          if (selectedRoleId) void loadRolePermissions(selectedRoleId)
+        }
+      } catch (err: unknown) {
+        toast.error(err instanceof Error ? err.message : "Failed to save SMS ticks")
+      }
+    })
+  }
+
+  const HIDDEN_MATRIX_CODES = new Set(["crm.sms.send"])
+  const matrixPermissions = allPermissions.filter((p) => !HIDDEN_MATRIX_CODES.has(p.code))
+  const modules = Array.from(new Set(matrixPermissions.map(p => p.module)))
 
   return (
     <div className="space-y-6">
@@ -226,7 +272,75 @@ export function IamPanel({
           </Card>
         </TabsContent>
 
-        <TabsContent value="permissions" className="mt-4">
+        <TabsContent value="permissions" className="mt-4 space-y-6">
+          <Card>
+            <CardHeader className="flex flex-row items-start justify-between space-y-0 gap-4">
+              <div>
+                <CardTitle>SMS lists — who creates, who approves</CardTitle>
+                <CardDescription>
+                  Clerks tick Create lists (draft and submit). Only Approve &amp; send can release messages. Saving this table does not change other permissions.
+                </CardDescription>
+              </div>
+              <Button size="sm" onClick={saveSmsMatrix} disabled={pending || smsLoading}>
+                {pending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Shield className="h-4 w-4 mr-2" />}
+                Save SMS ticks
+              </Button>
+            </CardHeader>
+            <CardContent>
+              {smsLoading ? (
+                <div className="flex items-center justify-center py-8 text-muted-foreground">
+                  <Loader2 className="h-6 w-6 animate-spin mr-2" /> Loading roles...
+                </div>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Role</TableHead>
+                      <TableHead className="text-center w-[160px]">Create lists</TableHead>
+                      <TableHead className="text-center w-[180px]">Approve &amp; send</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {smsRows.map((row) => (
+                      <TableRow key={row.roleId}>
+                        <TableCell>
+                          <div className="font-medium">{row.roleName}</div>
+                          <p className="text-[10px] text-muted-foreground font-mono">{row.roleCode} · level {row.level}</p>
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <Checkbox
+                            checked={row.canCreate}
+                            onCheckedChange={(checked) => {
+                              setSmsRows((prev) => prev.map((r) => (
+                                r.roleId === row.roleId
+                                  ? { ...r, canCreate: Boolean(checked) || r.canApprove }
+                                  : r
+                              )))
+                            }}
+                            aria-label={`${row.roleName} can create SMS lists`}
+                          />
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <Checkbox
+                            checked={row.canApprove}
+                            onCheckedChange={(checked) => {
+                              setSmsRows((prev) => prev.map((r) => (
+                                r.roleId === row.roleId
+                                  ? { ...r, canApprove: Boolean(checked), canCreate: Boolean(checked) ? true : r.canCreate }
+                                  : r
+                              )))
+                            }}
+                            aria-label={`${row.roleName} can approve and send SMS`}
+                          />
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+            </CardContent>
+          </Card>
+
           <div className="grid gap-6 lg:grid-cols-4">
             <Card className="lg:col-span-1">
               <CardHeader className="pb-2 px-4">
@@ -275,7 +389,7 @@ export function IamPanel({
                     <div key={module} className="space-y-4">
                       <h3 className="font-bold text-sm uppercase tracking-wider text-muted-foreground">{module}</h3>
                       <div className="grid gap-4 sm:grid-cols-2">
-                        {allPermissions.filter(p => p.module === module).map(permission => (
+                        {matrixPermissions.filter(p => p.module === module).map(permission => (
                           <div key={permission.id} className="flex flex-col gap-2 p-3 border rounded-lg hover:bg-muted/50 transition-colors">
                             <div className="flex items-start justify-between">
                               <div className="space-y-1">

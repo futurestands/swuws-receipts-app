@@ -1,5 +1,5 @@
 import { requireUser } from "@/lib/session"
-import { canViewCrm } from "@/lib/permissions"
+import { canViewCrm, canCreateSmsBatch, canApproveSms } from "@/lib/permissions"
 import { listSmsBatches, getCrmStats, seedCrmReferenceData } from "@/app/actions/crm"
 import { PageHeader } from "@/components/ui/page-header"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -23,6 +23,8 @@ export default async function SmsHubPage({
   const searchParams = await searchParamsPromise
   const user = await requireUser()
   if (!canViewCrm(user)) throw new Error("Forbidden")
+  const canSubmitSms = canCreateSmsBatch(user)
+  const canApproveSmsLists = canApproveSms(user)
 
   await seedCrmReferenceData()
 
@@ -66,12 +68,12 @@ export default async function SmsHubPage({
       <div className="flex items-center justify-between gap-4">
         <PageHeader
           title="Customer SMS Communications"
-          description="Manage bulk messaging campaigns and delivery history."
+          description="Staff submit lists. Only approvers can release messages."
           backHref="/dashboard/crm"
         />
         <div className="flex items-center gap-3">
            <RefreshButton />
-           <SmsImportModal />
+           {canSubmitSms && <SmsImportModal />}
         </div>
       </div>
 
@@ -93,7 +95,7 @@ export default async function SmsHubPage({
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-xs font-bold text-muted-foreground uppercase">Pending Messages</p>
+                <p className="text-xs font-bold text-muted-foreground uppercase">Waiting / drafts</p>
                 <p className="text-2xl font-black text-amber-600">{stats.sms.pendingMessages}</p>
               </div>
               <Clock className="h-8 w-8 text-amber-200" />
@@ -159,21 +161,32 @@ export default async function SmsHubPage({
                         className={cn(
                           "h-5 px-1.5 text-[9px] uppercase font-black",
                           b.status === 'completed' ? 'bg-emerald-100 text-emerald-700 border-emerald-200 hover:bg-emerald-100' :
-                          b.status === 'processing' ? 'bg-blue-100 text-blue-700 border-blue-200 animate-pulse' :
-                          b.status === 'failed' ? 'bg-rose-100 text-rose-700 border-rose-200' :
+                          b.status === 'processing' || b.status === 'approved' ? 'bg-blue-100 text-blue-700 border-blue-200' :
+                          b.status === 'failed' || b.status === 'rejected' ? 'bg-rose-100 text-rose-700 border-rose-200' :
+                          b.status === 'pending_approval' ? 'bg-violet-100 text-violet-700 border-violet-200' :
                           'bg-amber-100 text-amber-700 border-amber-200'
                         )}
                        >
-                         {b.status === 'completed' ? 'Sent Out' : b.status}
+                         {b.status === 'completed' ? 'Sent Out'
+                           : b.status === 'pending_approval' ? 'Awaiting approval'
+                           : b.status === 'draft' ? 'Draft'
+                           : b.status}
                        </Badge>
-                       {b.status !== 'pending' && (
+                       {b.status !== 'draft' && b.status !== 'pending_approval' && b.status !== 'rejected' && (
                          <p className="text-[9px] font-bold text-slate-400 mt-1">
                            {b.sentMessages} sent · {b.failedMessages} failed
                          </p>
                        )}
                     </TableCell>
                     <TableCell className="text-right pr-6">
-                      <SmsBatchActions batchId={b.id} batchName={b.name} status={b.status} />
+                      <SmsBatchActions
+                        batchId={b.id}
+                        batchName={b.name}
+                        status={b.status}
+                        canSubmit={canSubmitSms}
+                        canApprove={canApproveSmsLists}
+                        rejectionReason={b.rejectionReason}
+                      />
                     </TableCell>
                   </TableRow>
                 ))
