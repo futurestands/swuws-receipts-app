@@ -30,6 +30,7 @@ scratch/test.zip
 tsconfig.tsbuildinfo
 # Large binary distribution artifacts
 # public/*.apk
+gradle-release.log
 
 # Android signing secrets (passwords + private keys)
 android/keystore.properties
