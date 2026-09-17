@@ -177,12 +177,12 @@ export function AppShell({
 
       {/* Main column */}
       <div className="flex min-w-0 flex-1 flex-col h-screen overflow-hidden">
-        <header className="sticky top-0 z-30 flex items-center gap-3 border-b bg-card/95 px-3 backdrop-blur supports-backdrop-filter:bg-card/80 sm:px-4 md:px-6 no-print h-auto min-h-14 pt-[env(safe-area-inset-top)] pb-2">
+        <header className="sticky top-0 z-30 flex min-h-14 shrink-0 items-center gap-2 overflow-hidden border-b bg-card/95 px-3 py-1.5 backdrop-blur supports-backdrop-filter:bg-card/80 sm:gap-3 sm:px-4 md:px-6 no-print pt-[env(safe-area-inset-top)]">
           {hideSidebar ? (
             <Link
               href="/dashboard"
               aria-label="Back to dashboard"
-              className="inline-flex size-7 items-center justify-center rounded-lg hover:bg-muted"
+              className="inline-flex size-7 shrink-0 items-center justify-center rounded-lg hover:bg-muted"
             >
               <ArrowLeft className="size-4" />
             </Link>
@@ -190,37 +190,32 @@ export function AppShell({
             <Button
               variant="ghost"
               size="icon-sm"
-              className="md:hidden"
+              className="md:hidden shrink-0"
               onClick={() => setMobileOpen(true)}
               aria-label="Open navigation menu"
             >
               <Menu />
             </Button>
           )}
-          <div className={cn("flex flex-col min-w-0 leading-tight", !hideSidebar && "md:hidden")}>
-            <Link href={hideSidebar ? "/dashboard" : brandHref} className="flex flex-col">
-              <span className="text-[11px] font-black text-primary uppercase leading-none tracking-tighter">{receiptPrefix}</span>
-              <span className="text-[8px] font-bold text-primary/60 uppercase leading-none">PORTAL</span>
-            </Link>
-          </div>
 
-          {!hideSidebar && (
-          <div className="hidden md:flex items-center flex-1 px-20 min-w-0 justify-center gap-2">
-            <p className="text-[10px] md:text-sm lg:text-base xl:text-lg font-black text-brand-blue tracking-[0.15em] text-center font-serif uppercase whitespace-nowrap">
+          <div className="flex min-w-0 flex-1 items-center justify-center gap-2 px-1">
+            <p
+              title={orgName}
+              className="min-w-0 max-w-full text-center font-serif font-black uppercase text-brand-blue text-[clamp(0.7rem,0.5rem+0.8vw,1.05rem)] tracking-[0.04em] sm:tracking-[0.08em] leading-snug line-clamp-2"
+            >
               {orgName}
             </p>
             {native && (
-               <Badge variant="outline" className="text-[8px] h-4 px-1.5 font-black uppercase bg-primary text-white border-none shadow-sm">
+               <Badge variant="outline" className="hidden sm:inline-flex shrink-0 text-[8px] h-4 px-1.5 font-black uppercase bg-primary text-white border-none shadow-sm">
                   Mobile App
                </Badge>
             )}
           </div>
-          )}
 
-          <div className="ml-auto flex items-center gap-2 sm:gap-3">
+          <div className="flex shrink-0 items-center gap-2 sm:gap-3">
             <SyncStatus agentId={agentId} />
             <NotificationCenter />
-            <span className="hidden truncate border-l pl-3 text-sm text-muted-foreground md:inline">
+            <span className="hidden max-w-[10rem] truncate border-l pl-3 text-sm text-muted-foreground lg:inline xl:max-w-[18rem]">
               {userName} · {userRoleLabel}
             </span>
             <SignOutButton />
