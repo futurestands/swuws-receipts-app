@@ -51,7 +51,8 @@
         .brand-top { font-size: 11px; font-weight: 900; letter-spacing: -0.04em; text-transform: uppercase; color: var(--primary); }
         .brand-sub { font-size: 8px; font-weight: 700; text-transform: uppercase; color: #60a5fa; }
         .header-right { margin-left: auto; display: flex; align-items: center; gap: 0.65rem; }
-        .status-dot { width: 8px; height: 8px; border-radius: 999px; background: #22c55e; display: inline-block; }
+        .status-dot { width: 8px; height: 8px; border-radius: 999px; background: #f97316; display: inline-block; }
+        .status-dot.online { background: #22c55e; }
         .text-btn { font-size: 0.875rem; color: var(--muted); padding: 0.35rem 0.2rem; }
         main { flex: 1; overflow-y: auto; padding: 1rem 1rem 2rem; }
         .wrap { max-width: 42rem; margin: 0 auto; }
@@ -127,8 +128,8 @@
             <span class="brand-sub">Portal</span>
         </div>
         <div class="header-right">
-            <span class="status-dot" title="Connected to local cache"></span>
-            <button class="text-btn" type="button" onclick="window.location.reload()">Reconnect</button>
+            <span id="status-dot" class="status-dot" title="Working from phone cache"></span>
+            <button id="reconnect-btn" class="text-btn" type="button" onclick="returnToLiveApp(true)">Reconnect</button>
         </div>
     </header>
 
@@ -196,6 +197,89 @@
     <script>
         const PRINTER_SERVICE = '0000ff00-0000-1000-8000-00805f9b34fb';
         const PRINTER_CHAR = '0000ff01-0000-1000-8000-00805f9b34fb';
+
+        var LIVE_FALLBACK = 'https://swuws-receipts-app-q2z9.vercel.app';
+        var rejoining = false;
+        var reconnectTimer = null;
+
+        function liveAppUrl() {
+            var injected = (typeof window.SWUWS_LIVE_URL === 'string') ? window.SWUWS_LIVE_URL.trim() : '';
+            if (injected.indexOf('http') === 0 && injected.indexOf('localhost') === -1) {
+                return injected.replace(/\/$/, '');
+            }
+            return LIVE_FALLBACK;
+        }
+
+        function modalOpen() {
+            var pay = document.getElementById('payment-modal');
+            var read = document.getElementById('reading-modal');
+            return (pay && pay.style.display === 'flex') || (read && read.style.display === 'flex');
+        }
+
+        function setReconnectLabel(text, online) {
+            var btn = document.getElementById('reconnect-btn');
+            var dot = document.getElementById('status-dot');
+            if (btn) btn.textContent = text;
+            if (dot) {
+                dot.classList.toggle('online', !!online);
+                dot.title = online ? 'Internet is back' : 'Working from phone cache';
+            }
+        }
+
+        function liveServerReachable() {
+            return new Promise(function (resolve) {
+                var ctrl = new AbortController();
+                var timer = setTimeout(function () { ctrl.abort(); resolve(false); }, 5000);
+                fetch(liveAppUrl() + '/login', {
+                    method: 'GET',
+                    cache: 'no-store',
+                    mode: 'no-cors',
+                    signal: ctrl.signal
+                }).then(function () {
+                    clearTimeout(timer);
+                    resolve(true);
+                }).catch(function () {
+                    clearTimeout(timer);
+                    resolve(false);
+                });
+            });
+        }
+
+        function returnToLiveApp(force) {
+            if (rejoining) return;
+            if (!force && modalOpen()) {
+                setReconnectLabel('Save first, then Reconnect', true);
+                return;
+            }
+            rejoining = true;
+            setReconnectLabel('Reconnecting…', true);
+            window.location.replace(liveAppUrl() + '/dashboard');
+        }
+
+        async function tryReturnOnline() {
+            if (rejoining) return;
+            var ok = await liveServerReachable();
+            if (!ok) {
+                setReconnectLabel('Reconnect', false);
+                return;
+            }
+            setReconnectLabel('Internet back', true);
+            if (reconnectTimer) clearTimeout(reconnectTimer);
+            reconnectTimer = setTimeout(function () { returnToLiveApp(false); }, 1200);
+        }
+
+        function listenForReconnect() {
+            window.addEventListener('online', function () { tryReturnOnline(); });
+            setInterval(tryReturnOnline, 8000);
+            try {
+                var Network = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Network;
+                if (Network && Network.addListener) {
+                    Network.addListener('networkStatusChange', function (status) {
+                        if (status && status.connected) tryReturnOnline();
+                    });
+                }
+            } catch (e) {}
+        }
 
         function log(msg, type) {
             const box = document.getElementById('diag-box');
@@ -620,6 +704,7 @@
 
         document.addEventListener('DOMContentLoaded', function () {
             initDatabase();
+            listenForReconnect();
         });
     </script>
 </body>

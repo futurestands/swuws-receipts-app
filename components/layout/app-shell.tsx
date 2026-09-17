@@ -13,6 +13,7 @@ import { SignOutButton } from "@/components/sign-out-button"
 import type { NavSection } from "@/lib/nav-config"
 import { isNative, setupStatusBar } from "@/lib/mobile-hardware"
 import { SyncStatus } from "./SyncStatus"
+import { ConnectivityGuard } from "./connectivity-guard"
 import { Badge } from "@/components/ui/badge"
 
 const COLLAPSE_KEY = "swuws:sidebar-collapsed"
@@ -46,8 +47,9 @@ export function AppShell({
   const [mobileOpen, setMobileOpen] = useState(false)
   const [imgError, setImgError] = useState(false)
   const [native, setNative] = useState(false)
+  const [forcedOffline, setForcedOffline] = useState(false)
   const pathname = usePathname()
-  const hideSidebar = pathname.startsWith("/dashboard/offline")
+  const hideSidebar = pathname.startsWith("/dashboard/offline") || forcedOffline
 
   useEffect(() => {
     // 1. Initial collapsed state from localStorage (prevents hydration mismatch)
@@ -177,7 +179,7 @@ export function AppShell({
 
       {/* Main column */}
       <div className="flex min-w-0 flex-1 flex-col h-screen overflow-hidden">
-        <header className="sticky top-0 z-30 flex min-h-14 shrink-0 items-center gap-2 overflow-hidden border-b bg-card/95 px-3 py-1.5 backdrop-blur supports-backdrop-filter:bg-card/80 sm:gap-3 sm:px-4 md:px-6 no-print pt-[env(safe-area-inset-top)]">
+        <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center gap-2 overflow-hidden border-b bg-card/95 px-3 backdrop-blur supports-backdrop-filter:bg-card/80 sm:gap-3 sm:px-4 md:px-6 no-print pt-[env(safe-area-inset-top)]">
           {hideSidebar ? (
             <Link
               href="/dashboard"
@@ -198,24 +200,24 @@ export function AppShell({
             </Button>
           )}
 
-          <div className="flex min-w-0 flex-1 items-center justify-center gap-2 px-1">
-            <p
+          <div className="@container flex min-w-0 flex-1 items-center justify-center overflow-hidden px-2">
+            <strong
               title={orgName}
-              className="min-w-0 max-w-full text-center font-serif font-black uppercase text-brand-blue text-[clamp(0.7rem,0.5rem+0.8vw,1.05rem)] tracking-[0.04em] sm:tracking-[0.08em] leading-snug line-clamp-2"
+              className="block w-full overflow-hidden text-center font-sans font-black uppercase text-brand-blue leading-none tracking-[0.03em] whitespace-nowrap text-[clamp(0.68rem,2.65cqi,1.15rem)]"
             >
               {orgName}
-            </p>
+            </strong>
+          </div>
+
+          <div className="flex shrink-0 items-center gap-2 sm:gap-3">
             {native && (
                <Badge variant="outline" className="hidden sm:inline-flex shrink-0 text-[8px] h-4 px-1.5 font-black uppercase bg-primary text-white border-none shadow-sm">
                   Mobile App
                </Badge>
             )}
-          </div>
-
-          <div className="flex shrink-0 items-center gap-2 sm:gap-3">
             <SyncStatus agentId={agentId} />
             <NotificationCenter />
-            <span className="hidden max-w-[10rem] truncate border-l pl-3 text-sm text-muted-foreground lg:inline xl:max-w-[18rem]">
+            <span className="hidden max-w-[14rem] truncate border-l pl-3 text-sm text-muted-foreground xl:inline 2xl:max-w-none">
               {userName} · {userRoleLabel}
             </span>
             <SignOutButton />
@@ -223,7 +225,9 @@ export function AppShell({
         </header>
 
         <main className="min-w-0 flex-1 px-4 py-4 md:px-6 md:py-6 overflow-y-auto">
-          <div className="mx-auto w-full max-w-7xl">{children}</div>
+          <ConnectivityGuard agentId={agentId} onForcedOffline={setForcedOffline}>
+            <div className="mx-auto w-full max-w-7xl">{children}</div>
+          </ConnectivityGuard>
         </main>
       </div>
     </div>

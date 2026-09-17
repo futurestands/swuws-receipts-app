@@ -1,15 +1,19 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { sqliteService } from "@/lib/offline/sqlite-service"
 import { OfflineSearchClient } from "@/app/dashboard/offline/OfflineSearchClient"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { RefreshCw, WifiOff } from "lucide-react"
+import { probeLiveServer, watchNetwork } from "@/lib/offline/network-watch"
 
 export function OfflineWorkspaceClient() {
   const [agentId, setAgentId] = useState<string | null>(null)
   const [state, setState] = useState<"loading" | "ready" | "no-cache">("loading")
+
+  const lastConnected = useRef<boolean | null>(null)
+  const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
     let active = true
@@ -29,8 +33,22 @@ export function OfflineWorkspaceClient() {
 
     init()
 
+    const unsub = watchNetwork(({ connected }) => {
+      if (reconnectTimer.current) clearTimeout(reconnectTimer.current)
+      const prev = lastConnected.current
+      lastConnected.current = connected
+      if (!connected || prev !== false) return
+      reconnectTimer.current = setTimeout(() => {
+        void probeLiveServer().then((ok) => {
+          if (ok) window.location.replace("/dashboard")
+        })
+      }, 2000)
+    })
+
     return () => {
       active = false
+      unsub()
+      if (reconnectTimer.current) clearTimeout(reconnectTimer.current)
     }
   }, [])
 

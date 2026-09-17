@@ -17,6 +17,7 @@ import { OfflineMeterReadingForm } from "./OfflineMeterReadingForm"
 import { printerManager } from "@/lib/offline/printer-manager"
 import { searchCustomers } from "@/app/actions/customers"
 import { isNative } from "@/lib/mobile-hardware"
+import { watchNetwork } from "@/lib/offline/network-watch"
 
 const PAGE_SIZE = 50
 
@@ -102,29 +103,13 @@ export function OfflineSearchClient({ agentId }: { agentId: string }) {
     }
     init()
 
-    const updateOnlineStatus = async () => {
-      if (isNative()) {
-        try {
-          const { Network } = await import("@capacitor/network")
-          const net = await Network.getStatus()
-          if (active) setIsOnline(net.connected)
-          return
-        } catch {
-          /* fall through to navigator */
-        }
-      }
-      if (active) setIsOnline(navigator.onLine)
-    }
-    updateOnlineStatus()
-    const onOnline = () => { void updateOnlineStatus() }
-    const onOffline = () => { void updateOnlineStatus() }
-    window.addEventListener("online", onOnline)
-    window.addEventListener("offline", onOffline)
+    const unsubNetwork = watchNetwork(({ connected }) => {
+      if (active) setIsOnline(connected)
+    })
 
     return () => {
       active = false
-      window.removeEventListener("online", onOnline)
-      window.removeEventListener("offline", onOffline)
+      unsubNetwork()
     }
   }, [])
 

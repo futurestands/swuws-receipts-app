@@ -23,7 +23,8 @@ public class MainActivity extends BridgeActivity {
     private static final String[] OFFLINE_SHELL_PLUGINS = {
         "CapacitorSQLite",
         "BluetoothLe",
-        "TcpSocket"
+        "TcpSocket",
+        "Network"
     };
 
     @Override
@@ -76,17 +77,29 @@ public class MainActivity extends BridgeActivity {
                 }
             }
 
+            String localOrigin = bridge.getScheme() + "://" + bridge.getHost();
+            String liveUrl = bridge.getServerUrl().replace("'", "").replace("\\", "");
+
             if (handles.isEmpty()) {
-                Logger.warn("Offline shell: no plugins resolved, skipping bridge registration");
+                Logger.warn("Offline shell: no plugins resolved, injecting live URL only");
+                String liveOnly = "window.SWUWS_LIVE_URL = '" + liveUrl + "';";
+                WebViewCompat.addDocumentStartJavaScript(
+                    bridge.getWebView(),
+                    liveOnly,
+                    Collections.singleton(localOrigin)
+                );
                 return;
             }
 
-            String localOrigin = bridge.getScheme() + "://" + bridge.getHost();
-
             // Same order JSInjector.getScriptString() uses: globals, server
             // url, native bridge, then the plugin shims that depend on it.
+            // SWUWS_LIVE_URL is the remote app (vercel) so this fallback page
+            // can hop back when the radio returns. WEBVIEW_SERVER_URL stays
+            // the local asset origin the bridge is registered on.
             String script =
                 JSExport.getGlobalJS(getApplicationContext(), bridge.getConfig().isLoggingEnabled(), false) +
+                "\n\n" +
+                "window.SWUWS_LIVE_URL = '" + liveUrl + "';" +
                 "\n\n" +
                 "window.WEBVIEW_SERVER_URL = '" + localOrigin + "';" +
                 "\n\n" +
