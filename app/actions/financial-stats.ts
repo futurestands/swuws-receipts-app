@@ -13,7 +13,6 @@ import {
 import { requireUser } from "@/lib/session"
 import { hasPermission } from "@/lib/iam"
 import { applyReceiptScope } from "@/lib/scopes"
-import { closeExpiredActivePeriods } from "@/lib/billing/close-expired"
 import { and, eq, sql, count, sum } from "drizzle-orm"
 
 /**
@@ -26,7 +25,6 @@ import { and, eq, sql, count, sum } from "drizzle-orm"
 export async function getFinancialOpsDashboard() {
   const current = await requireUser()
   if (!await hasPermission(current, "reconciliation.view")) throw new Error("Forbidden")
-  await closeExpiredActivePeriods()
 
   const receiptScope = applyReceiptScope(current)
 

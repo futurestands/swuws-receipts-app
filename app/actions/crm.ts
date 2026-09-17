@@ -30,7 +30,6 @@ import {
   canConfigureCrm
 } from "@/lib/permissions"
 import { applyCustomerScope, applySmsBatchScope, validateWriteScope } from "@/lib/scopes"
-import { closeExpiredActivePeriods } from "@/lib/billing/close-expired"
 import { canViewAllData } from "@/lib/permissions"
 import { ROLES } from "@/lib/permissions/roles"
 import { randomUUID } from "crypto"
@@ -80,7 +79,6 @@ const ALREADY_MESSAGED_ERROR = "Already messaged this billing period"
 const CONTACTED_THIS_PERIOD = ["queued", "sent", "delivered"] as const
 
 async function getActiveBillingPeriod() {
-  await closeExpiredActivePeriods()
   const [period] = await db
     .select({
       periodName: billingPeriod.periodName,

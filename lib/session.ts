@@ -4,6 +4,7 @@ import { db } from "@/lib/db"
 import { user } from "@/lib/db/schema"
 import { eq } from "drizzle-orm"
 import { headers } from "next/headers"
+import { redirect } from "next/navigation"
 import { cache } from "react"
 import { getEffectivePermissions, getOwnRoleLevel, PermissionGrant } from "@/lib/iam"
 
@@ -69,13 +70,14 @@ export const getCurrentUser = cache(async (): Promise<SessionUser | null> => {
       grants
     }
   } catch (e) {
-    console.error("getCurrentUser error:", e)
+    const message = e instanceof Error ? e.message : String(e)
+    console.warn("getCurrentUser failed:", message)
     return null
   }
 })
 
 export async function requireUser(): Promise<SessionUser> {
   const current = await getCurrentUser()
-  if (!current) throw new Error("Unauthorized")
+  if (!current) redirect("/login")
   return current
 }
