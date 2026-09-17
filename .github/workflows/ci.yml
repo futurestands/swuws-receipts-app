@@ -24,10 +24,13 @@ jobs:
 
       - name: Security Audit (Secrets Check)
         run: |
-          if grep -r "BETTER_AUTH_SECRET=" . --exclude-dir=node_modules; then
-            echo "CRITICAL SECURITY ERROR: Secrets found in repository!"
+          # .env.example files document the key name. Fail only if a real
+          # assignment is committed outside those templates.
+          if git grep -n "BETTER_AUTH_SECRET=" -- ':!.env.example' ':!.env.production.example' ':!*.md'; then
+            echo "CRITICAL SECURITY ERROR: BETTER_AUTH_SECRET assigned outside example files"
             exit 1
           fi
+          echo "No committed BETTER_AUTH_SECRET assignments outside examples."
 
       - name: Lint
         run: npm run lint

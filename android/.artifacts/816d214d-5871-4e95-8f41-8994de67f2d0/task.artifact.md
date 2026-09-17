@@ -1,9 +1,0 @@
-- [x] Fixed Java & Gradle compatibility issues
-- [x] Patched Capacitor plugins in `node_modules`
-- [x] Perform Gradle Sync
-- [x] Fix Update Button
-    - [x] Use absolute site URL in `AccountClient`
-    - [x] Fetch `siteUrl` in `AccountPage`
-- [ ] Verify App Icon (User UI Action Required)
-- [x] Verify Build (`:app:assembleDebug`)
-- [x] Update Walkthrough

@@ -25,6 +25,19 @@ android/components/
 # Scratch & Forensic artifacts
 scratch/apk_test/
 scratch/test.zip
+scripts/internal/
+scripts/test-db-conn*.js
+db/check-*.js
+db/list-users.js
+db/forensic_check.js
+db/test-db.js
+assets/*.enc
+public/uploads/
+server_log.txt
+img.png
+last_deploy_timestamp.txt
+public/build_id.txt
+android/.artifacts/
 
 # TypeScript incremental build cache — regenerated locally/in CI, not source
 tsconfig.tsbuildinfo
