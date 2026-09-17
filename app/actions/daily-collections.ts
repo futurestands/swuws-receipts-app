@@ -8,11 +8,12 @@ import {
   customer,
   billingPeriod,
   billingRecord,
+  billingRun,
   billingDiscrepancy,
 } from "@/lib/db/schema"
 import { requireUser } from "@/lib/session"
 import { canUploadBilling } from "@/lib/permissions"
-import { eq, ne, desc, and, ilike, or, sql, count, inArray, gt } from "drizzle-orm"
+import { eq, ne, desc, and, ilike, or, sql, count, inArray, gt, getTableColumns } from "drizzle-orm"
 import { randomUUID, createHash } from "crypto"
 import * as XLSX from "xlsx"
 import { z } from "zod"
@@ -21,6 +22,8 @@ import { writeAudit } from "@/lib/audit"
 import { getImportMapping, processExcelImport } from "@/lib/import-engine"
 import { DEFAULT_DAILY_SYNC_MAPPING } from "@/lib/import-mappings"
 import { applyCustomerScope, applyBillingRecordScope, applyUserScope } from "@/lib/scopes"
+import { closeExpiredActivePeriods } from "@/lib/billing/close-expired"
+import { effectiveBillTakenDate, resolvePeriodIdForCustomerPayment, resolvePeriodIdForPayment } from "@/lib/billing/period-dates"
 import { pgInsertChunkSize } from "@/lib/db/bulk"
 import { getSettings } from "@/app/actions/settings"
 import { findClosedPeriodForLatePayment } from "@/lib/billing/cross-period"
@@ -198,7 +201,14 @@ export async function commitDailyCollectionImport(formData: FormData) {
 
     console.log(`[DailyImport] Starting commit for ${file.name} (${rawData.length} rows)`)
 
-    const [activePeriod] = await db.select({ id: billingPeriod.id }).from(billingPeriod).where(eq(billingPeriod.status, 'active')).limit(1)
+    await closeExpiredActivePeriods()
+    const periods = await db.select({
+      id: billingPeriod.id,
+      status: billingPeriod.status,
+      startDate: billingPeriod.startDate,
+      endDate: billingPeriod.endDate,
+    }).from(billingPeriod).where(ne(billingPeriod.status, "archived"))
+    const activePeriod = periods.find((p) => p.status === "active")
 
     let totalAmount = 0
     let validCount = 0
@@ -239,12 +249,18 @@ export async function commitDailyCollectionImport(formData: FormData) {
       }
     }
 
+    const batchPeriodId = resolvePeriodIdForPayment(
+      businessDate ? new Date(businessDate) : validRecords[0]?.paymentDate ?? null,
+      periods,
+      activePeriod?.id ?? null,
+    )
+
     await db.transaction(async (tx) => {
       // 1. Insert Metadata
       await tx.insert(dailyCollectionImport).values({
         id: importId,
         businessDate: businessDate ? new Date(businessDate) : new Date(),
-        billingPeriodId: activePeriod?.id,
+        billingPeriodId: batchPeriodId,
         filename: file.name,
         fileHash: fileHash,
         uploadedById: current.id,
@@ -439,6 +455,7 @@ export async function commitDailyBalanceSync(formData: FormData) {
 
     if (rawData.length === 0) return { ok: false, error: "The file is empty" }
     console.log(`[BalanceSync] Starting commit for ${file.name} (${rawData.length} rows)`)
+    await closeExpiredActivePeriods()
 
     // Identify account number and total due columns
     const dbMappingRaw = await getImportMapping("import.daily.collections")
@@ -464,13 +481,11 @@ export async function commitDailyBalanceSync(formData: FormData) {
 
     const periods = await db.select().from(billingPeriod).where(ne(billingPeriod.status, 'archived'))
     const activePeriod = periods.find(p => p.status === 'active')
-    if (!activePeriod) return { ok: false, error: "No active billing period found." }
     const graceDays = (await getSettings()).billingGraceDays ?? 14
 
-    // 1. Map all valid data in memory
-    const validRows: { accountNumber: string, totalDue: number, paymentDate: Date | null, resolvedPeriodId: string }[] = []
+    // 1. Map all valid data in memory. Period is resolved after we load each customer's bills.
+    const validRows: { accountNumber: string, totalDue: number, paymentDate: Date | null, resolvedPeriodId: string | null }[] = []
     const accountsInFile = new Set<string>()
-    const referencedPeriodIds = new Set<string>()
 
     for (const row of rawData) {
       const acc = String(row[accountCol as string] || "").trim()
@@ -482,19 +497,9 @@ export async function commitDailyBalanceSync(formData: FormData) {
         if (!isNaN(d.getTime())) pDate = d
       }
 
-      // Automatically attribute payments to the correct historical period.
-      let resolvedPeriodId = activePeriod.id
-      if (pDate) {
-        const matchingPeriod = periods.find(p => pDate! >= p.startDate && pDate! <= p.endDate)
-        if (matchingPeriod) {
-           resolvedPeriodId = matchingPeriod.id
-        }
-      }
-
       if (acc && !isNaN(due)) {
-        validRows.push({ accountNumber: acc, totalDue: due, paymentDate: pDate, resolvedPeriodId })
+        validRows.push({ accountNumber: acc, totalDue: due, paymentDate: pDate, resolvedPeriodId: null })
         accountsInFile.add(acc)
-        referencedPeriodIds.add(resolvedPeriodId)
       }
     }
 
@@ -519,24 +524,55 @@ export async function commitDailyBalanceSync(formData: FormData) {
       })
     }
 
-    // 3. Multi-Period Billing Record Fetching
+    // 3. Load this customer's bills across live periods, then apply the Pegasus taken-date cutoff.
     const billingScope = applyBillingRecordScope(current)
     const billMap = new Map<string, any>()
+    const billsByCustomer = new Map<string, { id: string; billingPeriodId: string; takenAt: Date | null }[]>()
     const customerIds = Array.from(custMap.values()).map(c => c.id)
+    const livePeriodIds = periods.map((p) => p.id)
 
-    console.log(`[BalanceSync] Fetching billing records for ${referencedPeriodIds.size} periods in chunks...`)
-    for (let i = 0; i < customerIds.length; i += CHUNK_SIZE) {
-      const chunk = customerIds.slice(i, i + CHUNK_SIZE)
-      const fetched = await db
-        .select()
-        .from(billingRecord)
-        .where(and(
-          inArray(billingRecord.billingPeriodId, Array.from(referencedPeriodIds)),
-          inArray(billingRecord.customerId, chunk),
-          billingScope
-        ))
-      // Key is customerId + periodId to handle multi-period records in one batch
-      fetched.forEach(b => billMap.set(`${b.customerId}_${b.billingPeriodId}`, b))
+    console.log(`[BalanceSync] Fetching billing records for ${livePeriodIds.length} periods in chunks...`)
+    if (livePeriodIds.length > 0 && customerIds.length > 0) {
+      for (let i = 0; i < customerIds.length; i += CHUNK_SIZE) {
+        const chunk = customerIds.slice(i, i + CHUNK_SIZE)
+        const fetched = await db
+          .select({
+            ...getTableColumns(billingRecord),
+            runUploadedAt: billingRun.uploadedAt,
+          })
+          .from(billingRecord)
+          .innerJoin(billingRun, eq(billingRecord.billingRunId, billingRun.id))
+          .where(and(
+            inArray(billingRecord.billingPeriodId, livePeriodIds),
+            inArray(billingRecord.customerId, chunk),
+            billingScope
+          ))
+        fetched.forEach((b) => {
+          billMap.set(`${b.customerId}_${b.billingPeriodId}`, b)
+          const list = billsByCustomer.get(b.customerId) || []
+          list.push({
+            id: b.id,
+            billingPeriodId: b.billingPeriodId,
+            takenAt: effectiveBillTakenDate({
+              billingDate: b.billingDate,
+              runUploadedAt: b.runUploadedAt,
+              createdAt: b.createdAt,
+            }),
+          })
+          billsByCustomer.set(b.customerId, list)
+        })
+      }
+    }
+
+    for (const row of validRows) {
+      const cust = custMap.get(row.accountNumber.toLowerCase().trim())
+      if (!cust) continue
+      row.resolvedPeriodId = resolvePeriodIdForCustomerPayment(
+        row.paymentDate,
+        billsByCustomer.get(cust.id) ?? [],
+        periods,
+        activePeriod?.id ?? null,
+      )
     }
 
     let totalCollection = 0
@@ -559,12 +595,22 @@ export async function commitDailyBalanceSync(formData: FormData) {
       openFlags.forEach((f) => existingFlagKeys.add(`${f.customerId}_${f.billingPeriodId}`))
     }
 
+    const periodCounts = new Map<string, number>()
+    for (const row of validRows) {
+      if (!row.resolvedPeriodId) continue
+      periodCounts.set(row.resolvedPeriodId, (periodCounts.get(row.resolvedPeriodId) ?? 0) + 1)
+    }
+    const batchPeriodId = [...periodCounts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0]
+      ?? activePeriod?.id
+      ?? null
+    const batchBusinessDate = validRows.find((r) => r.paymentDate)?.paymentDate ?? new Date()
+
     await db.transaction(async (tx) => {
-      // 4. Metadata
+      // 4. Metadata — period follows payment dates, including closed windows.
       await tx.insert(dailyCollectionImport).values({
         id: importId,
-        businessDate: new Date(),
-        billingPeriodId: activePeriod.id,
+        businessDate: batchBusinessDate,
+        billingPeriodId: batchPeriodId,
         filename: file.name,
         fileHash: fileHash,
         uploadedById: current.id,
@@ -599,6 +645,7 @@ export async function commitDailyBalanceSync(formData: FormData) {
         // Group chunk by resolvedPeriodId to ensure updates hit the correct period's bill
         const byPeriod = new Map<string, typeof chunk>()
         chunk.forEach(r => {
+          if (!r.resolvedPeriodId) return
           const list = byPeriod.get(r.resolvedPeriodId) || []
           list.push(r)
           byPeriod.set(r.resolvedPeriodId, list)
@@ -666,12 +713,14 @@ export async function commitDailyBalanceSync(formData: FormData) {
           }
 
           const attributedName = periods.find(p => p.id === row.resolvedPeriodId)?.periodName || "the active period"
-          const lateFor = findClosedPeriodForLatePayment(
-            row.paymentDate,
-            row.resolvedPeriodId,
-            periods,
-            graceDays,
-          )
+          const lateFor = row.resolvedPeriodId
+            ? findClosedPeriodForLatePayment(
+              row.paymentDate,
+              row.resolvedPeriodId,
+              periods,
+              graceDays,
+            )
+            : null
           if (lateFor) {
             const flagKey = `${cust.id}_${lateFor.id}`
             if (!existingFlagKeys.has(flagKey)) {
@@ -691,7 +740,9 @@ export async function commitDailyBalanceSync(formData: FormData) {
           totalCollection += collection
           successfulRecords++
 
-          const activeBill = billMap.get(`${cust.id}_${row.resolvedPeriodId}`)
+          const activeBill = row.resolvedPeriodId
+            ? billMap.get(`${cust.id}_${row.resolvedPeriodId}`)
+            : undefined
           if (activeBill) {
             const totalArrears = Number(activeBill.arrears)
             const arrearsRecovery = Math.min(collection, totalArrears)
@@ -789,21 +840,10 @@ export async function commitDailyBalanceSync(formData: FormData) {
 export async function downloadDailyCollectionTemplate(format: "xlsx" | "csv") {
   await requireUser()
 
-  // 1. Resolve Mapping from Template Hub
-  const dbMappingRaw = await getImportMapping("import.daily.collections")
-
-  // Use custom mapping if it exists, otherwise fall back to defaults
-  const mapping = (dbMappingRaw || { ...DEFAULT_DAILY_IMPORT_MAPPING }) as Record<string, string | string[] | number>
-
-  // 2. Generate Sample Data strictly based on the mapping keys
+  const mapping = { ...DEFAULT_DAILY_IMPORT_MAPPING } as Record<string, string | string[] | number>
   const headers: string[] = []
   const sampleRow: Record<string, any> = {}
-
-  // Standard internal keys to process
-  const internalKeys = ["accountNumber", "customerName", "amountPaid", "paymentDate", "externalReference", "paymentChannel"]
-
-  // If no custom mapping exists, we use the standard keys order
-  const keysToProcess = dbMappingRaw ? Object.keys(dbMappingRaw) : internalKeys
+  const keysToProcess = ["accountNumber", "customerName", "amountPaid", "paymentDate", "externalReference", "paymentChannel"]
 
   for (const key of keysToProcess) {
     const value = mapping[key]
@@ -919,6 +959,20 @@ export async function deleteDailyImport(id: string) {
       .limit(1)
 
     if (!batch) return { ok: false, error: "Import not found or you don't have permission to delete it" }
+
+    if (batch.billingPeriodId) {
+      const [period] = await db
+        .select({ status: billingPeriod.status, periodName: billingPeriod.periodName })
+        .from(billingPeriod)
+        .where(eq(billingPeriod.id, batch.billingPeriodId))
+        .limit(1)
+      if (period && (period.status === "closed" || period.status === "archived")) {
+        return {
+          ok: false,
+          error: `Cannot delete a collection from a ${period.status} period.`,
+        }
+      }
+    }
 
     // 1. Identify matched records that affected balances
     const matchedRecords = await db

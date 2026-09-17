@@ -17,6 +17,8 @@ import {
 } from "@/lib/db/schema"
 import { requireUser } from "@/lib/session"
 import { writeAudit } from "@/lib/audit"
+import { closeExpiredActivePeriods } from "@/lib/billing/close-expired"
+import { kampalaDaysRemaining, periodEndDateHasPassed, kampalaYearMonth, billMonthForCollection, MONTH_NAMES } from "@/lib/billing/period-dates"
 import {
   canUploadBilling,
   canManageCollectionPeriods,
@@ -26,7 +28,7 @@ import {
   canViewAllData
 } from "@/lib/permissions"
 import { validateWriteScope, applyCustomerScope, applyReceiptScope, applyBillingRecordScope, applyMeterReadingScope, applyBillingScope } from "@/lib/scopes"
-import { and, eq, sql, desc, or, count, sum, inArray, type SQL } from "drizzle-orm"
+import { and, eq, ne, sql, desc, or, count, sum, inArray, type SQL } from "drizzle-orm"
 import * as XLSX from "xlsx"
 import { randomUUID } from "crypto"
 import { revalidatePath } from "next/cache"
@@ -85,7 +87,8 @@ export async function getCollectionPeriods() {
   return db
     .select()
     .from(billingPeriod)
-    .orderBy(desc(billingPeriod.year), desc(billingPeriod.month))
+    .where(ne(billingPeriod.status, "archived"))
+    .orderBy(desc(billingPeriod.year), desc(billingPeriod.month), desc(billingPeriod.startDate))
 }
 
 /** Legacy alias for getCollectionPeriods */
@@ -109,6 +112,44 @@ export async function createCollectionPeriod(data: {
     throw new Error("Forbidden")
   }
 
+  await closeExpiredActivePeriods(new Date(), { open: false })
+
+  const startDate = new Date(data.start)
+  const endDate = new Date(data.end)
+  if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) {
+    throw new Error("Start and end dates are required")
+  }
+
+  const startYm = kampalaYearMonth(startDate)
+  const existing = await db
+    .select({
+      id: billingPeriod.id,
+      status: billingPeriod.status,
+      startDate: billingPeriod.startDate,
+      month: billingPeriod.month,
+      year: billingPeriod.year,
+    })
+    .from(billingPeriod)
+    .where(ne(billingPeriod.status, "archived"))
+
+  const sameBills = existing.find((p) => p.month === data.month && p.year === data.year)
+  if (sameBills) {
+    throw new Error(`A billing period for ${data.name} already exists.`)
+  }
+
+  const sameMonth = existing.find((p) => {
+    const ym = kampalaYearMonth(p.startDate)
+    return ym.year === startYm.year && ym.month === startYm.month
+  })
+  if (sameMonth) {
+    throw new Error(`A billing period already covers ${MONTH_NAMES[startYm.month - 1]} ${startYm.year}.`)
+  }
+
+  const currentMonth = billMonthForCollection()
+  const isCurrentMonth = startYm.year === currentMonth.collection.year && startYm.month === currentMonth.collection.month
+  const hasActive = existing.some((p) => p.status === "active")
+  const status = isCurrentMonth && !hasActive ? "active" : "draft"
+
   const id = randomUUID()
   await db.transaction(async (tx) => {
     await tx.insert(billingPeriod).values({
@@ -116,11 +157,12 @@ export async function createCollectionPeriod(data: {
       month: data.month,
       year: data.year,
       periodName: data.name,
-      startDate: new Date(data.start),
-      endDate: new Date(data.end),
+      startDate,
+      endDate,
       description: data.description,
-      status: "active",
+      status,
       isOpen: true, // Legacy field
+      ...(status === "active" ? { activatedAt: new Date() } : {}),
     })
 
     await writeAudit({
@@ -141,6 +183,8 @@ export async function createCollectionPeriod(data: {
  */
 export async function updateCollectionPeriodStatus(id: string, newStatus: string, remarks?: string) {
   const current = await requireUser()
+
+  await closeExpiredActivePeriods()
 
   const [period] = await db
     .select()
@@ -172,6 +216,10 @@ export async function updateCollectionPeriodStatus(id: string, newStatus: string
     if (!canArchiveCollectionPeriod(current)) throw new Error("Forbidden")
   } else {
     if (!canManageCollectionPeriods(current)) throw new Error("Forbidden")
+  }
+
+  if (newStatus === 'active' && periodEndDateHasPassed(period.endDate)) {
+    throw new Error("This period's end date has already passed. Create a new period with a later end date.")
   }
 
   // Single Active Period Constraint
@@ -263,8 +311,8 @@ export async function updateCollectionPeriodStatus(id: string, newStatus: string
 /**
  * ARCHIVE COLLECTION PERIOD (Financial Governance)
  *
- * Permanently locks a period and marks its billing records as archived.
- * This keeps the active dashboard clean while preserving data for reports.
+ * Locks the period so it is no longer the live cycle. Bills, receipts,
+ * meter readings, and daily collections are never deleted.
  */
 export async function archiveCollectionPeriod(id: string) {
   const current = await requireUser()
@@ -283,14 +331,6 @@ export async function archiveCollectionPeriod(id: string) {
 
   try {
     await db.transaction(async (tx) => {
-      // 1. Update all billing records to archived
-      await tx
-        .update(billingRecord)
-        .set({ status: "cancelled", updatedAt: new Date() }) // Using 'cancelled' as archived proxy if no 'archived' status exists, or adding it?
-        // Let's check billingRecord status in schema
-        .where(eq(billingRecord.billingPeriodId, id))
-
-      // 2. Update period status
       await tx
         .update(billingPeriod)
         .set({
@@ -301,14 +341,13 @@ export async function archiveCollectionPeriod(id: string) {
         })
         .where(eq(billingPeriod.id, id))
 
-      // 3. Audit Log
       await writeAudit(
         {
           user: current,
           action: "collection.period.archive",
           entityType: "billing_period",
           entityId: id,
-          details: { name: period.periodName },
+          details: { name: period.periodName, recordsKept: true },
         },
         tx,
       )
@@ -352,7 +391,9 @@ export async function validateBillingImport(
     return { ok: false, error: "Missing required fields" }
   }
 
-  // 1. Verify Collection Period exists and is in DRAFT status
+  await closeExpiredActivePeriods()
+
+  // 1. Verify Collection Period exists and is still open
   const [period] = await db
     .select()
     .from(billingPeriod)
@@ -445,6 +486,8 @@ export async function validateBillingImport(
              mapping.totalDue = [v, ...(Array.isArray(mapping.totalDue) ? mapping.totalDue : [mapping.totalDue])]
           } else if (lowerK === "duedate") {
              mapping.dueDate = [v, ...(Array.isArray(mapping.dueDate) ? mapping.dueDate : [mapping.dueDate])]
+          } else if (lowerK === "billingdate") {
+             mapping.billingDate = [v, ...(Array.isArray(mapping.billingDate) ? mapping.billingDate : [mapping.billingDate])]
           } else {
              mapping[k] = v
           }
@@ -549,6 +592,8 @@ export async function importBilling(
   const validRows = summary.rows.filter((r) => r.valid)
   if (validRows.length === 0) return { ok: false, error: "No valid rows to import" }
 
+  await closeExpiredActivePeriods()
+
   // Re-verify period status
   const [period] = await db
     .select({ status: billingPeriod.status, periodName: billingPeriod.periodName })
@@ -635,6 +680,7 @@ export async function importBilling(
 
         const recordsToInsertRaw = rows.map((row) => {
           const cust = customerMap.get(row.data.accountNumber.toLowerCase())!
+          const takenAt = row.data.billingDate ? new Date(row.data.billingDate) : new Date()
 
           /**
            * ULTIMATE RECONCILIATION MATH (New Money Only):
@@ -679,7 +725,7 @@ export async function importBilling(
             recoveryAmount: String(billPortion), // Dashboard success metric
             arrearsRecovery: String(arrearsPortion), // Reports box 1
             dueDate: new Date(row.data.dueDate),
-            billingDate: row.data.billingDate ? new Date(row.data.billingDate) : null,
+            billingDate: takenAt,
             status: excelTotalAmountDue <= 0 ? "paid" : (appliedFromUpfront > 0 ? "partially_paid" : "pending"),
           }
         })
@@ -793,17 +839,16 @@ export async function downloadBillingTemplate() {
 
   // Use custom mapping if it exists, otherwise fall back to defaults
   // We prioritize the keys and order from the DB mapping if available
-  const mapping = (dbMappingRaw || { ...DEFAULT_BILLING_IMPORT_MAPPING }) as Record<string, string | string[] | number>
+  const mapping = {
+    ...DEFAULT_BILLING_IMPORT_MAPPING,
+    ...(dbMappingRaw || {}),
+  } as Record<string, string | string[] | number>
+  delete (mapping as Record<string, unknown>).paymentDate
 
-  // 2. Generate Sample Data strictly based on the mapping keys
   const headers: string[] = []
   const sampleRow: Record<string, string | number> = {}
-
-  // Standard internal keys to process in a logical order
-  const internalKeys = ["accountNumber", "billAmount", "arrears", "currentCharges", "totalDue", "dueDate", "billingDate"]
-
-  // If no custom mapping exists, we use the standard keys order
-  const keysToProcess = dbMappingRaw ? Object.keys(dbMappingRaw) : internalKeys
+  const internalKeys = ["accountNumber", "billAmount", "arrears", "totalDue", "dueDate", "billingDate"]
+  const keysToProcess = internalKeys.filter((key) => mapping[key] !== undefined)
 
   for (const key of keysToProcess) {
     // Map custom/legacy keys to internal equivalents if necessary
@@ -838,6 +883,7 @@ export async function downloadBillingTemplate() {
 
 export async function getCollectionSummary() {
   const current = await requireUser()
+  await closeExpiredActivePeriods()
 
   // Get active period, or the most recent one if none is active
   // Join with users for the timeline
@@ -865,7 +911,8 @@ export async function getCollectionSummary() {
       eq(billingPeriod.status, 'active'),
       eq(billingPeriod.status, 'draft'),
       eq(billingPeriod.status, 'validated'),
-      eq(billingPeriod.status, 'closed')
+      eq(billingPeriod.status, 'closed'),
+      eq(billingPeriod.status, 'archived')
     ))
     .orderBy(
       sql`case
@@ -1075,11 +1122,7 @@ export async function getCollectionSummary() {
   const outstanding = Math.max(0, totalBilled - totalCollected)
   const progress = totalBilled > 0 ? (totalCollected / totalBilled) * 100 : 0
 
-  // Days remaining logic
-  const now = new Date()
-  const end = new Date(displayPeriod.endDate)
-  const diffTime = end.getTime() - now.getTime()
-  const daysRemaining = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+  const daysRemaining = kampalaDaysRemaining(displayPeriod.endDate)
 
   return {
     displayPeriod,
@@ -1109,6 +1152,7 @@ export async function getBillingHistory(limit = 100) {
       id: billingRun.id,
       schemeName: waterScheme.name,
       periodName: billingPeriod.periodName,
+      periodStatus: billingPeriod.status,
       uploadedAt: billingRun.uploadedAt,
       totalCustomers: billingRun.totalCustomers,
       totalAmount: billingRun.totalAmount,
@@ -1149,12 +1193,21 @@ export async function getOpenBillsForCustomer(customerId: string) {
       status: billingRecord.status,
       periodName: billingPeriod.periodName,
       dueDate: billingRecord.dueDate,
+      billingDate: billingRecord.billingDate,
+      billingPeriodId: billingRecord.billingPeriodId,
+      createdAt: billingRecord.createdAt,
+      runUploadedAt: billingRun.uploadedAt,
+      periodStart: billingPeriod.startDate,
+      periodEnd: billingPeriod.endDate,
+      periodStatus: billingPeriod.status,
     })
     .from(billingRecord)
     .innerJoin(billingPeriod, eq(billingRecord.billingPeriodId, billingPeriod.id))
+    .innerJoin(billingRun, eq(billingRecord.billingRunId, billingRun.id))
     .where(
       and(
         eq(billingRecord.customerId, customerId),
+        ne(billingPeriod.status, "archived"),
         or(eq(billingRecord.status, "pending"), eq(billingRecord.status, "partially_paid"))
       )
     )
@@ -1195,6 +1248,7 @@ export async function getBillingRunDetails(runId: string) {
       accountNumber: billingRecord.accountNumber,
       totalDue: billingRecord.totalDue,
       status: billingRecord.status,
+      billingDate: billingRecord.billingDate,
     })
     .from(billingRecord)
     .innerJoin(customer, eq(billingRecord.customerId, customer.id))
@@ -1310,13 +1364,17 @@ export async function bulkDeleteBillingRuns(runIds: string[]) {
   // Scope Enforcement
   const scope = applyBillingScope(current)
   const accessibleRuns = await db
-    .select({ id: billingRun.id })
+    .select({ id: billingRun.id, status: billingPeriod.status })
     .from(billingRun)
+    .innerJoin(billingPeriod, eq(billingRun.billingPeriodId, billingPeriod.id))
     .where(and(inArray(billingRun.id, runIds), scope))
 
   const accessibleIds = accessibleRuns.map(r => r.id)
   if (accessibleIds.length < runIds.length) {
     throw new Error("You do not have permission to delete some of the selected runs")
+  }
+  if (accessibleRuns.some(r => r.status === "closed" || r.status === "archived")) {
+    throw new Error("Cannot delete billing from a closed or archived period.")
   }
 
   // SECURITY: Check for payment interference.

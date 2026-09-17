@@ -54,8 +54,8 @@ export function DailyImportWizard() {
 
   async function handleDownloadTemplate(format: "xlsx" | "csv") {
     if (mode === "sync") {
-       const headers = ["MeterRef", "AccountBalance"]
-       const sample = [{ MeterRef: "6000000000", AccountBalance: "50000" }]
+       const headers = ["AccountNumber", "TotalAmountDue", "LastPaymentDate"]
+       const sample = [{ AccountNumber: "6000000000", TotalAmountDue: "50000", LastPaymentDate: "2026-09-03" }]
        const ws = XLSX.utils.json_to_sheet(sample, { header: headers })
        const wb = XLSX.utils.book_new()
        XLSX.utils.book_append_sheet(wb, ws, "BalanceSync")

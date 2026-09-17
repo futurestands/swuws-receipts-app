@@ -10,7 +10,9 @@ import { revalidatePath, revalidateTag } from "next/cache"
 import { canConfigureSystem, canIssueReceipt } from "@/lib/permissions"
 import { ROLES } from "@/lib/permissions/roles"
 import { writeAudit } from "@/lib/audit"
+import { closeExpiredActivePeriods } from "@/lib/billing/close-expired"
 import { applyCustomerScope } from "@/lib/scopes"
+import { loadTariffRows } from "@/lib/billing/list-tariffs"
 import { renderTemplate } from "@/lib/templates/template-engine"
 import { sendSMS } from "@/lib/sms-service"
 import { createNotification } from "./notifications"
@@ -148,6 +150,7 @@ export async function submitMeterReading(data: {
 }) {
   const user = await requireUser()
   if (!canIssueReceipt(user)) throw new Error("Forbidden")
+  await closeExpiredActivePeriods()
 
   // 0. Idempotency Guard
   if (data.idempotencyKey) {
@@ -421,20 +424,7 @@ export async function getBillingDiscrepancies() {
 export async function listAllTariffs() {
   const user = await requireUser()
   if (!canConfigureSystem(user)) throw new Error("Unauthorized")
-
-  const tariffs = await db.select().from(tariffConfiguration).orderBy(desc(tariffConfiguration.createdAt))
-  const branchList = await db.select().from(branch)
-  const schemeList = await db.select().from(waterScheme)
-
-  return tariffs.map(t => {
-    let targetName = "Unknown"
-    if (t.targetType === "branch") {
-      targetName = branchList.find(b => b.id === t.targetId)?.name || "Unknown Branch"
-    } else {
-      targetName = schemeList.find(s => s.id === t.targetId)?.name || "Unknown Scheme"
-    }
-    return { ...t, targetName }
-  })
+  return loadTariffRows()
 }
 
 export async function upsertTariff(data: {

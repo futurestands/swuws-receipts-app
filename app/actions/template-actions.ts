@@ -8,6 +8,8 @@ import { getCurrentUser } from "@/lib/session"
 import { revalidatePath } from "next/cache"
 import { canConfigureSystem } from "@/lib/permissions"
 import { writeAudit } from "@/lib/audit"
+import { CANONICAL_IMPORT_TEMPLATES } from "@/lib/import-mappings"
+import { loadTemplateRows } from "@/lib/templates/list-templates"
 
 /**
  * Lists all managed templates with their active version metadata.
@@ -15,27 +17,7 @@ import { writeAudit } from "@/lib/audit"
 export async function listTemplates() {
   const user = await getCurrentUser()
   if (!user || !canConfigureSystem(user)) throw new Error("Unauthorized")
-
-  const templates = await db.select().from(managedTemplate).orderBy(managedTemplate.category, managedTemplate.name)
-
-  // Fetch active version details for each
-  const result = await Promise.all(templates.map(async (t) => {
-    if (!t.activeVersionId) return { ...t, activeContent: null, versionNumber: 0 }
-
-    const [version] = await db
-      .select()
-      .from(templateVersion)
-      .where(eq(templateVersion.id, t.activeVersionId))
-      .limit(1)
-
-    return {
-      ...t,
-      activeContent: version?.content || null,
-      versionNumber: version?.versionNumber || 0
-    }
-  }))
-
-  return result
+  return loadTemplateRows()
 }
 
 /**
@@ -272,91 +254,42 @@ export async function seedSystemTemplates() {
       name: 'Monthly Billing Import Schema',
       category: 'Finance',
       type: 'IMPORT',
-      content: JSON.stringify({
-        accountNumber: "AccountNumber",
-        billAmount: "BillAmount",
-        arrears: "Arrears",
-        currentCharges: "CurrentCharges",
-        totalDue: "TotalDue",
-        dueDate: "DueDate"
-      }, null, 2)
+      content: JSON.stringify(CANONICAL_IMPORT_TEMPLATES["import.billing.monthly"], null, 2)
     },
     {
       code: 'import.hierarchy.master',
       name: 'Unified Hierarchy Schema',
       category: 'System',
       type: 'IMPORT',
-      content: JSON.stringify({
-        clusterName: "Region",
-        branchName: "AreaOffice",
-        schemeName: "SchemeName",
-        schemeCode: "SchemeCode",
-        serviceArea: "ServiceArea"
-      }, null, 2)
+      content: JSON.stringify(CANONICAL_IMPORT_TEMPLATES["import.hierarchy.master"], null, 2)
     },
     {
       code: 'import.customers.bulk',
       name: 'Customer Onboarding Schema',
       category: 'Commercial',
       type: 'IMPORT',
-      content: JSON.stringify({
-        name: "Name",
-        customerAccount: "CustomerRef",
-        phone: "Phone",
-        address: "VillageName",
-        schemeName: "SchemeName",
-        meterRef: "MeterRef",
-        serialNo: "MeterSerial",
-        openingArrears: "OpeningArrears",
-        notes: "Notes"
-      }, null, 2)
+      content: JSON.stringify(CANONICAL_IMPORT_TEMPLATES["import.customers.bulk"], null, 2)
     },
     {
       code: 'import.users.bulk',
       name: 'System User Import Schema',
       category: 'System',
       type: 'IMPORT',
-      content: JSON.stringify({
-        name: "Name",
-        email: "Email",
-        password: "Password",
-        role: "Role",
-        cluster: "Cluster",
-        area: "Area",
-        scheme: "Scheme",
-        phone: "Phone",
-        status: "Status"
-      }, null, 2)
+      content: JSON.stringify(CANONICAL_IMPORT_TEMPLATES["import.users.bulk"], null, 2)
     },
     {
       code: 'import.tariffs.bulk',
       name: 'System Tariff Import Schema',
       category: 'System',
       type: 'IMPORT',
-      content: JSON.stringify({
-        targetType: "Type",
-        targetName: "AreaName",
-        unitPrice: "UnitPrice",
-        serviceFee: "ServiceFee",
-        vatPercentage: "VAT",
-        active: "Status"
-      }, null, 2)
+      content: JSON.stringify(CANONICAL_IMPORT_TEMPLATES["import.tariffs.bulk"], null, 2)
     },
     {
       code: 'import.daily.collections',
       name: 'Daily Collections Import Schema',
       category: 'Finance',
       type: 'IMPORT',
-      content: JSON.stringify({
-        accountNumber: "Account Number",
-        customerName: "Customer Name",
-        amountPaid: "Amount Paid",
-        paymentDate: "Payment Date",
-        externalReference: "External Reference",
-        paymentChannel: "Payment Channel",
-        scheme: "Scheme",
-        area: "Area"
-      }, null, 2)
+      content: JSON.stringify(CANONICAL_IMPORT_TEMPLATES["import.daily.collections"], null, 2)
     },
     {
       code: 'email.auth.reset_password',
@@ -482,10 +415,19 @@ export async function seedSystemTemplates() {
         .where(eq(templateVersion.id, exists.activeVersionId || ""))
         .limit(1)
 
-      if (activeVersion && activeVersion.versionNumber === 1 && activeVersion.content !== item.content) {
-        await db.update(templateVersion)
-          .set({ content: item.content })
-          .where(eq(templateVersion.id, activeVersion.id))
+      if (activeVersion && activeVersion.content !== item.content) {
+        const isImport = item.type === "IMPORT"
+        const isInitialSeed = activeVersion.versionNumber === 1
+        if (isImport || isInitialSeed) {
+          await db.update(templateVersion)
+            .set({
+              content: item.content,
+              changelog: isImport
+                ? "Aligned with columns the system actually reads"
+                : activeVersion.changelog,
+            })
+            .where(eq(templateVersion.id, activeVersion.id))
+        }
       }
     }
   }

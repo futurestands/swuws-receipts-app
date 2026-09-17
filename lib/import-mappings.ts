@@ -49,7 +49,7 @@ export const DEFAULT_BILLING_IMPORT_MAPPING = {
   currentCharges: ["CurrentCharges", "BillAmount", "MonthlyBill"],
   totalDue: ["TotalAmountDue", "TotalDue", "Balance", "GrandTotal", "Total Amount", "Amount Due", "Closing Balance"],
   dueDate: ["DueDate", "Due Date", 3],
-  billingDate: ["BillingDate", "Billing Date", "Date"],
+  billingDate: ["BillingDate", "Billing Date", "Bill Date", "ReadingDate", "Reading Date"],
 }
 
 export const DEFAULT_TARIFF_IMPORT_MAPPING = {
@@ -64,7 +64,67 @@ export const DEFAULT_TARIFF_IMPORT_MAPPING = {
 
 export const DEFAULT_DAILY_SYNC_MAPPING = {
   accountNumber: ["AccountNumber", "Account Number", "CustID", "Account", "AccountNo", "Account #", "CustomerRef", "CustomerAccount", "Customer No", "CustomerNo", "Code", "Ref", "Reference", "Acc No", "Acct No", "Cust ID", "ID", "MeterRef", 0],
-  totalDue: ["TotalAmountDue", "TotalDue", "Balance", "GrandTotal", "Total Amount", "Amount Due", "Closing Balance", "TotalCharges", 1],
-  paymentDate: ["LastPaymentDate", "PaymentDate", "Date", "BillingDate"],
+  totalDue: ["TotalAmountDue", "TotalDue", "Balance", "GrandTotal", "Total Amount", "Amount Due", "Closing Balance", "TotalCharges", "AccountBalance", 1],
+  paymentDate: ["LastPaymentDate", "PaymentDate", "Last Payment Date", "Date"],
+}
+
+/**
+ * Headers written into Template Hub and starter Excel files.
+ * Aliases above still match Pegasus files that use other names.
+ */
+export const CANONICAL_IMPORT_TEMPLATES: Record<string, Record<string, string>> = {
+  "import.billing.monthly": {
+    accountNumber: "AccountNumber",
+    billAmount: "BillAmount",
+    arrears: "Arrears",
+    totalDue: "TotalDue",
+    dueDate: "DueDate",
+    billingDate: "BillingDate",
+  },
+  "import.daily.collections": {
+    accountNumber: "AccountNumber",
+    totalDue: "TotalAmountDue",
+    paymentDate: "LastPaymentDate",
+  },
+  "import.customers.bulk": {
+    name: "Name",
+    customerAccount: "CustomerRef",
+    phone: "Phone",
+    address: "VillageName",
+    schemeName: "SchemeName",
+    meterRef: "MeterRef",
+    serialNo: "MeterSerial",
+    lastReading: "InitialReading",
+    openingArrears: "OpeningArrears",
+    category: "Category",
+    notes: "Notes",
+  },
+  "import.hierarchy.master": {
+    clusterName: "Region",
+    branchName: "AreaOffice",
+    schemeName: "SchemeName",
+    schemeCode: "SchemeCode",
+    serviceArea: "ServiceArea",
+  },
+  "import.users.bulk": {
+    name: "Name",
+    email: "Email",
+    password: "Password",
+    role: "Role",
+    cluster: "Cluster",
+    area: "Area",
+    scheme: "Scheme",
+    phone: "Phone",
+    status: "Status",
+  },
+  "import.tariffs.bulk": {
+    targetType: "Type",
+    targetName: "AreaName",
+    customerCategory: "Category",
+    unitPrice: "UnitPrice",
+    serviceFee: "ServiceFee",
+    vatPercentage: "VAT",
+    active: "Status",
+  },
 }
 

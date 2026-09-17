@@ -4,6 +4,7 @@ import { db } from "@/lib/db"
 import { customer, billingRecord, billingPeriod } from "@/lib/db/schema"
 import { requireUser } from "@/lib/session"
 import { applyCustomerScope } from "@/lib/scopes"
+import { closeExpiredActivePeriods } from "@/lib/billing/close-expired"
 import { and, eq, gt, asc, inArray, count } from "drizzle-orm"
 import { OFFLINE_PULL_PAGE_SIZE } from "@/lib/offline/pull-limits"
 
@@ -56,6 +57,7 @@ export async function getAgentOfflinePage(input?: {
   cursor?: string | null
 }): Promise<AgentOfflinePage> {
   const current = await requireUser()
+  await closeExpiredActivePeriods()
   const customerScope = applyCustomerScope(current)
   const cursor = input?.cursor?.trim() || null
 

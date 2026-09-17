@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { formatUGX } from "@/lib/format"
+import { formatUGX, formatDate } from "@/lib/format"
 import Link from "next/link"
 import { ArrowLeft, Users, Wallet, CircleCheck, FileText } from "lucide-react"
 import { PageHeader } from "@/components/ui/page-header"
@@ -64,6 +64,7 @@ export default async function BillingRunDetailPage({ params }: { params: Promise
                   <TableRow>
                     <TableHead>Customer</TableHead>
                     <TableHead>Account</TableHead>
+                    <TableHead>Bill date</TableHead>
                     <TableHead>Amount Due</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead className="text-right">Action</TableHead>
@@ -74,6 +75,7 @@ export default async function BillingRunDetailPage({ params }: { params: Promise
                     <TableRow key={record.id}>
                       <TableCell className="font-medium">{record.customerName}</TableCell>
                       <TableCell className="text-sm font-mono">{record.accountNumber}</TableCell>
+                      <TableCell className="text-sm">{record.billingDate ? formatDate(record.billingDate) : "—"}</TableCell>
                       <TableCell>{formatUGX(Number(record.totalDue))}</TableCell>
                       <TableCell>
                         <Badge variant={record.status === "paid" ? "default" : record.status === "partially_paid" ? "secondary" : "outline"}>

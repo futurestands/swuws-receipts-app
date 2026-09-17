@@ -9,9 +9,7 @@ import {
 } from "@/lib/permissions"
 import { getCollectionSummary } from "@/app/actions/billing"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
 import { Upload, FileText, Activity, AlertCircle, Calendar, Wallet, Users, TrendingUp, HandCoins } from "lucide-react"
-import Link from "next/link"
 import { formatUGX, formatDateTime } from "@/lib/format"
 import { CollectionPeriodWizard } from "@/components/collection/collection-period-wizard"
 import { CollectionStatusBadge } from "@/components/collection/collection-status-badge"
@@ -21,7 +19,7 @@ import { Progress } from "@/components/ui/progress"
 import { PageHeader } from "@/components/ui/page-header"
 import { StatCard, StatCardGrid } from "@/components/ui/stat-card"
 import { EmptyState } from "@/components/ui/empty-state"
-import { DynamicIcon } from "@/components/layout/icons"
+import { LinkButton } from "@/components/ui/link-button"
 
 export default async function CollectionManagementPage() {
   const current = await requireUser()
@@ -44,14 +42,11 @@ export default async function CollectionManagementPage() {
     <div className="space-y-8">
       <PageHeader
         title="Billing Period Management"
-        description="Manage the lifecycle of monthly billing imports and collections."
         actions={
           <>
-            <Button asChild variant="outline">
-              <Link href="/dashboard/billing/history">
-                <DynamicIcon name="History" className="mr-2 h-4 w-4" /> View History
-              </Link>
-            </Button>
+            <LinkButton href="/dashboard/billing/history" variant="outline" icon="History">
+              View History
+            </LinkButton>
             {canManage && <CollectionPeriodWizard />}
           </>
         }
@@ -77,9 +72,6 @@ export default async function CollectionManagementPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <CardTitle>Current Period: {summary.displayPeriod.periodName}</CardTitle>
-                  <CardDescription>
-                    Overview of the current selected billing period.
-                  </CardDescription>
                 </div>
                 <CollectionStatusBadge status={summary.displayPeriod.status} className="text-base px-3 py-1" />
               </div>
@@ -147,11 +139,9 @@ export default async function CollectionManagementPage() {
 
               <div className="flex flex-wrap gap-2 pt-6">
                 {(summary.displayPeriod.status === 'active' || summary.displayPeriod.status === 'draft') && (
-                  <Button asChild>
-                    <Link href="/dashboard/billing/upload">
-                      <DynamicIcon name="Upload" className="mr-2 h-4 w-4" /> Import Monthly Billing
-                    </Link>
-                  </Button>
+                  <LinkButton href="/dashboard/billing/upload" icon="Upload">
+                    Import Monthly Billing
+                  </LinkButton>
                 )}
 
                 <CollectionStatusActions
@@ -159,13 +149,12 @@ export default async function CollectionManagementPage() {
                   currentStatus={summary.displayPeriod.status}
                   canActivate={canActivateCollectionPeriod(current)}
                   canArchive={canArchiveCollectionPeriod(current)}
+                  endDate={summary.displayPeriod.endDate}
                 />
 
-                <Button variant="outline" asChild>
-                   <Link href="/dashboard/billing/records">
-                     <FileText className="mr-2 h-4 w-4" /> View Records
-                   </Link>
-                </Button>
+                <LinkButton href="/dashboard/billing/records" variant="outline" icon="FileText">
+                  View Records
+                </LinkButton>
               </div>
             </CardContent>
           </Card>

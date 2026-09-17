@@ -30,6 +30,7 @@ interface Props {
   currentStatus: string
   canActivate: boolean
   canArchive: boolean
+  endDate?: Date | string | null
 }
 
 export function CollectionStatusActions({ periodId, currentStatus, canActivate, canArchive }: Props) {
@@ -94,7 +95,9 @@ export function CollectionStatusActions({ periodId, currentStatus, canActivate, 
         </>
       )}
 
-      {currentStatus === 'active' && canActivate && (
+      {currentStatus === 'active' && (
+        <div className="flex flex-wrap items-center gap-2">
+          {canActivate && (
         <AlertDialog>
           <AlertDialogTrigger asChild>
             <Button size="sm" variant="destructive" disabled={pending}>
@@ -105,10 +108,10 @@ export function CollectionStatusActions({ periodId, currentStatus, canActivate, 
             <AlertDialogHeader>
               <AlertDialogTitle className="flex items-center gap-2">
                 <AlertTriangle className="h-5 w-5 text-destructive" />
-                Close Billing Period?
+                Close Billing Period early?
               </AlertDialogTitle>
               <AlertDialogDescription>
-                Closing the period will stop all receipt issuance. This action is usually performed at the end of the month after reconciliation.
+                This stops receipts for this period.
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
@@ -119,12 +122,32 @@ export function CollectionStatusActions({ periodId, currentStatus, canActivate, 
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
+          )}
+        </div>
       )}
 
       {currentStatus === 'closed' && canArchive && (
-        <Button size="sm" variant="outline" onClick={() => handleStatusChange('archived')} disabled={pending}>
-          <Archive className="h-4 w-4 mr-2" /> Archive Period
-        </Button>
+        <AlertDialog>
+          <AlertDialogTrigger asChild>
+            <Button size="sm" variant="outline" disabled={pending}>
+              <Archive className="h-4 w-4 mr-2" /> Archive Period
+            </Button>
+          </AlertDialogTrigger>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Archive this period?</AlertDialogTitle>
+              <AlertDialogDescription>
+                This takes it off the live dashboard. Bills, receipts, and collections are not deleted.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction onClick={() => handleStatusChange('archived')}>
+                Archive
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       )}
     </div>
   )

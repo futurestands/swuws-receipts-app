@@ -80,7 +80,11 @@ export function CommercialDashboard({
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All periods</SelectItem>
-              {periods.map(p => <SelectItem key={p.id} value={p.id}>{p.periodName}</SelectItem>)}
+              {periods.filter((p) => p.status !== "archived").map((p) => (
+                <SelectItem key={p.id} value={p.id}>
+                  {p.periodName}{p.status === "closed" ? " (closed)" : ""}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
         </div>

@@ -21,6 +21,8 @@ dns.setDefaultResultOrder("ipv4first")
 declare global {
   // eslint-disable-next-line no-var
   var __pool: Pool | undefined
+  // eslint-disable-next-line no-var
+  var __poolGen: number | undefined
 }
 
 function createPool(): Pool {
@@ -52,11 +54,10 @@ function createPool(): Pool {
       password: decodeURIComponent(url.password),
       database: url.pathname.slice(1) || "postgres",
       ssl: sslConfig,
-      // Goal Alignment: Platform-aware pool sizing.
-      // - Vercel: Cap at 1 (Serverless concurrency limit safety)
-      // - Remote (Supabase): Increase to 15 for local dev breathing room.
-      // - Local: Cap at 20 (Speed for development)
-      max: isVercel ? 1 : (useSsl ? 15 : 20),
+      // Supabase session pooler allows 15 clients total for the project.
+      // A local pool of 15 fills that quota by itself, so layout + Admin +
+      // HMR get Connection terminated / EMAXCONNSESSION / ECONNRESET.
+      max: isVercel ? 1 : (useSsl ? 6 : 10),
       idleTimeoutMillis: 10_000,
       connectionTimeoutMillis: 12_000,
       keepAlive: true,
@@ -72,7 +73,7 @@ function createPool(): Pool {
     return new Pool({
       connectionString: urlString,
       ssl: sslConfig,
-      max: isVercel ? 1 : (useSsl ? 15 : 20),
+      max: isVercel ? 1 : (useSsl ? 6 : 10),
       idleTimeoutMillis: 10_000,
       connectionTimeoutMillis: 12_000,
       keepAlive: true,
@@ -81,6 +82,13 @@ function createPool(): Pool {
     })
   }
 }
+
+const POOL_GEN = 2
+if (globalThis.__pool && globalThis.__poolGen !== POOL_GEN) {
+  void globalThis.__pool.end().catch(() => undefined)
+  globalThis.__pool = undefined
+}
+globalThis.__poolGen = POOL_GEN
 
 if (globalThis.__pool) {
   console.log("[DB Init] Re-using existing connection pool (Singleton)")
@@ -94,7 +102,7 @@ if (process.env.NODE_ENV !== "production") {
 
 // Prevent the process from crashing on unhandled pool errors (e.g. connection drops)
 pool.on("error", (err) => {
-  console.error("Unexpected error on idle database client", err)
+  console.warn("Idle database client dropped:", err.message)
 })
 
 export const db = drizzle(pool, { schema })

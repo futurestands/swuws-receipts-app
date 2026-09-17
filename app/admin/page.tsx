@@ -4,9 +4,10 @@ import { getSmsGatewaySettings } from "@/app/actions/sms-gateway-settings"
 import { getCollectionPeriods } from "@/app/actions/billing"
 import { AdminTabs } from "@/app/admin/admin-tabs"
 import { getCurrentUser } from "@/lib/session"
-import { listRoles, listAllPermissions, seedV12Permissions } from "@/app/actions/iam"
-import { listAllTariffs } from "@/app/actions/billing-engine"
-import { listTemplates, seedSystemTemplates } from "@/app/actions/template-actions"
+import { listRoles, listAllPermissions } from "@/app/actions/iam"
+import { seedSystemTemplates } from "@/app/actions/template-actions"
+import { loadTariffRows } from "@/lib/billing/list-tariffs"
+import { loadTemplateRows } from "@/lib/templates/list-templates"
 import { ROLES } from "@/lib/permissions/roles"
 import {
   canViewUsers,
@@ -22,19 +23,47 @@ import {
   canResetPasswords,
 } from "@/lib/permissions"
 
-export default async function AdminPage() {
-  // Re-triggering route detection
-  const current = await getCurrentUser()
+function warnFailed(label: string, err: unknown) {
+  const message = err instanceof Error ? err.message : String(err)
+  console.warn(`Admin: ${label} failed: ${message}`)
+}
 
-  // Seed system templates on load for this version (v1.2)
-  if (current && canConfigureSystem(current)) {
+async function loadOrFallback<T>(label: string, run: () => Promise<T>, fallback: T): Promise<T> {
+  try {
+    return await run()
+  } catch (err) {
+    warnFailed(label, err)
     try {
-      await seedV12Permissions()
-      await seedSystemTemplates()
-    } catch (e) {
-      console.error("Admin: Seeding failed", e)
+      return await run()
+    } catch (retryErr) {
+      warnFailed(`${label} retry`, retryErr)
+      return fallback
     }
   }
+}
+
+const EMPTY_AGENTS = { agents: [], total: 0, page: 1, pageSize: 25, totalPages: 1 }
+const EMPTY_STATS = { agentCount: 0, receiptCount: 0, receiptTotal: 0 }
+const EMPTY_COLLECTIONS = { perAgent: [] as { agentId: string; agentName: string; count: number; total: number }[], totalCount: 0, totalAmount: 0 }
+const EMPTY_PRINTING = {
+  mostReprinted: [],
+  byUser: [],
+  byBranch: [],
+  dailySummary: [],
+  byScheme: [],
+  recentPrints: [],
+}
+const EMPTY_SMS = {
+  provider: null,
+  username: null,
+  senderId: null,
+  active: false,
+  maskedApiKey: null,
+  hasApiKey: false,
+}
+
+export default async function AdminPage() {
+  const current = await getCurrentUser()
 
   const canViewUsersVal = current ? canViewUsers(current) : false
   const canAuditVal = current ? canAudit(current) : false
@@ -47,31 +76,67 @@ export default async function AdminPage() {
   const canCreateUserVal = current ? canCreateUser(current) : false
   const canResetPasswordVal = current ? canResetPasswords(current) : false
 
-  const [agentsResult, auditLogs, stats, collections, printingStats, clusters, branches, methods, schemes, settings, smsGatewaySettings, periods, iamRoles, allPermissions, tariffs, templates] = await Promise.all([
-    canViewUsersVal
-      ? listAgents({ page: 1, pageSize: 25 }).catch(() => ({ agents: [], total: 0, page: 1, pageSize: 25, totalPages: 1 }))
-      : Promise.resolve({ agents: [], total: 0, page: 1, pageSize: 25, totalPages: 1 }),
-    canAuditVal ? getAuditLogs(200).catch(() => []) : Promise.resolve([]),
-    canViewReportsVal ? getSystemStats().catch(() => ({ agentCount: 0, receiptCount: 0, receiptTotal: 0 })) : Promise.resolve({ agentCount: 0, receiptCount: 0, receiptTotal: 0 }),
-    canViewReportsVal ? getCollectionsSummary().catch(() => ({ perAgent: [], totalCount: 0, totalAmount: 0 })) : Promise.resolve({ perAgent: [], totalCount: 0, totalAmount: 0 }),
-    canViewReportsVal ? getPrintingReports().catch(() => ({ mostReprinted: [], byUser: [], byBranch: [], dailySummary: [], byScheme: [], recentPrints: [] })) : Promise.resolve({ mostReprinted: [], byUser: [], byBranch: [], dailySummary: [], byScheme: [], recentPrints: [] }),
-    listClusters().catch(() => []),
-    listBranches().catch(() => []),
-    canConfigureSystemVal ? listPaymentMethods().catch(() => []) : Promise.resolve([]),
-    listWaterSchemes().catch(() => []),
-    getSettings(), // Settings is readable by all for branding
-    canConfigureSystemVal
-      ? getSmsGatewaySettings().catch(() => ({ provider: null, username: null, senderId: null, active: false, maskedApiKey: null, hasApiKey: false }))
-      : Promise.resolve({ provider: null, username: null, senderId: null, active: false, maskedApiKey: null, hasApiKey: false }),
-    getCollectionPeriods().catch(() => []),
-    canManageIAMVal ? listRoles().catch(() => []) : Promise.resolve([]),
-    canManageIAMVal ? listAllPermissions().catch(() => []) : Promise.resolve([]),
-    canConfigureSystemVal ? listAllTariffs().catch(() => []) : Promise.resolve([]),
-    canConfigureSystemVal ? listTemplates().catch(() => []) : Promise.resolve([]),
+  const [clusters, branches, schemes, settings] = await Promise.all([
+    loadOrFallback("clusters", () => listClusters(), []),
+    loadOrFallback("branches", () => listBranches(), []),
+    loadOrFallback("schemes", () => listWaterSchemes(), []),
+    getSettings(),
   ])
 
-  // HIERARCHY FILTERING: Ensure UI dropdowns match the user's assigned scope.
-  // Global/Head Office users (no assigned hierarchy) see all options.
+  const [periods, methods, smsGatewaySettings] = await Promise.all([
+    loadOrFallback("periods", () => getCollectionPeriods(), []),
+    canConfigureSystemVal ? loadOrFallback("methods", () => listPaymentMethods(), []) : Promise.resolve([]),
+    canConfigureSystemVal
+      ? loadOrFallback("sms", () => getSmsGatewaySettings(), EMPTY_SMS)
+      : Promise.resolve(EMPTY_SMS),
+  ])
+
+  const [agentsResult, auditLogs, iamRoles, allPermissions] = await Promise.all([
+    canViewUsersVal
+      ? loadOrFallback("agents", () => listAgents({ page: 1, pageSize: 25 }), EMPTY_AGENTS)
+      : Promise.resolve(EMPTY_AGENTS),
+    canAuditVal ? loadOrFallback("audit", () => getAuditLogs(200), []) : Promise.resolve([]),
+    canManageIAMVal ? loadOrFallback("roles", () => listRoles(), []) : Promise.resolve([]),
+    canManageIAMVal ? loadOrFallback("permissions", () => listAllPermissions(), []) : Promise.resolve([]),
+  ])
+
+  const [stats, collections, printingStats] = await Promise.all([
+    canViewReportsVal ? loadOrFallback("stats", () => getSystemStats(), EMPTY_STATS) : Promise.resolve(EMPTY_STATS),
+    canViewReportsVal
+      ? loadOrFallback("collections", () => getCollectionsSummary(), EMPTY_COLLECTIONS)
+      : Promise.resolve(EMPTY_COLLECTIONS),
+    canViewReportsVal
+      ? loadOrFallback("printing", () => getPrintingReports(), EMPTY_PRINTING)
+      : Promise.resolve(EMPTY_PRINTING),
+  ])
+
+  let tariffs = canConfigureSystemVal ? await loadOrFallback("tariffs", () => loadTariffRows(), []) : []
+
+  let templates = [] as Awaited<ReturnType<typeof loadTemplateRows>>
+  if (canConfigureSystemVal) {
+    let templatesLoaded = false
+    try {
+      templates = await loadTemplateRows()
+      templatesLoaded = true
+    } catch (err) {
+      warnFailed("templates", err)
+      try {
+        templates = await loadTemplateRows()
+        templatesLoaded = true
+      } catch (retryErr) {
+        warnFailed("templates retry", retryErr)
+      }
+    }
+    if (templatesLoaded && templates.length === 0) {
+      try {
+        await seedSystemTemplates()
+        templates = await loadTemplateRows()
+      } catch (err) {
+        warnFailed("template seed", err)
+      }
+    }
+  }
+
   const isGlobal = !current?.clusterId && !current?.branchId && !current?.schemeId
   const isSystemAdmin = current?.role === ROLES.SYSTEM_ADMIN
 
@@ -80,7 +145,7 @@ export default async function AdminPage() {
   const filteredSchemes = (isSystemAdmin || isGlobal) ? schemes : schemes.filter(s => s.id === current?.schemeId || s.branchId === current?.branchId)
 
   const permissions = {
-    canManageUsers: canViewUsersVal, // Gating tab visibility
+    canManageUsers: canViewUsersVal,
     canManageHierarchy: canManageHierarchyVal,
     canConfigureSystem: canConfigureSystemVal,
     canAudit: canAuditVal,
@@ -110,12 +175,10 @@ export default async function AdminPage() {
         stats={stats}
         collections={collections}
         printingStats={printingStats}
-        // FILTERED HIERARCHY: Used for the "Add User" dropdowns (Strict context)
         clusters={filteredClusters}
         branches={filteredBranches}
         methods={methods}
         schemes={filteredSchemes}
-        // GLOBAL HIERARCHY: Used for the "Branches & schemes" list (View-only for non-admins)
         allClusters={clusters}
         allBranches={branches}
         allSchemes={schemes}

@@ -9,13 +9,14 @@ import {
   customer as customerTable,
   billingRecord,
   billingPeriod,
+  billingRun,
   waterScheme,
   auditLog,
 } from "@/lib/db/schema"
 import { requireUser } from "@/lib/session"
 import { writeAudit } from "@/lib/audit"
 import { getSettings } from "@/app/actions/settings"
-import { and, desc, eq, gte, lte, sql, sum, inArray, getTableColumns, count } from "drizzle-orm"
+import { and, desc, eq, gte, lte, sql, sum, inArray, getTableColumns, count, ne } from "drizzle-orm"
 import { randomUUID } from "crypto"
 import { revalidatePath, revalidateTag } from "next/cache"
 import { put } from "@vercel/blob"
@@ -23,6 +24,8 @@ import { checkRateLimit } from "@/lib/rate-limit"
 import { ROLES } from "@/lib/permissions/roles"
 import { canViewAllData, canIssueReceipt, canPrintReceipt, canReprintReceipt } from "@/lib/permissions"
 import { applyReceiptScope, validateWriteScope } from "@/lib/scopes"
+import { closeExpiredActivePeriods } from "@/lib/billing/close-expired"
+import { effectiveBillTakenDate, kampalaCalendarDate, resolveBillForPayment } from "@/lib/billing/period-dates"
 import { hasPermission } from "@/lib/iam"
 import { receiptPrintHistory, user as userTable } from "@/lib/db/schema"
 import { headers } from "next/headers"
@@ -68,12 +71,19 @@ export async function createReceipt(input: CreateReceiptInput & { idempotencyKey
   }
   const data = parsed.data
 
-  // Enforcement: Receipt creation must require an Active Collection Period.
-  const [activePeriod] = await db
-    .select({ id: billingPeriod.id })
+  await closeExpiredActivePeriods()
+
+  // Collection month must be open. Which bill the money hits follows the taken date.
+  const periods = await db
+    .select({
+      id: billingPeriod.id,
+      status: billingPeriod.status,
+      startDate: billingPeriod.startDate,
+      endDate: billingPeriod.endDate,
+    })
     .from(billingPeriod)
-    .where(eq(billingPeriod.status, 'active'))
-    .limit(1)
+    .where(ne(billingPeriod.status, "archived"))
+  const activePeriod = periods.find((p) => p.status === "active")
 
   if (!activePeriod) {
     return { ok: false as const, error: "No Active Collection Period. Receipts cannot be issued until an administrator activates one." }
@@ -103,6 +113,9 @@ export async function createReceipt(input: CreateReceiptInput & { idempotencyKey
       let remainingBefore = 0
       let newStatus: string | null = null
       let previousAccountBalance = 0
+      let billingRecordId = data.billingRecordId || undefined
+      let billingPeriodId = data.billingPeriodId || activePeriod.id
+      const paymentDate = data.paymentDate ? new Date(data.paymentDate) : new Date()
 
       // 1. Lock Customer Row and get current balance (Critical for atomic updates)
       if (data.customerId) {
@@ -114,6 +127,42 @@ export async function createReceipt(input: CreateReceiptInput & { idempotencyKey
         previousAccountBalance = Number(c.accountBalance || 0)
         if (!targetSchemeId) targetSchemeId = c.waterSchemeId
 
+        const customerBills = await tx
+          .select({
+            id: billingRecord.id,
+            billingPeriodId: billingRecord.billingPeriodId,
+            billingDate: billingRecord.billingDate,
+            createdAt: billingRecord.createdAt,
+            runUploadedAt: billingRun.uploadedAt,
+          })
+          .from(billingRecord)
+          .innerJoin(billingRun, eq(billingRecord.billingRunId, billingRun.id))
+          .innerJoin(billingPeriod, eq(billingRecord.billingPeriodId, billingPeriod.id))
+          .where(and(
+            eq(billingRecord.customerId, data.customerId),
+            ne(billingPeriod.status, "archived"),
+          ))
+
+        const takenBills = customerBills.map((b) => ({
+          id: b.id,
+          billingPeriodId: b.billingPeriodId,
+          takenAt: effectiveBillTakenDate({
+            billingDate: b.billingDate,
+            runUploadedAt: b.runUploadedAt,
+            createdAt: b.createdAt,
+          }),
+        }))
+        const resolved = resolveBillForPayment(paymentDate, takenBills, periods, activePeriod.id)
+        const selected = billingRecordId ? takenBills.find((b) => b.id === billingRecordId) : undefined
+        const selectedTooNew =
+          selected?.takenAt != null &&
+          kampalaCalendarDate(selected.takenAt) > kampalaCalendarDate(paymentDate)
+
+        if (!billingRecordId || selectedTooNew) {
+          if (resolved.billingRecordId) billingRecordId = resolved.billingRecordId
+          if (resolved.billingPeriodId) billingPeriodId = resolved.billingPeriodId
+        }
+
         // Double-submission guard: a rapid double-click/double-tap on
         // "Issue receipt" (network lag, a slow re-render before the
         // button visually disables, or a retried request after a dropped
@@ -124,8 +173,8 @@ export async function createReceipt(input: CreateReceiptInput & { idempotencyKey
         // this check after the first has committed, so it will actually
         // see the first one's receipt rather than racing past it.
         const dup = await tx.execute<{ id: string }>(
-          data.billingRecordId
-            ? sql`SELECT id FROM receipt WHERE "customerId" = ${data.customerId} AND "agentId" = ${current.id} AND amount = ${amount} AND "billingRecordId" = ${data.billingRecordId} AND "createdAt" > NOW() - INTERVAL '15 seconds' ORDER BY "createdAt" DESC LIMIT 1`
+          billingRecordId
+            ? sql`SELECT id FROM receipt WHERE "customerId" = ${data.customerId} AND "agentId" = ${current.id} AND amount = ${amount} AND "billingRecordId" = ${billingRecordId} AND "createdAt" > NOW() - INTERVAL '15 seconds' ORDER BY "createdAt" DESC LIMIT 1`
             : sql`SELECT id FROM receipt WHERE "customerId" = ${data.customerId} AND "agentId" = ${current.id} AND amount = ${amount} AND "billingRecordId" IS NULL AND "createdAt" > NOW() - INTERVAL '15 seconds' ORDER BY "createdAt" DESC LIMIT 1`
         )
         if (dup.rows[0]) {
@@ -139,7 +188,7 @@ export async function createReceipt(input: CreateReceiptInput & { idempotencyKey
       const totalAvailable = previousAccountBalance + amount
       let appliedToBill = 0
 
-      if (data.billingRecordId) {
+      if (billingRecordId) {
         // 2. Verify Billing Record & Calculate Reconciliation
         const [rowWithHierarchy] = await tx
           .select({
@@ -151,11 +200,11 @@ export async function createReceipt(input: CreateReceiptInput & { idempotencyKey
           .from(billingRecord)
           .innerJoin(
             billingPeriod,
-            and(eq(billingRecord.id, data.billingRecordId), eq(billingRecord.billingPeriodId, billingPeriod.id)),
+            and(eq(billingRecord.id, billingRecordId), eq(billingRecord.billingPeriodId, billingPeriod.id)),
           )
           .innerJoin(customerTable, eq(billingRecord.customerId, customerTable.id))
           .innerJoin(waterScheme, eq(customerTable.waterSchemeId, waterScheme.id))
-          .where(eq(billingRecord.id, data.billingRecordId))
+          .where(eq(billingRecord.id, billingRecordId))
           .limit(1)
 
         if (!rowWithHierarchy) throw new Error("Selected billing record not found")
@@ -165,47 +214,51 @@ export async function createReceipt(input: CreateReceiptInput & { idempotencyKey
         targetSchemeId = rowWithHierarchy.schemeId
         amountDueSnapshot = Number(bill.totalDue)
 
-        if (bill.status === "paid") throw new Error("This bill is already fully paid")
-
         // Enforce customer matching if profile is selected
         if (data.customerId && bill.customerId !== data.customerId) {
           throw new Error("Billing record does not belong to the selected customer")
         }
 
-        // Calculate current outstanding amount (bill - previous receipts)
-        const [agg] = await tx
-          .select({ totalPaid: sum(receipt.amount) })
-          .from(receipt)
-          .where(eq(receipt.billingRecordId, data.billingRecordId))
+        if (bill.status === "paid") {
+          // Old bill is settled; keep this period so we do not credit the un-taken new bill.
+          billingPeriodId = bill.billingPeriodId
+          billingRecordId = undefined
+        } else {
+          // Calculate current outstanding amount (bill - previous receipts)
+          const [agg] = await tx
+            .select({ totalPaid: sum(receipt.amount) })
+            .from(receipt)
+            .where(eq(receipt.billingRecordId, billingRecordId))
 
-        const previouslyPaid = Number(agg?.totalPaid || 0)
-        remainingBefore = Number(bill.totalDue) - previouslyPaid
+          const previouslyPaid = Number(agg?.totalPaid || 0)
+          remainingBefore = Number(bill.totalDue) - previouslyPaid
 
-        if (remainingBefore <= 0) {
-          await tx.update(billingRecord).set({ status: "paid" }).where(eq(billingRecord.id, bill.id))
-          throw new Error("This bill is already fully paid")
+          if (remainingBefore <= 0) {
+            billingPeriodId = bill.billingPeriodId
+            billingRecordId = undefined
+          } else {
+            // Apply totalAvailable to bill, capped at remainingBefore
+            appliedToBill = Math.min(totalAvailable, remainingBefore)
+            const outstandingAfter = remainingBefore - appliedToBill
+            // Goal Alignment: Bills only move to 'paid' AFTER bank reconciliation.
+            // For now, we move them to 'pending_bank_confirmation'.
+            newStatus = outstandingAfter <= 0 ? "pending_bank_confirmation" : "partially_paid"
+
+            // Update Billing Record Status
+            // Note: We only update status to 'partially_paid' or 'pending_bank_confirmation'
+            // to track operational progress. Final 'paid' status requires bank sync.
+            await tx
+              .update(billingRecord)
+              .set({ status: newStatus, updatedAt: new Date() })
+              .where(eq(billingRecord.id, billingRecordId))
+          }
         }
-
-        // Apply totalAvailable to bill, capped at remainingBefore
-        appliedToBill = Math.min(totalAvailable, remainingBefore)
-        const outstandingAfter = remainingBefore - appliedToBill
-        // Goal Alignment: Bills only move to 'paid' AFTER bank reconciliation.
-        // For now, we move them to 'pending_bank_confirmation'.
-        newStatus = outstandingAfter <= 0 ? "pending_bank_confirmation" : "partially_paid"
-
-        // Update Billing Record Status
-        // Note: We only update status to 'partially_paid' or 'pending_bank_confirmation'
-        // to track operational progress. Final 'paid' status requires bank sync.
-        await tx
-          .update(billingRecord)
-          .set({ status: newStatus, updatedAt: new Date() })
-          .where(eq(billingRecord.id, data.billingRecordId))
-      } else if (data.billingPeriodId) {
+      } else if (billingPeriodId) {
         // Manual entry snapshotting (no reconciliation)
         const [p] = await tx
           .select({ periodName: billingPeriod.periodName })
           .from(billingPeriod)
-          .where(eq(billingPeriod.id, data.billingPeriodId))
+          .where(eq(billingPeriod.id, billingPeriodId))
           .limit(1)
         periodName = p?.periodName ?? null
 
@@ -220,7 +273,7 @@ export async function createReceipt(input: CreateReceiptInput & { idempotencyKey
       }
 
       const newAccountBalance = previousAccountBalance - amount
-      const outstandingBalanceSnapshot = data.billingRecordId
+      const outstandingBalanceSnapshot = billingRecordId
         ? Math.max(0, remainingBefore - appliedToBill)
         : (data.outstandingBalance ?? null)
 
@@ -228,7 +281,6 @@ export async function createReceipt(input: CreateReceiptInput & { idempotencyKey
       const settings = await getSettings()
       const id = randomUUID()
       const paymentReference = data.paymentReference?.trim() || generatePaymentReference()
-      const paymentDate = data.paymentDate ? new Date(data.paymentDate) : new Date()
 
       // Fetch next sequence value for dynamic receipt number
       const seqResult = await tx.execute<{ nextval: string }>(sql`SELECT nextval('receipt_seq')::text`)
@@ -270,8 +322,8 @@ export async function createReceipt(input: CreateReceiptInput & { idempotencyKey
           seq: Number(nextId),
           paymentReference,
           receiptNumber: `${settings.receiptPrefix}-${new Date().getFullYear()}-${nextId.padStart(6, "0")}`,
-          billingRecordId: data.billingRecordId || null,
-          billingPeriodId: data.billingPeriodId || activePeriod.id,
+          billingRecordId: billingRecordId || null,
+          billingPeriodId: billingPeriodId,
           billingPeriodSnapshot: periodName,
           amountDueSnapshot: String(amountDueSnapshot || 0),
           schemeNameSnapshot: schemeName,
@@ -321,7 +373,7 @@ export async function createReceipt(input: CreateReceiptInput & { idempotencyKey
             previousBalance: previousAccountBalance,
             newBalance: newAccountBalance,
             customerName: inserted.customerName,
-            billingRecordId: data.billingRecordId || null,
+            billingRecordId: billingRecordId || null,
             newBillStatus: newStatus,
           },
         },

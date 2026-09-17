@@ -2,7 +2,7 @@
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
-import { formatUGX } from "@/lib/format"
+import { formatUGX, formatDate } from "@/lib/format"
 import { CollectionStatusBadge } from "@/components/collection/collection-status-badge"
 import { AlertCircle, ArrowRight, TrendingUp } from "lucide-react"
 import Link from "next/link"
@@ -87,7 +87,11 @@ export function CollectionSummaryCard({ summary }: CollectionSummaryProps) {
           <div className="text-right space-y-2">
             <CollectionStatusBadge status={displayPeriod.status} />
             <p className="text-xs text-muted-foreground">
-              {daysRemaining} days remaining
+              {summary.isActive
+                ? `${daysRemaining} day${daysRemaining === 1 ? "" : "s"} remaining · closes ${formatDate(displayPeriod.endDate)}`
+                : displayPeriod.status === "closed"
+                  ? "Closed"
+                  : displayPeriod.status}
             </p>
           </div>
         </div>

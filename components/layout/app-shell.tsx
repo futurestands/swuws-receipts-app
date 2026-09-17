@@ -150,8 +150,8 @@ export function AppShell({
           collapsed || !developerCredit ? "sr-only h-0 p-0 overflow-hidden" : "opacity-100"
         )}>
           {developerCredit && (
-            <p className="text-[10px] font-medium text-sidebar-foreground/50 leading-tight">
-              &copy; {new Date().getFullYear()} {developerCredit}
+            <p className="text-[10px] font-medium text-sidebar-foreground/50 leading-tight" suppressHydrationWarning>
+              © {new Date().getFullYear()} {developerCredit}
             </p>
           )}
         </div>

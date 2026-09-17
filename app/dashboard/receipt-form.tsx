@@ -20,11 +20,12 @@ import {
 } from "@/components/ui/select"
 import { SearchableSelect } from "@/components/ui/searchable-select"
 import { toast } from "sonner"
-import { formatUGX } from "@/lib/format"
+import { formatUGX, formatDate } from "@/lib/format"
 import { cn } from "@/lib/utils"
 import { ResponsiveFormLayout, FormField, FormActions } from "@/components/ui/form-layout"
 import Link from "next/link"
 import { AlertCircle, Search, UserPlus } from "lucide-react"
+import { effectiveBillTakenDate, resolveBillForPayment } from "@/lib/billing/period-dates"
 
 type Bill = {
   id: string
@@ -32,6 +33,13 @@ type Bill = {
   status: string
   periodName: string
   dueDate: Date
+  billingDate: Date | null
+  billingPeriodId: string
+  createdAt: Date
+  runUploadedAt: Date
+  periodStart: Date
+  periodEnd: Date
+  periodStatus: string
 }
 
 const emptyFormBase = {
@@ -108,11 +116,61 @@ export function ReceiptForm({
       getOpenBillsForCustomer(selectedCustomer.id).then((data) => {
         if (active) setBills(data)
       })
+    } else {
+      setBills([])
     }
     return () => {
       active = false
     }
   }, [selectedCustomer])
+
+  useEffect(() => {
+    if (!selectedCustomer || bills.length === 0) return
+    const paymentDate = form.paymentDate ? new Date(form.paymentDate) : new Date()
+    const takenBills = bills.map((b) => ({
+      id: b.id,
+      billingPeriodId: b.billingPeriodId,
+      takenAt: effectiveBillTakenDate({
+        billingDate: b.billingDate,
+        runUploadedAt: b.runUploadedAt,
+        createdAt: b.createdAt,
+      }),
+    }))
+    const periodWindows = (
+      billingPeriods.length > 0
+        ? billingPeriods.filter((p) => p.status !== "archived")
+        : bills.map((b) => ({
+            id: b.billingPeriodId,
+            status: b.periodStatus,
+            startDate: b.periodStart,
+            endDate: b.periodEnd,
+          }))
+    ).map((p) => ({
+      id: p.id,
+      status: p.status,
+      startDate: p.startDate,
+      endDate: p.endDate,
+    }))
+    const resolved = resolveBillForPayment(
+      paymentDate,
+      takenBills,
+      periodWindows,
+      activePeriodId || null,
+    )
+    if (!resolved.billingRecordId && !resolved.billingPeriodId) return
+    setForm((f) => {
+      const nextRecordId = resolved.billingRecordId || ""
+      const nextPeriodId = resolved.billingPeriodId || f.billingPeriodId
+      if (f.billingRecordId === nextRecordId && f.billingPeriodId === nextPeriodId) {
+        return f
+      }
+      return {
+        ...f,
+        billingRecordId: nextRecordId,
+        billingPeriodId: nextPeriodId,
+      }
+    })
+  }, [selectedCustomer, bills, form.paymentDate, activePeriodId, billingPeriods])
 
   useEffect(() => {
     if (!customerQuery.trim() || selectedCustomer) {
@@ -421,6 +479,7 @@ export function ReceiptForm({
                 {bills.map((b) => (
                   <SelectItem key={b.id} value={b.id}>
                     {b.periodName} - {formatUGX(Number(b.totalDue))}
+                    {b.billingDate ? ` · ${formatDate(b.billingDate)}` : ""}
                   </SelectItem>
                 ))}
               </SelectContent>

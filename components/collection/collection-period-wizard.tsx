@@ -10,7 +10,6 @@ import { Textarea } from "@/components/ui/textarea"
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -25,27 +24,23 @@ import {
 } from "@/components/ui/select"
 import { Plus, Loader2 } from "lucide-react"
 import { toast } from "sonner"
-
-const MONTHS = [
-  "January", "February", "March", "April", "May", "June",
-  "July", "August", "September", "October", "November", "December"
-]
+import { MONTH_NAMES, nextCollectionPeriodPlan } from "@/lib/billing/period-dates"
 
 export function CollectionPeriodWizard() {
   const router = useRouter()
   const [open, setOpen] = useState(false)
   const [pending, startTransition] = useTransition()
 
-  const now = new Date()
+  const planned = nextCollectionPeriodPlan()
   const [formData, setFormData] = useState({
-    month: String(now.getMonth() + 1),
-    year: String(now.getFullYear()),
-    start: now.toISOString().split('T')[0],
-    end: new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0],
+    month: String(planned.bill.month),
+    year: String(planned.bill.year),
+    start: planned.bounds.startDate.toISOString().slice(0, 10),
+    end: planned.bounds.endDate.toISOString().slice(0, 10),
     description: "",
   })
 
-  const periodName = `${MONTHS[Number(formData.month) - 1]} ${formData.year}`
+  const periodName = `${MONTH_NAMES[Number(formData.month) - 1]} ${formData.year}`
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -62,7 +57,7 @@ export function CollectionPeriodWizard() {
         })
 
         if (result.ok) {
-          toast.success(`Billing period ${periodName} created as Draft`)
+          toast.success(`Billing period ${periodName} created`)
           setOpen(false)
           router.refresh()
         }
@@ -84,15 +79,12 @@ export function CollectionPeriodWizard() {
         <form onSubmit={handleSubmit}>
           <DialogHeader>
             <DialogTitle>Create Billing Period</DialogTitle>
-            <DialogDescription>
-              Set up a new billing period for imported monthly billing. Initial status will be <strong>Draft</strong>.
-            </DialogDescription>
           </DialogHeader>
 
           <div className="grid gap-4 py-4">
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label>Month</Label>
+                <Label>Bill month</Label>
                 <Select
                   value={formData.month}
                   onValueChange={(v) => v && setFormData(prev => ({ ...prev, month: v }))}
@@ -101,8 +93,8 @@ export function CollectionPeriodWizard() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {MONTHS.map((m, i) => (
-                      <SelectItem key={i} value={String(i + 1)}>{m}</SelectItem>
+                    {MONTH_NAMES.map((m, i) => (
+                      <SelectItem key={m} value={String(i + 1)}>{m}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>

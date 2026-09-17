@@ -20,7 +20,7 @@ import { user } from "./auth"
 // ---------------------------------------------------------------------------
 
 /**
- * Represents a billing cycle (e.g., July 2026).
+ * Represents a billing cycle (e.g., August 2026 bills collected in September).
  */
 export const billingPeriod = pgTable(
   "billing_period",
@@ -32,7 +32,7 @@ export const billingPeriod = pgTable(
     startDate: timestamp("startDate").notNull(),
     endDate: timestamp("endDate").notNull(),
     description: text("description"),
-    status: text("status").notNull().default("draft"), // draft, validated, active, closed, archived
+    status: text("status").notNull().default("draft"), // draft, validated, active, closed, archived — archive never deletes rows
     isOpen: boolean("isOpen").notNull().default(true), // Legacy: kept for compatibility
     isLocked: boolean("isLocked").notNull().default(false), // Legacy: kept for compatibility
 

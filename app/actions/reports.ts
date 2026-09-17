@@ -18,6 +18,7 @@ import { requireUser } from "@/lib/session"
 import { applyReceiptScope, applyCustomerScope } from "@/lib/scopes"
 import { and, eq, ne, sql, desc, sum, count, gte, inArray, or, ilike } from "drizzle-orm"
 import { canViewReports, canUploadBilling, canViewAllData } from "@/lib/permissions"
+import { closeExpiredActivePeriods } from "@/lib/billing/close-expired"
 import { ROLES } from "@/lib/permissions/roles"
 import { getCategoryEquivalents } from "@/lib/utils/category"
 
@@ -178,6 +179,7 @@ export async function getDashboardStats(params: {
 }) {
   const current = await requireUser()
   if (!canViewReports(current)) throw new Error("Forbidden")
+  await closeExpiredActivePeriods()
 
   // Apply Scopes
   const receiptScope = applyReceiptScope(current)

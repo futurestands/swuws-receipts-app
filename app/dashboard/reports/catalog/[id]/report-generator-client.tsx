@@ -28,7 +28,7 @@ import * as XLSX from "xlsx"
 export function ReportGeneratorClient({ reportId, title }: { reportId: string, title: string }) {
   const [pending, startTransition] = useTransition()
   const [data, setData] = useState<Array<Record<string, unknown>> | null>(null)
-  const [periods, setPeriods] = useState<{ id: string; periodName: string }[]>([])
+  const [periods, setPeriods] = useState<{ id: string; periodName: string; status: string }[]>([])
 
   // Filters
   const [startDate, setStartDate] = useState("")
