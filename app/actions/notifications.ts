@@ -50,6 +50,16 @@ export async function getUnreadCount() {
   }
 }
 
+export async function getNotificationHistory(limit = 50) {
+  const current = await requireUser()
+  return db
+    .select()
+    .from(notification)
+    .where(eq(notification.userId, current.id))
+    .orderBy(desc(notification.createdAt))
+    .limit(limit)
+}
+
 export async function markAsRead(id: string) {
   const current = await requireUser()
   await db.update(notification)
@@ -59,6 +69,7 @@ export async function markAsRead(id: string) {
       eq(notification.userId, current.id)
     ))
   revalidatePath("/")
+  revalidatePath("/dashboard/notifications")
   return { ok: true }
 }
 
@@ -71,6 +82,7 @@ export async function markAllAsRead() {
       eq(notification.status, 'unread')
     ))
   revalidatePath("/")
+  revalidatePath("/dashboard/notifications")
   return { ok: true }
 }
 
@@ -89,10 +101,13 @@ export async function createNotification(data: {
   const current = await requireUser()
   const authorized =
     current.role === ROLES.SYSTEM_ADMIN ||
+    (current.roleLevel ?? 0) >= 10 ||
+    (await hasPermission(current, "receipts.create")) ||
     (await hasPermission(current, "reconciliation.run")) ||
     (await hasPermission(current, "reconciliation.approve")) ||
     (await hasPermission(current, "branding.manage")) ||
     (await hasPermission(current, "collection.view")) ||
+    (await hasPermission(current, "collection.activate")) ||
     (await hasPermission(current, "crm.view")) ||
     (await hasPermission(current, "crm.complaints.manage")) ||
     (await hasPermission(current, "crm.sms.create")) ||

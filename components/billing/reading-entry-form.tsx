@@ -14,14 +14,13 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog"
 import { toast } from "sonner"
-import { formatUGX } from "@/lib/format"
+import { formatUGX, formatDateTime, formatDate } from "@/lib/format"
 import { CheckCircle2, Calculator, Send, Search, User, Printer, XCircle, History, Trash2, Smartphone, Loader2, ShieldAlert } from "lucide-react"
 import { getTariffForCustomer, submitMeterReading, searchCustomersForReading, cancelMeterReading, sendReadingSms, reportBillingDiscrepancy } from "@/app/actions/billing-engine"
 import { calculateBill, type BillingCalculation } from "@/lib/billing/math"
 import type { Customer, BillingPeriod, TariffConfiguration } from "@/lib/db/schema"
 import { cn } from "@/lib/utils"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { formatDateTime } from "@/lib/format"
 
 export function ReadingEntryForm({
   activePeriod,
@@ -62,9 +61,14 @@ export function ReadingEntryForm({
     isSmsSent: boolean;
   } | null>(null)
   const [history, setHistory] = useState<Array<Record<string, unknown>>>(initialHistory)
+  const [printedAt, setPrintedAt] = useState("")
   const [isPending, startTransition] = useTransition()
   const [isSendingSms, setIsSendingSms] = useState(false)
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    setPrintedAt(formatDateTime(new Date()))
+  }, [])
 
   // Quick Search Logic
   useEffect(() => {
@@ -479,7 +483,7 @@ export function ReadingEntryForm({
 
           <div className="mt-8 text-center text-[10px] italic">
             <p>Proof of Meter Reading. Please pay promptly.</p>
-            <p suppressHydrationWarning>Printed: {new Date().toLocaleString()}</p>
+            <p>Printed: {printedAt || "—"}</p>
           </div>
         </div>
       </div>
@@ -568,7 +572,7 @@ export function ReadingEntryForm({
 
                 <div className="flex justify-between pt-1 border-t border-amber-100">
                   <span className="text-muted-foreground">Last Recorded Date:</span>
-                  <span className="font-medium">{selectedCustomer.lastReadingDate ? new Date(selectedCustomer.lastReadingDate).toLocaleDateString() : 'Never'}</span>
+                  <span className="font-medium">{selectedCustomer.lastReadingDate ? formatDate(selectedCustomer.lastReadingDate) : 'Never'}</span>
                 </div>
               </div>
             )}

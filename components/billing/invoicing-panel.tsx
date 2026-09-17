@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { toast } from "sonner"
-import { formatUGX, formatDate } from "@/lib/format"
+import { formatUGX, formatDate, formatDateTime } from "@/lib/format"
 import { FileText, Printer, Search, User, XCircle, Loader2 } from "lucide-react"
 import { searchCustomersForReading, getCustomerInvoiceData } from "@/app/actions/billing-engine"
 import type { Customer } from "@/lib/db/schema"
@@ -22,7 +22,12 @@ export function InvoicingPanel() {
   const [isLoading, setIsLoading] = useState(false)
   const [isPrinting, setIsPrinting] = useState(false)
   const [isPending, startTransition] = useTransition()
+  const [printedAt, setPrintedAt] = useState("")
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    setPrintedAt(formatDateTime(new Date()))
+  }, [])
 
   // Quick Search Logic
   useEffect(() => {
@@ -263,7 +268,7 @@ export function InvoicingPanel() {
             <div className="mt-8 text-center text-[10px] italic space-y-1">
               <p>This is an official duplicate copy for your records.</p>
               <p>Please pay via authorized channels (Bank, Mobile Money, COs).</p>
-              <p suppressHydrationWarning>Printed: {new Date().toLocaleString()}</p>
+              <p>Printed: {printedAt || "—"}</p>
             </div>
           </div>
         </div>

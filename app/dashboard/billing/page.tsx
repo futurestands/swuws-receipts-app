@@ -10,7 +10,7 @@ import {
 import { getCollectionSummary } from "@/app/actions/billing"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Upload, FileText, Activity, AlertCircle, Calendar, Wallet, Users, TrendingUp, HandCoins } from "lucide-react"
-import { formatUGX, formatDateTime } from "@/lib/format"
+import { formatUGX, formatDateTime, formatCount } from "@/lib/format"
 import { CollectionPeriodWizard } from "@/components/collection/collection-period-wizard"
 import { CollectionStatusBadge } from "@/components/collection/collection-status-badge"
 import { CollectionStatusActions } from "@/components/collection/collection-status-actions"
@@ -107,7 +107,7 @@ export default async function CollectionManagementPage() {
                 <StatCard
                   icon={Activity}
                   label="RECEIPTS PRINTED"
-                  value={summary.receiptsToday.toLocaleString()}
+                  value={formatCount(summary.receiptsToday)}
                 />
               </StatCardGrid>
 
@@ -152,7 +152,7 @@ export default async function CollectionManagementPage() {
                   endDate={summary.displayPeriod.endDate}
                 />
 
-                <LinkButton href="/dashboard/billing/records" variant="outline" icon="FileText">
+                <LinkButton href="/dashboard/billing/history" variant="outline" icon="FileText">
                   View Records
                 </LinkButton>
               </div>

@@ -3,7 +3,7 @@ import Link from "next/link"
 import { getDailyImportDetails, getDailyImportRecords } from "@/app/actions/daily-collections"
 import { getReconciliationSummary } from "@/app/actions/reconciliation"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
-import { formatUGX, formatDate } from "@/lib/format"
+import { formatUGX, formatDate, formatCount } from "@/lib/format"
 import { ArrowLeft, FileText, Database, Calendar, User, CheckCircle2, AlertCircle } from "lucide-react"
 import { DailyRecordTable } from "./daily-record-table"
 import { ReconcileTrigger } from "./reconcile-trigger"
@@ -52,7 +52,7 @@ export default async function DailyImportDetailsPage({ params }: { params: Promi
       <StatCardGrid className="sm:grid-cols-2 lg:grid-cols-4">
         <StatCard icon={Calendar} label="Business Date" value={formatDate(batch.businessDate)} />
         <StatCard icon={Database} label="Total Amount" value={formatUGX(batch.totalAmount)} />
-        <StatCard icon={FileText} label="Total Records" value={batch.totalRecords.toLocaleString()} />
+        <StatCard icon={FileText} label="Total Records" value={formatCount(batch.totalRecords)} />
         <StatCard icon={User} label="Imported By" value={batch.uploadedByName} />
       </StatCardGrid>
 

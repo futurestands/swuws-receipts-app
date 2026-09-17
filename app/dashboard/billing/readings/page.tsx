@@ -1,5 +1,5 @@
 import { requireUser } from "@/lib/session"
-import { canIssueReceipt } from "@/lib/permissions"
+import { canIssueReceipt, canViewMeterReadings } from "@/lib/permissions"
 import { db } from "@/lib/db"
 import { billingPeriod } from "@/lib/db/schema"
 import { eq } from "drizzle-orm"
@@ -12,8 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
 export default async function MeterReadingsPage() {
   const user = await requireUser()
-  // Reusing canIssueReceipt as it represents field agents/COs
-  if (!canIssueReceipt(user)) throw new Error("Forbidden")
+  if (!canIssueReceipt(user) && !canViewMeterReadings(user)) throw new Error("Forbidden")
   await closeExpiredActivePeriods()
 
   // 1. Get the current active billing period

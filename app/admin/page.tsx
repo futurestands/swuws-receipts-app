@@ -2,6 +2,7 @@ import { listAgents, getAuditLogs, getSystemStats, getCollectionsSummary, getPri
 import { listClusters, listBranches, listPaymentMethods, listWaterSchemes, getSettings } from "@/app/actions/settings"
 import { getSmsGatewaySettings } from "@/app/actions/sms-gateway-settings"
 import { getCollectionPeriods } from "@/app/actions/billing"
+import { getOpenSystemErrorCount } from "@/app/actions/system-errors"
 import { AdminTabs } from "@/app/admin/admin-tabs"
 import { getCurrentUser } from "@/lib/session"
 import { listRoles, listAllPermissions } from "@/app/actions/iam"
@@ -9,6 +10,7 @@ import { seedSystemTemplates } from "@/app/actions/template-actions"
 import { loadTariffRows } from "@/lib/billing/list-tariffs"
 import { loadTemplateRows } from "@/lib/templates/list-templates"
 import { ROLES } from "@/lib/permissions/roles"
+import { LinkButton } from "@/components/ui/link-button"
 import {
   canViewUsers,
   canManageSchemes,
@@ -91,13 +93,14 @@ export default async function AdminPage() {
       : Promise.resolve(EMPTY_SMS),
   ])
 
-  const [agentsResult, auditLogs, iamRoles, allPermissions] = await Promise.all([
+  const [agentsResult, auditLogs, iamRoles, allPermissions, openErrorCount] = await Promise.all([
     canViewUsersVal
       ? loadOrFallback("agents", () => listAgents({ page: 1, pageSize: 25 }), EMPTY_AGENTS)
       : Promise.resolve(EMPTY_AGENTS),
     canAuditVal ? loadOrFallback("audit", () => getAuditLogs(200), []) : Promise.resolve([]),
     canManageIAMVal ? loadOrFallback("roles", () => listRoles(), []) : Promise.resolve([]),
     canManageIAMVal ? loadOrFallback("permissions", () => listAllPermissions(), []) : Promise.resolve([]),
+    canAuditVal ? loadOrFallback("errors", () => getOpenSystemErrorCount(), 0) : Promise.resolve(0),
   ])
 
   const [stats, collections, printingStats] = await Promise.all([
@@ -159,11 +162,18 @@ export default async function AdminPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-xl font-semibold">Admin console</h1>
-        <p className="text-sm text-muted-foreground">
-          Manage users, branches, payment methods, branding, and review the audit trail.
-        </p>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h1 className="text-xl font-semibold">Admin console</h1>
+          <p className="text-sm text-muted-foreground">
+            Manage users, branches, payment methods, branding, and review the audit trail.
+          </p>
+        </div>
+        {canAuditVal && (
+          <LinkButton href="/admin/errors" variant="outline" icon="AlertTriangle">
+            System errors{openErrorCount > 0 ? ` (${openErrorCount})` : ""}
+          </LinkButton>
+        )}
       </div>
       <AdminTabs
         agents={agentsResult.agents}

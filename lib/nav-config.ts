@@ -74,7 +74,12 @@ export function getNavSections(current: UserPermissionsContext): NavSection[] {
     }
 
     if (canViewControlCenter(current)) {
-       finance.push({ href: "/dashboard/reconciliation/exceptions", label: "Recon Exceptions", icon: "AlertTriangle", activeMatch: "/dashboard/reconciliation/exceptions" })
+       // The exceptions list requires reconciliation.exceptions.manage, not
+       // reconciliation.view. Showing it for every Control Center user sent
+       // officers to a Forbidden page.
+       if (hasPerm(current, "reconciliation.exceptions.manage")) {
+         finance.push({ href: "/dashboard/reconciliation/exceptions", label: "Recon Exceptions", icon: "AlertTriangle", activeMatch: "/dashboard/reconciliation/exceptions" })
+       }
        finance.push({ href: "/dashboard/reconciliation/stats", label: "Control Center", icon: "Gauge", activeMatch: "/dashboard/reconciliation" })
     }
 

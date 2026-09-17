@@ -7,7 +7,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Search, ChevronLeft, ChevronRight, SlidersHorizontal } from "lucide-react"
-import { formatUGX, formatDate } from "@/lib/format"
+import { formatUGX, formatDate, formatCount } from "@/lib/format"
 import {
   Select,
   SelectContent,
@@ -141,7 +141,7 @@ export function DailyRecordTable({ batchId, initialData }: DailyRecordTableProps
 
       <div className="flex items-center justify-between">
         <p className="text-xs text-muted-foreground">
-          Showing <span className="font-bold">{data.records.length}</span> of <span className="font-bold">{data.total.toLocaleString()}</span> records
+          Showing <span className="font-bold">{data.records.length}</span> of <span className="font-bold">{formatCount(data.total)}</span> records
         </p>
         <div className="flex items-center gap-2">
           <Button

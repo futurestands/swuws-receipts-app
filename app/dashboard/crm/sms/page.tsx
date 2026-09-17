@@ -5,7 +5,7 @@ import { PageHeader } from "@/components/ui/page-header"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
-import { formatDateTime } from "@/lib/format"
+import { formatDateTime, formatCount } from "@/lib/format"
 import { Button } from "@/components/ui/button"
 import { Send, List, Clock } from "lucide-react"
 import { SmsImportModal } from "@/components/crm/sms-import-modal"
@@ -108,7 +108,7 @@ export default async function SmsHubPage({
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-xs font-bold text-muted-foreground uppercase">Sent Messages</p>
-                <p className="text-2xl font-black text-emerald-600">{stats.sms.sentMessages.toLocaleString()}</p>
+                <p className="text-2xl font-black text-emerald-600">{formatCount(stats.sms.sentMessages)}</p>
               </div>
               <Send className="h-8 w-8 text-emerald-200" />
             </div>

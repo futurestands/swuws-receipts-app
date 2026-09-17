@@ -176,3 +176,36 @@ export const smsGatewayConfig = pgTable("sms_gateway_config", {
 })
 
 export type SmsGatewayConfig = typeof smsGatewayConfig.$inferSelect
+
+/**
+ * Operator-facing crash log. Grouped by fingerprint so the same fault
+ * does not open a new row every time a field officer hits it.
+ */
+export const systemError = pgTable(
+  "system_error",
+  {
+    id: text("id").primaryKey(),
+    fingerprint: text("fingerprint").notNull(),
+    message: text("message").notNull(),
+    digest: text("digest"),
+    stack: text("stack"),
+    path: text("path"),
+    source: text("source").notNull().default("client"),
+    userId: text("userId"),
+    userName: text("userName"),
+    userEmail: text("userEmail"),
+    seenBy: jsonb("seenBy").$type<Array<{ id: string; name: string; email?: string | null; role?: string | null }>>(),
+    occurrenceCount: integer("occurrenceCount").notNull().default(1),
+    status: text("status").notNull().default("open"),
+    firstSeenAt: timestamp("firstSeenAt").notNull().defaultNow(),
+    lastSeenAt: timestamp("lastSeenAt").notNull().defaultNow(),
+    resolvedAt: timestamp("resolvedAt"),
+    resolvedById: text("resolvedById").references(() => user.id, { onDelete: "set null" }),
+  },
+  (table) => ({
+    fingerprintIdx: uniqueIndex("system_error_fingerprint_idx").on(table.fingerprint),
+    statusSeenIdx: index("system_error_status_seen_idx").on(table.status, table.lastSeenAt),
+  }),
+)
+
+export type SystemError = typeof systemError.$inferSelect

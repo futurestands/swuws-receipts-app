@@ -2,7 +2,8 @@ import { redirect } from "next/navigation"
 import { getCurrentUser } from "@/lib/session"
 import { AppShell } from "@/components/layout/app-shell"
 import { getNavSections } from "@/lib/nav-config"
-import { ROLE_LABELS, type Role, ROLES } from "@/lib/permissions/roles"
+import { ROLE_LABELS, type Role } from "@/lib/permissions/roles"
+import { canConfigureSystem } from "@/lib/permissions"
 import { getSettings } from "@/app/actions/settings"
 
 export const dynamic = "force-dynamic"
@@ -15,8 +16,8 @@ export default async function DashboardLayout({ children }: { children: React.Re
 
   if (!current) redirect("/login")
 
-  // SECURITY: Maintenance Mode enforcement
-  if (settings.maintenanceMode && current.role !== ROLES.SYSTEM_ADMIN) {
+  // SECURITY: Maintenance Mode enforcement (dual IAM: admin role or grade 10+)
+  if (settings.maintenanceMode && !canConfigureSystem(current)) {
     redirect("/maintenance")
   }
 

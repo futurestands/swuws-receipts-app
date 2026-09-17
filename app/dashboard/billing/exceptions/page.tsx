@@ -1,4 +1,6 @@
 import { getBillingDiscrepancies } from "@/app/actions/billing-engine"
+import { requireUser } from "@/lib/session"
+import { canConfigureSystem } from "@/lib/permissions"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
@@ -10,7 +12,9 @@ import { EmptyState } from "@/components/ui/empty-state"
 import { DiscrepancyResolutionCell } from "./discrepancy-resolution-cell"
 
 export default async function BillingExceptionsPage() {
+  const current = await requireUser()
   const discrepancies = await getBillingDiscrepancies()
+  const canResolve = canConfigureSystem(current)
 
   return (
     <div className="space-y-6">
@@ -86,7 +90,7 @@ export default async function BillingExceptionsPage() {
                         {d.reason}
                       </TableCell>
                       <TableCell className="text-right">
-                        {d.status === 'open' ? (
+                        {d.status === 'open' && canResolve ? (
                           <DiscrepancyResolutionCell id={d.id} customerName={d.customerName} sourceType={d.sourceType} />
                         ) : (
                           <Badge variant="secondary" className="capitalize">{d.status}</Badge>

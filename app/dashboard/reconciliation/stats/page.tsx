@@ -15,6 +15,7 @@ import {
 import { Progress } from "@/components/ui/progress"
 import Link from "next/link"
 import { PageHeader } from "@/components/ui/page-header"
+import { formatCount, formatDate } from "@/lib/format"
 
 export default async function FinancialOpsPage() {
   const data = await getFinancialOpsDashboard()
@@ -47,7 +48,7 @@ export default async function FinancialOpsPage() {
             <div className="text-2xl font-bold">{summary.reconRate.toFixed(1)}%</div>
             <Progress value={summary.reconRate} className="h-1 mt-2" />
             <p className="text-[10px] text-muted-foreground mt-2">
-              {summary.matchedReceipts.toLocaleString()} of {summary.totalReceipts.toLocaleString()} receipts matched
+              {formatCount(summary.matchedReceipts)} of {formatCount(summary.totalReceipts)} receipts matched
             </p>
           </CardContent>
         </Card>
@@ -85,7 +86,7 @@ export default async function FinancialOpsPage() {
           <CardContent>
             <div className="text-2xl font-bold">{pendingApprovals?.count || 0}</div>
             <p className="text-[10px] text-muted-foreground mt-1">
-               {oldestPendingDate ? `Oldest: ${new Date(oldestPendingDate).toLocaleDateString()}` : "Batches awaiting sign-off"}
+               {oldestPendingDate ? `Oldest: ${formatDate(oldestPendingDate)}` : "Batches awaiting sign-off"}
             </p>
           </CardContent>
         </Card>
@@ -119,7 +120,7 @@ export default async function FinancialOpsPage() {
                <div key={c.method} className="space-y-1.5">
                   <div className="flex justify-between text-xs">
                      <span className="capitalize">{c.method.replace(/_/g, ' ')}</span>
-                     <span className="font-bold">{c.count.toLocaleString()} rows</span>
+                     <span className="font-bold">{formatCount(c.count)} rows</span>
                   </div>
                   <Progress
                     value={(c.count / summary.matchedReceipts) * 100}

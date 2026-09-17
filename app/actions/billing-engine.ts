@@ -7,7 +7,7 @@ import { randomUUID } from "crypto"
 import { requireUser } from "@/lib/session"
 import { calculateBill } from "@/lib/billing/math"
 import { revalidatePath, revalidateTag } from "next/cache"
-import { canConfigureSystem, canIssueReceipt } from "@/lib/permissions"
+import { canConfigureSystem, canIssueReceipt, canViewBillingExceptions, canViewMeterReadings } from "@/lib/permissions"
 import { ROLES } from "@/lib/permissions/roles"
 import { writeAudit } from "@/lib/audit"
 import { closeExpiredActivePeriods } from "@/lib/billing/close-expired"
@@ -376,18 +376,23 @@ export async function reportBillingDiscrepancy(data: {
     status: 'open',
   })
 
-  // Notify Admins
-  const admins = await db.select({ id: userTable.id }).from(userTable).where(eq(userTable.role, 'admin'))
-  for (const admin of admins) {
-    await createNotification({
-      userId: admin.id,
-      type: "billing_discrepancy",
-      title: "Billing Discrepancy Reported",
-      message: `Agent ${user.name} reported a conflict for a customer in the ${data.billingPeriodId} period.`,
-      priority: "high",
-      relatedEntityType: "customer",
-      relatedEntityId: data.customerId
-    })
+  // Bell alert is best-effort. The exception row is already saved; failing
+  // here made offline retry look unsuccessful and could insert a second row.
+  try {
+    const admins = await db.select({ id: userTable.id }).from(userTable).where(eq(userTable.role, "admin"))
+    for (const admin of admins) {
+      await createNotification({
+        userId: admin.id,
+        type: "billing_discrepancy",
+        title: "Billing Discrepancy Reported",
+        message: `Agent ${user.name} reported a conflict for a customer in the ${data.billingPeriodId} period.`,
+        priority: "high",
+        relatedEntityType: "customer",
+        relatedEntityId: data.customerId,
+      })
+    }
+  } catch (err) {
+    console.warn("Billing discrepancy saved but admin notification failed", err)
   }
 
   return { ok: true }
@@ -398,7 +403,7 @@ export async function reportBillingDiscrepancy(data: {
  */
 export async function getBillingDiscrepancies() {
   const user = await requireUser()
-  if (user.role !== ROLES.SYSTEM_ADMIN && (user.roleLevel ?? 0) < 10) throw new Error("Forbidden")
+  if (!canViewBillingExceptions(user)) throw new Error("Forbidden")
 
   return db
     .select({
@@ -537,7 +542,7 @@ export async function resolveBillingDiscrepancy(id: string, action: 'accept' | '
 export async function getRecentMeterReadings(limit = 20) {
   try {
     const user = await requireUser()
-    if (!canIssueReceipt(user)) throw new Error("Forbidden")
+    if (!canIssueReceipt(user) && !canViewMeterReadings(user)) throw new Error("Forbidden")
 
     const rows = await db
       .select({

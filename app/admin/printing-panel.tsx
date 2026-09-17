@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Button } from "@/components/ui/button"
 import { Printer } from "lucide-react"
+import { formatDateTime } from "@/lib/format"
 
 export type PrintingStats = {
   mostReprinted: { id: string; receiptNumber: string; customerName: string; printCount: number }[]
@@ -207,7 +208,7 @@ export function PrintingPanel({ stats }: { stats: PrintingStats }) {
                     {p.isReprint ? `Reprint #${p.printNumber}` : "Original"}
                   </TableCell>
                   <TableCell className="text-xs">
-                    {new Date(p.printedAt).toLocaleString()}
+                    {formatDateTime(p.printedAt)}
                   </TableCell>
                   <TableCell className="font-mono text-[10px]">{p.ipAddress}</TableCell>
                 </TableRow>

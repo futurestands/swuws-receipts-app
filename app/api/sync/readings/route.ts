@@ -1,10 +1,7 @@
-import { db } from "@/lib/db"
-import { meterReading } from "@/lib/db/schema"
-import { submitMeterReading } from "@/app/actions/billing-engine"
+import { syncOfflineMeterReadingBatch } from "@/app/actions/offline-upload"
 import { requireUser } from "@/lib/session"
-import { canIssueReceipt } from "@/lib/permissions"
+import { canIssueReceipt, canViewMeterReadings } from "@/lib/permissions"
 import { NextResponse } from "next/server"
-import { eq } from "drizzle-orm"
 
 /**
  * IDEMPOTENT BATCH SYNC FOR METER READINGS
@@ -12,7 +9,7 @@ import { eq } from "drizzle-orm"
 export async function POST(req: Request) {
   try {
     const current = await requireUser()
-    if (!canIssueReceipt(current)) {
+    if (!canIssueReceipt(current) && !canViewMeterReadings(current)) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 })
     }
 
@@ -23,54 +20,13 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Invalid batch format" }, { status: 400 })
     }
 
-    const results = []
-
-    for (const item of batch) {
-      try {
-        // 1. Double check idempotency
-        if (item.data.idempotencyKey) {
-          const [existing] = await db
-            .select({ id: meterReading.id })
-            .from(meterReading)
-            .where(eq(meterReading.idempotencyKey, item.data.idempotencyKey))
-            .limit(1)
-
-          if (existing) {
-            results.push({
-              tempId: item.tempId,
-              success: true,
-              serverId: existing.id,
-              deduplicated: true
-            })
-            continue
-          }
-        }
-
-        // 2. Call standard logic
-        const res = await submitMeterReading({
-          ...item.data,
-          sendSms: true
-        })
-
-        if (res.ok) {
-          results.push({
-            tempId: item.tempId,
-            success: true,
-            serverId: res.readingId
-          })
-        }
-      } catch (err: any) {
-        results.push({
-          tempId: item.tempId,
-          success: false,
-          error: err.message || "Sync failed"
-        })
-      }
-    }
-
+    const results = await syncOfflineMeterReadingBatch(batch)
     return NextResponse.json(results)
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error("Batch reading sync error:", err)
-    return NextResponse.json({ error: err.message || "Internal server error" }, { status: 500 })
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : "Internal server error" },
+      { status: 500 },
+    )
   }
 }

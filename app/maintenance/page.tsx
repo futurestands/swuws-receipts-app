@@ -2,7 +2,7 @@ import { Hammer, ShieldAlert } from "lucide-react"
 import { getSettings } from "@/app/actions/settings"
 import { redirect } from "next/navigation"
 import { getCurrentUser } from "@/lib/session"
-import { ROLES } from "@/lib/permissions/roles"
+import { canConfigureSystem } from "@/lib/permissions"
 
 export default async function MaintenancePage() {
   const [current, settings] = await Promise.all([
@@ -10,8 +10,7 @@ export default async function MaintenancePage() {
     getSettings()
   ])
 
-  // If maintenance mode is off, or user is admin, they shouldn't be here
-  if (!settings.maintenanceMode || (current && current.role === ROLES.SYSTEM_ADMIN)) {
+  if (!settings.maintenanceMode || (current && canConfigureSystem(current))) {
     redirect("/dashboard")
   }
 

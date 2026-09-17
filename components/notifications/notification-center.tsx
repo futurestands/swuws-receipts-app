@@ -145,12 +145,26 @@ export function NotificationCenter() {
 }
 
 function getLink(type: string, id: string | null) {
-  if (!id) return "/dashboard"
   switch (type) {
-    case 'reconciliation_exception': return `/dashboard/reconciliation/exceptions/${id}`
-    case 'daily_collection_import': return `/dashboard/billing/daily/${id}`
-    case 'receipt': return `/dashboard/receipts/${id}`
-    case 'app_update': return `/dashboard/account`
-    default: return "/dashboard"
+    case "reconciliation_exception":
+      return id ? `/dashboard/reconciliation/exceptions/${id}` : "/dashboard/reconciliation/exceptions"
+    case "daily_collection_import":
+      return id ? `/dashboard/billing/daily/${id}` : "/dashboard/billing/daily"
+    case "receipt":
+      return id ? `/dashboard/receipts/${id}` : "/dashboard"
+    case "app_update":
+      return "/dashboard/account"
+    case "crm_complaint":
+      return "/dashboard/crm/complaints"
+    case "crm_sms_batch":
+      return "/dashboard/crm/sms"
+    case "billing_period":
+      return "/dashboard/billing"
+    case "customer":
+      return id ? `/dashboard/customers/${id}` : "/dashboard/customers"
+    case "system_error":
+      return "/admin/errors"
+    default:
+      return "/dashboard"
   }
 }

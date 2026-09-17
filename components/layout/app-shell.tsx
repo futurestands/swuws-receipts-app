@@ -18,6 +18,13 @@ import { Badge } from "@/components/ui/badge"
 
 const COLLAPSE_KEY = "swuws:sidebar-collapsed"
 
+/** Official letterhead split used on receipts: "… Umbrella" / "of Water and Sanitation". */
+function letterheadLines(name: string) {
+  const match = name.trim().match(/^(.*?)\s+(of\s+.+)$/i)
+  if (!match?.[1] || !match[2]) return null
+  return { primary: match[1], secondary: match[2] }
+}
+
 export function AppShell({
   sections,
   userName,
@@ -50,6 +57,7 @@ export function AppShell({
   const [forcedOffline, setForcedOffline] = useState(false)
   const pathname = usePathname()
   const hideSidebar = pathname.startsWith("/dashboard/offline") || forcedOffline
+  const lines = letterheadLines(orgName)
 
   useEffect(() => {
     // 1. Initial collapsed state from localStorage (prevents hydration mismatch)
@@ -179,7 +187,7 @@ export function AppShell({
 
       {/* Main column */}
       <div className="flex min-w-0 flex-1 flex-col h-screen overflow-hidden">
-        <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center gap-2 overflow-hidden border-b bg-card/95 px-3 backdrop-blur supports-backdrop-filter:bg-card/80 sm:gap-3 sm:px-4 md:px-6 no-print pt-[env(safe-area-inset-top)]">
+        <header className="sticky top-0 z-30 flex h-16 shrink-0 items-center gap-1.5 overflow-hidden border-b bg-card/95 px-2 backdrop-blur supports-backdrop-filter:bg-card/80 sm:h-14 sm:gap-3 sm:px-4 md:px-6 no-print pt-[env(safe-area-inset-top)]">
           {hideSidebar ? (
             <Link
               href="/dashboard"
@@ -200,13 +208,31 @@ export function AppShell({
             </Button>
           )}
 
-          <div className="@container flex min-w-0 flex-1 items-center justify-center overflow-hidden px-2">
-            <strong
-              title={orgName}
-              className="block w-full overflow-hidden text-center font-sans font-black uppercase text-brand-blue leading-none tracking-[0.03em] whitespace-nowrap text-[clamp(0.68rem,2.65cqi,1.15rem)]"
-            >
-              {orgName}
-            </strong>
+          <div className="@container flex min-w-0 flex-1 items-center justify-center overflow-hidden px-1">
+            {lines ? (
+              <>
+                <strong
+                  title={orgName}
+                  className="md:hidden text-center font-sans font-black uppercase text-brand-blue leading-[1.2] tracking-[0.05em] text-[0.68rem]"
+                >
+                  <span className="block">{lines.primary}</span>
+                  <span className="block">{lines.secondary}</span>
+                </strong>
+                <strong
+                  title={orgName}
+                  className="hidden md:block w-full overflow-hidden text-center font-sans font-black uppercase text-brand-blue leading-none tracking-[0.03em] whitespace-nowrap text-[clamp(0.8rem,2.65cqi,1.15rem)]"
+                >
+                  {orgName}
+                </strong>
+              </>
+            ) : (
+              <strong
+                title={orgName}
+                className="block w-full overflow-hidden text-center font-sans font-black uppercase text-brand-blue leading-tight tracking-[0.03em] max-md:line-clamp-2 md:truncate md:whitespace-nowrap md:leading-none text-[clamp(0.62rem,2.65cqi,1.15rem)]"
+              >
+                {orgName}
+              </strong>
+            )}
           </div>
 
           <div className="flex shrink-0 items-center gap-2 sm:gap-3">

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react"
 import { sqliteService } from "@/lib/offline/sqlite-service"
 import { pullOfflineCache } from "@/lib/offline/pull-cache"
-import { syncOfflineReceiptBatch, syncOfflineMeterReadingBatch } from "@/app/actions/offline-upload"
+import { syncOfflineReceiptBatch, syncOfflineMeterReadingBatch, type OfflineSyncResult } from "@/app/actions/offline-upload"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
@@ -127,7 +127,8 @@ export function OfflineSearchClient({ agentId }: { agentId: string }) {
     setUploading(true)
     setLastSyncAttempt(Date.now())
     try {
-      // 1. Sync Receipts
+      const allResults: OfflineSyncResult[] = []
+
       if (pendingReceipts.length > 0) {
         const batch = pendingReceipts.map(r => ({
           tempId: r.id,
@@ -148,9 +149,9 @@ export function OfflineSearchClient({ agentId }: { agentId: string }) {
         for (const res of results) {
           await sqliteService.updateQueuedReceiptStatus(res.tempId, res.success ? 'synced' : 'failed', res.serverId, res.error)
         }
+        allResults.push(...results)
       }
 
-      // 2. Sync Readings
       if (pendingReadings.length > 0) {
         const batch = pendingReadings.map(r => ({
           tempId: r.id,
@@ -168,13 +169,23 @@ export function OfflineSearchClient({ agentId }: { agentId: string }) {
         for (const res of results) {
           await sqliteService.updateQueuedReadingStatus(res.tempId, res.success ? 'synced' : 'failed', res.error)
         }
+        allResults.push(...results)
       }
 
       await refreshData()
       await sqliteService.removeSyncedReceipts()
       await sqliteService.removeSyncedReadings()
       await refreshData()
-      toast.success("Push sync completed")
+
+      const failed = allResults.filter((r) => !r.success)
+      const discrepancies = allResults.filter((r) => r.filedAs === "discrepancy")
+      if (failed.length > 0) {
+        toast.error(`${failed.length} item${failed.length === 1 ? "" : "s"} did not upload: ${failed[0].error}`)
+      } else if (discrepancies.length > 0) {
+        toast.success(`Uploaded. ${discrepancies.length} reading${discrepancies.length === 1 ? "" : "s"} already had a monthly bill — sent to Billing Exceptions.`)
+      } else {
+        toast.success("Push sync completed")
+      }
     } catch (err) {
       console.error(err)
       toast.error("Upload failed")
@@ -335,6 +346,9 @@ export function OfflineSearchClient({ agentId }: { agentId: string }) {
                     <div>
                       <p className="font-bold">{r.customerName}</p>
                       <p className="text-xs text-muted-foreground">Receipt · {formatUGX(r.amount)}</p>
+                      {r.status === "failed" && r.error && (
+                        <p className="text-[11px] text-destructive mt-1 leading-snug">{r.error}</p>
+                      )}
                     </div>
                   </div>
                   <div className="flex items-center gap-3">
@@ -357,9 +371,12 @@ export function OfflineSearchClient({ agentId }: { agentId: string }) {
                     <div className="p-2 bg-blue-100 rounded-full">
                       <Calculator className="h-4 w-4 text-blue-600" />
                     </div>
-                    <div>
+                    <div className="min-w-0">
                       <p className="font-bold">{r.customerName}</p>
                       <p className="text-xs text-muted-foreground">Reading · {r.currentReading} m³</p>
+                      {r.status === "failed" && r.error && (
+                        <p className="text-[11px] text-destructive mt-1 leading-snug">{r.error}</p>
+                      )}
                     </div>
                   </div>
                   <StatusBadge status={r.status} error={r.error} />
@@ -523,10 +540,13 @@ function StatusBadge({ status, error }: { status: string, error?: string }) {
   if (status === 'queued') return <div className="flex items-center gap-1 text-orange-600 font-medium text-xs"><Clock className="h-3 w-3" /> Queued</div>
   if (status === 'syncing') return <div className="flex items-center gap-1 text-blue-600 font-medium text-xs"><RefreshCw className="h-3 w-3 animate-spin" /> Syncing</div>
   if (status === 'failed') return (
-    <div className="flex items-center gap-1 text-destructive font-medium text-xs">
+    <button
+      type="button"
+      className="flex items-center gap-1 text-destructive font-medium text-xs shrink-0"
+      onClick={() => error && toast.error(error)}
+    >
       <AlertTriangle className="h-3 w-3" /> Failed
-      <span className="text-[10px] bg-destructive/10 px-1 rounded ml-1" title={error}>Info</span>
-    </div>
+    </button>
   )
   return null
 }

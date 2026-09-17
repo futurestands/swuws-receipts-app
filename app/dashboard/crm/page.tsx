@@ -2,10 +2,10 @@ import { requireUser } from "@/lib/session"
 import { canViewCrm, canConfigureCrm } from "@/lib/permissions"
 import { getCrmStats, seedCrmReferenceData } from "@/app/actions/crm"
 import { PageHeader } from "@/components/ui/page-header"
-import { StatCard, StatCardGrid } from "@/components/ui/stat-card"
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { MessageSquare, Smartphone, CheckCircle2, AlertCircle, Clock, FileBarChart, List, Settings2 } from "lucide-react"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { formatCount } from "@/lib/format"
+import { LinkButton } from "@/components/ui/link-button"
+import { MessageSquare, Smartphone, CheckCircle2, Clock, FileBarChart, List, Settings2 } from "lucide-react"
 
 import Link from "next/link"
 
@@ -28,11 +28,13 @@ export default async function CrmDashboardPage() {
           description="Manage customer relationships, complaints, and communications."
         />
         {canConfig && (
-          <Button asChild variant="outline" size="sm" className="h-9 gap-2 font-black text-[10px] uppercase tracking-widest border-2">
-            <Link href="/dashboard/crm/settings">
-              <Settings2 className="h-4 w-4" /> CRM SETUP
-            </Link>
-          </Button>
+          <LinkButton
+            href="/dashboard/crm/settings"
+            variant="outline"
+            className="h-9 gap-2 font-black text-[10px] uppercase tracking-widest border-2"
+          >
+            <Settings2 className="h-4 w-4" /> CRM SETUP
+          </LinkButton>
         )}
       </div>
 
@@ -66,7 +68,7 @@ export default async function CrmDashboardPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-xs font-bold text-muted-foreground uppercase">Sent Messages</p>
-                <p className="text-2xl font-black text-emerald-600">{stats.sms.sentMessages.toLocaleString()}</p>
+                <p className="text-2xl font-black text-emerald-600">{formatCount(stats.sms.sentMessages)}</p>
               </div>
               <CheckCircle2 className="h-8 w-8 text-emerald-200" />
             </div>
@@ -116,7 +118,7 @@ export default async function CrmDashboardPage() {
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">Successful:</span>
-                  <span className="font-bold text-emerald-600">{stats.sms.sentMessages.toLocaleString()}</span>
+                  <span className="font-bold text-emerald-600">{formatCount(stats.sms.sentMessages)}</span>
                 </div>
               </div>
             </CardContent>

@@ -4,7 +4,7 @@ import { listDailyImports } from "@/app/actions/daily-collections"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
-import { formatUGX, formatDate, formatDateTime } from "@/lib/format"
+import { formatUGX, formatDate, formatDateTime, formatCount } from "@/lib/format"
 import { Info, History } from "lucide-react"
 import { DailyImportWizard } from "./daily-import-wizard"
 import { DeleteImportButton } from "./delete-import-button"
@@ -82,7 +82,7 @@ export default async function DailyCollectionImportPage() {
                          </Link>
                       </TableCell>
                       <TableCell className="text-sm font-mono">{item.filename}</TableCell>
-                      <TableCell className="text-right">{item.totalRecords.toLocaleString()}</TableCell>
+                      <TableCell className="text-right">{formatCount(item.totalRecords)}</TableCell>
                       <TableCell className="text-right">{formatUGX(item.totalAmount)}</TableCell>
                       <TableCell>
                         <Badge variant="outline" className="capitalize">{item.status}</Badge>

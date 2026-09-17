@@ -1,7 +1,7 @@
 import "server-only"
 import { randomUUID } from "crypto"
 import { db } from "@/lib/db"
-import { billingPeriod } from "@/lib/db/schema"
+import { billingPeriod, notification, user as userTable } from "@/lib/db/schema"
 import { and, eq, inArray, sql } from "drizzle-orm"
 import { writeAudit } from "@/lib/audit"
 import { decideCalendarRoll } from "@/lib/billing/calendar-roll"
@@ -15,6 +15,33 @@ function isUniqueViolation(err: unknown): boolean {
   return false
 }
 
+async function notifyPeriodOpened(period: { id: string; periodName: string }) {
+  try {
+    const users = await db
+      .select({ id: userTable.id })
+      .from(userTable)
+      .where(eq(userTable.active, true))
+    if (users.length === 0) return
+    const createdAt = new Date()
+    await db.insert(notification).values(
+      users.map((u) => ({
+        id: randomUUID(),
+        userId: u.id,
+        type: "period_active",
+        title: "New Billing Period Open",
+        message: `The collection period "${period.periodName}" is now active. You can begin capturing meter readings.`,
+        priority: "high",
+        relatedEntityType: "billing_period",
+        relatedEntityId: period.id,
+        status: "unread",
+        createdAt,
+      })),
+    )
+  } catch (err) {
+    console.warn("Period opened but staff notification failed", err)
+  }
+}
+
 /**
  * Closes collection periods whose Kampala month has ended, then opens
  * the current calendar month if none is active. Pass { open: false }
@@ -24,7 +51,7 @@ export async function closeExpiredActivePeriods(
   now = new Date(),
   options: { open?: boolean } = {},
 ): Promise<string[]> {
-  return db.transaction(async (tx) => {
+  const { closedIds, opened } = await db.transaction(async (tx) => {
     await tx.execute(sql`SELECT pg_advisory_xact_lock(87201617)`)
 
     const periods = await tx
@@ -43,6 +70,7 @@ export async function closeExpiredActivePeriods(
 
     const plan = decideCalendarRoll(now, periods, options)
     const closedIds: string[] = []
+    let opened: { id: string; periodName: string } | null = null
     const clampById = new Map(plan.clampEnds.map((c) => [c.id, c.endDate]))
     const extendById = new Map(plan.extendEnds.map((c) => [c.id, c.endDate]))
 
@@ -89,7 +117,7 @@ export async function closeExpiredActivePeriods(
       .where(eq(billingPeriod.status, "active"))
       .limit(1)
 
-    if (stillActive) return closedIds
+    if (stillActive) return { closedIds, opened }
 
     if (plan.activateId) {
       const extendedEnd = extendById.get(plan.activateId)
@@ -111,6 +139,7 @@ export async function closeExpiredActivePeriods(
         .returning({ id: billingPeriod.id, periodName: billingPeriod.periodName })
 
       if (activated[0]) {
+        opened = activated[0]
         await writeAudit({
           user: null,
           action: "collection.period.auto_open",
@@ -122,7 +151,7 @@ export async function closeExpiredActivePeriods(
           },
         }, tx)
       }
-      return closedIds
+      return { closedIds, opened }
     }
 
     if (plan.create) {
@@ -152,11 +181,15 @@ export async function closeExpiredActivePeriods(
             reason: "calendar_month",
           },
         }, tx)
+        opened = { id, periodName: plan.create.periodName }
       } catch (err) {
         if (!isUniqueViolation(err)) throw err
       }
     }
 
-    return closedIds
+    return { closedIds, opened }
   })
+
+  if (opened) await notifyPeriodOpened(opened)
+  return closedIds
 }

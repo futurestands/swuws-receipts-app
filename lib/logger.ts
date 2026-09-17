@@ -4,8 +4,7 @@ import { SessionUser } from "./session"
 /**
  * ENTERPRISE OBSERVABILITY LOGGING
  *
- * Provides a centralized point for system events. Currently wraps console.log/error,
- * but is structured to easily integrate with Sentry, Datadog, or Axiom.
+ * Console first, then the admin System errors page for error/fatal events.
  */
 
 export type LogSeverity = "info" | "warn" | "error" | "fatal"
@@ -31,14 +30,29 @@ export function logEvent(event: LogEvent) {
   if (event.severity === "error" || event.severity === "fatal") {
     console.error(logLine)
     if (event.error) console.error(event.error)
+    const err = event.error instanceof Error ? event.error : undefined
+    void import("./system-errors")
+      .then(({ recordSystemError }) =>
+        recordSystemError({
+          message: event.message,
+          stack: err?.stack || (typeof event.error === "string" ? event.error : undefined),
+          source: event.category,
+          user: event.user
+            ? {
+                id: event.user.id,
+                name: event.user.name,
+                email: event.user.email,
+                role: event.user.role,
+              }
+            : null,
+        })
+      )
+      .catch(() => {})
   } else if (event.severity === "warn") {
     console.warn(logLine)
   } else {
     console.log(logLine)
   }
-
-  // Future: Integrate Sentry or other APM here
-  // if (event.error) Sentry.captureException(event.error);
 }
 
 /** Specialized logger for critical financial events */

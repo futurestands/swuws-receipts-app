@@ -4,7 +4,7 @@ import { getBillingHistory } from "@/app/actions/billing"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
-import { formatUGX } from "@/lib/format"
+import { formatUGX, formatDateTime } from "@/lib/format"
 import Link from "next/link"
 import { ArrowLeft, History } from "lucide-react"
 import { PageHeader } from "@/components/ui/page-header"
@@ -75,7 +75,7 @@ export default async function BillingHistoryPage() {
                       </TableCell>
                       <TableCell>{run.schemeName}</TableCell>
                       <TableCell className="text-sm whitespace-nowrap">
-                        {new Date(run.uploadedAt).toLocaleString()}
+                        {formatDateTime(run.uploadedAt)}
                       </TableCell>
                       <TableCell>{run.totalCustomers}</TableCell>
                       <TableCell>{formatUGX(run.totalAmount)}</TableCell>

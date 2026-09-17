@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect } from "react"
+import { useReportRuntimeError } from "@/components/error-reporter"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
@@ -12,9 +12,7 @@ export default function GlobalErrorBoundary({
   error: Error & { digest?: string }
   reset: () => void
 }) {
-  useEffect(() => {
-    console.error("Unhandled application error:", error)
-  }, [error])
+  useReportRuntimeError(error, "app")
 
   const looksLikeAuthError = /unauthorized|forbidden/i.test(error.message)
 

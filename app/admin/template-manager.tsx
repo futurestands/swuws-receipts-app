@@ -10,6 +10,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
 import { toast } from "sonner"
+import { formatDate } from "@/lib/format"
 import {
   FileText,
   History as HistoryIcon,
@@ -266,7 +267,7 @@ export function TemplateManager({ initialTemplates }: { initialTemplates: Templa
                         </div>
                         <p className="text-[10px] text-muted-foreground line-clamp-1">{v.changelog}</p>
                         <div className="flex items-center justify-between mt-2">
-                          <span className="text-[9px] text-muted-foreground/60">{new Date(v.createdAt).toLocaleDateString()}</span>
+                          <span className="text-[9px] text-muted-foreground/60">{formatDate(v.createdAt)}</span>
                           {v.status !== 'published' && (
                             <Button variant="link" className="h-auto p-0 text-[10px]" onClick={() => handlePublish(v.id)} disabled={isPending}>
                               Publish
