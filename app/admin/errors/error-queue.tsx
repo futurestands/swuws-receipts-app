@@ -126,21 +126,27 @@ export function ErrorQueue({
 
                 <div className="flex flex-wrap gap-2">
                   {row.status === "open" && (
-                    <form action={setSystemErrorStatus.bind(null, row.id, "acknowledged")}>
+                    <form action={async () => {
+                      await setSystemErrorStatus(row.id, "acknowledged")
+                    }}>
                       <Button type="submit" size="sm" variant="outline">
                         Mark seen
                       </Button>
                     </form>
                   )}
                   {row.status !== "resolved" && (
-                    <form action={setSystemErrorStatus.bind(null, row.id, "resolved")}>
+                    <form action={async () => {
+                      await setSystemErrorStatus(row.id, "resolved")
+                    }}>
                       <Button type="submit" size="sm">
                         Resolve
                       </Button>
                     </form>
                   )}
                   {row.status === "resolved" && (
-                    <form action={setSystemErrorStatus.bind(null, row.id, "open")}>
+                    <form action={async () => {
+                      await setSystemErrorStatus(row.id, "open")
+                    }}>
                       <Button type="submit" size="sm" variant="outline">
                         Reopen
                       </Button>
