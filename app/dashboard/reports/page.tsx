@@ -7,7 +7,7 @@ import { listActiveBranches } from "@/app/actions/receipts"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { formatUGX, formatPercent } from "@/lib/format"
-import { AlertCircle, TrendingUp, Users, FileText, Landmark } from "lucide-react"
+import { AlertCircle, TrendingUp, Users, FileText, Landmark, Percent } from "lucide-react"
 import { ReportFilters } from "./report-filters"
 import { Progress } from "@/components/ui/progress"
 
@@ -105,13 +105,13 @@ export default async function ReportsPage({
       />
 
       <p className="text-xs text-muted-foreground bg-muted/40 border rounded-lg px-3 py-2">
-        <span className="font-semibold text-foreground">How to read this screen:</span> Green, amber, and blue recovery cards follow the <span className="font-medium">selected billing period</span>. Red debt, system credit, and top debtors are <span className="font-medium">live EBS balances today</span> — they do not change when you switch period.
+        <span className="font-semibold text-foreground">How to read this screen:</span> Recovery cards follow the <span className="font-medium">selected billing period</span>. Total Arrears and top debtors reflect <span className="font-medium">live EBS balances today</span>.
       </p>
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         <Card className="card-accent-red">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Live outstanding debt</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Total Arrears</CardTitle>
             <AlertCircle className="h-4 w-4 text-destructive" />
           </CardHeader>
           <CardContent>
@@ -133,12 +133,13 @@ export default async function ReportsPage({
 
         <Card className="card-accent-blue">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Live customer credit</CardTitle>
-            <Landmark className="h-4 w-4 text-brand-blue" />
+            <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Arrears Recovery %</CardTitle>
+            <Percent className="h-4 w-4 text-brand-blue" />
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-black text-brand-blue">{formatUGX(arrears.totalUpfront)}</div>
-            <p className="text-xs text-muted-foreground mt-1">Prepayments on EBS today (negative balances). Not limited to the selected period.</p>
+            <div className="text-3xl font-black text-brand-blue">{formatPercent(collections.arrearsRate)}</div>
+            <Progress value={Math.min(100, Math.max(0, collections.arrearsRate || 0))} className="h-2 mt-2" />
+            <p className="text-xs text-muted-foreground mt-2">This period: cash collected against old debt ÷ opening arrears billed. Excludes current bill.</p>
           </CardContent>
         </Card>
       </div>
