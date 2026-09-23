@@ -160,3 +160,60 @@ export type WaterProductionLog = typeof waterProductionLog.$inferSelect
 export type SchemeTarget = typeof schemeTarget.$inferSelect
 export type IntelligenceFinding = typeof intelligenceFinding.$inferSelect
 export type IntelligenceRule = typeof intelligenceRule.$inferSelect
+
+/**
+ * Management Action Register.
+ */
+export const managementAction = pgTable(
+  "management_action",
+  {
+    id: text("id").primaryKey(),
+    findingId: text("findingId").references(() => intelligenceFinding.id, { onDelete: "cascade" }),
+    title: text("title").notNull(),
+    description: text("description").notNull(),
+    responsibleUserId: text("responsibleUserId").references(() => user.id, { onDelete: "set null" }),
+    responsibleScope: text("responsibleScope"), // 'organization' | 'cluster' | 'branch' | 'scheme'
+    dueDate: timestamp("dueDate").notNull(),
+    status: text("status").notNull().default("OPEN"), // OPEN, ASSIGNED, IN_PROGRESS, PENDING_VERIFICATION, RESOLVED, CLOSED
+    priority: text("priority").notNull().default("normal"), // critical, high, normal, low
+    evidence: jsonb("evidence").$type<Record<string, unknown>>(),
+    resolutionNotes: text("resolutionNotes"),
+    closureEvidenceUrl: text("closureEvidenceUrl"),
+    closedAt: timestamp("closedAt"),
+    createdById: text("createdById").references(() => user.id, { onDelete: "set null" }),
+    createdAt: timestamp("createdAt").notNull().defaultNow(),
+    updatedAt: timestamp("updatedAt").notNull().defaultNow(),
+  },
+  (table) => ({
+    findingIdx: index("mgmt_action_finding_idx").on(table.findingId),
+    responsibleIdx: index("mgmt_action_resp_user_idx").on(table.responsibleUserId),
+    statusIdx: index("mgmt_action_status_idx").on(table.status),
+    dueDateIdx: index("mgmt_action_due_date_idx").on(table.dueDate),
+  })
+)
+
+/**
+ * Institutional Report & Board Pack Generation History.
+ */
+export const reportGenerationHistory = pgTable(
+  "report_generation_history",
+  {
+    id: text("id").primaryKey(),
+    reportType: text("reportType").notNull(), // 'board_pack_pptx' | 'monthly_management' | 'production_capacity' | 'nrw_loss' | 'commercial_performance'
+    periodId: text("periodId").references(() => billingPeriod.id, { onDelete: "set null" }),
+    scopeLevel: text("scopeLevel").notNull().default("organization"), // 'organization' | 'cluster' | 'branch' | 'scheme'
+    scopeId: text("scopeId"),
+    generatedById: text("generatedById").references(() => user.id, { onDelete: "set null" }),
+    fileFormat: text("fileFormat").notNull().default("pptx"), // 'pptx' | 'pdf' | 'html'
+    metadata: jsonb("metadata").$type<Record<string, unknown>>(),
+    createdAt: timestamp("createdAt").notNull().defaultNow(),
+  },
+  (table) => ({
+    periodIdx: index("report_history_period_idx").on(table.periodId),
+    userIdx: index("report_history_user_idx").on(table.generatedById),
+    typeIdx: index("report_history_type_idx").on(table.reportType),
+  })
+)
+
+export type ManagementAction = typeof managementAction.$inferSelect
+export type ReportGenerationHistory = typeof reportGenerationHistory.$inferSelect
