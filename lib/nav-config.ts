@@ -10,6 +10,7 @@ import {
   canViewBilling,
   canViewMeterReadings,
   canViewBillingExceptions,
+  canViewIntelligence,
   hasPerm
 } from "@/lib/permissions"
 import type { UserPermissionsContext } from "@/lib/permissions"
@@ -50,6 +51,10 @@ export function getNavSections(current: UserPermissionsContext): NavSection[] {
   if (canViewReports(current)) {
     primary.push({ href: "/dashboard/customers", label: "Customers", icon: "Users" })
     primary.push({ href: "/dashboard/reports", label: "Reports", icon: "BarChart3", activeMatch: "/dashboard/reports" })
+  }
+
+  if (canViewIntelligence(current)) {
+    primary.push({ href: "/intelligence", label: "Decision Support", icon: "Activity", activeMatch: "/intelligence" })
   }
 
   const sections: NavSection[] = [{ items: primary }]

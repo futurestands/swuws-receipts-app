@@ -449,6 +449,71 @@ export function canManageTariffs(user: UserPermissionsContext) {
 }
 
 /**
+ * Intelligence: Who can view SWUWS Intelligence insights and dashboards.
+ */
+export function canViewIntelligence(user: UserPermissionsContext) {
+  return (
+    user.role === ROLES.SYSTEM_ADMIN ||
+    user.role === ROLES.HEAD_COMMERCIAL ||
+    user.role === ROLES.FINANCE_OFFICER ||
+    user.role === ROLES.CLUSTER_MANAGER ||
+    user.role === ROLES.COMMERCIAL_OFFICER ||
+    (user.roleLevel ?? 0) >= 8 ||
+    hasPerm(user, "intelligence.view") ||
+    canViewReports(user)
+  ) ?? false
+}
+
+/**
+ * Intelligence: Who can investigate and assign intelligence findings.
+ */
+export function canInvestigateIntelligence(user: UserPermissionsContext) {
+  return (
+    user.role === ROLES.SYSTEM_ADMIN ||
+    user.role === ROLES.HEAD_COMMERCIAL ||
+    user.role === ROLES.CLUSTER_MANAGER ||
+    (user.roleLevel ?? 0) >= 10 ||
+    hasPerm(user, "intelligence.investigate")
+  ) ?? false
+}
+
+/**
+ * Intelligence: Who can manage intelligence rules and anomaly thresholds.
+ */
+export function canManageIntelligenceRules(user: UserPermissionsContext) {
+  return (
+    user.role === ROLES.SYSTEM_ADMIN ||
+    (user.roleLevel ?? 0) >= 10 ||
+    hasPerm(user, "intelligence.manage_rules")
+  ) ?? false
+}
+
+/**
+ * Intelligence: Who can dismiss or resolve intelligence findings.
+ */
+export function canDismissIntelligence(user: UserPermissionsContext) {
+  return (
+    user.role === ROLES.SYSTEM_ADMIN ||
+    user.role === ROLES.HEAD_COMMERCIAL ||
+    user.role === ROLES.CLUSTER_MANAGER ||
+    (user.roleLevel ?? 0) >= 10 ||
+    hasPerm(user, "intelligence.dismiss")
+  ) ?? false
+}
+
+/**
+ * Intelligence: Who can export intelligence reports.
+ */
+export function canExportIntelligence(user: UserPermissionsContext) {
+  return (
+    user.role === ROLES.SYSTEM_ADMIN ||
+    (user.roleLevel ?? 0) >= 10 ||
+    hasPerm(user, "intelligence.export") ||
+    canExportReports(user)
+  ) ?? false
+}
+
+/**
  * Templates: Who can manage SMS and Receipt templates.
  * HARD-LOCKED: System Admin only (Legacy role or Level 10).
  */
