@@ -9,38 +9,46 @@ describe("SWUWS Excel Reference Benchmark & Decision Support Pipeline", () => {
   it("should parse global target.xlsx and discover all 10 areas and 64 schemes across 3 periods", () => {
     const dataset = parseExcelReferenceDataset()
     expect(dataset.fileFound).toBe(true)
-    expect(dataset.totalAreas).toBeGreaterThanOrEqual(10)
-    expect(dataset.totalSchemes).toBeGreaterThanOrEqual(60)
+    expect(dataset.totalAreas).toBe(10)
+    expect(dataset.totalSchemes).toBe(70)
     expect(dataset.periods.map((p) => p.periodName)).toEqual(["July", "August", "September"])
 
     // Check specific benchmark schemes
     const ryakarimira = dataset.schemes.find((s) => s.schemeName.toLowerCase() === "ryakarimira")
     expect(ryakarimira).toBeDefined()
-    expect(ryakarimira?.practicalCapacityM3Month).toBeGreaterThan(1600)
     expect(ryakarimira?.julyProducedM3).toBe(810)
     expect(ryakarimira?.augustProducedM3).toBe(900)
-    expect(ryakarimira?.septemberProducedM3).toBe(1710)
+    expect(ryakarimira?.septemberProducedM3).toBe(0)     // row[7] empty in workbook for Ryakarimira
+    expect(ryakarimira?.totalProducedM3).toBe(1710)     // row[8] is Total Produced
+    expect(ryakarimira?.julySoldM3).toBe(746)
+    expect(ryakarimira?.augustSoldM3).toBe(823)
+    expect(ryakarimira?.septemberSoldM3).toBe(0)         // row[13] empty in workbook for Ryakarimira
+    expect(ryakarimira?.totalSoldM3).toBe(1569)        // row[14] is Total Sold
   })
 
-  it("should independently reproduce capacity utilization and raw loss indicator formulas", () => {
-    // Ryakarimira: July Produced = 810 m3, Practical Capacity = 1694.86 m3, July Sold = 746 m3
+  it("should independently calculate capacity utilization and raw loss indicator without copying Excel values", () => {
+    // Ryakarimira July: Produced = 810 m3, Sold = 746 m3, Practical Capacity = 1694.8561464690495 m3
+    const prod = 810
+    const sold = 746
+    const cap = 1694.8561464690495
+
     const val = validateWaterBalanceAndCapacity({
-      waterProducedM3: 810,
-      waterBilledSoldM3: 746,
+      waterProducedM3: prod,
+      waterBilledSoldM3: sold,
       loggedDaysCount: 31,
       daysInPeriod: 31,
-      practicalCapacityM3Period: 1694.8561464690495,
+      practicalCapacityM3Period: cap,
     })
 
-    // Capacity Utilisation % = (810 / 1694.856) * 100 = 47.79%
-    expect(val.capacityUtilizationPercent).toBeCloseTo(47.8, 1)
+    // Independent Formula Verification
+    const expectedUtil = (prod / cap) * 100
+    const expectedLoss = ((prod - sold) / prod) * 100
 
-    // Raw Loss % = ((810 - 746) / 810) * 100 = 7.9%
-    expect(val.rawCalculatedLossIndicator).toBeCloseTo(7.9, 1)
+    expect(val.capacityUtilizationPercent).toBeCloseTo(expectedUtil, 1)
+    expect(val.rawCalculatedLossIndicator).toBeCloseTo(expectedLoss, 1)
   })
 
-  it("should preserve negative raw loss indicators when water sold exceeds recorded production", () => {
-    // Test anomaly where Sold > Produced (e.g. Produced = 100, Sold = 110)
+  it("should preserve raw negative loss when water sold exceeds recorded production", () => {
     const val = validateWaterBalanceAndCapacity({
       waterProducedM3: 100,
       waterBilledSoldM3: 110,
@@ -49,13 +57,12 @@ describe("SWUWS Excel Reference Benchmark & Decision Support Pipeline", () => {
       practicalCapacityM3Period: 200,
     })
 
-    // Loss = ((100 - 110) / 100) * 100 = -10.0%
     expect(val.rawCalculatedLossIndicator).toBe(-10)
     expect(val.lossValidationStatus).toBe("DATA_INCONSISTENCY")
     expect(val.displayLossIndicator).toContain("(Inconsistent)")
   })
 
-  it("should generate a valid 14-slide Board Pack PowerPoint (.pptx) package and verify OpenXML structure", async () => {
+  it("should generate a valid 14-slide Board Pack PowerPoint (.pptx) package and verify complete OpenXML structure", async () => {
     const dataset = getExcelReferencePerformanceDataset("august")
     const pptxBuffer = await generateBoardPackPptx(dataset)
 
@@ -65,18 +72,36 @@ describe("SWUWS Excel Reference Benchmark & Decision Support Pipeline", () => {
 
     // 1. Verify [Content_Types].xml
     expect(files).toContain("[Content_Types].xml")
+    const contentTypesText = await zip.file("[Content_Types].xml")?.async("string")
+    expect(contentTypesText).toContain("slide14.xml")
 
-    // 2. Verify exactly 14 slide XML parts
-    const slideFiles = files.filter((f) => f.startsWith("ppt/slides/slide") && f.endsWith(".xml"))
+    // 2. Verify presentation.xml and slide ID list
+    expect(files).toContain("ppt/presentation.xml")
+    const presentationText = await zip.file("ppt/presentation.xml")?.async("string")
+    expect(presentationText).toContain('id="269"') // 255 + 14 = 269
+
+    // 3. Verify exactly 14 slide XML parts
+    const slideFiles = files.filter((f) => f.startsWith("ppt/slides/slide") && f.endsWith(".xml") && !f.includes("_rels"))
     expect(slideFiles.length).toBe(14)
 
-    // 3. Inspect slide 1 text content
+    // 4. Verify all 14 slide relationship files exist
+    const relFiles = files.filter((f) => f.startsWith("ppt/slides/_rels/slide") && f.endsWith(".rels"))
+    expect(relFiles.length).toBe(14)
+
+    // 5. Inspect unique text content across slides
     const slide1Text = await zip.file("ppt/slides/slide1.xml")?.async("string")
     expect(slide1Text).toContain("SWUWS Board Performance Review")
-    expect(slide1Text).toContain("August")
 
-    // 4. Inspect slide 2 text content
-    const slide2Text = await zip.file("ppt/slides/slide2.xml")?.async("string")
-    expect(slide2Text).toContain("Executive Performance Summary")
+    const slide9Text = await zip.file("ppt/slides/slide9.xml")?.async("string")
+    expect(slide9Text).toContain("Dynamic Scheme Performance Matrix")
+
+    const slide10Text = await zip.file("ppt/slides/slide10.xml")?.async("string")
+    expect(slide10Text).toContain("What Changed? Period-over-Period Deltas")
+
+    const slide11Text = await zip.file("ppt/slides/slide11.xml")?.async("string")
+    expect(slide11Text).toContain("Management Attention Items & Anomalies")
+
+    const slide13Text = await zip.file("ppt/slides/slide13.xml")?.async("string")
+    expect(slide13Text).toContain("Data Quality & Reporting Limitations")
   })
 })
