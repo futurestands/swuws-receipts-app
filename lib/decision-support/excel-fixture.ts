@@ -19,27 +19,34 @@ export function getExcelReferencePerformanceDataset(
   const daysInMonth = periodId === "september" ? 30 : 31
   const periodName = periodId === "july" ? "July" : periodId === "september" ? "September" : "August"
 
+  // Filter ONLY operational scheme rows (64 schemes)
+  const opSchemes = ref.schemes.filter((s) => s.isOperationalScheme)
+
   let totalProducedM3 = 0
   let totalSoldM3 = 0
   let totalCapacityM3 = 0
   let totalArrearsUgx = 0
   let totalCurrentBilledUgx = 0
+  let hasCommercialData = false
 
   const periodDeltas: DecisionSupportDeltaItem[] = []
 
-  const schemesMatrix: SchemePerformanceMatrixItem[] = ref.schemes.map((sch) => {
+  const schemesMatrix: SchemePerformanceMatrixItem[] = opSchemes.map((sch) => {
     let prod = sch.augustProducedM3
     let sold = sch.augustSoldM3
     let prevProd = sch.julyProducedM3
+    let prevSold = sch.julySoldM3
 
     if (periodId === "july") {
       prod = sch.julyProducedM3
       sold = sch.julySoldM3
       prevProd = 0
+      prevSold = 0
     } else if (periodId === "september") {
       prod = sch.septemberProducedM3
       sold = sch.septemberSoldM3
       prevProd = sch.augustProducedM3
+      prevSold = sch.augustSoldM3
     }
 
     const practicalCap = sch.practicalCapacityM3Month || (sch.capacityCurrentM3Day * daysInMonth)
@@ -47,9 +54,13 @@ export function getExcelReferencePerformanceDataset(
     totalProducedM3 += prod
     totalSoldM3 += sold
     totalCapacityM3 += practicalCap
-    if (sch.arrearsUgx) totalArrearsUgx += sch.arrearsUgx
+    if (sch.arrearsUgx) {
+      totalArrearsUgx += sch.arrearsUgx
+      hasCommercialData = true
+    }
 
     const billedUgx = sch.tariffUgx ? sold * sch.tariffUgx : 0
+    if (billedUgx > 0) hasCommercialData = true
     totalCurrentBilledUgx += billedUgx
 
     const validation = validateWaterBalanceAndCapacity({
@@ -71,9 +82,9 @@ export function getExcelReferencePerformanceDataset(
       statusLabel = validation.capacityUtilizationPercent > 95 ? "Stressed (>95%)" : "Healthy"
     }
 
-    // Build real period deltas for schemes with production data
+    // Production Period Delta
     if (prevProd > 0 && prod > 0) {
-      const delta = calculatePeriodDelta({
+      const prodDelta = calculatePeriodDelta({
         schemeId: `excel-sch-${sch.schemeNumber}`,
         schemeName: sch.schemeName,
         metric: "Water Production",
@@ -82,7 +93,21 @@ export function getExcelReferencePerformanceDataset(
         unit: "m³",
         higherIsBetter: true,
       })
-      if (delta) periodDeltas.push(delta)
+      if (prodDelta) periodDeltas.push(prodDelta)
+    }
+
+    // Sales Period Delta
+    if (prevSold > 0 && sold > 0) {
+      const salesDelta = calculatePeriodDelta({
+        schemeId: `excel-sch-${sch.schemeNumber}`,
+        schemeName: sch.schemeName,
+        metric: "Billed Water Sales",
+        currentValue: sold,
+        previousValue: prevSold,
+        unit: "m³",
+        higherIsBetter: true,
+      })
+      if (salesDelta) periodDeltas.push(salesDelta)
     }
 
     return {
@@ -96,7 +121,7 @@ export function getExcelReferencePerformanceDataset(
       rawLossPercent: validation.rawCalculatedLossIndicator,
       displayLoss: validation.displayLossIndicator,
       currentBilledUgx: billedUgx,
-      cashCollectedUgx: sch.targetCollectionEfficiencyPercent ? (billedUgx * sch.targetCollectionEfficiencyPercent) / 100 : 0,
+      cashCollectedUgx: sch.targetCollectionEfficiencyPercent && billedUgx > 0 ? (billedUgx * sch.targetCollectionEfficiencyPercent) / 100 : 0,
       collectionEfficiencyPercent: sch.targetCollectionEfficiencyPercent || 0,
       totalArrearsUgx: sch.arrearsUgx || 0,
       statusLabel,
@@ -107,8 +132,8 @@ export function getExcelReferencePerformanceDataset(
   const globalValidation = validateWaterBalanceAndCapacity({
     waterProducedM3: totalProducedM3,
     waterBilledSoldM3: totalSoldM3,
-    loggedDaysCount: daysInMonth * Math.max(1, ref.schemes.length),
-    daysInPeriod: daysInMonth * Math.max(1, ref.schemes.length),
+    loggedDaysCount: daysInMonth * Math.max(1, opSchemes.length),
+    daysInPeriod: daysInMonth * Math.max(1, opSchemes.length),
     practicalCapacityM3Period: totalCapacityM3,
   })
 
@@ -117,8 +142,8 @@ export function getExcelReferencePerformanceDataset(
       metricName: "Water Production (m³)",
       period: periodName,
       scopeName: "SWUWS Reference Dataset Scope",
-      sourceRecordsSummary: `Parsed from Excel Reference Dataset (global target.xlsx, ${ref.totalSchemes} schemes)`,
-      formulaDescription: "Sum of Excel scheme production rows",
+      sourceRecordsSummary: `Parsed from Excel Reference Dataset (global target.xlsx, ${opSchemes.length} operational schemes)`,
+      formulaDescription: "Sum of Excel operational scheme production rows",
       rawResult: totalProducedM3,
       validationStatus: "VALID",
       displayedResult: `${totalProducedM3.toLocaleString()} m³`,
@@ -140,7 +165,7 @@ export function getExcelReferencePerformanceDataset(
     scope: { level: "organization", name: "SWUWS Reference Dataset Scope" },
     kpis: {
       waterProducedM3: totalProducedM3,
-      waterSuppliedM3: totalProducedM3,
+      waterSuppliedM3: totalProducedM3, // Reference supply benchmark
       waterSoldM3: totalSoldM3,
       unbilledLossM3: globalValidation.unbilledLossM3,
       rawCalculatedLossIndicator: globalValidation.rawCalculatedLossIndicator,

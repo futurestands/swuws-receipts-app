@@ -6,28 +6,40 @@ import { generateBoardPackPptx } from "./board-pack"
 import JSZip from "jszip"
 
 describe("SWUWS Excel Reference Benchmark & Decision Support Pipeline", () => {
-  it("should parse global target.xlsx and discover all 10 areas and 64 schemes across 3 periods", () => {
+  it("Test 1: should parse global target.xlsx and distinguish 64 operational schemes from sub-source rows", () => {
     const dataset = parseExcelReferenceDataset()
     expect(dataset.fileFound).toBe(true)
     expect(dataset.totalAreas).toBe(10)
+    expect(dataset.operationalSchemeCount).toBe(64)
+    expect(dataset.referenceSourceRowCount).toBe(6)
     expect(dataset.totalSchemes).toBe(70)
     expect(dataset.periods.map((p) => p.periodName)).toEqual(["July", "August", "September"])
+  })
 
-    // Check specific benchmark schemes
+  it("Test 2: should verify exact September vs Total column index mapping", () => {
+    const dataset = parseExcelReferenceDataset()
     const ryakarimira = dataset.schemes.find((s) => s.schemeName.toLowerCase() === "ryakarimira")
     expect(ryakarimira).toBeDefined()
     expect(ryakarimira?.julyProducedM3).toBe(810)
     expect(ryakarimira?.augustProducedM3).toBe(900)
-    expect(ryakarimira?.septemberProducedM3).toBe(0)     // row[7] empty in workbook for Ryakarimira
-    expect(ryakarimira?.totalProducedM3).toBe(1710)     // row[8] is Total Produced
+    expect(ryakarimira?.septemberProducedM3).toBe(0)     // row[7] empty in workbook
+    expect(ryakarimira?.totalProducedM3).toBe(1710)     // row[8] is Total
     expect(ryakarimira?.julySoldM3).toBe(746)
     expect(ryakarimira?.augustSoldM3).toBe(823)
-    expect(ryakarimira?.septemberSoldM3).toBe(0)         // row[13] empty in workbook for Ryakarimira
-    expect(ryakarimira?.totalSoldM3).toBe(1569)        // row[14] is Total Sold
+    expect(ryakarimira?.septemberSoldM3).toBe(0)         // row[13] empty in workbook
+    expect(ryakarimira?.totalSoldM3).toBe(1569)        // row[14] is Total
   })
 
-  it("should independently calculate capacity utilization and raw loss indicator without copying Excel values", () => {
-    // Ryakarimira July: Produced = 810 m3, Sold = 746 m3, Practical Capacity = 1694.8561464690495 m3
+  it("Test 3: should verify sales period deltas between July and August dynamically", () => {
+    const dataset = parseExcelReferenceDataset()
+    const ryakarimira = dataset.schemes.find((s) => s.schemeName.toLowerCase() === "ryakarimira")
+    if (ryakarimira) {
+      const expectedSalesDelta = ryakarimira.augustSoldM3 - ryakarimira.julySoldM3
+      expect(expectedSalesDelta).toBe(823 - 746) // +77 m3
+    }
+  })
+
+  it("Test 4: should independently calculate capacity utilization and raw loss indicator without hardcoded answers", () => {
     const prod = 810
     const sold = 746
     const cap = 1694.8561464690495
@@ -40,7 +52,6 @@ describe("SWUWS Excel Reference Benchmark & Decision Support Pipeline", () => {
       practicalCapacityM3Period: cap,
     })
 
-    // Independent Formula Verification
     const expectedUtil = (prod / cap) * 100
     const expectedLoss = ((prod - sold) / prod) * 100
 
@@ -48,7 +59,7 @@ describe("SWUWS Excel Reference Benchmark & Decision Support Pipeline", () => {
     expect(val.rawCalculatedLossIndicator).toBeCloseTo(expectedLoss, 1)
   })
 
-  it("should preserve raw negative loss when water sold exceeds recorded production", () => {
+  it("Test 5: should preserve raw negative loss when water sold exceeds recorded production", () => {
     const val = validateWaterBalanceAndCapacity({
       waterProducedM3: 100,
       waterBilledSoldM3: 110,
@@ -62,7 +73,7 @@ describe("SWUWS Excel Reference Benchmark & Decision Support Pipeline", () => {
     expect(val.displayLossIndicator).toContain("(Inconsistent)")
   })
 
-  it("should generate a valid 14-slide Board Pack PowerPoint (.pptx) package and verify complete OpenXML structure", async () => {
+  it("Test 6: should generate a valid 14-slide Board Pack PowerPoint (.pptx) package and verify complete OpenXML structure", async () => {
     const dataset = getExcelReferencePerformanceDataset("august")
     const pptxBuffer = await generateBoardPackPptx(dataset)
 

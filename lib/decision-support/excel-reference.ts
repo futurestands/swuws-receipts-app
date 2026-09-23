@@ -6,6 +6,7 @@ export interface ExcelReferenceSchemeRecord {
   areaName: string
   schemeNumber: number | string
   schemeName: string
+  isOperationalScheme: boolean
   capacityCurrentM3Day: number
   practicalCapacityM3Month: number
 
@@ -37,6 +38,8 @@ export interface ExcelReferenceDataset {
   fileFound: boolean
   filePath: string
   totalAreas: number
+  operationalSchemeCount: number
+  referenceSourceRowCount: number
   totalSchemes: number
   areas: string[]
   periods: { id: string; periodName: string; daysInMonth: number }[]
@@ -48,7 +51,6 @@ const DEFAULT_FILE_PATH = "C:\\Users\\MJ\\Downloads\\global target.xlsx"
 export function parseExcelReferenceDataset(filePath = DEFAULT_FILE_PATH): ExcelReferenceDataset {
   let resolvedPath = filePath
   if (!fs.existsSync(resolvedPath)) {
-    // Fallback relative lookup
     const altPath = path.join(process.cwd(), "global target.xlsx")
     if (fs.existsSync(altPath)) {
       resolvedPath = altPath
@@ -57,6 +59,8 @@ export function parseExcelReferenceDataset(filePath = DEFAULT_FILE_PATH): ExcelR
         fileFound: false,
         filePath: resolvedPath,
         totalAreas: 0,
+        operationalSchemeCount: 0,
+        referenceSourceRowCount: 0,
         totalSchemes: 0,
         areas: [],
         periods: [
@@ -96,6 +100,8 @@ export function parseExcelReferenceDataset(filePath = DEFAULT_FILE_PATH): ExcelR
   const schemes: ExcelReferenceSchemeRecord[] = []
   const areaSet = new Set<string>()
   let currentArea = "KABALE"
+  let operationalSchemeCount = 0
+  let referenceSourceRowCount = 0
 
   for (let r = 2; r < summeryRows.length; r++) {
     const row = summeryRows[r]
@@ -111,22 +117,30 @@ export function parseExcelReferenceDataset(filePath = DEFAULT_FILE_PATH): ExcelR
     }
 
     if (colScheme && colScheme !== "Scheme" && colScheme !== "Total" && colScheme !== "N/A") {
+      const isOp = typeof colNum === "number" || (typeof colNum === "string" && !isNaN(Number(colNum)) && Number(colNum) > 0)
+      if (isOp) {
+        operationalSchemeCount++
+      } else {
+        referenceSourceRowCount++
+      }
+
       const targetData = targetMap.get(colScheme.toLowerCase()) || {}
 
       schemes.push({
         areaName: currentArea,
         schemeNumber: colNum || schemes.length + 1,
         schemeName: colScheme,
+        isOperationalScheme: isOp,
         capacityCurrentM3Day: Number(row[3] || 0),
         practicalCapacityM3Month: Number(row[4] || 0),
         julyProducedM3: Number(row[5] || 0),
         augustProducedM3: Number(row[6] || 0),
-        septemberProducedM3: Number(row[7] || 0),
-        totalProducedM3: Number(row[8] || 0),
+        septemberProducedM3: Number(row[7] || 0), // Row[7] = Sept Produced
+        totalProducedM3: Number(row[8] || 0),     // Row[8] = Total Produced
         julySoldM3: Number(row[11] || 0),
         augustSoldM3: Number(row[12] || 0),
-        septemberSoldM3: Number(row[13] || 0),
-        totalSoldM3: Number(row[14] || 0),
+        septemberSoldM3: Number(row[13] || 0),    // Row[13] = Sept Sold
+        totalSoldM3: Number(row[14] || 0),       // Row[14] = Total Sold
         targetUtilizationPercent: targetData.targetUtil,
         targetNrwPercent: targetData.targetNrw,
         targetCollectionEfficiencyPercent: targetData.targetColl,
@@ -142,6 +156,8 @@ export function parseExcelReferenceDataset(filePath = DEFAULT_FILE_PATH): ExcelR
     fileFound: true,
     filePath: resolvedPath,
     totalAreas: areaSet.size,
+    operationalSchemeCount,
+    referenceSourceRowCount,
     totalSchemes: schemes.length,
     areas: Array.from(areaSet),
     periods: [
