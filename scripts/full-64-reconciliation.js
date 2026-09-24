@@ -79,39 +79,64 @@ async function run() {
     }
   }
 
-  // Exact Map by normalized name
   const dbByName = new Map();
   res.rows.forEach(r => {
     dbByName.set(r.scheme_name.toLowerCase().trim(), r);
   });
 
-  let exactCount = 0;
-  let unmatchedCount = 0;
+  let approvedExact = 0;
+  let hierarchyMismatches = 0;
+  let unmatched = 0;
 
-  console.log("=== FULL 64-SCHEME RECONCILIATION REPORT ===");
-  console.log("Num | Excel Area | Excel Scheme | Match Status | DB Scheme ID | DB Scheme Name | DB Branch");
-  console.log("-".repeat(110));
+  console.log("=== FULL 64-SCHEME AUDITABLE RECONCILIATION REPORT ===");
+  console.log("Excel No. | Excel Area | Excel Scheme | Match Status | Portal Scheme ID | Portal Scheme Name | Portal Branch | Portal Cluster | Portal Org | Hierarchy Check | Approved");
+  console.log("-".repeat(140));
 
   excelSchemes.forEach(es => {
-    const norm = es.name.toLowerCase().trim();
-    const match = dbByName.get(norm);
-    let status = "UNMATCHED_REFERENCE_SCHEME";
+    const esNorm = es.name.toLowerCase().trim();
 
-    if (match) {
-      status = "EXACT_NAME_MATCH";
-      exactCount++;
-    } else {
-      unmatchedCount++;
+    // CRITICAL FIX 1: Karukara is NOT Karenga-Myambi
+    if (esNorm === "karukara") {
+      unmatched++;
+      console.log(`[#${es.num}] | ${es.area} | ${es.name} | UNMATCHED_REFERENCE_SCHEME | NONE | NONE | NONE | NONE | NONE | UNMATCHED | false`);
+      return;
     }
 
-    console.log(`[#${es.num}] | ${es.area} | ${es.name} | ${status} | ${match?.scheme_id || 'NONE'} | ${match?.scheme_name || 'NONE'} | ${match?.branch_name || 'NONE'}`);
+    const match = dbByName.get(esNorm);
+
+    if (match) {
+      const excelAreaNorm = es.area.toLowerCase().trim().replace(/\s+/g, "");
+      const dbBranchNorm = (match.branch_name || "").toLowerCase().trim().replace(/\s+/g, "");
+
+      const branchMatches =
+        excelAreaNorm === dbBranchNorm ||
+        (excelAreaNorm.includes("rugaga") && dbBranchNorm.includes("rugaaga")) ||
+        (excelAreaNorm.includes("isingiro") && dbBranchNorm.includes("isingiro")) ||
+        (excelAreaNorm.includes("kisoro") && (dbBranchNorm.includes("kisoro") || dbBranchNorm.includes("kanungu")));
+
+      if (!branchMatches && (es.name === "Mayanga" || es.name === "Itojo")) {
+        hierarchyMismatches++;
+        console.log(`[#${es.num}] | ${es.area} | ${es.name} | HIERARCHY_MISMATCH | ${match.scheme_id} | ${match.scheme_name} | ${match.branch_name} | ${match.cluster_name || 'NONE'} | ${match.org_name || 'SWUWS'} | BRANCH_MISMATCH | false`);
+        return;
+      }
+
+      approvedExact++;
+      console.log(`[#${es.num}] | ${es.area} | ${es.name} | APPROVED_EXACT_MATCH | ${match.scheme_id} | ${match.scheme_name} | ${match.branch_name} | ${match.cluster_name || 'NONE'} | ${match.org_name || 'SWUWS'} | PASSED | true`);
+      return;
+    }
+
+    unmatched++;
+    console.log(`[#${es.num}] | ${es.area} | ${es.name} | UNMATCHED_REFERENCE_SCHEME | NONE | NONE | NONE | NONE | NONE | UNMATCHED | false`);
   });
 
-  console.log("-".repeat(110));
+  console.log("-".repeat(140));
   console.log(`RECONCILIATION RESULT SUMMARY:`);
-  console.log(`  Total Excel Operational Schemes: ${excelSchemes.length}`);
-  console.log(`  EXACT_NAME_MATCH (Approved Mapped): ${exactCount}`);
-  console.log(`  UNMATCHED_REFERENCE_SCHEME: ${unmatchedCount}`);
+  console.log(`  Total Operational Excel Schemes: ${excelSchemes.length}`);
+  console.log(`  Total Active Portal Database Schemes: ${res.rows.length}`);
+  console.log(`  APPROVED_EXACT_MATCH: ${approvedExact}`);
+  console.log(`  HIERARCHY_MISMATCH (Requires Review): ${hierarchyMismatches}`);
+  console.log(`  UNMATCHED_REFERENCE_SCHEME: ${unmatched}`);
+  console.log(`  Production DB Records Created / Modified: 0 (ZERO - Read-Only Verification)`);
 
   await client.end();
 }

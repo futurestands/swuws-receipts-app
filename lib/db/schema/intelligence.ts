@@ -228,9 +228,9 @@ export const decisionSupportSchemeMapping = pgTable(
     waterSchemeId: text("waterSchemeId").references(() => waterScheme.id, { onDelete: "set null" }),
     excelArea: text("excelArea").notNull(),
     excelSchemeName: text("excelSchemeName").notNull(),
-    matchStatus: text("matchStatus").notNull(), // 'EXACT_NAME_MATCH' | 'NORMALIZED_NAME_MATCH' | 'REQUIRES_MANUAL_APPROVAL' | 'UNMATCHED_REFERENCE_SCHEME'
+    matchStatus: text("matchStatus").notNull(), // 'APPROVED_EXACT_MATCH' | 'APPROVED_NORMALIZED_MATCH' | 'REQUIRES_MANUAL_APPROVAL' | 'HIERARCHY_MISMATCH' | 'UNMATCHED_REFERENCE_SCHEME'
     matchMethod: text("matchMethod").notNull(),
-    approved: boolean("approved").notNull().default(true),
+    approved: boolean("approved").notNull().default(false),
     approvedById: text("approvedById").references(() => user.id, { onDelete: "set null" }),
     approvedAt: timestamp("approvedAt").defaultNow(),
     source: text("source").notNull().default("SWUWS Excel Reference Dataset (global target.xlsx)"),

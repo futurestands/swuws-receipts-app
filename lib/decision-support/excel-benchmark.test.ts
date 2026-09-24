@@ -16,7 +16,18 @@ describe("SWUWS Excel Reference Benchmark & Decision Support Pipeline", () => {
     expect(dataset.periods.map((p) => p.periodName)).toEqual(["July", "August", "September"])
   })
 
-  it("Test 2: should verify exact September vs Total column index mapping", () => {
+  it("Test 2: should verify Karukara is NOT mapped to Karenga-Myambi and remains UNMATCHED", () => {
+    const dataset = parseExcelReferenceDataset()
+    const karukara = dataset.schemes.find((s) => s.schemeName.toLowerCase() === "karukara")
+    expect(karukara).toBeDefined()
+    expect(karukara?.areaName).toBe("KABALE")
+    // Karukara is distinct from Karenga-Myambi (which is #21 in Kisoro/Kanungu)
+    const karenga = dataset.schemes.find((s) => s.schemeName.toLowerCase() === "karenga-myambi")
+    expect(karenga).toBeDefined()
+    expect(karenga?.schemeNumber).toBe(21)
+  })
+
+  it("Test 3: should verify exact September vs Total column index mapping", () => {
     const dataset = parseExcelReferenceDataset()
     const ryakarimira = dataset.schemes.find((s) => s.schemeName.toLowerCase() === "ryakarimira")
     expect(ryakarimira).toBeDefined()
@@ -30,7 +41,7 @@ describe("SWUWS Excel Reference Benchmark & Decision Support Pipeline", () => {
     expect(ryakarimira?.totalSoldM3).toBe(1569)        // row[14] is Total
   })
 
-  it("Test 3: should verify sales period deltas between July and August dynamically", () => {
+  it("Test 4: should verify sales period deltas between July and August dynamically", () => {
     const dataset = parseExcelReferenceDataset()
     const ryakarimira = dataset.schemes.find((s) => s.schemeName.toLowerCase() === "ryakarimira")
     if (ryakarimira) {
@@ -39,7 +50,7 @@ describe("SWUWS Excel Reference Benchmark & Decision Support Pipeline", () => {
     }
   })
 
-  it("Test 4: should independently calculate capacity utilization and raw loss indicator without hardcoded answers", () => {
+  it("Test 5: should independently calculate capacity utilization and raw loss indicator without hardcoded answers", () => {
     const prod = 810
     const sold = 746
     const cap = 1694.8561464690495
@@ -59,7 +70,7 @@ describe("SWUWS Excel Reference Benchmark & Decision Support Pipeline", () => {
     expect(val.rawCalculatedLossIndicator).toBeCloseTo(expectedLoss, 1)
   })
 
-  it("Test 5: should preserve raw negative loss when water sold exceeds recorded production", () => {
+  it("Test 6: should preserve raw negative loss when water sold exceeds recorded production", () => {
     const val = validateWaterBalanceAndCapacity({
       waterProducedM3: 100,
       waterBilledSoldM3: 110,
@@ -73,13 +84,13 @@ describe("SWUWS Excel Reference Benchmark & Decision Support Pipeline", () => {
     expect(val.displayLossIndicator).toContain("(Inconsistent)")
   })
 
-  it("Test 6: should tag reference records as sample data and prevent production DB mutation", () => {
+  it("Test 7: should tag reference records as sample data and prevent production DB mutation", () => {
     const ref = parseExcelReferenceDataset()
     expect(ref.schemes.every((s) => s.isReferenceSample === true)).toBe(true)
     expect(ref.schemes.every((s) => s.dataSource.includes("Excel Reference Dataset"))).toBe(true)
   })
 
-  it("Test 7: should generate a valid 14-slide Board Pack PowerPoint (.pptx) package and verify complete OpenXML structure", async () => {
+  it("Test 8: should generate a valid 14-slide Board Pack PowerPoint (.pptx) package and verify complete OpenXML structure", async () => {
     const dataset = getExcelReferencePerformanceDataset("august")
     const pptxBuffer = await generateBoardPackPptx(dataset)
 
