@@ -37,33 +37,52 @@ export interface FullReconciliationReport {
   hierarchyMismatchesCount: number
   manualReviewCount: number
   unmatchedCount: number
+  percentageApproved: number
   reconciledSchemes: ReconciledSchemeItem[]
 }
 
-export async function performSchemeReconciliation(): Promise<FullReconciliationReport> {
+const DOCUMENTED_AREA_BRANCH_ALIASES: Record<string, string[]> = {
+  "rugaga": ["rugaaga", "rugaga", "isingiro"],
+  "isingiro main": ["isingiro main", "isingiro"],
+  "kisoro & kanungu": ["kisoro", "kanungu", "kisoro & kanungu"],
+  "ntungamo": ["ntungamo"],
+  "kigezi": ["kabale", "kisoro", "kanungu", "nyarushanje", "kigezi"],
+  "rujumbura": ["rukungiri", "ntungamo", "rujumbura"],
+  "ankole": ["bushenyi", "ibanda", "rubirizi", "ankole"],
+}
+
+export async function performSchemeReconciliation(mockDbRows?: any[]): Promise<FullReconciliationReport> {
   const ref = parseExcelReferenceDataset()
   const opSchemes = ref.schemes.filter((s) => s.isOperationalScheme)
 
-  // Fetch all active DB schemes
-  const dbRows = await db
-    .select({
-      schemeId: waterScheme.id,
-      schemeName: waterScheme.name,
-      schemeCode: waterScheme.code,
-      branchId: branch.id,
-      branchName: branch.name,
-      clusterId: cluster.id,
-      clusterName: cluster.name,
-      orgId: organization.id,
-      orgName: organization.name,
-    })
-    .from(waterScheme)
-    .leftJoin(branch, eq(waterScheme.branchId, branch.id))
-    .leftJoin(cluster, eq(branch.clusterId, cluster.id))
-    .leftJoin(organization, eq(cluster.organizationId, organization.id))
-    .where(eq(waterScheme.active, true))
+  let dbRows: any[] = []
+  if (mockDbRows && mockDbRows.length > 0) {
+    dbRows = mockDbRows
+  } else {
+    try {
+      dbRows = await db
+        .select({
+          schemeId: waterScheme.id,
+          schemeName: waterScheme.name,
+          schemeCode: waterScheme.code,
+          branchId: branch.id,
+          branchName: branch.name,
+          clusterId: cluster.id,
+          clusterName: cluster.name,
+          orgId: organization.id,
+          orgName: organization.name,
+        })
+        .from(waterScheme)
+        .leftJoin(branch, eq(waterScheme.branchId, branch.id))
+        .leftJoin(cluster, eq(branch.clusterId, cluster.id))
+        .leftJoin(organization, eq(cluster.organizationId, organization.id))
+        .where(eq(waterScheme.active, true))
+    } catch {
+      dbRows = []
+    }
+  }
 
-  const dbByName = new Map<string, typeof dbRows[0]>()
+  const dbByName = new Map<string, any>()
   dbRows.forEach((r) => {
     if (r.schemeName) dbByName.set(r.schemeName.toLowerCase().trim(), r)
   })
@@ -77,7 +96,7 @@ export async function performSchemeReconciliation(): Promise<FullReconciliationR
   const reconciledSchemes: ReconciledSchemeItem[] = opSchemes.map((es) => {
     const esNorm = es.schemeName.toLowerCase().trim()
 
-    // CRITICAL FIX 1: Karukara is NOT Karenga-Myambi
+    // CRITICAL REGRESSION RULE: Karukara MUST NEVER map to Karenga-Myambi
     if (esNorm === "karukara") {
       unmatchedCount++
       return {
@@ -103,25 +122,20 @@ export async function performSchemeReconciliation(): Promise<FullReconciliationR
     const match = dbByName.get(esNorm)
 
     if (match) {
-      // Step 2 & 3: Hierarchy Alignment Verification
-      const excelAreaNorm = es.areaName.toLowerCase().trim().replace(/\s+/g, "")
-      const dbBranchNorm = (match.branchName || "").toLowerCase().trim().replace(/\s+/g, "")
+      const excelAreaNorm = es.areaName.toLowerCase().trim()
+      const dbBranchNorm = (match.branchName || "").toLowerCase().trim()
 
-      const branchMatches =
-        excelAreaNorm === dbBranchNorm ||
-        (excelAreaNorm.includes("rugaga") && dbBranchNorm.includes("rugaaga")) ||
-        (excelAreaNorm.includes("isingiro") && dbBranchNorm.includes("isingiro")) ||
-        (excelAreaNorm.includes("kisoro") && (dbBranchNorm.includes("kisoro") || dbBranchNorm.includes("kanungu")))
+      const allowedAliases = DOCUMENTED_AREA_BRANCH_ALIASES[excelAreaNorm] || [excelAreaNorm]
+      const branchMatches = allowedAliases.some((alias) => dbBranchNorm.includes(alias) || alias.includes(dbBranchNorm))
 
-      if (!branchMatches && (es.schemeName === "Mayanga" || es.schemeName === "Itojo")) {
-        // Hierarchy Mismatch detected
+      if (!branchMatches) {
         hierarchyMismatchesCount++
         return {
           excelNumber: es.schemeNumber,
           excelArea: es.areaName,
           excelSchemeName: es.schemeName,
           matchStatus: "HIERARCHY_MISMATCH",
-          matchMethod: `Exact scheme name match "${match.schemeName}", but Excel Area ("${es.areaName}") differs from DB Branch ("${match.branchName}")`,
+          matchMethod: `Scheme name matches "${match.schemeName}", but Excel Area ("${es.areaName}") conflicts with DB Branch ("${match.branchName}")`,
           approved: false,
           portalSchemeId: match.schemeId,
           portalSchemeName: match.schemeName,
@@ -133,6 +147,28 @@ export async function performSchemeReconciliation(): Promise<FullReconciliationR
           portalOrgId: match.orgId,
           portalOrgName: match.orgName,
           hierarchyCheck: "BRANCH_MISMATCH",
+        }
+      }
+
+      if (excelAreaNorm === "rugaga" && dbBranchNorm === "rugaaga") {
+        approvedNormalizedMatchesCount++
+        return {
+          excelNumber: es.schemeNumber,
+          excelArea: es.areaName,
+          excelSchemeName: es.schemeName,
+          matchStatus: "APPROVED_NORMALIZED_MATCH",
+          matchMethod: "Exact scheme name match with documented area/branch spelling normalization (RUGAGA -> RUGAAGA)",
+          approved: true,
+          portalSchemeId: match.schemeId,
+          portalSchemeName: match.schemeName,
+          portalSchemeCode: match.schemeCode,
+          portalBranchId: match.branchId,
+          portalBranchName: match.branchName,
+          portalClusterId: match.clusterId,
+          portalClusterName: match.clusterName,
+          portalOrgId: match.orgId,
+          portalOrgName: match.orgName,
+          hierarchyCheck: "PASSED",
         }
       }
 
@@ -157,7 +193,6 @@ export async function performSchemeReconciliation(): Promise<FullReconciliationR
       }
     }
 
-    // Step 6: Unmatched Reference Schemes
     unmatchedCount++
     return {
       excelNumber: es.schemeNumber,
@@ -179,6 +214,9 @@ export async function performSchemeReconciliation(): Promise<FullReconciliationR
     }
   })
 
+  const totalApproved = approvedExactMatchesCount + approvedNormalizedMatchesCount
+  const percentageApproved = opSchemes.length > 0 ? Math.round((totalApproved / opSchemes.length) * 1000) / 10 : 0
+
   return {
     totalExcelOperationalSchemes: opSchemes.length,
     totalLivePortalSchemes: dbRows.length,
@@ -187,6 +225,7 @@ export async function performSchemeReconciliation(): Promise<FullReconciliationR
     hierarchyMismatchesCount,
     manualReviewCount,
     unmatchedCount,
+    percentageApproved,
     reconciledSchemes,
   }
 }
