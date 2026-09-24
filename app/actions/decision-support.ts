@@ -6,14 +6,16 @@ import {
   reportGenerationHistory,
   intelligenceFinding,
   waterScheme,
+  decisionSupportSchemeMapping,
 } from "@/lib/db/schema"
 import { requireUser } from "@/lib/session"
-import { canViewIntelligence, canInvestigateIntelligence, canExportReports } from "@/lib/permissions"
+import { canViewIntelligence, canInvestigateIntelligence, canExportReports, canManageIntelligenceRules } from "@/lib/permissions"
 import { writeAudit } from "@/lib/audit"
 import { getTrustedPerformanceDataset } from "@/lib/decision-support/performance-engine"
 import { generateManagementAttentionItems } from "@/lib/decision-support/attention-engine"
 import { generateManagementReport } from "@/lib/decision-support/reports"
 import { generateBoardPackPptx } from "@/lib/decision-support/board-pack"
+import { performSchemeReconciliation } from "@/lib/decision-support/scheme-matcher"
 import { eq, desc, and } from "drizzle-orm"
 import { randomUUID } from "crypto"
 
@@ -185,3 +187,96 @@ export async function updateManagementActionStatusAction(data: {
 
   return { success: true }
 }
+
+export async function getSchemeReconciliationAction() {
+  const current = await requireUser()
+  if (!canViewIntelligence(current)) {
+    throw new Error("Access Denied: You do not have permission to view Decision Support Scheme Reconciliation.")
+  }
+
+  const report = await performSchemeReconciliation()
+
+  // Also fetch any manual mapping overrides from decision_support_scheme_mapping
+  const existingMappings = await db.select().from(decisionSupportSchemeMapping)
+  const mapByExcelName = new Map<string, typeof existingMappings[0]>()
+  existingMappings.forEach((m) => {
+    mapByExcelName.set(m.excelSchemeName.toLowerCase().trim(), m)
+  })
+
+  // Apply manual approval overrides if present
+  const reconciledSchemes = report.reconciledSchemes.map((s) => {
+    const override = mapByExcelName.get(s.excelSchemeName.toLowerCase().trim())
+    if (override) {
+      return {
+        ...s,
+        approved: override.approved,
+        matchStatus: override.matchStatus as any,
+        matchMethod: override.matchMethod,
+        portalSchemeId: override.waterSchemeId || s.portalSchemeId,
+      }
+    }
+    return s
+  })
+
+  return {
+    ...report,
+    reconciledSchemes,
+  }
+}
+
+export async function approveSchemeMappingAction(data: {
+  excelArea: string
+  excelSchemeName: string
+  portalSchemeId: string
+  matchStatus: "APPROVED_EXACT_MATCH" | "APPROVED_NORMALIZED_MATCH" | "REQUIRES_MANUAL_APPROVAL" | "HIERARCHY_MISMATCH" | "UNMATCHED_REFERENCE_SCHEME"
+  matchMethod: string
+}) {
+  const current = await requireUser()
+  if (!canManageIntelligenceRules(current) && !canInvestigateIntelligence(current)) {
+    throw new Error("Access Denied: You do not have permission to approve Scheme Mappings.")
+  }
+
+  const mappingId = `map-${randomUUID()}`
+
+  await db
+    .insert(decisionSupportSchemeMapping)
+    .values({
+      id: mappingId,
+      waterSchemeId: data.portalSchemeId || null,
+      excelArea: data.excelArea,
+      excelSchemeName: data.excelSchemeName,
+      matchStatus: data.matchStatus,
+      matchMethod: data.matchMethod,
+      approved: true,
+      approvedById: current.id,
+      approvedAt: new Date(),
+    })
+    .onConflictDoUpdate({
+      target: decisionSupportSchemeMapping.id,
+      set: {
+        waterSchemeId: data.portalSchemeId || null,
+        matchStatus: data.matchStatus,
+        matchMethod: data.matchMethod,
+        approved: true,
+        approvedById: current.id,
+        approvedAt: new Date(),
+        updatedAt: new Date(),
+      },
+    })
+
+  await writeAudit({
+    user: { id: current.id, name: current.name || "User", email: current.email || "" },
+    action: "decision_support.scheme_mapping.approve",
+    entityType: "decision_support_scheme_mapping",
+    entityId: mappingId,
+    details: {
+      excelSchemeName: data.excelSchemeName,
+      excelArea: data.excelArea,
+      portalSchemeId: data.portalSchemeId,
+      matchStatus: data.matchStatus,
+    },
+  })
+
+  return { success: true, id: mappingId }
+}
+

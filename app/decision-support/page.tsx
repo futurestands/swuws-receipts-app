@@ -8,12 +8,15 @@ import {
   generateManagementReportAction,
   createManagementActionAction,
   updateManagementActionStatusAction,
+  getSchemeReconciliationAction,
+  approveSchemeMappingAction,
 } from "@/app/actions/decision-support"
 import {
   TrustedPerformanceDataset,
   ManagementActionItem,
 } from "@/lib/decision-support/types"
 import { StructuredFinding } from "@/lib/intelligence/types"
+import { FullReconciliationReport, ReconciledSchemeItem } from "@/lib/decision-support/scheme-matcher"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -34,7 +37,11 @@ import {
   ExternalLink,
   Printer,
   ShieldCheck,
-  TrendingUp,
+  Search,
+  Filter,
+  Eye,
+  XCircle,
+  HelpCircle,
   Info,
 } from "lucide-react"
 
@@ -42,11 +49,18 @@ export default function DecisionSupportPage() {
   const [dataset, setDataset] = useState<TrustedPerformanceDataset | null>(null)
   const [attentionItems, setAttentionItems] = useState<StructuredFinding[]>([])
   const [actions, setActions] = useState<ManagementActionItem[]>([])
+  const [reconciliationReport, setReconciliationReport] = useState<FullReconciliationReport | null>(null)
   const [activeTab, setActiveTab] = useState("overview")
 
   const [isLoading, startTransition] = useTransition()
   const [isGeneratingPptx, setIsGeneratingPptx] = useState(false)
   const [reportOutput, setReportOutput] = useState<any>(null)
+
+  // Reconciliation Filters & Inspection Modal State
+  const [reconFilter, setReconFilter] = useState<"ALL" | "APPROVED" | "HIERARCHY_MISMATCH" | "UNMATCHED" | "NORMALIZED">("ALL")
+  const [reconSearch, setReconSearch] = useState("")
+  const [selectedReconItem, setSelectedReconItem] = useState<ReconciledSchemeItem | null>(null)
+  const [isApprovingMapping, setIsApprovingMapping] = useState(false)
 
   // Action modal state
   const [showActionModal, setShowActionModal] = useState(false)
@@ -57,10 +71,14 @@ export default function DecisionSupportPage() {
   const loadData = () => {
     startTransition(async () => {
       try {
-        const res = await getDecisionSupportOverviewAction()
-        setDataset(res.dataset)
-        setAttentionItems(res.attentionItems)
-        setActions(res.actions as any)
+        const [resOverview, resRecon] = await Promise.all([
+          getDecisionSupportOverviewAction(),
+          getSchemeReconciliationAction(),
+        ])
+        setDataset(resOverview.dataset)
+        setAttentionItems(resOverview.attentionItems)
+        setActions(resOverview.actions as any)
+        setReconciliationReport(resRecon)
       } catch (err) {
         console.error("Failed to load decision support overview:", err)
       }
@@ -128,6 +146,26 @@ export default function DecisionSupportPage() {
     loadData()
   }
 
+  const handleApproveMapping = async (item: ReconciledSchemeItem) => {
+    if (!item.portalSchemeId) return
+    setIsApprovingMapping(true)
+    try {
+      await approveSchemeMappingAction({
+        excelArea: item.excelArea,
+        excelSchemeName: item.excelSchemeName,
+        portalSchemeId: item.portalSchemeId,
+        matchStatus: item.matchStatus,
+        matchMethod: item.matchMethod,
+      })
+      setSelectedReconItem(null)
+      loadData()
+    } catch (err) {
+      console.error("Failed to approve mapping:", err)
+    } finally {
+      setIsApprovingMapping(false)
+    }
+  }
+
   if (!dataset) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
@@ -135,6 +173,25 @@ export default function DecisionSupportPage() {
       </div>
     )
   }
+
+  // Filtered Reconciliation Items
+  const filteredReconItems = reconciliationReport
+    ? reconciliationReport.reconciledSchemes.filter((item) => {
+        const nameMatch =
+          item.excelSchemeName.toLowerCase().includes(reconSearch.toLowerCase()) ||
+          item.excelArea.toLowerCase().includes(reconSearch.toLowerCase()) ||
+          (item.portalSchemeName && item.portalSchemeName.toLowerCase().includes(reconSearch.toLowerCase()))
+
+        if (!nameMatch) return false
+
+        if (reconFilter === "APPROVED") return item.approved
+        if (reconFilter === "HIERARCHY_MISMATCH") return item.matchStatus === "HIERARCHY_MISMATCH"
+        if (reconFilter === "UNMATCHED") return item.matchStatus === "UNMATCHED_REFERENCE_SCHEME"
+        if (reconFilter === "NORMALIZED") return item.matchStatus === "APPROVED_NORMALIZED_MATCH"
+
+        return true
+      })
+    : []
 
   return (
     <div className="space-y-6">
@@ -148,7 +205,7 @@ export default function DecisionSupportPage() {
             </Badge>
           </div>
           <p className="text-sm text-muted-foreground mt-1">
-            Automated operational & commercial data consolidation, performance benchmarking, and Board Pack presentation generator.
+            Automated operational & commercial data consolidation, scheme reconciliation, and Board Pack presentation generator.
           </p>
         </div>
 
@@ -162,8 +219,11 @@ export default function DecisionSupportPage() {
 
       {/* MANAGEMENT TABS */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-        <TabsList className="grid grid-cols-2 md:grid-cols-4 w-full md:w-auto">
+        <TabsList className="grid grid-cols-2 md:grid-cols-5 w-full md:w-auto">
           <TabsTrigger value="overview">Overview & Performance</TabsTrigger>
+          <TabsTrigger value="reconciliation">
+            Scheme Reconciliation ({reconciliationReport ? reconciliationReport.unmatchedCount : 8})
+          </TabsTrigger>
           <TabsTrigger value="reports">Management Reports</TabsTrigger>
           <TabsTrigger value="boardpack">Board Pack (.pptx)</TabsTrigger>
           <TabsTrigger value="actions">Action Register ({actions.filter((a) => a.status !== "CLOSED").length})</TabsTrigger>
@@ -317,7 +377,312 @@ export default function DecisionSupportPage() {
           )}
         </TabsContent>
 
-        {/* TAB 2: MANAGEMENT REPORTS */}
+        {/* TAB 2: SCHEME RECONCILIATION MANAGEMENT */}
+        <TabsContent value="reconciliation" className="space-y-6">
+          {/* SUMMARY KPI COUNTS */}
+          <div className="grid gap-4 md:grid-cols-4">
+            <Card>
+              <CardHeader className="p-4 pb-1">
+                <CardTitle className="text-xs font-medium text-muted-foreground uppercase">Total Reference Schemes</CardTitle>
+              </CardHeader>
+              <CardContent className="p-4 pt-1">
+                <div className="text-2xl font-black text-foreground">
+                  {reconciliationReport ? reconciliationReport.totalExcelOperationalSchemes : 64}
+                </div>
+                <p className="text-[10px] text-muted-foreground mt-1">Benchmark Excel Operational Schemes</p>
+              </CardContent>
+            </Card>
+
+            <Card className="card-accent-green">
+              <CardHeader className="p-4 pb-1">
+                <CardTitle className="text-xs font-medium text-muted-foreground uppercase">Approved Mappings</CardTitle>
+              </CardHeader>
+              <CardContent className="p-4 pt-1">
+                <div className="text-2xl font-black text-emerald-600">
+                  {reconciliationReport ? reconciliationReport.approvedExactMatchesCount + reconciliationReport.approvedNormalizedMatchesCount : 54}
+                </div>
+                <p className="text-[10px] text-muted-foreground mt-1">
+                  Verified & Approved ({reconciliationReport ? reconciliationReport.percentageApproved : 84.4}%)
+                </p>
+              </CardContent>
+            </Card>
+
+            <Card className="card-accent-amber">
+              <CardHeader className="p-4 pb-1">
+                <CardTitle className="text-xs font-medium text-muted-foreground uppercase">Hierarchy Mismatches</CardTitle>
+              </CardHeader>
+              <CardContent className="p-4 pt-1">
+                <div className="text-2xl font-black text-amber-600">
+                  {reconciliationReport ? reconciliationReport.hierarchyMismatchesCount : 2}
+                </div>
+                <p className="text-[10px] text-amber-700 dark:text-amber-400 mt-1 font-semibold">Mayanga & Itojo (Unapproved)</p>
+              </CardContent>
+            </Card>
+
+            <Card className="card-accent-red">
+              <CardHeader className="p-4 pb-1">
+                <CardTitle className="text-xs font-medium text-muted-foreground uppercase">Unmatched Reference Schemes</CardTitle>
+              </CardHeader>
+              <CardContent className="p-4 pt-1">
+                <div className="text-2xl font-black text-destructive">
+                  {reconciliationReport ? reconciliationReport.unmatchedCount : 8}
+                </div>
+                <p className="text-[10px] text-muted-foreground mt-1">Unmapped Reference Rows (waterSchemeId = null)</p>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* TABLE CONTROLS & FILTERS */}
+          <Card>
+            <CardHeader className="pb-3">
+              <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                <div>
+                  <CardTitle className="text-lg font-bold">Scheme Reconciliation Registry</CardTitle>
+                  <CardDescription>
+                    Auditable mapping between Excel reference scheme benchmarks and live SWUWS portal `water_scheme.id` records.
+                  </CardDescription>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
+                  <div className="relative w-full sm:w-64">
+                    <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      placeholder="Filter by scheme name or area..."
+                      value={reconSearch}
+                      onChange={(e) => setReconSearch(e.target.value)}
+                      className="pl-8 h-9 text-xs"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* FILTER BUTTONS */}
+              <div className="flex flex-wrap gap-2 pt-2">
+                <Button
+                  size="sm"
+                  variant={reconFilter === "ALL" ? "default" : "outline"}
+                  onClick={() => setReconFilter("ALL")}
+                  className="h-7 text-xs"
+                >
+                  All (64)
+                </Button>
+                <Button
+                  size="sm"
+                  variant={reconFilter === "APPROVED" ? "default" : "outline"}
+                  onClick={() => setReconFilter("APPROVED")}
+                  className="h-7 text-xs text-emerald-700 dark:text-emerald-400"
+                >
+                  Approved (54)
+                </Button>
+                <Button
+                  size="sm"
+                  variant={reconFilter === "HIERARCHY_MISMATCH" ? "default" : "outline"}
+                  onClick={() => setReconFilter("HIERARCHY_MISMATCH")}
+                  className="h-7 text-xs text-amber-700 dark:text-amber-400"
+                >
+                  Hierarchy Mismatch (2)
+                </Button>
+                <Button
+                  size="sm"
+                  variant={reconFilter === "UNMATCHED" ? "default" : "outline"}
+                  onClick={() => setReconFilter("UNMATCHED")}
+                  className="h-7 text-xs text-destructive"
+                >
+                  Unmatched (8)
+                </Button>
+                <Button
+                  size="sm"
+                  variant={reconFilter === "NORMALIZED" ? "default" : "outline"}
+                  onClick={() => setReconFilter("NORMALIZED")}
+                  className="h-7 text-xs"
+                >
+                  Normalized Match (1)
+                </Button>
+              </div>
+            </CardHeader>
+
+            <CardContent>
+              <div className="border rounded-lg overflow-x-auto">
+                <table className="w-full text-xs text-left">
+                  <thead className="bg-muted text-muted-foreground uppercase font-semibold">
+                    <tr>
+                      <th className="p-3">Ref No.</th>
+                      <th className="p-3">Reference Scheme</th>
+                      <th className="p-3">Reference Area</th>
+                      <th className="p-3">Portal Scheme</th>
+                      <th className="p-3 font-mono">Portal Scheme ID</th>
+                      <th className="p-3">Reconciliation Status</th>
+                      <th className="p-3">Approved</th>
+                      <th className="p-3">Hierarchy / Branch Result</th>
+                      <th className="p-3 text-right">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {filteredReconItems.map((item) => (
+                      <tr key={item.excelNumber} className="hover:bg-muted/30">
+                        <td className="p-3 font-mono text-muted-foreground">#{item.excelNumber}</td>
+                        <td className="p-3 font-bold text-foreground">{item.excelSchemeName}</td>
+                        <td className="p-3 text-muted-foreground">{item.excelArea}</td>
+                        <td className="p-3 font-medium">
+                          {item.portalSchemeName ? (
+                            <span className="text-foreground">{item.portalSchemeName}</span>
+                          ) : (
+                            <span className="text-muted-foreground italic">None (Unmapped)</span>
+                          )}
+                        </td>
+                        <td className="p-3 font-mono text-[11px] text-muted-foreground">
+                          {item.portalSchemeId || "—"}
+                        </td>
+                        <td className="p-3">
+                          {item.matchStatus === "APPROVED_EXACT_MATCH" && (
+                            <Badge className="bg-emerald-600 text-white hover:bg-emerald-700 text-[10px]">
+                              APPROVED_EXACT_MATCH
+                            </Badge>
+                          )}
+                          {item.matchStatus === "APPROVED_NORMALIZED_MATCH" && (
+                            <Badge className="bg-blue-600 text-white hover:bg-blue-700 text-[10px]">
+                              APPROVED_NORMALIZED_MATCH
+                            </Badge>
+                          )}
+                          {item.matchStatus === "HIERARCHY_MISMATCH" && (
+                            <Badge className="bg-amber-600 text-white hover:bg-amber-700 text-[10px]">
+                              HIERARCHY_MISMATCH
+                            </Badge>
+                          )}
+                          {item.matchStatus === "UNMATCHED_REFERENCE_SCHEME" && (
+                            <Badge variant="destructive" className="text-[10px]">
+                              UNMATCHED_REFERENCE_SCHEME
+                            </Badge>
+                          )}
+                        </td>
+                        <td className="p-3">
+                          {item.approved ? (
+                            <span className="text-emerald-600 font-bold flex items-center gap-1">
+                              <CheckCircle2 className="h-3.5 w-3.5" /> True
+                            </span>
+                          ) : (
+                            <span className="text-destructive font-bold flex items-center gap-1">
+                              <XCircle className="h-3.5 w-3.5" /> False
+                            </span>
+                          )}
+                        </td>
+                        <td className="p-3 font-mono text-[11px]">
+                          {item.hierarchyCheck === "PASSED" && (
+                            <span className="text-emerald-600 font-semibold">PASSED ({item.portalBranchName})</span>
+                          )}
+                          {item.hierarchyCheck === "BRANCH_MISMATCH" && (
+                            <span className="text-amber-600 font-bold">
+                              CONFLICT (Excel: {item.excelArea} vs DB: {item.portalBranchName})
+                            </span>
+                          )}
+                          {item.hierarchyCheck === "UNMATCHED" && (
+                            <span className="text-muted-foreground italic">UNMATCHED</span>
+                          )}
+                        </td>
+                        <td className="p-3 text-right">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-7 text-xs"
+                            onClick={() => setSelectedReconItem(item)}
+                          >
+                            <Eye className="h-3.5 w-3.5 mr-1" /> Inspect
+                          </Button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* INSPECTION DETAIL MODAL */}
+          <Dialog open={Boolean(selectedReconItem)} onOpenChange={(open) => !open && setSelectedReconItem(null)}>
+            <DialogContent className="sm:max-w-lg">
+              <DialogTitle className="text-lg font-bold flex items-center gap-2">
+                <ShieldCheck className="h-5 w-5 text-brand-blue" />
+                Scheme Reconciliation Inspector
+              </DialogTitle>
+              <DialogDescription className="text-xs">
+                Auditable metadata and hierarchy verification details for reference scheme benchmark.
+              </DialogDescription>
+
+              {selectedReconItem && (
+                <div className="space-y-4 pt-2 text-xs">
+                  <div className="p-3 rounded-lg border bg-muted/20 space-y-2">
+                    <div className="flex justify-between border-b pb-1">
+                      <span className="text-muted-foreground">Excel Reference Scheme:</span>
+                      <strong className="text-foreground font-bold">#{selectedReconItem.excelNumber} {selectedReconItem.excelSchemeName}</strong>
+                    </div>
+                    <div className="flex justify-between border-b pb-1">
+                      <span className="text-muted-foreground">Excel Reference Area:</span>
+                      <strong className="text-foreground">{selectedReconItem.excelArea}</strong>
+                    </div>
+                    <div className="flex justify-between border-b pb-1">
+                      <span className="text-muted-foreground">Matched Portal Scheme Name:</span>
+                      <strong className="text-foreground">{selectedReconItem.portalSchemeName || "None (Unmapped)"}</strong>
+                    </div>
+                    <div className="flex justify-between border-b pb-1">
+                      <span className="text-muted-foreground font-mono">Portal Scheme ID:</span>
+                      <code className="text-brand-blue font-mono text-[11px]">{selectedReconItem.portalSchemeId || "NULL"}</code>
+                    </div>
+                    <div className="flex justify-between border-b pb-1">
+                      <span className="text-muted-foreground">Portal Branch / Cluster:</span>
+                      <strong className="text-foreground">
+                        {selectedReconItem.portalBranchName ? `${selectedReconItem.portalBranchName} (${selectedReconItem.portalClusterName || "SWUWS Cluster"})` : "None"}
+                      </strong>
+                    </div>
+                    <div className="flex justify-between border-b pb-1">
+                      <span className="text-muted-foreground">Reconciliation Status:</span>
+                      <Badge variant="outline">{selectedReconItem.matchStatus}</Badge>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Approval Status:</span>
+                      <span className={selectedReconItem.approved ? "text-emerald-600 font-bold" : "text-destructive font-bold"}>
+                        {selectedReconItem.approved ? "APPROVED (True)" : "UNAPPROVED (False)"}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="p-3 rounded-lg border bg-amber-50/20 border-amber-200 space-y-1">
+                    <div className="font-bold text-amber-800 dark:text-amber-400">Match Evidence & Reason:</div>
+                    <p className="text-muted-foreground">{selectedReconItem.matchMethod}</p>
+                    {selectedReconItem.matchStatus === "HIERARCHY_MISMATCH" && (
+                      <p className="text-amber-700 dark:text-amber-400 font-semibold pt-1">
+                        Explicit Conflict: Excel Area &quot;{selectedReconItem.excelArea}&quot; differs from DB Branch &quot;{selectedReconItem.portalBranchName}&quot;. Manual administrative approval is required to override.
+                      </p>
+                    )}
+                    {selectedReconItem.matchStatus === "UNMATCHED_REFERENCE_SCHEME" && (
+                      <p className="text-destructive font-semibold pt-1">
+                        No approved live portal scheme mapping exists. This reference record is excluded from live production performance totals.
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="flex justify-end gap-2 pt-2">
+                    <Button variant="outline" size="sm" onClick={() => setSelectedReconItem(null)}>
+                      Close
+                    </Button>
+                    {selectedReconItem.portalSchemeId && !selectedReconItem.approved && (
+                      <Button
+                        size="sm"
+                        className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                        disabled={isApprovingMapping}
+                        onClick={() => handleApproveMapping(selectedReconItem)}
+                      >
+                        <ShieldCheck className="h-4 w-4 mr-1" />
+                        {isApprovingMapping ? "Approving..." : "Approve Scheme Mapping"}
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              )}
+            </DialogContent>
+          </Dialog>
+        </TabsContent>
+
+        {/* TAB 3: MANAGEMENT REPORTS */}
         <TabsContent value="reports" className="space-y-6">
           <Card>
             <CardHeader>
@@ -391,7 +756,7 @@ export default function DecisionSupportPage() {
           </Card>
         </TabsContent>
 
-        {/* TAB 3: BOARD PACK (.PPTX) */}
+        {/* TAB 4: BOARD PACK (.PPTX) */}
         <TabsContent value="boardpack" className="space-y-6">
           <Card className="border-brand-blue/30 bg-brand-blue/5">
             <CardHeader>
@@ -432,7 +797,7 @@ export default function DecisionSupportPage() {
           </Card>
         </TabsContent>
 
-        {/* TAB 4: ACTION REGISTER */}
+        {/* TAB 5: ACTION REGISTER */}
         <TabsContent value="actions" className="space-y-6">
           <div className="flex justify-between items-center">
             <h2 className="text-xl font-bold tracking-tight">Management Action Register</h2>
