@@ -217,3 +217,30 @@ export const reportGenerationHistory = pgTable(
 
 export type ManagementAction = typeof managementAction.$inferSelect
 export type ReportGenerationHistory = typeof reportGenerationHistory.$inferSelect
+
+/**
+ * Auditable Scheme Mapping between Excel Reference Names and Live DB water_scheme.id
+ */
+export const decisionSupportSchemeMapping = pgTable(
+  "decision_support_scheme_mapping",
+  {
+    id: text("id").primaryKey(),
+    waterSchemeId: text("waterSchemeId").references(() => waterScheme.id, { onDelete: "set null" }),
+    excelArea: text("excelArea").notNull(),
+    excelSchemeName: text("excelSchemeName").notNull(),
+    matchStatus: text("matchStatus").notNull(), // 'EXACT_NAME_MATCH' | 'NORMALIZED_NAME_MATCH' | 'REQUIRES_MANUAL_APPROVAL' | 'UNMATCHED_REFERENCE_SCHEME'
+    matchMethod: text("matchMethod").notNull(),
+    approved: boolean("approved").notNull().default(true),
+    approvedById: text("approvedById").references(() => user.id, { onDelete: "set null" }),
+    approvedAt: timestamp("approvedAt").defaultNow(),
+    source: text("source").notNull().default("SWUWS Excel Reference Dataset (global target.xlsx)"),
+    createdAt: timestamp("createdAt").notNull().defaultNow(),
+    updatedAt: timestamp("updatedAt").notNull().defaultNow(),
+  },
+  (table) => ({
+    schemeIdx: index("ds_scheme_map_scheme_idx").on(table.waterSchemeId),
+    statusIdx: index("ds_scheme_map_status_idx").on(table.matchStatus),
+  })
+)
+
+export type DecisionSupportSchemeMapping = typeof decisionSupportSchemeMapping.$inferSelect

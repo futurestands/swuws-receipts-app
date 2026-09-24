@@ -73,7 +73,13 @@ describe("SWUWS Excel Reference Benchmark & Decision Support Pipeline", () => {
     expect(val.displayLossIndicator).toContain("(Inconsistent)")
   })
 
-  it("Test 6: should generate a valid 14-slide Board Pack PowerPoint (.pptx) package and verify complete OpenXML structure", async () => {
+  it("Test 6: should tag reference records as sample data and prevent production DB mutation", () => {
+    const ref = parseExcelReferenceDataset()
+    expect(ref.schemes.every((s) => s.isReferenceSample === true)).toBe(true)
+    expect(ref.schemes.every((s) => s.dataSource.includes("Excel Reference Dataset"))).toBe(true)
+  })
+
+  it("Test 7: should generate a valid 14-slide Board Pack PowerPoint (.pptx) package and verify complete OpenXML structure", async () => {
     const dataset = getExcelReferencePerformanceDataset("august")
     const pptxBuffer = await generateBoardPackPptx(dataset)
 
