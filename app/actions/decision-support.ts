@@ -6,6 +6,9 @@ import {
   reportGenerationHistory,
   intelligenceFinding,
   waterScheme,
+  branch,
+  cluster,
+  organization,
   decisionSupportSchemeMapping,
 } from "@/lib/db/schema"
 import { requireUser } from "@/lib/session"
@@ -16,6 +19,7 @@ import { generateManagementAttentionItems } from "@/lib/decision-support/attenti
 import { generateManagementReport } from "@/lib/decision-support/reports"
 import { generateBoardPackPptx } from "@/lib/decision-support/board-pack"
 import { performSchemeReconciliation } from "@/lib/decision-support/scheme-matcher"
+import { applyIntelligenceSchemeFilter } from "@/lib/intelligence/scope"
 import { eq, desc, and } from "drizzle-orm"
 import { randomUUID } from "crypto"
 
@@ -231,52 +235,117 @@ export async function approveSchemeMappingAction(data: {
   matchStatus: "APPROVED_EXACT_MATCH" | "APPROVED_NORMALIZED_MATCH" | "REQUIRES_MANUAL_APPROVAL" | "HIERARCHY_MISMATCH" | "UNMATCHED_REFERENCE_SCHEME"
   matchMethod: string
 }) {
+  // 1. Permission check
   const current = await requireUser()
   if (!canManageIntelligenceRules(current) && !canInvestigateIntelligence(current)) {
     throw new Error("Access Denied: You do not have permission to approve Scheme Mappings.")
   }
 
-  const mappingId = `map-${randomUUID()}`
+  // 2. Server-Side Scope & Existence Validation of portalSchemeId
+  if (!data.portalSchemeId || typeof data.portalSchemeId !== "string" || !data.portalSchemeId.trim()) {
+    throw new Error("Invalid Request: A valid portalSchemeId is required to approve a scheme mapping.")
+  }
 
-  await db
-    .insert(decisionSupportSchemeMapping)
-    .values({
-      id: mappingId,
-      waterSchemeId: data.portalSchemeId || null,
-      excelArea: data.excelArea,
-      excelSchemeName: data.excelSchemeName,
-      matchStatus: data.matchStatus,
-      matchMethod: data.matchMethod,
-      approved: true,
-      approvedById: current.id,
-      approvedAt: new Date(),
+  const scopeCondition = applyIntelligenceSchemeFilter(current, data.portalSchemeId)
+  const schemeCondition = scopeCondition
+    ? and(eq(waterScheme.id, data.portalSchemeId), eq(waterScheme.active, true), scopeCondition)
+    : and(eq(waterScheme.id, data.portalSchemeId), eq(waterScheme.active, true))
+
+  const [portalScheme] = await db
+    .select({
+      schemeId: waterScheme.id,
+      schemeName: waterScheme.name,
+      schemeCode: waterScheme.code,
+      branchId: branch.id,
+      branchName: branch.name,
+      clusterId: cluster.id,
+      clusterName: cluster.name,
+      orgId: organization.id,
+      orgName: organization.name,
     })
-    .onConflictDoUpdate({
-      target: decisionSupportSchemeMapping.id,
-      set: {
-        waterSchemeId: data.portalSchemeId || null,
+    .from(waterScheme)
+    .leftJoin(branch, eq(waterScheme.branchId, branch.id))
+    .leftJoin(cluster, eq(branch.clusterId, cluster.id))
+    .leftJoin(organization, eq(cluster.organizationId, organization.id))
+    .where(schemeCondition)
+    .limit(1)
+
+  if (!portalScheme) {
+    throw new Error("Access Denied or Scheme Not Found: Submitted portal scheme does not exist or is outside your authorized hierarchy scope.")
+  }
+
+  // 3. Idempotent Mapping Updates by excelArea + excelSchemeName
+  const normArea = data.excelArea.trim()
+  const normName = data.excelSchemeName.trim()
+
+  const [existingMapping] = await db
+    .select()
+    .from(decisionSupportSchemeMapping)
+    .where(
+      and(
+        eq(decisionSupportSchemeMapping.excelArea, normArea),
+        eq(decisionSupportSchemeMapping.excelSchemeName, normName)
+      )
+    )
+    .limit(1)
+
+  const previousApprovalState = existingMapping ? existingMapping.approved : false
+  const previousPortalSchemeId = existingMapping ? existingMapping.waterSchemeId : null
+  const isReapproval = Boolean(existingMapping)
+  const mappingId = existingMapping ? existingMapping.id : `map-${randomUUID()}`
+
+  if (existingMapping) {
+    await db
+      .update(decisionSupportSchemeMapping)
+      .set({
+        waterSchemeId: portalScheme.schemeId,
         matchStatus: data.matchStatus,
         matchMethod: data.matchMethod,
         approved: true,
         approvedById: current.id,
         approvedAt: new Date(),
         updatedAt: new Date(),
-      },
-    })
+      })
+      .where(eq(decisionSupportSchemeMapping.id, mappingId))
+  } else {
+    await db
+      .insert(decisionSupportSchemeMapping)
+      .values({
+        id: mappingId,
+        waterSchemeId: portalScheme.schemeId,
+        excelArea: normArea,
+        excelSchemeName: normName,
+        matchStatus: data.matchStatus,
+        matchMethod: data.matchMethod,
+        approved: true,
+        approvedById: current.id,
+        approvedAt: new Date(),
+        updatedAt: new Date(),
+      })
+  }
 
+  // 4. Enriched Governance Audit Trail
   await writeAudit({
     user: { id: current.id, name: current.name || "User", email: current.email || "" },
-    action: "decision_support.scheme_mapping.approve",
+    action: isReapproval ? "decision_support.scheme_mapping.update" : "decision_support.scheme_mapping.approve",
     entityType: "decision_support_scheme_mapping",
     entityId: mappingId,
     details: {
-      excelSchemeName: data.excelSchemeName,
-      excelArea: data.excelArea,
-      portalSchemeId: data.portalSchemeId,
+      operation: isReapproval ? "UPDATE_REAPPROVAL" : "FIRST_APPROVAL",
+      excelArea: normArea,
+      excelSchemeName: normName,
+      portalSchemeId: portalScheme.schemeId,
+      portalSchemeName: portalScheme.schemeName,
+      branchName: portalScheme.branchName,
+      clusterName: portalScheme.clusterName || "N/A",
+      organizationName: portalScheme.orgName || "SWUWS",
       matchStatus: data.matchStatus,
+      matchMethod: data.matchMethod,
+      previousApprovalState,
+      previousPortalSchemeId,
+      newApprovalState: true,
     },
   })
 
   return { success: true, id: mappingId }
 }
-
