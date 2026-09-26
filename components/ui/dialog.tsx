@@ -16,13 +16,21 @@ function DialogTrigger({
   children,
   ...props
 }: DialogPrimitive.Trigger.Props & { asChild?: boolean }) {
+  if (asChild) {
+    // Pass the child only as `render`. Setting children={undefined} makes
+    // Base UI cloneElement(..., undefined) and wipes the button label on SSR.
+    return (
+      <DialogPrimitive.Trigger
+        data-slot="dialog-trigger"
+        render={children as React.ReactElement}
+        {...props}
+      />
+    )
+  }
+
   return (
-    <DialogPrimitive.Trigger
-      data-slot="dialog-trigger"
-      render={asChild ? (children as React.ReactElement) : undefined}
-      {...props}
-    >
-      {asChild ? undefined : children}
+    <DialogPrimitive.Trigger data-slot="dialog-trigger" {...props}>
+      {children}
     </DialogPrimitive.Trigger>
   )
 }
