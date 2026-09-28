@@ -240,13 +240,11 @@ export async function createReceipt(input: CreateReceiptInput & { idempotencyKey
             // Apply totalAvailable to bill, capped at remainingBefore
             appliedToBill = Math.min(totalAvailable, remainingBefore)
             const outstandingAfter = remainingBefore - appliedToBill
-            // Goal Alignment: Bills only move to 'paid' AFTER bank reconciliation.
-            // For now, we move them to 'pending_bank_confirmation'.
-            newStatus = outstandingAfter <= 0 ? "pending_bank_confirmation" : "partially_paid"
+            // Goal Alignment: Bills move to 'paid' when outstanding balance reaches zero,
+            // or 'partially_paid' when partially collected.
+            newStatus = outstandingAfter <= 0 ? "paid" : "partially_paid"
 
             // Update Billing Record Status
-            // Note: We only update status to 'partially_paid' or 'pending_bank_confirmation'
-            // to track operational progress. Final 'paid' status requires bank sync.
             await tx
               .update(billingRecord)
               .set({ status: newStatus, updatedAt: new Date() })

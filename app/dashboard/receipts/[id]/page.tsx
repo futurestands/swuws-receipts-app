@@ -36,25 +36,6 @@ export default async function ReceiptDetailPage({ params }: { params: Promise<{ 
   const verifyUrl = `${siteUrl}/verify?number=${encodeURIComponent(receipt.receiptNumber)}`
   const qrSrc = `https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=${encodeURIComponent(verifyUrl)}`
 
-  const rows: Array<readonly [string, string]> = [
-    ["Customer", receipt.customerName],
-    ...(receipt.customerAccount ? ([["Account number", receipt.customerAccount]] as const) : []),
-    ...(receipt.customerPhone ? ([["Phone", receipt.customerPhone]] as const) : []),
-    ...(receipt.customerAddress ? ([["Address", receipt.customerAddress]] as const) : []),
-    ...(receipt.schemeNameSnapshot
-      ? ([["Water Scheme", receipt.schemeNameSnapshot]] as const)
-      : []),
-    ...(receipt.billingPeriodSnapshot
-      ? ([["Billing Period", receipt.billingPeriodSnapshot]] as const)
-      : []),
-    ["Payment method", receipt.paymentMethod.replace(/_/g, " ")],
-    ["Payment reference", receipt.paymentReference],
-    ["Collection date", formatDateTime(receipt.paymentDate)],
-    ...(receipt.branchName ? ([["Branch", receipt.branchName]] as const) : []),
-    ["Collected by", `${receipt.agentName} (${receipt.agentEmail})`],
-    ...(receipt.notes ? ([["Notes", receipt.notes]] as const) : []),
-  ]
-
   // Financial Breakdown Logic
   const amountCollected = receipt.amount
   const prevBalance = receipt.previousAccountBalanceSnapshot
@@ -62,7 +43,6 @@ export default async function ReceiptDetailPage({ params }: { params: Promise<{ 
 
   const isCredit = Number(newBalance) < 0
   const absBalance = Math.abs(Number(newBalance))
-  const remainingOutstanding = Number(receipt.outstandingBalance ?? 0)
 
   return (
     <div className="w-full max-w-full space-y-4 overflow-x-hidden print-page">
@@ -105,6 +85,7 @@ export default async function ReceiptDetailPage({ params }: { params: Promise<{ 
             </div>
           )}
 
+          {/* OFFICIAL HEADER */}
           <div className="flex flex-col gap-3 border-b pb-4 mb-6 sm:flex-row sm:items-start sm:justify-between">
             <div className="flex min-w-0 items-start gap-3">
               {receipt.logoUrlSnapshot && (
@@ -112,17 +93,17 @@ export default async function ReceiptDetailPage({ params }: { params: Promise<{ 
                 <img src={receipt.logoUrlSnapshot} alt="" className="h-10 w-10 sm:h-12 sm:w-12 shrink-0 object-contain" />
               )}
               <div className="min-w-0">
-                <p className="font-semibold text-base sm:text-lg break-words">{receipt.orgNameSnapshot}</p>
+                <p className="font-bold text-base sm:text-lg break-words">{receipt.orgNameSnapshot}</p>
                 <div className="text-[10px] text-muted-foreground leading-tight break-words">
                   {receipt.orgAddressSnapshot && <p>{receipt.orgAddressSnapshot}</p>}
                   {receipt.orgPhoneSnapshot && <p>Tel: {receipt.orgPhoneSnapshot}</p>}
                 </div>
-                <p className="text-xs text-muted-foreground mt-1">Official Payment Receipt</p>
+                <p className="text-xs text-muted-foreground mt-1 font-semibold">Official Payment Receipt</p>
               </div>
             </div>
             <div className="sm:text-right shrink-0">
               <div className="flex flex-col sm:items-end gap-1 mb-1">
-                <p className="font-mono font-semibold text-sm break-all">{receipt.receiptNumber}</p>
+                <p className="font-mono font-bold text-base text-foreground break-all">{receipt.receiptNumber}</p>
                 {receipt.isVoided && (
                   <Badge variant="destructive" className="animate-pulse flex gap-1 w-fit">
                     <Ban className="size-3" /> VOIDED
@@ -138,37 +119,107 @@ export default async function ReceiptDetailPage({ params }: { params: Promise<{ 
             </div>
           </div>
 
-          <dl className="grid grid-cols-1 gap-y-3 text-sm mb-6">
-            {rows.map(([label, value]) => (
-              <div key={label} className="flex flex-col min-w-0">
-                <dt className="text-muted-foreground text-[10px] uppercase font-bold">{label}</dt>
-                <dd className="font-medium break-words">{value}</dd>
+          {/* 2-COLUMN METADATA GRID */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-3 text-sm mb-6 pb-6 border-b">
+            {/* Left Column: Customer & Location */}
+            <div className="space-y-3">
+              <div className="flex flex-col min-w-0">
+                <dt className="text-muted-foreground text-[10px] uppercase font-bold tracking-wider">Customer Name</dt>
+                <dd className="font-bold text-base text-foreground break-words">{receipt.customerName}</dd>
               </div>
-            ))}
-          </dl>
 
-          <div className="space-y-2 mb-6 border rounded-lg p-3 sm:p-4 bg-muted/20">
-            <h3 className="text-xs font-bold uppercase text-muted-foreground mb-4 border-b pb-2">Financial Breakdown</h3>
+              {receipt.customerAccount && (
+                <div className="flex flex-col min-w-0">
+                  <dt className="text-muted-foreground text-[10px] uppercase font-bold tracking-wider">Account Number</dt>
+                  <dd className="font-mono font-semibold text-foreground break-words">{receipt.customerAccount}</dd>
+                </div>
+              )}
 
-            <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 text-sm">
-              <span className="text-muted-foreground">Previous Arrears</span>
-              <span className="font-mono break-all">{formatUGX(Number(prevBalance))}</span>
+              <div className="flex flex-col min-w-0">
+                <dt className="text-muted-foreground text-[10px] uppercase font-bold tracking-wider">Phone</dt>
+                <dd className="font-medium text-foreground break-words">
+                  {receipt.customerPhone && receipt.customerPhone.toUpperCase() !== "NULL" ? receipt.customerPhone : "N/A"}
+                </dd>
+              </div>
+
+              {receipt.schemeNameSnapshot && (
+                <div className="flex flex-col min-w-0">
+                  <dt className="text-muted-foreground text-[10px] uppercase font-bold tracking-wider">Water Scheme</dt>
+                  <dd className="font-medium text-foreground break-words">{receipt.schemeNameSnapshot}</dd>
+                </div>
+              )}
+
+              {receipt.branchName && (
+                <div className="flex flex-col min-w-0">
+                  <dt className="text-muted-foreground text-[10px] uppercase font-bold tracking-wider">Branch</dt>
+                  <dd className="font-medium text-foreground break-words">{receipt.branchName}</dd>
+                </div>
+              )}
             </div>
 
-            <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 text-sm font-semibold border-t pt-2">
-              <span>Amount Collected</span>
-              <span className="font-mono text-primary break-all">{formatUGX(Number(amountCollected))}</span>
-            </div>
+            {/* Right Column: Payment & Audit Metadata */}
+            <div className="space-y-3">
+              {receipt.billingPeriodSnapshot && (
+                <div className="flex flex-col min-w-0">
+                  <dt className="text-muted-foreground text-[10px] uppercase font-bold tracking-wider">Billing Period</dt>
+                  <dd className="font-medium text-foreground break-words">{receipt.billingPeriodSnapshot}</dd>
+                </div>
+              )}
 
-            <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 text-base font-bold text-primary mt-4 pt-2 border-t border-double">
-              <span className="min-w-0">{isCredit ? "New Credit Balance" : "New Account Arrears"}</span>
-              <span className="font-mono break-all">{formatUGX(absBalance)}</span>
+              <div className="flex flex-col min-w-0">
+                <dt className="text-muted-foreground text-[10px] uppercase font-bold tracking-wider">Payment Method</dt>
+                <dd className="font-medium text-foreground uppercase tracking-wide break-words">{receipt.paymentMethod.replace(/_/g, " ")}</dd>
+              </div>
+
+              <div className="flex flex-col min-w-0">
+                <dt className="text-muted-foreground text-[10px] uppercase font-bold tracking-wider">Payment Reference</dt>
+                <dd className="font-mono text-xs font-semibold text-foreground break-words">{receipt.paymentReference}</dd>
+              </div>
+
+              <div className="flex flex-col min-w-0">
+                <dt className="text-muted-foreground text-[10px] uppercase font-bold tracking-wider">Collection Date</dt>
+                <dd className="font-medium text-foreground break-words">{formatDateTime(receipt.paymentDate)}</dd>
+              </div>
+
+              <div className="flex flex-col min-w-0">
+                <dt className="text-muted-foreground text-[10px] uppercase font-bold tracking-wider">Collected By</dt>
+                <dd className="font-medium text-foreground break-words">{receipt.agentName} <span className="text-muted-foreground text-xs">({receipt.agentEmail})</span></dd>
+              </div>
+
+              {receipt.notes && (
+                <div className="flex flex-col min-w-0">
+                  <dt className="text-muted-foreground text-[10px] uppercase font-bold tracking-wider">Notes</dt>
+                  <dd className="font-medium text-foreground break-words">{receipt.notes}</dd>
+                </div>
+              )}
             </div>
           </div>
 
-          <p className="text-xs text-muted-foreground border-t pt-4 break-words">
+          {/* FINANCIAL BREAKDOWN SUMMARY */}
+          <div className="space-y-2 mb-6 border rounded-lg p-4 bg-muted/20">
+            <h3 className="text-xs font-bold uppercase text-muted-foreground mb-3 border-b pb-2 tracking-wider">Financial Breakdown</h3>
+
+            <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 text-sm">
+              <span className="text-muted-foreground font-medium">Previous Arrears</span>
+              <span className="font-mono font-semibold break-all">{formatUGX(Number(prevBalance))}</span>
+            </div>
+
+            <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 text-sm font-semibold border-t pt-2">
+              <span>Amount Collected (Paid)</span>
+              <span className="font-mono text-emerald-600 font-bold break-all">{formatUGX(Number(amountCollected))}</span>
+            </div>
+
+            <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 text-base font-bold text-foreground mt-3 pt-2 border-t border-double">
+              <span className="min-w-0">{isCredit ? "New Credit Balance" : "New Account Arrears"}</span>
+              <span className="font-mono text-primary font-bold break-all">{formatUGX(absBalance)}</span>
+            </div>
+          </div>
+
+          {/* DISCLAIMER & VERIFICATION QR CODE */}
+          <p className="text-xs text-muted-foreground border-t pt-4 break-words leading-relaxed">
             {receipt.disclaimerSnapshot}
           </p>
+
           <div className="flex flex-col gap-3 mt-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="min-w-0">
               <p className="text-xs text-muted-foreground break-words">{receipt.footerSnapshot}</p>
@@ -181,13 +232,14 @@ export default async function ReceiptDetailPage({ params }: { params: Promise<{ 
             </div>
             <div className="flex items-center gap-2 shrink-0">
               <div className="text-left sm:text-right">
-                <p className="text-[10px] text-muted-foreground">Scan to verify</p>
+                <p className="text-[10px] text-muted-foreground font-semibold">Scan to verify</p>
                 <p className="text-[10px] text-muted-foreground font-mono break-all">{receipt.receiptNumber}</p>
               </div>
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={qrSrc} alt="Scan to verify this receipt" width={56} height={56} className="h-14 w-14" />
+              <img src={qrSrc} alt="Scan to verify this receipt" width={56} height={56} className="h-14 w-14 border rounded p-0.5 bg-white" />
             </div>
           </div>
+
           {settings.developerCredit && (
             <div className="mt-8 pt-4 border-t border-dashed text-center">
               <p className="text-[9px] text-muted-foreground uppercase tracking-widest font-medium">
