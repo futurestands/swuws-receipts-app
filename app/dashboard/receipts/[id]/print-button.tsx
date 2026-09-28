@@ -24,8 +24,13 @@ export function PrintButton({ receiptId }: { receiptId: string }) {
               receiptNumber: r.receiptNumber,
               customerName: r.customerName,
               customerAccount: r.customerAccount || undefined,
+              schemeName: r.schemeNameSnapshot || undefined,
+              branchName: r.branchName || undefined,
               amount: Number(r.amount),
+              previousBalance: Number(r.previousAccountBalanceSnapshot || 0),
+              newBalance: Number(r.newAccountBalanceSnapshot || 0),
               paymentMethod: r.paymentMethod,
+              paymentReference: r.paymentReference,
               paymentDate: r.paymentDate.toISOString(),
               agentName: r.agentName,
               isProvisional: false
@@ -50,7 +55,7 @@ export function PrintButton({ receiptId }: { receiptId: string }) {
   return (
     <Button
       onClick={handlePrint}
-      className="no-print h-11"
+      className="no-print h-11 font-bold"
       disabled={loading}
     >
       {loading ? "Preparing..." : "Print / Save as PDF"}
