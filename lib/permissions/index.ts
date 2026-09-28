@@ -418,10 +418,15 @@ export function canReprintReceipt(user: UserPermissionsContext) {
 
 /**
  * Audit: Who can review the full system audit log.
- * HARD-LOCKED: System Admin only (Legacy role or Level 10).
  */
 export function canAudit(user: UserPermissionsContext) {
-  return user.role === ROLES.SYSTEM_ADMIN || (user.roleLevel ?? 0) >= 10
+  return (
+    user.role === ROLES.SYSTEM_ADMIN ||
+    (user.roleLevel ?? 0) >= 10 ||
+    hasPerm(user, "audit.view") ||
+    hasPerm(user, "audit.logs") ||
+    hasPerm(user, "system.errors")
+  ) ?? false
 }
 
 /**

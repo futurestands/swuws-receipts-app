@@ -1,3 +1,6 @@
+"use client"
+
+import { useState, useTransition } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -6,8 +9,9 @@ import { LinkButton } from "@/components/ui/link-button"
 import { formatDateTime } from "@/lib/format"
 import { setSystemErrorStatus } from "@/app/actions/system-errors"
 import type { SystemError } from "@/lib/db/schema"
-import { AlertTriangle } from "lucide-react"
+import { AlertTriangle, Loader2 } from "lucide-react"
 import { ROLE_LABELS, type Role } from "@/lib/permissions/roles"
+import { useRouter } from "next/navigation"
 
 const FILTERS = [
   { id: "open", label: "Open" },
@@ -22,9 +26,19 @@ function roleLabel(role?: string | null) {
 }
 
 function peopleOn(row: SystemError) {
-  if (row.seenBy && row.seenBy.length > 0) return row.seenBy
+  if (Array.isArray(row.seenBy) && row.seenBy.length > 0) {
+    return row.seenBy.map((p) => {
+      if (typeof p === "string") return { id: "", name: p, email: null, role: null }
+      return {
+        id: p?.id || "",
+        name: p?.name || "Unknown",
+        email: p?.email || null,
+        role: p?.role || null,
+      }
+    })
+  }
   if (row.userId || row.userName) {
-    return [{ id: row.userId || "", name: row.userName || "Unknown", email: row.userEmail }]
+    return [{ id: row.userId || "", name: row.userName || "Unknown", email: row.userEmail || null, role: null }]
   }
   return []
 }
@@ -36,6 +50,24 @@ export function ErrorQueue({
   errors: SystemError[]
   status: string
 }) {
+  const router = useRouter()
+  const [pendingId, setPendingId] = useState<string | null>(null)
+  const [isPending, startTransition] = useTransition()
+
+  const handleStatusChange = (id: string, newStatus: "acknowledged" | "resolved" | "open") => {
+    setPendingId(id)
+    startTransition(async () => {
+      try {
+        await setSystemErrorStatus(id, newStatus)
+        router.refresh()
+      } catch (err) {
+        console.error("Failed to update system error status:", err)
+      } finally {
+        setPendingId(null)
+      }
+    })
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap gap-2">
@@ -88,7 +120,7 @@ export function ErrorQueue({
                             {latest.email ? (
                               <span className="text-muted-foreground"> · {latest.email}</span>
                             ) : null}
-                            {roleLabel(latest.role) ? (
+                            {latest.role && roleLabel(latest.role) ? (
                               <span className="text-muted-foreground"> · {roleLabel(latest.role)}</span>
                             ) : null}
                           </p>
@@ -126,31 +158,36 @@ export function ErrorQueue({
 
                 <div className="flex flex-wrap gap-2">
                   {row.status === "open" && (
-                    <form action={async () => {
-                      await setSystemErrorStatus(row.id, "acknowledged")
-                    }}>
-                      <Button type="submit" size="sm" variant="outline">
-                        Mark seen
-                      </Button>
-                    </form>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={isPending && pendingId === row.id}
+                      onClick={() => handleStatusChange(row.id, "acknowledged")}
+                    >
+                      {isPending && pendingId === row.id ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : null}
+                      Mark seen
+                    </Button>
                   )}
                   {row.status !== "resolved" && (
-                    <form action={async () => {
-                      await setSystemErrorStatus(row.id, "resolved")
-                    }}>
-                      <Button type="submit" size="sm">
-                        Resolve
-                      </Button>
-                    </form>
+                    <Button
+                      size="sm"
+                      disabled={isPending && pendingId === row.id}
+                      onClick={() => handleStatusChange(row.id, "resolved")}
+                    >
+                      {isPending && pendingId === row.id ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : null}
+                      Resolve
+                    </Button>
                   )}
                   {row.status === "resolved" && (
-                    <form action={async () => {
-                      await setSystemErrorStatus(row.id, "open")
-                    }}>
-                      <Button type="submit" size="sm" variant="outline">
-                        Reopen
-                      </Button>
-                    </form>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={isPending && pendingId === row.id}
+                      onClick={() => handleStatusChange(row.id, "open")}
+                    >
+                      {isPending && pendingId === row.id ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : null}
+                      Reopen
+                    </Button>
                   )}
                 </div>
               </CardContent>
