@@ -9,10 +9,28 @@ import { NativeBridge } from '@/components/NativeBridge'
 export async function generateMetadata(): Promise<Metadata> {
   const settings = await getSettings()
   const iconUrl = settings.logoUrl || '/logo.jpg'
+  const orgName = settings.orgName || 'South Western Umbrella of Water and Sanitation'
 
   return {
-    title: 'SWUWS Collection Portal',
-    description: 'Revenue Assurance and Payment Tracking System — Southwestern Umbrella of Water and Sanitation',
+    title: {
+      template: `%s | ${orgName}`,
+      default: `${orgName} (SWUWS) Portal`,
+    },
+    description: 'Official Revenue Assurance and Payment Tracking System for the South Western Umbrella of Water and Sanitation (SWUWS). Track water billing, receipts, and collections.',
+    keywords: [
+      'swuws',
+      'SWUWS',
+      'South Western Umbrella of Water and Sanitation',
+      'SWUWS portal',
+      'water billing uganda',
+      'water collections',
+      'MWE',
+      'Ministry of Water and Environment',
+      'receipt verification'
+    ],
+    authors: [{ name: settings.developerCredit || 'SWUWS IT' }],
+    creator: 'SWUWS',
+    publisher: 'South Western Umbrella of Water and Sanitation',
     manifest: '/manifest.webmanifest',
     icons: {
       icon: iconUrl,
@@ -22,7 +40,23 @@ export async function generateMetadata(): Promise<Metadata> {
         rel: 'apple-touch-icon-precomposed',
         url: iconUrl,
       },
-    }
+    },
+    openGraph: {
+      type: 'website',
+      locale: 'en_UG',
+      url: 'https://swuws.example', // Placeholder, but useful for OG structure
+      siteName: orgName,
+      title: `${orgName} - Official Portal`,
+      description: 'Official Revenue Assurance and Payment Tracking System for SWUWS. Log in to access the dashboard or verify a receipt.',
+      images: [
+        {
+          url: iconUrl,
+          width: 800,
+          height: 600,
+          alt: `${orgName} Logo`,
+        },
+      ],
+    },
   }
 }
 
