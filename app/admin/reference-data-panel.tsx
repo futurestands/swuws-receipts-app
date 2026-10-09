@@ -52,6 +52,9 @@ export function ReferenceDataPanel({
   const [schemeBranchId, setSchemeBranchId] = useState("")
   const [schemeArea, setSchemeArea] = useState("")
 
+  const [schemeSearch, setSchemeSearch] = useState("")
+  const [branchSearch, setBranchSearch] = useState("")
+
   function handleExportSchemes() {
     try {
       const data = schemes.map((s) => {
@@ -230,6 +233,17 @@ export function ReferenceDataPanel({
             </form>
           )}
 
+          <div className="mb-4">
+            <Label htmlFor="search-schemes" className="sr-only">Search Schemes</Label>
+            <Input
+              id="search-schemes"
+              placeholder="Search schemes by name, code, or area..."
+              value={schemeSearch}
+              onChange={(e) => setSchemeSearch(e.target.value)}
+              className="max-w-md"
+            />
+          </div>
+
           <Table>
             <TableHeader>
               <TableRow>
@@ -242,14 +256,32 @@ export function ReferenceDataPanel({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {schemes.length === 0 ? (
+              {schemes.filter((s) => {
+                const search = schemeSearch.toLowerCase()
+                const b = branches.find((b) => b.id === s.branchId)
+                return (
+                  s.name.toLowerCase().includes(search) ||
+                  (s.code && s.code.toLowerCase().includes(search)) ||
+                  (b && b.name.toLowerCase().includes(search))
+                )
+              }).length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={6} className="text-center py-12 text-muted-foreground italic">
-                    No schemes found. Use the &quot;One-Row Template&quot; above for bulk onboarding.
+                    {schemes.length === 0 ? "No schemes found. Use the \"One-Row Template\" above for bulk onboarding." : "No schemes match your search."}
                   </TableCell>
                 </TableRow>
               ) : (
-                schemes.map((s) => {
+                schemes
+                  .filter((s) => {
+                    const search = schemeSearch.toLowerCase()
+                    const b = branches.find((b) => b.id === s.branchId)
+                    return (
+                      s.name.toLowerCase().includes(search) ||
+                      (s.code && s.code.toLowerCase().includes(search)) ||
+                      (b && b.name.toLowerCase().includes(search))
+                    )
+                  })
+                  .map((s) => {
                   const area = branches.find((b) => b.id === s.branchId)
                   const region = area ? clusters.find((c) => c.id === area.clusterId) : null
 
