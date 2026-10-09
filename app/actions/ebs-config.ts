@@ -64,20 +64,34 @@ export async function saveEbsConfigAction(data: {
     throw new Error("Access Denied: System configuration permissions required.")
   }
 
-  if (data.active && (!data.baseUrl || !data.baseUrl.startsWith("http"))) {
-    throw new Error("A valid Base URL (starting with http/https) is required when enabling integration.")
+  if (data.active) {
+    if (!data.baseUrl) {
+      throw new Error("A valid Base URL is required when enabling integration.")
+    }
+    try {
+      const url = new URL(data.baseUrl)
+      if (process.env.NODE_ENV !== "development" && url.protocol !== "https:") {
+        throw new Error("HTTPS is required for production EBS integration.")
+      }
+    } catch (err: any) {
+      if (err.message.includes("HTTPS")) throw err
+      throw new Error("Invalid Base URL format.")
+    }
   }
 
   const [existing] = await db.select().from(ebsGatewayConfig).limit(1)
 
+  // Preserve existing credentials when replacement fields are blank
   const encryptedKey = data.apiKey ? encryptSecret(data.apiKey) : existing?.encryptedApiKey
   const encryptedSecret = data.apiSecret ? encryptSecret(data.apiSecret) : existing?.encryptedApiSecret
   const encryptedWebhook = data.webhookSecret ? encryptSecret(data.webhookSecret) : existing?.encryptedWebhookSecret
 
+  const finalBaseUrl = data.baseUrl !== undefined ? data.baseUrl : existing?.baseUrl
+
   if (existing) {
     await db.update(ebsGatewayConfig).set({
       active: data.active,
-      baseUrl: data.baseUrl || existing.baseUrl,
+      baseUrl: finalBaseUrl,
       encryptedApiKey: encryptedKey,
       encryptedApiSecret: encryptedSecret,
       encryptedWebhookSecret: encryptedWebhook,
@@ -92,7 +106,7 @@ export async function saveEbsConfigAction(data: {
     await db.insert(ebsGatewayConfig).values({
       active: data.active,
       providerName: "pegasus",
-      baseUrl: data.baseUrl,
+      baseUrl: finalBaseUrl,
       encryptedApiKey: encryptedKey,
       encryptedApiSecret: encryptedSecret,
       encryptedWebhookSecret: encryptedWebhook,
@@ -113,7 +127,7 @@ export async function saveEbsConfigAction(data: {
       active: data.active,
       provider: "pegasus",
       keysUpdated: !!(data.apiKey || data.apiSecret || data.webhookSecret)
-    }
+    } // No secrets written to audit logs
   })
 
   return { success: true }

@@ -34,8 +34,8 @@ export async function POST(request: Request) {
     // Do NOT invent fake payment processing logic or blind database updates here.
     return NextResponse.json({
       status: "NOT_IMPLEMENTED",
-      message: "Webhook received and authenticated, but payment processing is disabled pending vendor documentation."
-    }, { status: 202 })
+      message: "Webhook received but not authenticated. Verification and payment processing are disabled pending vendor documentation."
+    }, { status: 501 })
 
   } catch (error: any) {
     console.error("EBS Webhook Error:", error.message)
