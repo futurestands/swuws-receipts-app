@@ -160,6 +160,12 @@ export default async function AdminPage() {
     canResetPassword: canResetPasswordVal,
   }
 
+  // Get siteUrl here for the EBS Gateway component if they can configure system
+  const siteUrl = canConfigureSystemVal ? await loadOrFallback("siteUrl", async () => {
+    const { getSiteUrl } = await import("@/lib/site-url");
+    return await getSiteUrl();
+  }, "http://localhost:3000") : "http://localhost:3000";
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -176,6 +182,7 @@ export default async function AdminPage() {
         )}
       </div>
       <AdminTabs
+        siteUrl={siteUrl}
         agents={agentsResult.agents}
         agentsTotal={agentsResult.total}
         agentsPage={agentsResult.page}

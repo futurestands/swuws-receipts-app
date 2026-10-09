@@ -178,6 +178,34 @@ export const smsGatewayConfig = pgTable("sms_gateway_config", {
 export type SmsGatewayConfig = typeof smsGatewayConfig.$inferSelect
 
 /**
+ * Pegasus/EBS Gateway configuration.
+ * Disabled by default. Contains secure encrypted credentials and feature flags
+ * for the Hybrid Integration Architecture.
+ */
+export const ebsGatewayConfig = pgTable("ebs_gateway_config", {
+  id: integer("id").primaryKey().default(1),
+  providerName: text("providerName").notNull().default("pegasus"),
+  active: boolean("active").notNull().default(false),
+  baseUrl: text("baseUrl"),
+
+  // Encrypted secrets
+  encryptedApiKey: text("encryptedApiKey"),
+  encryptedApiSecret: text("encryptedApiSecret"),
+  encryptedWebhookSecret: text("encryptedWebhookSecret"),
+
+  // Feature Toggles
+  syncCustomers: boolean("syncCustomers").notNull().default(false),
+  syncBills: boolean("syncBills").notNull().default(false),
+  pushMeterReadings: boolean("pushMeterReadings").notNull().default(false),
+  liveBalanceCheck: boolean("liveBalanceCheck").notNull().default(false),
+
+  updatedById: text("updatedById").references(() => user.id, { onDelete: "set null" }),
+  updatedAt: timestamp("updatedAt").notNull().defaultNow(),
+})
+
+export type EbsGatewayConfig = typeof ebsGatewayConfig.$inferSelect
+
+/**
  * Operator-facing crash log. Grouped by fingerprint so the same fault
  * does not open a new row every time a field officer hits it.
  */

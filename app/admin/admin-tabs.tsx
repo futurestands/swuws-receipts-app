@@ -13,6 +13,7 @@ import { IamPanel } from "@/app/admin/iam-panel"
 import { TariffPanel } from "@/app/admin/tariff-panel"
 import { TemplateManager } from "@/app/admin/template-manager"
 import { MaintenancePanel } from "@/app/admin/maintenance-panel"
+import { EbsConfigClient } from "@/app/admin/ebs/EbsConfigClient"
 import type { AuditLog, Branch, Cluster, OrgSettings, PaymentMethod, WaterScheme, BillingPeriod, IamRole, IamPermission } from "@/lib/db/schema"
 
 type Agent = {
@@ -50,6 +51,7 @@ export function AdminTabs({
   allClusters = [],
   allBranches = [],
   allSchemes = [],
+  siteUrl,
 }: {
   agents: Agent[]
   agentsTotal: number
@@ -97,6 +99,7 @@ export function AdminTabs({
   allClusters?: Cluster[]
   allBranches?: Branch[]
   allSchemes?: WaterScheme[]
+  siteUrl: string
 }) {
   const defaultTab = permissions.canViewReports
     ? (permissions.canManageIAM ? "overview" : "commercial")
@@ -125,6 +128,7 @@ export function AdminTabs({
           {permissions.canManageHierarchy && <TabsTrigger value="reference" className="shrink-0">Branches &amp; schemes</TabsTrigger>}
           {permissions.canManageIAM && <TabsTrigger value="branding" className="shrink-0">Branding</TabsTrigger>}
           {permissions.canConfigureSystem && <TabsTrigger value="sms-gateway" className="shrink-0">SMS Gateway</TabsTrigger>}
+          {permissions.canConfigureSystem && <TabsTrigger value="ebs-gateway" className="shrink-0">EBS Gateway</TabsTrigger>}
           {permissions.canManageIAM && <TabsTrigger value="audit" className="shrink-0">Audit log</TabsTrigger>}
           {permissions.canManageIAM && <TabsTrigger value="maintenance" className="shrink-0 text-destructive font-bold">Maintenance</TabsTrigger>}
         </TabsList>
@@ -214,6 +218,12 @@ export function AdminTabs({
       {permissions.canConfigureSystem && (
         <TabsContent value="sms-gateway" className="mt-4">
           <SmsGatewayPanel settings={smsGatewaySettings} />
+        </TabsContent>
+      )}
+
+      {permissions.canConfigureSystem && (
+        <TabsContent value="ebs-gateway" className="mt-4">
+          <EbsConfigClient siteUrl={siteUrl} />
         </TabsContent>
       )}
 
