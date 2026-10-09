@@ -38,6 +38,7 @@ export function TariffPanel({
 }) {
   const [isPending, startTransition] = useTransition()
   const [open, setOpen] = useState(false)
+  const [searchTerm, setSearchTerm] = useState("")
 
   const [formData, setFormData] = useState({
     targetType: "branch" as "branch" | "scheme",
@@ -212,6 +213,16 @@ export function TariffPanel({
         </div>
       </CardHeader>
         <CardContent>
+          <div className="mb-4">
+            <Label htmlFor="search-tariffs" className="sr-only">Search Tariffs</Label>
+            <Input
+              id="search-tariffs"
+              placeholder="Filter by target area..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="max-w-md"
+            />
+          </div>
           <Table>
             <TableHeader>
               <TableRow>
@@ -225,14 +236,14 @@ export function TariffPanel({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {tariffs.length === 0 ? (
+              {tariffs.filter((t) => t.targetName.toLowerCase().includes(searchTerm.toLowerCase())).length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={7} className="text-center py-8 text-muted-foreground italic">
-                    No tariffs configured yet. Click &quot;Add Tariff&quot; to begin.
+                    {tariffs.length === 0 ? "No tariffs configured yet. Click \"Add Tariff\" to begin." : "No tariffs match your search."}
                   </TableCell>
                 </TableRow>
               ) : (
-                tariffs.map((t) => (
+                tariffs.filter((t) => t.targetName.toLowerCase().includes(searchTerm.toLowerCase())).map((t) => (
                   <TableRow key={t.id}>
                     <TableCell className="font-bold">{t.targetName}</TableCell>
                     <TableCell>

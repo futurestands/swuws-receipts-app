@@ -83,7 +83,8 @@ describe("EBS Security Hardening Tests", () => {
   })
 
   it("Test 5: URL Validation requires HTTPS in production for active configuration", async () => {
-    process.env.NODE_ENV = "production"
+    // Cast to any to override readonly NODE_ENV for test
+    ;(process.env as any).NODE_ENV = "production"
     process.env.EBS_ENCRYPTION_KEY = "0123456789abcdef0123456789abcdef"
     vi.mocked(requireUser).mockResolvedValue({
       id: "admin",
@@ -156,7 +157,7 @@ describe("EBS Security Hardening Tests", () => {
   })
 
   it("Test 9: Secret redaction in audit logs", async () => {
-    process.env.NODE_ENV = "test"
+    ;(process.env as any).NODE_ENV = "test"
     process.env.EBS_ENCRYPTION_KEY = "0123456789abcdef0123456789abcdef"
     vi.mocked(requireUser).mockResolvedValue({
       id: "admin",
@@ -182,6 +183,6 @@ describe("EBS Security Hardening Tests", () => {
     expect(auditCall.details).toBeDefined()
     expect(JSON.stringify(auditCall.details)).not.toContain("secret-key-123")
     expect(JSON.stringify(auditCall.details)).not.toContain("super-secret")
-    expect(auditCall.details.keysUpdated).toBe(true)
+    expect(auditCall.details?.keysUpdated).toBe(true)
   })
 })
