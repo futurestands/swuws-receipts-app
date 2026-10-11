@@ -42,7 +42,8 @@ export const ebsClient = {
   /**
    * Fetch a customer's live balance directly from Pegasus.
    */
-  async fetchLiveCustomerBalance(_accountNumber: string): Promise<EbsResponse<{ balance: number; arrears: number }>> {
+  async fetchLiveCustomerBalance(accountNumber: string): Promise<EbsResponse<{ balance: number; arrears: number }>> {
+    void accountNumber
     const { active, config } = await getActiveConfig()
     if (!active || !config?.liveBalanceCheck) {
       return { status: "DISABLED" }
@@ -55,7 +56,8 @@ export const ebsClient = {
   /**
    * Push a fresh meter reading directly to Pegasus for real-time billing approval.
    */
-  async pushMeterReading(_readingData: { accountNumber: string; reading: number; date: Date }): Promise<EbsResponse<unknown>> {
+  async pushMeterReading(readingData: { accountNumber: string; reading: number; date: Date }): Promise<EbsResponse<unknown>> {
+    void readingData
     const { active, config } = await getActiveConfig()
     if (!active || !config?.pushMeterReadings) {
       return { status: "DISABLED" }

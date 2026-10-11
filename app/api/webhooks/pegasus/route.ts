@@ -44,5 +44,8 @@ export async function POST(request: Request) {
 }
 
 export async function GET() {
-  return NextResponse.json({ status: "SWUWS Pegasus EBS Webhook Endpoint Active" })
+  return NextResponse.json({
+    status: "STANDBY_UNIMPLEMENTED",
+    message: "Pegasus EBS Webhook Endpoint is registered but inactive pending vendor authentication contract."
+  }, { status: 200 })
 }
