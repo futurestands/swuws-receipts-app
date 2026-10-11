@@ -81,8 +81,8 @@ export function decryptSecret(encryptedText: string): string {
     decrypted += decipher.final("utf8")
 
     return decrypted
-  } catch (error) {
-    // Catch decryption errors (like auth tag mismatch/tampering or wrong key)
+  } catch {
+    // Catch decryption errors (like auth tag mismatch/tampering or wrong key) without leaking internals
     throw new Error("Decryption failed. The secret may have been tampered with or the encryption key is incorrect.")
   }
 }

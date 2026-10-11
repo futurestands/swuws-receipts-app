@@ -1,6 +1,5 @@
 import { db } from "@/lib/db"
 import { ebsGatewayConfig } from "@/lib/db/schema"
-import { decryptSecret } from "./crypto"
 
 /**
  * Standardized responses for the Hybrid Integration Architecture.
@@ -43,7 +42,7 @@ export const ebsClient = {
   /**
    * Fetch a customer's live balance directly from Pegasus.
    */
-  async fetchLiveCustomerBalance(accountNumber: string): Promise<EbsResponse<{ balance: number; arrears: number }>> {
+  async fetchLiveCustomerBalance(_accountNumber: string): Promise<EbsResponse<{ balance: number; arrears: number }>> {
     const { active, config } = await getActiveConfig()
     if (!active || !config?.liveBalanceCheck) {
       return { status: "DISABLED" }
@@ -56,7 +55,7 @@ export const ebsClient = {
   /**
    * Push a fresh meter reading directly to Pegasus for real-time billing approval.
    */
-  async pushMeterReading(readingData: { accountNumber: string; reading: number; date: Date }): Promise<EbsResponse<any>> {
+  async pushMeterReading(_readingData: { accountNumber: string; reading: number; date: Date }): Promise<EbsResponse<unknown>> {
     const { active, config } = await getActiveConfig()
     if (!active || !config?.pushMeterReadings) {
       return { status: "DISABLED" }
@@ -69,7 +68,7 @@ export const ebsClient = {
   /**
    * Background job: Sync new customers from Pegasus.
    */
-  async syncNewCustomers(): Promise<EbsResponse<any>> {
+  async syncNewCustomers(): Promise<EbsResponse<unknown>> {
     const { active, config } = await getActiveConfig()
     if (!active || !config?.syncCustomers) {
       return { status: "DISABLED" }
@@ -82,7 +81,7 @@ export const ebsClient = {
   /**
    * Background job: Sync new monthly bills from Pegasus.
    */
-  async syncBills(): Promise<EbsResponse<any>> {
+  async syncBills(): Promise<EbsResponse<unknown>> {
     const { active, config } = await getActiveConfig()
     if (!active || !config?.syncBills) {
       return { status: "DISABLED" }

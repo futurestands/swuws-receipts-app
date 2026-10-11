@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 import { encryptSecret, decryptSecret } from "./crypto"
-import { saveEbsConfigAction, getEbsConfigAction } from "@/app/actions/ebs-config"
+import { saveEbsConfigAction } from "@/app/actions/ebs-config"
 import { POST } from "@/app/api/webhooks/pegasus/route"
 
 // Mock session
@@ -83,14 +83,16 @@ describe("EBS Security Hardening Tests", () => {
   })
 
   it("Test 5: URL Validation requires HTTPS in production for active configuration", async () => {
-    // Cast to any to override readonly NODE_ENV for test
-    ;(process.env as any).NODE_ENV = "production"
+    Object.defineProperty(process.env, "NODE_ENV", {
+      value: "production",
+      configurable: true,
+    })
     process.env.EBS_ENCRYPTION_KEY = "0123456789abcdef0123456789abcdef"
     vi.mocked(requireUser).mockResolvedValue({
       id: "admin",
       role: "SYSTEM_ADMIN",
       roleLevel: 10
-    } as any)
+    } as unknown as Awaited<ReturnType<typeof requireUser>>)
 
     await expect(saveEbsConfigAction({
       active: true,
@@ -116,7 +118,7 @@ describe("EBS Security Hardening Tests", () => {
       id: "user",
       role: "FIELD_AGENT",
       roleLevel: 1
-    } as any)
+    } as unknown as Awaited<ReturnType<typeof requireUser>>)
 
     await expect(saveEbsConfigAction({
       active: false,
@@ -157,13 +159,16 @@ describe("EBS Security Hardening Tests", () => {
   })
 
   it("Test 9: Secret redaction in audit logs", async () => {
-    ;(process.env as any).NODE_ENV = "test"
+    Object.defineProperty(process.env, "NODE_ENV", {
+      value: "test",
+      configurable: true,
+    })
     process.env.EBS_ENCRYPTION_KEY = "0123456789abcdef0123456789abcdef"
     vi.mocked(requireUser).mockResolvedValue({
       id: "admin",
       role: "SYSTEM_ADMIN",
       roleLevel: 10
-    } as any)
+    } as unknown as Awaited<ReturnType<typeof requireUser>>)
 
     await saveEbsConfigAction({
       active: false,
@@ -177,7 +182,7 @@ describe("EBS Security Hardening Tests", () => {
     })
 
     expect(writeAudit).toHaveBeenCalled()
-    const auditCall = vi.mocked(writeAudit).mock.calls[0][0]
+    const auditCall = vi.mocked(writeAudit).mock.calls[0][0] as { details?: { keysUpdated?: boolean } }
 
     // Check that secrets are not in details
     expect(auditCall.details).toBeDefined()

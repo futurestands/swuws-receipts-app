@@ -73,8 +73,8 @@ export async function saveEbsConfigAction(data: {
       if (process.env.NODE_ENV !== "development" && url.protocol !== "https:") {
         throw new Error("HTTPS is required for production EBS integration.")
       }
-    } catch (err: any) {
-      if (err.message.includes("HTTPS")) throw err
+    } catch (err: unknown) {
+      if (err instanceof Error && err.message.includes("HTTPS")) throw err
       throw new Error("Invalid Base URL format.")
     }
   }

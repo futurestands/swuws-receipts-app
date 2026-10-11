@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { ebsGatewayConfig } from "@/lib/db/schema"
-import crypto from "crypto"
 
 /**
  * Pegasus EBS Webhook Receiver (Phase 1 Foundation)
@@ -28,7 +27,7 @@ export async function POST(request: Request) {
 
     // 3. Payload Verification
     // (Requires actual pegasus documentation to implement standard HMAC validation here)
-    const payload = await request.text()
+    await request.text()
 
     // 4. Safely Return Not Implemented (Phase 1 Protection)
     // Do NOT invent fake payment processing logic or blind database updates here.
@@ -37,8 +36,9 @@ export async function POST(request: Request) {
       message: "Webhook received but not authenticated. Verification and payment processing are disabled pending vendor documentation."
     }, { status: 501 })
 
-  } catch (error: any) {
-    console.error("EBS Webhook Error:", error.message)
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Unknown error"
+    console.error("EBS Webhook Error:", message)
     return NextResponse.json({ error: "Internal Server Error" }, { status: 500 })
   }
 }
