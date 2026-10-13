@@ -19,13 +19,19 @@ function DropdownMenuTrigger({
   children,
   ...props
 }: MenuPrimitive.Trigger.Props & { asChild?: boolean }) {
+  if (asChild) {
+    return (
+      <MenuPrimitive.Trigger
+        data-slot="dropdown-menu-trigger"
+        render={children as React.ReactElement}
+        {...props}
+      />
+    )
+  }
+
   return (
-    <MenuPrimitive.Trigger
-      data-slot="dropdown-menu-trigger"
-      render={asChild ? (children as React.ReactElement) : undefined}
-      {...props}
-    >
-      {asChild ? undefined : children}
+    <MenuPrimitive.Trigger data-slot="dropdown-menu-trigger" {...props}>
+      {children}
     </MenuPrimitive.Trigger>
   )
 }

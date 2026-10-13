@@ -5,8 +5,7 @@ import { PageHeader } from "@/components/ui/page-header"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
-import { Plus, Settings2, Building2, Tag } from "lucide-react"
+import { Building2, Tag } from "lucide-react"
 import { DepartmentDialog } from "@/components/crm/department-dialog"
 import { CategoryDialog } from "@/components/crm/category-dialog"
 
@@ -65,10 +64,7 @@ export default async function CrmSettingsPage() {
                          </Badge>
                       </TableCell>
                       <TableCell className="text-right">
-                         <DepartmentDialog
-                           department={d}
-                           trigger={<Button variant="ghost" size="sm" className="h-7 text-[10px] font-bold">Update</Button>}
-                         />
+                         <DepartmentDialog department={d} />
                       </TableCell>
                     </TableRow>
                   ))}
@@ -116,11 +112,7 @@ export default async function CrmSettingsPage() {
                          </Badge>
                       </TableCell>
                       <TableCell className="text-right">
-                         <CategoryDialog
-                           category={c}
-                           departments={departments}
-                           trigger={<Button variant="ghost" size="sm" className="h-7 text-[10px] font-bold">Update</Button>}
-                         />
+                         <CategoryDialog category={c} departments={departments} />
                       </TableCell>
                     </TableRow>
                   ))}
