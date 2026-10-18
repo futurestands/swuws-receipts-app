@@ -7,7 +7,6 @@ import {
   index,
   uniqueIndex,
 } from "drizzle-orm/pg-core"
-import { sql } from "drizzle-orm"
 import { user } from "./auth"
 import { receipt } from "./finance"
 

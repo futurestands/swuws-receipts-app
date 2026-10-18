@@ -13,9 +13,36 @@ import { Activity, ShieldCheck, Link as LinkIcon, ServerCrash, Save, ShieldAlert
 import { getEbsConfigAction, saveEbsConfigAction, rotateWebhookSecretAction, getEbsEventsAction } from "@/app/actions/ebs-config"
 import { formatDateTime } from "@/lib/format"
 
+type EbsConfigState = {
+  active: boolean
+  providerName: string
+  baseUrl: string
+  syncCustomers: boolean
+  syncBills: boolean
+  pushMeterReadings: boolean
+  liveBalanceCheck: boolean
+  hasApiKey: boolean
+  hasApiSecret: boolean
+  hasWebhookSecret: boolean
+  webhookSecretRotatedAt: Date | string | null
+  updatedAt: Date | string | null
+}
+
+type EbsEventRow = {
+  id: string
+  providerEventId: string
+  receivedAt: Date | string
+  signatureVerified: boolean
+  status: string
+  accountNumber: string | null
+  amount: number | null
+  errorMessage: string | null
+  rawPayload: Record<string, unknown>
+}
+
 export function EbsConfigClient({ siteUrl }: { siteUrl: string }) {
-  const [config, setConfig] = useState<any>(null)
-  const [events, setEvents] = useState<any[]>([])
+  const [config, setConfig] = useState<EbsConfigState | null>(null)
+  const [events, setEvents] = useState<EbsEventRow[]>([])
   const [isLoading, startTransition] = useTransition()
 
   // Form State
@@ -46,9 +73,10 @@ export function EbsConfigClient({ siteUrl }: { siteUrl: string }) {
         setSyncBills(res.syncBills)
         setPushMeterReadings(res.pushMeterReadings)
         setLiveBalanceCheck(res.liveBalanceCheck)
-        setEvents(eventList)
-      } catch (err: any) {
-        toast.error(err.message || "Failed to load config")
+        setEvents(eventList as EbsEventRow[])
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : "Failed to load config"
+        toast.error(msg)
       }
     })
   }
@@ -77,8 +105,9 @@ export function EbsConfigClient({ siteUrl }: { siteUrl: string }) {
         setApiSecret("")
         setWebhookSecret("")
         loadData()
-      } catch (err: any) {
-        toast.error(err.message || "Failed to save configuration")
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : "Failed to save configuration"
+        toast.error(msg)
       }
     })
   }
@@ -94,8 +123,9 @@ export function EbsConfigClient({ siteUrl }: { siteUrl: string }) {
         toast.success("Webhook secret rotated successfully.")
         setRotateSecretInput("")
         loadData()
-      } catch (err: any) {
-        toast.error(err.message || "Failed to rotate secret")
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : "Failed to rotate secret"
+        toast.error(msg)
       }
     })
   }
@@ -109,7 +139,7 @@ export function EbsConfigClient({ siteUrl }: { siteUrl: string }) {
   // Calculate stats
   const totalEvents = events.length
   const receivedCount = events.filter(e => e.status === "received").length
-  const processedCount = events.filter(e => e.status === "processed").length
+  const processedCount = events.filter(e => e.status === "processed" || e.status === "matched_pending_review").length
   const needsReviewCount = events.filter(e => e.status === "needs_review").length
   const failedCount = events.filter(e => e.status === "failed").length
   const lastEvent = events[0]
@@ -358,7 +388,7 @@ export function EbsConfigClient({ siteUrl }: { siteUrl: string }) {
                     </TableCell>
                   </TableRow>
                 ) : (
-                  events.map((ev: any) => (
+                  events.map((ev) => (
                     <TableRow key={ev.id}>
                       <TableCell className="font-mono text-xs">{ev.providerEventId}</TableCell>
                       <TableCell className="text-xs">{formatDateTime(ev.receivedAt)}</TableCell>
@@ -367,7 +397,7 @@ export function EbsConfigClient({ siteUrl }: { siteUrl: string }) {
                       <TableCell>
                         <Badge
                           variant={
-                            ev.status === "processed"
+                            ev.status === "processed" || ev.status === "matched_pending_review"
                               ? "default"
                               : ev.status === "needs_review"
                               ? "secondary"
