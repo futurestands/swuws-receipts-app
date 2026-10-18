@@ -10,13 +10,25 @@ import { randomUUID } from "crypto"
 // Maximum allowed payload size: 100 KB
 const MAX_PAYLOAD_SIZE = 100 * 1024
 
+function getClientIp(request: Request): string {
+  const forwarded = request.headers.get("x-forwarded-for")
+  if (forwarded) {
+    const parts = forwarded.split(",")
+    if (parts.length > 0 && parts[0]) {
+      return parts[0].trim()
+    }
+  }
+  return "unknown"
+}
+
 export async function POST(request: Request) {
   try {
-    // 0. Rate limiting by IP/Client
-    const ip = request.headers.get("x-forwarded-for") || "unknown"
-    const rateCheck = await checkRateLimit(`ebs-webhook:${ip}`, 30, 60, { failClosed: true })
-    if (!rateCheck.allowed) {
-      logSecurity("EBS Webhook rate limit exceeded", "warn", { ip })
+    const ip = getClientIp(request)
+
+    // 0a. Loose Pre-Auth Rate Limit to protect DB against flooding (e.g., 60 req / min)
+    const preAuthLimit = await checkRateLimit(`ebs-webhook-preauth:${ip}`, 60, 60, { failClosed: true })
+    if (!preAuthLimit.allowed) {
+      logSecurity("EBS Webhook pre-auth rate limit exceeded", "warn", { ip })
       return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 })
     }
 
@@ -45,9 +57,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Payload too large" }, { status: 413 })
     }
 
-    // 3. Select Adapter (Use fake adapter in test mode / mock or default adapter)
-    // In production, default adapter throws NotConfiguredError unless extended or configured.
-    const adapter = process.env.NODE_ENV === "test" || process.env.EBS_TEST_MODE === "true"
+    // 3. Select Adapter: use fake adapter ONLY when process.env.NODE_ENV === "test"
+    const adapter = process.env.NODE_ENV === "test"
       ? fakePegasusAdapter
       : defaultPegasusAdapter
 
@@ -65,6 +76,13 @@ export async function POST(request: Request) {
     if (!signatureVerified) {
       logSecurity("EBS Webhook signature verification failed", "warn", { hasHeaders: !!request.headers.get("x-pegasus-signature") })
       return NextResponse.json({ error: "Invalid authentication signature" }, { status: 401 })
+    }
+
+    // 0b. Strict Post-Auth Rate Limit (e.g., 30 req / min)
+    const postAuthLimit = await checkRateLimit(`ebs-webhook-postauth:${ip}`, 30, 60, { failClosed: true })
+    if (!postAuthLimit.allowed) {
+      logSecurity("EBS Webhook post-auth rate limit exceeded", "warn", { ip })
+      return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 })
     }
 
     // 5. Parse Event
@@ -112,12 +130,25 @@ export async function POST(request: Request) {
       rawPayload: parsedPayload,
     }).onConflictDoNothing().returning({ id: pegasusEvent.id })
 
+    // 7. Process via Processor (Step 4 processor) - non-blocking for webhook response
+    if (insertResult.length > 0) {
+      try {
+        // Import processor dynamically or call it safely
+        const { processPegasusEvent } = await import("@/lib/ebs/pegasus-processor")
+        void processPegasusEvent(inboxId).catch((procErr) => {
+          console.error("Background Pegasus event processing failed:", procErr)
+        })
+      } catch (procImportErr) {
+        console.error("Failed to load pegasus-processor:", procImportErr)
+      }
+    }
+
     // If no row returned, it was already processed (Idempotent duplication)
     if (insertResult.length === 0) {
       return NextResponse.json({ status: "SUCCESS", message: "Event already received (idempotent duplicate)." }, { status: 200 })
     }
 
-    // 7. Return 2xx only after durable storage
+    // 8. Return 2xx only after durable storage
     return NextResponse.json({
       status: "SUCCESS",
       message: "Webhook event received and durably stored for reconciliation review.",

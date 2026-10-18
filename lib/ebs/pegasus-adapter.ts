@@ -9,7 +9,7 @@
 export interface NormalizedPaymentEvent {
   providerEventId: string
   accountNumber: string
-  amount: number // Integer UGX
+  amount: number // Integer UGX (positive integer)
   paidAt: Date
   channel?: string
   providerReference?: string
@@ -42,12 +42,16 @@ export interface PegasusAdapter {
  * TODO: Replace with official Pegasus JSON/XML payload schema when vendor docs arrive.
  */
 export const defaultPegasusAdapter: PegasusAdapter = {
-  verifySignature(_rawBody: string, _headers: Headers, _secret: string): boolean {
+  verifySignature(rawBody: string, headers: Headers, secret: string): boolean {
+    void rawBody
+    void headers
+    void secret
     // TODO: Implement official Pegasus signature validation algorithm (e.g. HMAC-SHA256)
     throw new NotConfiguredError("Pegasus signature verification is not configured.")
   },
 
-  parsePaymentEvent(_rawBody: string): NormalizedPaymentEvent {
+  parsePaymentEvent(rawBody: string): NormalizedPaymentEvent {
+    void rawBody
     // TODO: Parse official Pegasus payment payload structure
     throw new ParseError("Pegasus payment parser is not configured pending vendor documentation.")
   },
@@ -84,11 +88,25 @@ export const fakePegasusAdapter: PegasusAdapter = {
       if (!json.providerEventId || !json.accountNumber || typeof json.amount !== "number") {
         throw new ParseError("Missing required fields in fake payment event.")
       }
+
+      const amountVal = Number(json.amount)
+      if (!Number.isInteger(amountVal) || amountVal <= 0) {
+        throw new ParseError("Amount must be a positive integer in UGX.")
+      }
+
+      let paidAtDate = new Date()
+      if (json.paidAt) {
+        const parsed = new Date(json.paidAt)
+        if (!isNaN(parsed.getTime())) {
+          paidAtDate = parsed
+        }
+      }
+
       return {
         providerEventId: String(json.providerEventId),
         accountNumber: String(json.accountNumber),
-        amount: Math.round(Number(json.amount)),
-        paidAt: json.paidAt ? new Date(json.paidAt) : new Date(),
+        amount: amountVal,
+        paidAt: paidAtDate,
         channel: json.channel ? String(json.channel) : "MOBILE_MONEY",
         providerReference: json.providerReference ? String(json.providerReference) : undefined,
         rawPayload: json,

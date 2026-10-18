@@ -1,12 +1,12 @@
 "use server"
 
 import { db } from "@/lib/db"
-import { ebsGatewayConfig } from "@/lib/db/schema"
+import { ebsGatewayConfig, pegasusEvent } from "@/lib/db/schema"
 import { requireUser } from "@/lib/session"
-import { canConfigureSystem } from "@/lib/permissions"
+import { canConfigureSystem, canViewEbsEvents } from "@/lib/permissions"
 import { writeAudit } from "@/lib/audit"
 import { encryptSecret } from "@/lib/ebs/crypto"
-import { eq } from "drizzle-orm"
+import { eq, desc } from "drizzle-orm"
 
 export async function getEbsConfigAction() {
   const current = await requireUser()
@@ -28,6 +28,7 @@ export async function getEbsConfigAction() {
       hasApiKey: false,
       hasApiSecret: false,
       hasWebhookSecret: false,
+      webhookSecretRotatedAt: null,
       updatedAt: null
     }
   }
@@ -44,6 +45,7 @@ export async function getEbsConfigAction() {
     hasApiKey: !!config.encryptedApiKey,
     hasApiSecret: !!config.encryptedApiSecret,
     hasWebhookSecret: !!config.encryptedWebhookSecret,
+    webhookSecretRotatedAt: config.webhookSecretRotatedAt,
     updatedAt: config.updatedAt
   }
 }
@@ -131,4 +133,54 @@ export async function saveEbsConfigAction(data: {
   })
 
   return { success: true }
+}
+
+export async function rotateWebhookSecretAction(newSecret: string) {
+  const current = await requireUser()
+  if (!canConfigureSystem(current)) {
+    throw new Error("Access Denied: System configuration permissions required.")
+  }
+
+  if (!newSecret || newSecret.length < 8) {
+    throw new Error("New webhook secret must be at least 8 characters long.")
+  }
+
+  const [existing] = await db.select().from(ebsGatewayConfig).limit(1)
+  const encryptedWebhook = encryptSecret(newSecret)
+  const rotatedAt = new Date()
+
+  if (existing) {
+    await db.update(ebsGatewayConfig).set({
+      encryptedWebhookSecret: encryptedWebhook,
+      webhookSecretRotatedAt: rotatedAt,
+      updatedById: current.id,
+      updatedAt: new Date(),
+    }).where(eq(ebsGatewayConfig.id, existing.id))
+  } else {
+    await db.insert(ebsGatewayConfig).values({
+      providerName: "pegasus",
+      encryptedWebhookSecret: encryptedWebhook,
+      webhookSecretRotatedAt: rotatedAt,
+      updatedById: current.id,
+    })
+  }
+
+  await writeAudit({
+    user: { id: current.id, name: current.name || "System", email: current.email || "" },
+    action: "ebs.webhook_secret.rotate",
+    entityType: "ebs_gateway_config",
+    details: { rotatedAt: rotatedAt.toISOString() }, // No secret value
+  })
+
+  return { success: true }
+}
+
+export async function getEbsEventsAction() {
+  const current = await requireUser()
+  if (!canViewEbsEvents(current)) {
+    throw new Error("Access Denied: You do not have permission to view EBS events.")
+  }
+
+  const events = await db.select().from(pegasusEvent).orderBy(desc(pegasusEvent.receivedAt)).limit(100)
+  return events
 }

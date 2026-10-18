@@ -26,6 +26,25 @@ let mockInsertReturns: Record<string, unknown>[] = [{ id: "inv-1" }]
 vi.mock("@/lib/db", () => ({
   db: {
     execute: mockExecute,
+    transaction: vi.fn(async (cb) => cb({
+      select: vi.fn(() => ({
+        from: vi.fn(() => ({
+          where: vi.fn(() => ({
+            limit: vi.fn().mockResolvedValue([{ id: "cust-1", customerAccount: "600001" }])
+          }))
+        }))
+      })),
+      insert: vi.fn(() => ({
+        values: vi.fn(() => ({
+          onConflictDoNothing: vi.fn().mockResolvedValue(true)
+        }))
+      })),
+      update: vi.fn(() => ({
+        set: vi.fn(() => ({
+          where: vi.fn().mockResolvedValue(true)
+        }))
+      }))
+    })),
     select: vi.fn(() => ({
       from: vi.fn(() => ({
         limit: vi.fn().mockImplementation(async () => {
@@ -155,7 +174,7 @@ describe("EBS Security Hardening Tests", () => {
     })).rejects.toThrow(/Access Denied/)
   })
 
-  it("Test 7: Webhook safely rejects unauthenticated or missing signatures", async () => {
+  it("Test 7: Webhook safely rejects missing authentication signatures", async () => {
     const req = new Request("http://localhost/api/webhooks/pegasus", {
       method: "POST",
       body: JSON.stringify({ providerEventId: "evt-1", accountNumber: "123", amount: 1000 })
@@ -170,7 +189,7 @@ describe("EBS Security Hardening Tests", () => {
 
   it("Test 8: Webhook accepts valid HMAC signature and durably stores event", async () => {
     process.env.EBS_ENCRYPTION_KEY = "0123456789abcdef0123456789abcdef"
-    const body = JSON.stringify({ providerEventId: "evt-test-99", accountNumber: "600001", amount: 5000 })
+    const body = JSON.stringify({ providerEventId: "evt-test-99", accountNumber: "600001", amount: 5000, paidAt: new Date().toISOString() })
     const secret = "test-webhook-secret"
     const signature = crypto.createHmac("sha256", secret).update(body).digest("hex")
 
@@ -193,7 +212,7 @@ describe("EBS Security Hardening Tests", () => {
 
   it("Test 9: Webhook handles duplicate event idempotently", async () => {
     process.env.EBS_ENCRYPTION_KEY = "0123456789abcdef0123456789abcdef"
-    const body = JSON.stringify({ providerEventId: "evt-dup-1", accountNumber: "600001", amount: 5000 })
+    const body = JSON.stringify({ providerEventId: "evt-dup-1", accountNumber: "600001", amount: 5000, paidAt: new Date().toISOString() })
     const secret = "test-webhook-secret"
     const signature = crypto.createHmac("sha256", secret).update(body).digest("hex")
 

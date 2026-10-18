@@ -446,6 +446,18 @@ export function canConfigureSystem(user: UserPermissionsContext) {
 }
 
 /**
+ * EBS Events: Who can view inbound Pegasus EBS webhook events and exception lists.
+ */
+export function canViewEbsEvents(user: UserPermissionsContext) {
+  return (
+    user.role === ROLES.SYSTEM_ADMIN ||
+    (user.roleLevel ?? 0) >= 10 ||
+    hasPerm(user, "ebs.events.view") ||
+    canConfigureSystem(user)
+  ) ?? false
+}
+
+/**
  * Tariffs: Who can manage billing rates.
  * HARD-LOCKED: System Admin only (Legacy role or Level 10).
  */
