@@ -125,6 +125,7 @@ export const reconciliationException = pgTable(
     resolution: text("resolution"),
     resolvedAt: timestamp("resolvedAt"),
     resolvedById: text("resolvedById").references(() => user.id, { onDelete: "set null" }),
+    pegasusEventId: text("pegasusEventId"),
     createdAt: timestamp("createdAt").notNull().defaultNow(),
     updatedAt: timestamp("updatedAt").notNull().defaultNow(),
   },
