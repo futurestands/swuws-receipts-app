@@ -4,6 +4,7 @@ import {
   timestamp,
   boolean,
   integer,
+  bigint,
   jsonb,
   index,
   uniqueIndex,
@@ -199,11 +200,41 @@ export const ebsGatewayConfig = pgTable("ebs_gateway_config", {
   pushMeterReadings: boolean("pushMeterReadings").notNull().default(false),
   liveBalanceCheck: boolean("liveBalanceCheck").notNull().default(false),
 
+  webhookSecretRotatedAt: timestamp("webhookSecretRotatedAt"),
+
   updatedById: text("updatedById").references(() => user.id, { onDelete: "set null" }),
   updatedAt: timestamp("updatedAt").notNull().defaultNow(),
 })
 
 export type EbsGatewayConfig = typeof ebsGatewayConfig.$inferSelect
+
+/**
+ * Durable event inbox for Pegasus EBS webhooks.
+ */
+export const pegasusEvent = pgTable(
+  "pegasus_event",
+  {
+    id: text("id").primaryKey(),
+    providerEventId: text("providerEventId").notNull().unique(),
+    receivedAt: timestamp("receivedAt").notNull().defaultNow(),
+    signatureVerified: boolean("signatureVerified").notNull().default(false),
+    status: text("status").notNull().default("received"), // 'received' | 'processed' | 'ignored' | 'failed' | 'needs_review'
+    accountNumber: text("accountNumber"),
+    amount: bigint("amount", { mode: "number" }),
+    paidAt: timestamp("paidAt"),
+    rawPayload: jsonb("rawPayload").notNull(),
+    errorMessage: text("errorMessage"),
+    processedAt: timestamp("processedAt"),
+    reconciliationBatchId: text("reconciliationBatchId"),
+  },
+  (table) => ({
+    statusIdx: index("pegasus_event_status_idx").on(table.status),
+    accountIdx: index("pegasus_event_account_idx").on(table.accountNumber),
+    paidAtIdx: index("pegasus_event_paid_at_idx").on(table.paidAt),
+  })
+)
+
+export type PegasusEvent = typeof pegasusEvent.$inferSelect
 
 /**
  * Operator-facing crash log. Grouped by fingerprint so the same fault

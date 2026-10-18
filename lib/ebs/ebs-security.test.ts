@@ -1,19 +1,37 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
+
+// Set env before hoisting mocks
+process.env.EBS_ENCRYPTION_KEY = "0123456789abcdef0123456789abcdef"
+
 import { encryptSecret, decryptSecret } from "./crypto"
 import { saveEbsConfigAction } from "@/app/actions/ebs-config"
 import { POST } from "@/app/api/webhooks/pegasus/route"
+import crypto from "crypto"
 
 // Mock session
 vi.mock("@/lib/session", () => ({
   requireUser: vi.fn(),
 }))
 
+const { mockExecute } = vi.hoisted(() => {
+  return {
+    mockExecute: vi.fn().mockResolvedValue({ rows: [{ count: 1 }] }),
+  }
+})
+
+let mockActive = true
+let mockInsertReturns: Record<string, unknown>[] = [{ id: "inv-1" }]
+
 // Mock DB
 vi.mock("@/lib/db", () => ({
   db: {
+    execute: mockExecute,
     select: vi.fn(() => ({
       from: vi.fn(() => ({
-        limit: vi.fn().mockResolvedValue([{ active: true }])
+        limit: vi.fn().mockImplementation(async () => {
+          const secret = encryptSecret("test-webhook-secret")
+          return [{ active: mockActive, encryptedWebhookSecret: secret }]
+        })
       }))
     })),
     update: vi.fn(() => ({
@@ -22,7 +40,11 @@ vi.mock("@/lib/db", () => ({
       }))
     })),
     insert: vi.fn(() => ({
-      values: vi.fn().mockResolvedValue(true)
+      values: vi.fn(() => ({
+        onConflictDoNothing: vi.fn(() => ({
+          returning: vi.fn().mockImplementation(async () => mockInsertReturns)
+        }))
+      }))
     }))
   }
 }))
@@ -41,6 +63,10 @@ describe("EBS Security Hardening Tests", () => {
   beforeEach(() => {
     vi.resetModules()
     process.env = { ...originalEnv }
+    process.env.EBS_ENCRYPTION_KEY = "0123456789abcdef0123456789abcdef"
+    mockActive = true
+    mockInsertReturns = [{ id: "inv-1" }]
+    mockExecute.mockResolvedValue({ rows: [{ count: 1 }] })
   })
 
   afterEach(() => {
@@ -129,36 +155,69 @@ describe("EBS Security Hardening Tests", () => {
     })).rejects.toThrow(/Access Denied/)
   })
 
-  it("Test 7: Webhook safely rejects missing authentication signatures", async () => {
+  it("Test 7: Webhook safely rejects unauthenticated or missing signatures", async () => {
     const req = new Request("http://localhost/api/webhooks/pegasus", {
       method: "POST",
-      body: "payload"
+      body: JSON.stringify({ providerEventId: "evt-1", accountNumber: "123", amount: 1000 })
     })
 
     const res = await POST(req)
     expect(res.status).toBe(401)
 
     const data = await res.json()
-    expect(data.error).toBe("Missing authentication signature")
+    expect(data.error).toBe("Invalid authentication signature")
   })
 
-  it("Test 8: Webhook returns correct status for authenticated but unimplemented request", async () => {
+  it("Test 8: Webhook accepts valid HMAC signature and durably stores event", async () => {
+    process.env.EBS_ENCRYPTION_KEY = "0123456789abcdef0123456789abcdef"
+    const body = JSON.stringify({ providerEventId: "evt-test-99", accountNumber: "600001", amount: 5000 })
+    const secret = "test-webhook-secret"
+    const signature = crypto.createHmac("sha256", secret).update(body).digest("hex")
+
     const req = new Request("http://localhost/api/webhooks/pegasus", {
       method: "POST",
       headers: {
-        "x-pegasus-signature": "dummy-signature"
+        "x-pegasus-signature": signature,
+        "content-type": "application/json"
       },
-      body: "payload"
+      body
     })
 
     const res = await POST(req)
-    expect(res.status).toBe(501)
+    expect(res.status).toBe(200)
 
     const data = await res.json()
-    expect(data.status).toBe("NOT_IMPLEMENTED")
+    expect(data.status).toBe("SUCCESS")
+    expect(data.eventId).toBe("evt-test-99")
   })
 
-  it("Test 9: Secret redaction in audit logs", async () => {
+  it("Test 9: Webhook handles duplicate event idempotently", async () => {
+    process.env.EBS_ENCRYPTION_KEY = "0123456789abcdef0123456789abcdef"
+    const body = JSON.stringify({ providerEventId: "evt-dup-1", accountNumber: "600001", amount: 5000 })
+    const secret = "test-webhook-secret"
+    const signature = crypto.createHmac("sha256", secret).update(body).digest("hex")
+
+    // Simulate onConflictDoNothing returning empty array (already exists)
+    mockInsertReturns = []
+
+    const req = new Request("http://localhost/api/webhooks/pegasus", {
+      method: "POST",
+      headers: {
+        "x-pegasus-signature": signature,
+        "content-type": "application/json"
+      },
+      body
+    })
+
+    const res = await POST(req)
+    expect(res.status).toBe(200)
+
+    const data = await res.json()
+    expect(data.status).toBe("SUCCESS")
+    expect(data.message).toContain("already received")
+  })
+
+  it("Test 10: Secret redaction in audit logs", async () => {
     Object.defineProperty(process.env, "NODE_ENV", {
       value: "test",
       configurable: true,
