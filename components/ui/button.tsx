@@ -51,9 +51,9 @@ function Button({
   onClick,
   ...props
 }: ButtonPrimitive.Props & VariantProps<typeof buttonVariants> & { asChild?: boolean }) {
-  const handleClick = (e: any) => {
+  const handleClick = (e: React.MouseEvent<HTMLButtonElement>) => {
     hapticFeedback()
-    if (onClick) onClick(e)
+    if (onClick) (onClick as (e: React.MouseEvent<HTMLButtonElement>) => void)(e)
   }
 
   if (asChild) {

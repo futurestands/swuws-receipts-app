@@ -31,7 +31,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { Textarea } from "@/components/ui/textarea"
 import { Switch } from "@/components/ui/switch"
 import { toast } from "sonner"
 import { Loader2, Plus, Tag } from "lucide-react"
@@ -81,7 +80,7 @@ export function CategoryDialog({
           if (!category) form.reset()
           router.refresh()
         }
-      } catch (err) {
+      } catch {
         toast.error("Failed to save category")
       }
     })
