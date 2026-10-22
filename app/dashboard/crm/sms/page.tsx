@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge"
 import { formatDateTime, formatCount } from "@/lib/format"
 import { Button } from "@/components/ui/button"
 import { Send, List, Clock } from "lucide-react"
+import { PegasusSmsImportModal } from "@/components/crm/pegasus-sms-import-modal"
 import { SmsImportModal } from "@/components/crm/sms-import-modal"
 import { SmsFilterBar } from "@/components/crm/sms-filter-bar"
 import { SmsBatchActions } from "@/components/crm/sms-batch-actions"
@@ -65,15 +66,15 @@ export default async function SmsHubPage({
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between gap-4">
+      <div className="flex flex-wrap items-center justify-between gap-4">
         <PageHeader
           title="Customer SMS Communications"
-          description="Staff submit lists. Only approvers can release messages."
+          description="Import Pegasus files or use the customer directory. Review each SMS list, then submit it for approval."
           backHref="/dashboard/crm"
         />
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
            <RefreshButton />
-           {canSubmitSms && <SmsImportModal />}
+           {canSubmitSms && <><PegasusSmsImportModal /><SmsImportModal /></>}
         </div>
       </div>
 
@@ -83,7 +84,7 @@ export default async function SmsHubPage({
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-xs font-bold text-muted-foreground uppercase">Total Lists</p>
+                <p className="text-xs font-bold text-muted-foreground uppercase">SMS lists</p>
                 <p className="text-2xl font-black text-sky-600">{stats.sms.totalLists}</p>
               </div>
               <List className="h-8 w-8 text-sky-200" />
@@ -107,7 +108,7 @@ export default async function SmsHubPage({
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-xs font-bold text-muted-foreground uppercase">Sent Messages</p>
+                <p className="text-xs font-bold text-muted-foreground uppercase">Sent messages</p>
                 <p className="text-2xl font-black text-emerald-600">{formatCount(stats.sms.sentMessages)}</p>
               </div>
               <Send className="h-8 w-8 text-emerald-200" />
@@ -120,17 +121,17 @@ export default async function SmsHubPage({
 
       <Card className="shadow-sm border-none">
         <CardHeader className="border-b bg-slate-50/30">
-          <CardTitle className="text-xs font-bold uppercase text-slate-600">SMS Messages</CardTitle>
+          <CardTitle className="text-xs font-bold uppercase text-slate-600">SMS lists</CardTitle>
         </CardHeader>
         <CardContent className="p-0">
           <Table>
             <TableHeader>
               <TableRow className="hover:bg-transparent bg-slate-50/50">
                 <TableHead className="w-[180px] text-[10px] font-bold uppercase">Date and time</TableHead>
-                <TableHead className="text-[10px] font-bold uppercase">Category</TableHead>
+                <TableHead className="text-[10px] font-bold uppercase">Message purpose</TableHead>
                 <TableHead className="text-[10px] font-bold uppercase">List name</TableHead>
                 <TableHead className="text-[10px] font-bold uppercase">Created by</TableHead>
-                <TableHead className="text-[10px] font-bold uppercase text-center">Numbers</TableHead>
+                <TableHead className="text-[10px] font-bold uppercase text-center">Recipients</TableHead>
                 <TableHead className="text-[10px] font-bold uppercase text-center">Status</TableHead>
                 <TableHead className="text-right text-[10px] font-bold uppercase pr-6">Actions</TableHead>
               </TableRow>
@@ -139,7 +140,7 @@ export default async function SmsHubPage({
               {batches.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={7} className="text-center py-12 text-muted-foreground italic text-xs">
-                    No SMS messages found matching your criteria.
+                    No SMS lists match these filters.
                   </TableCell>
                 </TableRow>
               ) : (
@@ -167,9 +168,12 @@ export default async function SmsHubPage({
                           'bg-amber-100 text-amber-700 border-amber-200'
                         )}
                        >
-                         {b.status === 'completed' ? 'Sent Out'
+                         {b.status === 'completed' ? 'Sending complete'
                            : b.status === 'pending_approval' ? 'Awaiting approval'
                            : b.status === 'draft' ? 'Draft'
+                           : b.status === 'processing' ? 'Sending'
+                           : b.status === 'failed' ? 'Needs attention'
+                           : b.status === 'rejected' ? 'Sent back'
                            : b.status}
                        </Badge>
                        {b.status !== 'draft' && b.status !== 'pending_approval' && b.status !== 'rejected' && (

@@ -51,7 +51,7 @@ export function SmsBatchActions({
   }
 
   function handleApprove() {
-    if (!confirm(`Approve and send “${batchName}”? Messages will start going out now.`)) return
+    if (!confirm(`Approve and send “${batchName}”? Messages will start going out now. Your SMS provider charges apply.`)) return
     run(() => approveSmsBatch(batchId), "Approved. Sending has started.")
   }
 
@@ -120,7 +120,7 @@ export function SmsBatchActions({
             disabled={isPending}
           >
             {isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : status === "approved" ? <Send className="h-3 w-3" /> : <RefreshCw className="h-3 w-3" />}
-            {status === "approved" ? "SEND" : "RESUME"}
+            {status === "approved" ? "Send SMS" : "Continue sending"}
           </Button>
         )}
         <Button

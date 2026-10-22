@@ -56,7 +56,7 @@ export function SmsFilterBar() {
             <Input type="date" className="h-9 bg-white" value={from} onChange={e => setFrom(e.target.value)} />
           </div>
           <div className="space-y-1.5">
-            <label className="text-[10px] font-bold uppercase text-muted-foreground ml-1">Till</label>
+            <label className="text-[10px] font-bold uppercase text-muted-foreground ml-1">To</label>
             <Input type="date" className="h-9 bg-white" value={till} onChange={e => setTill(e.target.value)} />
           </div>
           <div className="space-y-1.5">
@@ -71,14 +71,14 @@ export function SmsFilterBar() {
                 <SelectItem value="pending_approval">Awaiting approval</SelectItem>
                 <SelectItem value="rejected">Sent back</SelectItem>
                 <SelectItem value="approved">Approved</SelectItem>
-                <SelectItem value="processing">Processing</SelectItem>
-                <SelectItem value="completed">Completed</SelectItem>
-                <SelectItem value="failed">Failed</SelectItem>
+                <SelectItem value="processing">Sending</SelectItem>
+                <SelectItem value="completed">Sending complete</SelectItem>
+                <SelectItem value="failed">Needs attention</SelectItem>
               </SelectContent>
             </Select>
           </div>
           <div className="space-y-1.5">
-            <label className="text-[10px] font-bold uppercase text-muted-foreground ml-1">Category</label>
+            <label className="text-[10px] font-bold uppercase text-muted-foreground ml-1">Message purpose</label>
             <Select value={category} onValueChange={v => setCategory(v ?? "all")}>
               <SelectTrigger className="h-9 bg-white">
                 <SelectValue placeholder="All" />

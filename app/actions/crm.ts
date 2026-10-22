@@ -32,17 +32,15 @@ import {
 import { applyCustomerScope, applySmsBatchScope, validateWriteScope } from "@/lib/scopes"
 import { canViewAllData } from "@/lib/permissions"
 import { ROLES } from "@/lib/permissions/roles"
-import { randomUUID } from "crypto"
+import { createHash, randomUUID } from "crypto"
 import { revalidatePath } from "next/cache"
 import { writeAudit } from "@/lib/audit"
 import { createNotification } from "./notifications"
 import {
-  smsImportSchema,
-  smsImportMapping,
   COMPLAINT_PRIORITIES,
   type ComplaintPriority,
 } from "@/lib/crm-schemas"
-import { processExcelImport } from "@/lib/import-engine"
+import { prepareSmsImport } from "@/lib/crm/sms-import-server"
 import { sendSMS } from "@/lib/sms-service"
 import { sendOperationalEmail } from "@/lib/email-service"
 import { renderTemplate } from "@/lib/templates/template-engine"
@@ -1370,198 +1368,75 @@ export async function reopenComplaint(id: string, reason: string) {
 /**
  * SMS COMMUNICATION
  */
-export async function importSmsBatch(formData: FormData) {
-  const user = await requireUser()
-  if (!canCreateSmsBatch(user)) throw new Error("Forbidden")
-
-  const file = formData.get("file") as File
-  const name = formData.get("name") as string
-  const category = formData.get("category") as string
-  const templateId = formData.get("templateId") as string || undefined
-  const manualMessage = formData.get("manualMessage") as string || undefined
-  const schemeId = formData.get("schemeId") as string || "all"
-
-  if (!file) throw new Error("File is required")
-  if (!name?.trim()) throw new Error("List name is required")
-
-  const summary = await processExcelImport({
-    file,
-    schema: smsImportSchema,
-    mapping: smsImportMapping,
-    headerMode: "none"
-  })
-
-  if (summary.validRows === 0) {
-    throw new Error("No valid rows found in the imported file")
-  }
-
-  const validRows = summary.rows.filter(r => r.valid).map(r => r.data)
-
-  // Link rows to real customers via the account number in column A. Records
-  // used to be stored with no customerId at all, which is also what made
-  // the scheme filter below impossible.
-  const accounts = [...new Set(validRows.map(r => r.customerRef?.trim()).filter((v): v is string => !!v))]
-  const customerByAccount = new Map<string, { id: string; waterSchemeId: string | null }>()
-  if (accounts.length > 0) {
-    const CHUNK = 1000
-    for (let i = 0; i < accounts.length; i += CHUNK) {
-      const found = await db
-        .select({ id: customer.id, account: customer.customerAccount, waterSchemeId: customer.waterSchemeId })
-        .from(customer)
-        .where(inArray(customer.customerAccount, accounts.slice(i, i + CHUNK)))
-      for (const row of found) {
-        if (row.account) customerByAccount.set(row.account, { id: row.id, waterSchemeId: row.waterSchemeId })
-      }
-    }
-  }
-
-  // The "Target Water Scheme" dropdown was previously read and then ignored,
-  // so operators believed a campaign had been narrowed when it had not.
-  const targetSchemeId = schemeId && schemeId !== "all" ? schemeId : null
-  const scoped = targetSchemeId
-    ? validRows.filter(r => {
-        const match = r.customerRef ? customerByAccount.get(r.customerRef.trim()) : undefined
-        return match?.waterSchemeId === targetSchemeId
-      })
-    : validRows
-
-  if (scoped.length === 0) {
-    throw new Error("No rows in this file belong to the selected water scheme")
-  }
-
-  // Message body: explicit custom text, an explicitly chosen template, or
-  // the managed billing SMS template. In all three cases the content goes
-  // through the template engine, so {{placeholders}} are substituted --
-  // custom messages used to be stored verbatim and customers received the
-  // literal text "{{name}}".
-  let content = manualMessage?.trim() || null
-  if (!content && templateId) {
-    const [chosen] = await db.select().from(managedTemplate).where(eq(managedTemplate.id, templateId)).limit(1)
-    if (chosen?.activeVersionId) {
-      const [version] = await db.select().from(templateVersion).where(eq(templateVersion.id, chosen.activeVersionId)).limit(1)
-      content = version?.content || null
-    }
-  }
-  if (!content) {
-    content = await resolveTemplateContent("notif.billing.sms", DEFAULT_BILLING_REMINDER)
-  }
-
-  const autoThanks = !manualMessage?.trim() && !templateId
-  const thanksContent = autoThanks
-    ? await resolveTemplateContent("crm.payment.thanks.sms", DEFAULT_PAYMENT_THANKS)
-    : null
-
+async function prepareReviewedSmsImport(formData: FormData) {
+  const result = await prepareSmsImport(formData)
+  const { options, preview } = result
   const period = await getActiveBillingPeriod()
-  const prePhones: string[] = []
-  const preCustomerIds: string[] = []
-  for (const row of scoped) {
-    const phoneNumber = normalizeSendablePhone(String(row.phoneNumber))
-    if (!phoneNumber) continue
-    prePhones.push(phoneNumber)
-    const linked = row.customerRef ? customerByAccount.get(row.customerRef.trim())?.id : undefined
-    if (linked) preCustomerIds.push(linked)
-  }
   const contacted = await loadAlreadyContactedThisPeriod({
-    category,
-    period,
-    customerIds: preCustomerIds,
-    phones: prePhones,
+    category: options.category, period,
+    customerIds: result.eligible.flatMap(r => r.customerId ? [r.customerId] : []),
+    phones: result.eligible.map(r => r.contact.phoneNumber),
   })
+  const useDefaultThanks = options.category === BILL_REMINDER_CATEGORY && options.messageMode === "template" && !options.templateId
+  const thanksContent = useDefaultThanks ? await resolveTemplateContent("crm.payment.thanks.sms", DEFAULT_PAYMENT_THANKS) : null
+  const eligible = result.eligible.filter(row => {
+    if (!wasContactedThisPeriod(contacted, row.customerId, row.contact.phoneNumber)) return true
+    preview.counts.alreadyContacted++
+    preview.issueCount++
+    if (preview.issues.length < preview.issueLimit) preview.issues.push({ rowNumber: row.contact.rowNumber, reference: row.contact.reference, customerName: row.contact.customerName, reason: ALREADY_MESSAGED_ERROR })
+    return false
+  }).map(row => {
+    if (!thanksContent || !isThanksBalance(row.contact.balance)) return row
+    preview.counts.thanked++
+    const c = row.contact
+    const balance = c.balance.toLocaleString("en-UG", { maximumFractionDigits: 2 })
+    const message = renderTemplate(thanksContent, { customer_name: c.customerName, name: c.customerName, account: c.reference, customer_reference: c.reference, meter_ref: c.reference, bill_number: c.billNumber, period: c.billingPeriod, balance, total_due: balance, amount: balance })
+    if (!message.trim() || /\{\{/.test(message) || message.length > 1600) throw new Error("The thank-you template has unresolved fields or exceeds 1,600 characters. Review its published content")
+    return { ...row, message }
+  })
+  preview.counts.ready = eligible.length
+  preview.counts.unlinked = eligible.filter(r => !r.customerId).length
+  preview.recipients = eligible.slice(0, 10).map(r => ({ ...r.contact, linked: !!r.customerId, message: r.message }))
+  // Re-run contact policy on commit: newly queued messages must invalidate the old review.
+  preview.previewKey = createHash("sha256").update(preview.previewKey).update(JSON.stringify({ eligible, counts: preview.counts, period })).digest("hex")
+  return { ...result, eligible, preview }
+}
 
+export async function previewSmsImport(formData: FormData) {
+  const { preview } = await prepareReviewedSmsImport(formData)
+  return preview
+}
+
+export async function importSmsBatch(formData: FormData) {
+  const { user, options, eligible, preview } = await prepareReviewedSmsImport(formData)
+  if (!eligible.length) throw new Error("No recipients are ready. Review the excluded rows before creating the SMS list")
+  if (formData.get("previewKey") !== preview.previewKey) {
+    throw new Error("The file, settings or customer matches changed. Review the import again before creating the SMS list")
+  }
+  if (preview.issueCount && formData.get("acceptExcluded") !== "true") {
+    throw new Error("Confirm that you have reviewed the excluded rows")
+  }
   const batchId = randomUUID()
-  const records: Array<typeof crmSmsRecord.$inferInsert> = []
-  let skippedNumbers = 0
-  let thanked = 0
-  let alreadyContacted = 0
-
-  for (const row of scoped) {
-    const phoneNumber = normalizeSendablePhone(String(row.phoneNumber))
-    if (!phoneNumber) {
-      skippedNumbers++
-      continue
-    }
-
-    const customerId = row.customerRef ? customerByAccount.get(row.customerRef.trim())?.id ?? null : null
-    if (wasContactedThisPeriod(contacted, customerId, phoneNumber)) {
-      alreadyContacted++
-      continue
-    }
-
-    const customerName = row.customerName || "Customer"
-    const balance = Number(row.balance ?? 0)
-    const useThanks = Boolean(thanksContent) && isThanksBalance(balance)
-    if (useThanks) thanked++
-    records.push({
-      id: randomUUID(),
-      batchId,
-      customerId,
-      phoneNumber,
-      message: renderTemplate(useThanks && thanksContent ? thanksContent : content, {
-        customer_name: customerName,
-        // The import modal advertises {{name}}, so accept both spellings.
-        name: customerName,
-        account: row.customerRef || "",
-        period: row.billingPeriod || period?.periodName || "",
-        balance,
-        total_due: balance,
-        amount: balance,
-      }),
-      status: "queued" as const,
-      updatedAt: new Date(),
-    })
-  }
-
-  if (records.length === 0) {
-    if (alreadyContacted > 0 && skippedNumbers === 0) {
-      throw new Error(
-        period
-          ? `Everyone in this file was already messaged this billing period (${period.periodName})`
-          : "Everyone in this file was already messaged this billing period",
-      )
-    }
-    throw new Error("None of the phone numbers in this file could be used")
-  }
-
   await db.transaction(async (tx) => {
     await tx.insert(crmSmsBatch).values({
-      id: batchId,
-      name: name.trim(),
-      category,
-      templateId: templateId || null,
-      status: "draft",
-      totalMessages: records.length,
-      createdById: user.id,
-      updatedAt: new Date()
+      id: batchId, name: options.name, category: options.category,
+      templateId: options.messageMode === "template" ? options.templateId || null : null,
+      status: "draft", totalMessages: eligible.length, createdById: user.id, updatedAt: new Date(),
     })
-
-    const CHUNK = 500
-    for (let i = 0; i < records.length; i += CHUNK) {
-      await tx.insert(crmSmsRecord).values(records.slice(i, i + CHUNK))
+    for (let i = 0; i < eligible.length; i += 500) {
+      await tx.insert(crmSmsRecord).values(eligible.slice(i, i + 500).map(({ contact, customerId, message }) => ({
+        id: randomUUID(), batchId, customerId, phoneNumber: contact.phoneNumber, message,
+        recipientName: contact.customerName, customerReference: contact.reference,
+        billNumber: contact.billNumber || null, billingPeriod: contact.billingPeriod,
+        accountBalance: String(contact.balance), status: "queued", updatedAt: new Date(),
+      })))
     }
+    await writeAudit({ user, action: "crm.sms.import", entityType: "crm_sms_batch", entityId: batchId,
+      details: { name: options.name, format: preview.format, sheet: preview.sheetName, counts: preview.counts, schemeId: options.schemeId },
+    }, tx)
   })
-
-  await writeAudit({
-    user,
-    action: "crm.sms.import",
-    entityType: "crm_sms_batch",
-    entityId: batchId,
-    details: { name: name.trim(), category, queued: records.length, schemeId: targetSchemeId, skippedNumbers, thanked, alreadyContacted },
-  })
-
   revalidatePath("/dashboard/crm/sms")
-  return {
-    ok: true,
-    batchId,
-    summary: {
-      total: summary.totalRows,
-      valid: summary.validRows,
-      queued: records.length,
-      skippedNumbers,
-      filteredByScheme: validRows.length - scoped.length,
-      thanked,
-      alreadyContacted,
-    },
-  }
+  return { ok: true as const, batchId, summary: preview.counts }
 }
 
 const SMS_AUDIENCE_CAP = 50_000
@@ -1954,8 +1829,8 @@ export async function listSmsRecords(batchId: string, params: { status?: string 
   return db
     .select({
       ...getTableColumns(crmSmsRecord),
-      customerName: customer.name,
-      customerAccount: customer.customerAccount,
+      customerName: sql<string | null>`coalesce(${crmSmsRecord.recipientName}, ${customer.name})`,
+      customerAccount: sql<string | null>`coalesce(${crmSmsRecord.customerReference}, ${customer.customerAccount})`,
     })
     .from(crmSmsRecord)
     .leftJoin(customer, eq(crmSmsRecord.customerId, customer.id))
@@ -2438,7 +2313,7 @@ export async function getCrmStats() {
       .select({
         totalBatches: count(crmSmsBatch.id),
         totalSent: sql<number>`coalesce(sum(${crmSmsBatch.sentMessages}), 0)::int`,
-        pendingCount: sql<number>`count(case when ${crmSmsBatch.status} in ('draft','pending_approval','approved') then 1 end)::int`,
+        pendingCount: sql<number>`coalesce(sum((SELECT count(*) FROM crm_sms_record r WHERE r."batchId" = ${crmSmsBatch.id} AND r.status = 'queued')), 0)::int`,
       })
       .from(crmSmsBatch)
       .where(smsScopeCond)

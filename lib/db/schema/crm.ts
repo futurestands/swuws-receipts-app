@@ -135,6 +135,11 @@ export const crmSmsRecord = pgTable("crm_sms_record", {
   batchId: text("batchId").references(() => crmSmsBatch.id, { onDelete: "cascade" }),
   customerId: text("customerId").references(() => customer.id, { onDelete: "set null" }),
   phoneNumber: text("phoneNumber").notNull(),
+  recipientName: text("recipientName"),
+  customerReference: text("customerReference"),
+  billNumber: text("billNumber"),
+  billingPeriod: text("billingPeriod"),
+  accountBalance: numeric("accountBalance", { precision: 12, scale: 2 }),
   message: text("message").notNull(),
   status: text("status").notNull().default("queued"), // queued, sent, delivered, failed
   externalRef: text("externalRef"),

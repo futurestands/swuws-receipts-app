@@ -1,14 +1,13 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
-import { Button } from "@/components/ui/button"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
+import { Button, buttonVariants } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { SearchableSelect } from "@/components/ui/searchable-select"
 import {
-  importSmsBatch,
   listCrmSmsTemplates,
   countSmsAudience,
   createSmsBatchFromCustomers,
@@ -19,22 +18,13 @@ import { toast } from "sonner"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Textarea } from "@/components/ui/textarea"
 import { useRouter } from "next/navigation"
-import { Plus, Loader2, Upload, Download } from "lucide-react"
-import { cn } from "@/lib/utils"
-
-const SAMPLE_CSV = [
-  "60000123,+256770000001,Kato Yusuf,MARCH 2026,45000",
-  "60000124,+256782000002,Nakato Grace,MARCH 2026,12500",
-  "60000125,+256700000003,Tumusiime Robert,MARCH 2026,0",
-].join("\n")
+import { Plus, Loader2 } from "lucide-react"
 
 export function SmsImportModal() {
   const router = useRouter()
   const [open, setOpen] = useState(false)
-  const [source, setSource] = useState<"directory" | "csv">("directory")
   const [name, setName] = useState("")
   const [category, setCategory] = useState("Bill Reminders")
-  const [file, setFile] = useState<File | null>(null)
   const [loading, setLoading] = useState(false)
 
   const [message, setMessage] = useState("")
@@ -45,10 +35,14 @@ export function SmsImportModal() {
   const [selectedBranchId, setSelectedBranchId] = useState("all")
   const [schemes, setSchemes] = useState<{ id: string; name: string; branchId: string | null }[]>([])
   const [branches, setBranches] = useState<{ id: string; name: string }[]>([])
-  const [audienceCount, setAudienceCount] = useState<number | null>(null)
-  const [audienceSkipped, setAudienceSkipped] = useState(0)
-  const [audienceAlreadyContacted, setAudienceAlreadyContacted] = useState(0)
-  const [counting, setCounting] = useState(false)
+  const [audience, setAudience] = useState<{ key: string; count: number | null; skipped: number; alreadyContacted: number } | null>(null)
+  const audienceKey = JSON.stringify([selectedSchemeId, selectedBranchId, category])
+  const hasSelection = selectedSchemeId !== "all" || selectedBranchId !== "all"
+  const currentAudience = audience?.key === audienceKey ? audience : null
+  const audienceCount = currentAudience?.count ?? null
+  const audienceSkipped = currentAudience?.skipped ?? 0
+  const audienceAlreadyContacted = currentAudience?.alreadyContacted ?? 0
+  const counting = open && hasSelection && !currentAudience
 
   useEffect(() => {
     if (!open) return
@@ -64,197 +58,90 @@ export function SmsImportModal() {
     : schemes.filter((s) => s.branchId === selectedBranchId)
 
   useEffect(() => {
-    if (!open || source !== "directory") {
-      setAudienceCount(null)
-      setAudienceSkipped(0)
-      setAudienceAlreadyContacted(0)
-      return
-    }
-    if (selectedSchemeId === "all" && selectedBranchId === "all") {
-      setAudienceCount(null)
-      setAudienceSkipped(0)
-      setAudienceAlreadyContacted(0)
-      return
-    }
+    if (!open || !hasSelection) return
     let cancelled = false
-    setCounting(true)
     countSmsAudience({
       schemeId: selectedSchemeId,
       branchId: selectedSchemeId === "all" ? selectedBranchId : undefined,
       category,
+    }).then(res => {
+      if (!cancelled) setAudience({ key: audienceKey, count: res.count, skipped: res.skipped || 0, alreadyContacted: res.alreadyContacted || 0 })
+    }).catch(() => {
+      if (!cancelled) setAudience({ key: audienceKey, count: null, skipped: 0, alreadyContacted: 0 })
     })
-      .then((res) => {
-        if (!cancelled) {
-          setAudienceCount(res.count)
-          setAudienceSkipped(res.skipped || 0)
-          setAudienceAlreadyContacted(res.alreadyContacted || 0)
-        }
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setAudienceCount(null)
-          setAudienceSkipped(0)
-          setAudienceAlreadyContacted(0)
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setCounting(false)
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [open, source, selectedSchemeId, selectedBranchId, category])
-
-  function downloadSample() {
-    const blob = new Blob([SAMPLE_CSV], { type: "text/csv;charset=utf-8" })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement("a")
-    a.href = url
-    a.download = "swuws-sms-contact-list.csv"
-    a.click()
-    URL.revokeObjectURL(url)
-  }
+    return () => { cancelled = true }
+  }, [open, hasSelection, audienceKey, selectedSchemeId, selectedBranchId, category])
 
   function resetForm() {
     setName("")
     setCategory("Bill Reminders")
-    setFile(null)
     setUseManualMessage(false)
     setMessage("")
     setTemplateId("default")
     setSelectedSchemeId("all")
     setSelectedBranchId("all")
-    setAudienceCount(null)
-    setAudienceSkipped(0)
-    setAudienceAlreadyContacted(0)
-    setSource("directory")
+    setAudience(null)
   }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
 
-    if (source === "directory") {
-      if (selectedSchemeId === "all" && selectedBranchId === "all") {
-        toast.error("Select an area or a water scheme")
-        return
-      }
-      setLoading(true)
-      try {
-        const res = await createSmsBatchFromCustomers({
-          name,
-          category,
-          schemeId: selectedSchemeId,
-          branchId: selectedSchemeId === "all" ? selectedBranchId : undefined,
-          templateId: templateId !== "default" ? templateId : undefined,
-          manualMessage: useManualMessage ? message : undefined,
-        })
-        if (res.ok) {
-          const notes = [
-            res.summary.skippedNumbers > 0 ? `${res.summary.skippedNumbers} unusable number(s) skipped` : null,
-            res.summary.alreadyContacted > 0 ? `${res.summary.alreadyContacted} already messaged this period` : null,
-            res.summary.thanked > 0 ? `${res.summary.thanked} thank-you(s) for balance below USh 1,500` : null,
-          ].filter(Boolean)
-          toast.success(
-            `Saved ${res.summary.queued} message(s) for ${res.summary.scopeName} as a draft. Submit it for approval before it can be sent.${notes.length ? ` ${notes.join(". ")}.` : ""}`,
-          )
-          setOpen(false)
-          resetForm()
-          router.refresh()
-        }
-      } catch (err: unknown) {
-        toast.error(err instanceof Error ? err.message : "Could not create the list")
-      } finally {
-        setLoading(false)
-      }
+    if (selectedSchemeId === "all" && selectedBranchId === "all") {
+      toast.error("Select an area or a water scheme")
       return
     }
-
-    if (!name.trim()) {
-      toast.error("List name is required")
-      return
-    }
-    if (!file) {
-      toast.error("Please attach a CSV file")
-      return
-    }
-
     setLoading(true)
     try {
-      const formData = new FormData()
-      formData.append("file", file)
-      formData.append("name", name)
-      formData.append("category", category)
-      formData.append("schemeId", selectedSchemeId)
-      if (useManualMessage && message.trim()) {
-        formData.append("manualMessage", message)
-      } else if (templateId && templateId !== "default") {
-        formData.append("templateId", templateId)
-      }
-
-      const res = await importSmsBatch(formData)
+      const res = await createSmsBatchFromCustomers({
+        name,
+        category,
+        schemeId: selectedSchemeId,
+        branchId: selectedSchemeId === "all" ? selectedBranchId : undefined,
+        templateId: templateId !== "default" ? templateId : undefined,
+        manualMessage: useManualMessage ? message : undefined,
+      })
       if (res.ok) {
-        const { queued, skippedNumbers, filteredByScheme, thanked, alreadyContacted } = res.summary
         const notes = [
-          skippedNumbers > 0 ? `${skippedNumbers} unusable number(s) skipped` : null,
-          filteredByScheme > 0 ? `${filteredByScheme} outside the selected scheme` : null,
-          alreadyContacted > 0 ? `${alreadyContacted} already messaged this period` : null,
-          thanked > 0 ? `${thanked} thank-you(s) for balance below USh 1,500` : null,
+          res.summary.skippedNumbers > 0 ? `${res.summary.skippedNumbers} unusable number(s) skipped` : null,
+          res.summary.alreadyContacted > 0 ? `${res.summary.alreadyContacted} already messaged this period` : null,
+          res.summary.thanked > 0 ? `${res.summary.thanked} thank-you(s) for balance below USh 1,500` : null,
         ].filter(Boolean)
-
         toast.success(
-          `Saved ${queued} message(s) as a draft. Submit it for approval before it can be sent.${notes.length ? ` ${notes.join(", ")}.` : ""}`,
+          `Saved ${res.summary.queued} message(s) for ${res.summary.scopeName} as a draft. Submit it for approval before it can be sent.${notes.length ? ` ${notes.join(". ")}.` : ""}`,
         )
         setOpen(false)
         resetForm()
         router.refresh()
       }
     } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : "Import Failed")
+      toast.error(err instanceof Error ? err.message : "Could not create the list")
     } finally {
       setLoading(false)
     }
   }
 
   return (
-    <Dialog open={open} onOpenChange={(next) => { setOpen(next); if (!next) resetForm() }}>
-      <DialogTrigger asChild>
-        <Button className="h-11 bg-emerald-600 hover:bg-emerald-700 shadow-sm transition-all hover:shadow-md">
-          <Plus className="mr-2 h-4 w-4" /> Create contact list
-        </Button>
+    <Dialog open={open} onOpenChange={(next) => { if (!loading) { setOpen(next); if (!next) resetForm() } }}>
+      <DialogTrigger className={buttonVariants({ variant: "outline", className: "h-11" })}>
+        <Plus className="mr-2 h-4 w-4" />From customer directory
       </DialogTrigger>
       <DialogContent className="sm:max-w-[550px] max-h-[95vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle className="text-lg font-bold text-slate-700">Create contact list</DialogTitle>
+          <DialogTitle className="text-lg font-bold text-slate-700">Create SMS list from customer directory</DialogTitle>
+          <DialogDescription>Select existing customers by area or water scheme, then save a draft for approval.</DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4 pt-4">
-          <div className="flex bg-muted p-1 rounded-lg">
-            <button
-              type="button"
-              onClick={() => setSource("directory")}
-              className={cn("flex-1 text-[10px] font-bold py-2 rounded-md transition-all", source === "directory" ? "bg-white shadow-sm text-primary" : "text-muted-foreground")}
-            >
-              From scheme or area
-            </button>
-            <button
-              type="button"
-              onClick={() => setSource("csv")}
-              className={cn("flex-1 text-[10px] font-bold py-2 rounded-md transition-all", source === "csv" ? "bg-white shadow-sm text-primary" : "text-muted-foreground")}
-            >
-              Upload CSV
-            </button>
-          </div>
-
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label className="text-xs font-bold uppercase text-slate-500">List name</Label>
+              <Label className="text-xs font-bold uppercase text-slate-500">SMS list name</Label>
               <Input
-                placeholder={source === "directory" ? "Optional — uses the scheme or area name" : "e.g. KARENGAMYAMBI"}
+                placeholder="Optional — uses the scheme or area name"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
               />
             </div>
             <div className="space-y-2">
-              <Label className="text-xs font-bold uppercase text-slate-500">Category</Label>
+              <Label className="text-xs font-bold uppercase text-slate-500">Message purpose</Label>
               <Select onValueChange={(val) => setCategory(val || "")} value={category}>
                 <SelectTrigger>
                   <SelectValue placeholder="Select category" />
@@ -301,7 +188,7 @@ export function SmsImportModal() {
             </div>
           </div>
 
-          {source === "directory" && (
+          {(
             <p className="text-xs text-muted-foreground bg-muted/50 rounded-md px-3 py-2">
               {selectedSchemeId === "all" && selectedBranchId === "all"
                 ? "Pick an area, a scheme, or both. A scheme is narrower than an area."
@@ -349,7 +236,7 @@ export function SmsImportModal() {
                 <p className="text-[10px] text-muted-foreground">
                   Only Uganda 07 or 03 numbers (10 digits) are queued. 0700000000 is skipped.
                   Bill reminders go once per account per billing period. Live balance below USh 1,500 gets a thank-you.
-                  After Send Now, failed numbers are emailed to you.
+                  After approval and sending, failed numbers are emailed to you.
                 </p>
               )}
             </div>
@@ -361,7 +248,7 @@ export function SmsImportModal() {
                 onCheckedChange={(checked) => setUseManualMessage(!!checked)}
               />
               <Label htmlFor="manual-mode" className="text-xs font-black uppercase text-primary cursor-pointer">
-                Custom Message Mode (Manual)
+                Write a custom message
               </Label>
             </div>
 
@@ -381,50 +268,6 @@ export function SmsImportModal() {
             )}
           </div>
 
-          {source === "csv" && (
-            <>
-              <div className="space-y-2">
-                <Label className="text-xs font-bold uppercase text-slate-500">Attach CSV Files</Label>
-                <div
-                  className="border-2 border-dashed rounded-lg p-6 flex flex-col items-center justify-center gap-2 hover:bg-slate-50 transition-colors cursor-pointer"
-                  onClick={() => document.getElementById("sms-file-input")?.click()}
-                >
-                  <Upload className="h-8 w-8 text-slate-300" />
-                  <p className="text-sm font-medium text-slate-600">
-                    {file ? file.name : "Choose Files"}
-                  </p>
-                  <p className="text-[10px] text-slate-400">Drag & Drop or Click to browse</p>
-                  <input
-                    id="sms-file-input"
-                    type="file"
-                    accept=".csv,.xlsx"
-                    className="hidden"
-                    onChange={(e) => setFile(e.target.files?.[0] || null)}
-                  />
-                </div>
-              </div>
-
-              <div className="bg-slate-50 p-4 rounded-lg border border-slate-100">
-                <p className="text-[10px] font-bold text-slate-500 uppercase mb-2">Required Format (no header row):</p>
-                <ul className="text-[11px] space-y-1 text-slate-600 font-mono">
-                  <li>Column A - Customer Ref No</li>
-                  <li>Column B - Customer Phone number</li>
-                  <li>Column C - Customer Name</li>
-                  <li>Column D - Billing Period</li>
-                  <li>Column E - Outstanding Balance</li>
-                </ul>
-                <p className="text-[9px] text-slate-400 italic mt-2">
-                  Columns are read by position, so a header row would be treated as a recipient.
-                  Only Uganda 07 or 03 numbers (10 digits) are queued. 0700000000 is skipped.
-                  Local 0770000001 becomes +256770000001 automatically.
-                </p>
-                <Button type="button" variant="ghost" size="sm" className="mt-2 h-7 px-0 text-[10px] font-bold text-sky-700" onClick={downloadSample}>
-                  <Download className="h-3 w-3 mr-1" /> Download sample CSV
-                </Button>
-              </div>
-            </>
-          )}
-
           <div className="flex justify-end gap-3 pt-4 border-t">
             <Button type="button" variant="outline" onClick={() => setOpen(false)} disabled={loading}>
               Cancel
@@ -434,15 +277,15 @@ export function SmsImportModal() {
               className="bg-emerald-600 hover:bg-emerald-700"
               disabled={
                 loading ||
-                (source === "directory" && (
+                (
                   (selectedSchemeId === "all" && selectedBranchId === "all") ||
                   counting ||
                   audienceCount === 0
-                ))
+                )
               }
             >
               {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              {source === "directory" ? "Create list" : "Create list..."}
+              Save draft SMS list
             </Button>
           </div>
         </form>

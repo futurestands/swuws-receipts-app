@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
+import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -18,6 +18,9 @@ interface SmsRecordRow {
   error: string | null
   customerName: string | null
   customerAccount: string | null
+  billNumber: string | null
+  billingPeriod: string | null
+  accountBalance: string | null
 }
 
 const STATUS_STYLES: Record<string, string> = {
@@ -43,19 +46,20 @@ export function SmsBatchDetailsSheet({
   open: boolean
   onOpenChange: (open: boolean) => void
 }) {
-  const [records, setRecords] = useState<SmsRecordRow[]>([])
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [result, setResult] = useState<{ batchId: string; status: string; records: SmsRecordRow[]; error: string | null } | null>(null)
   const [status, setStatus] = useState("all")
+  const current = result?.batchId === batchId && result.status === status ? result : null
+  const records = current?.records ?? []
+  const error = current?.error
+  const loading = open && !current
 
   useEffect(() => {
     if (!open) return
-    setLoading(true)
-    setError(null)
+    let active = true
     listSmsRecords(batchId, { status })
-      .then((rows) => setRecords(rows as SmsRecordRow[]))
-      .catch((err) => setError(err instanceof Error ? err.message : String(err)))
-      .finally(() => setLoading(false))
+      .then((rows) => { if (active) setResult({ batchId, status, records: rows, error: null }) })
+      .catch((err) => { if (active) setResult({ batchId, status, records: [], error: err instanceof Error ? err.message : String(err) }) })
+    return () => { active = false }
   }, [open, batchId, status])
 
   const counts = {
@@ -65,15 +69,15 @@ export function SmsBatchDetailsSheet({
   }
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="sm:max-w-[720px] p-0 border-none flex flex-col bg-slate-50">
+    <Sheet open={open} onOpenChange={value => { if (!value) setResult(null); onOpenChange(value) }}>
+      <SheetContent className="sm:max-w-[960px] p-0 border-none flex flex-col bg-slate-50">
         <div className="bg-[#0f172a] p-6 text-white shrink-0 space-y-4">
           <div className="flex items-center gap-3">
             <div className="h-8 w-8 rounded-lg bg-primary/20 flex items-center justify-center border border-primary/30">
               <Smartphone className="h-4 w-4 text-primary" />
             </div>
             <div>
-              <SheetTitle className="text-white text-sm font-black uppercase tracking-widest">Delivery Log</SheetTitle>
+              <SheetTitle className="text-white text-sm font-black uppercase tracking-widest">SMS list details</SheetTitle>
               <p className="text-[10px] text-slate-400 font-bold uppercase">{batchName}</p>
             </div>
           </div>
@@ -85,13 +89,13 @@ export function SmsBatchDetailsSheet({
         </div>
 
         <div className="p-4 border-b bg-white shrink-0 flex items-center gap-3">
-          <Select value={status} onValueChange={(v) => setStatus(v ?? "all")}>
+          <Select value={status} onValueChange={(v) => { setResult(null); setStatus(v ?? "all") }}>
             <SelectTrigger className="h-9 w-[180px] text-xs font-bold">
               <SelectValue placeholder="All statuses" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All statuses</SelectItem>
-              <SelectItem value="queued">Queued</SelectItem>
+              <SelectItem value="queued">Ready to send</SelectItem>
               <SelectItem value="sent">Sent</SelectItem>
               <SelectItem value="failed">Failed</SelectItem>
             </SelectContent>
@@ -108,8 +112,10 @@ export function SmsBatchDetailsSheet({
             <Table>
               <TableHeader>
                 <TableRow className="bg-slate-50">
-                  <TableHead className="text-[10px] font-bold uppercase">Recipient</TableHead>
-                  <TableHead className="text-[10px] font-bold uppercase">Number</TableHead>
+                  <TableHead className="text-[10px] font-bold uppercase">Customer / Reference</TableHead>
+                  <TableHead className="text-[10px] font-bold uppercase">Phone number</TableHead>
+                  <TableHead className="text-[10px] font-bold uppercase">Bill / Period</TableHead>
+                  <TableHead className="text-[10px] font-bold uppercase">Amount due (UGX)</TableHead>
                   <TableHead className="text-[10px] font-bold uppercase text-center">Status</TableHead>
                   <TableHead className="text-[10px] font-bold uppercase">Result</TableHead>
                 </TableRow>
@@ -126,13 +132,16 @@ export function SmsBatchDetailsSheet({
                       )}
                     </TableCell>
                     <TableCell className="text-[11px] font-mono text-slate-600">{record.phoneNumber}</TableCell>
+                    <TableCell className="text-xs"><span className="block font-mono">{record.billNumber || "—"}</span>{record.billingPeriod || "—"}</TableCell>
+                    <TableCell className="text-xs tabular-nums">{record.accountBalance == null ? "—" : Number(record.accountBalance).toLocaleString("en-UG", { maximumFractionDigits: 2 })}</TableCell>
                     <TableCell className="text-center">
                       <Badge className={cn("h-5 px-1.5 text-[9px] uppercase font-black", STATUS_STYLES[record.status])}>
-                        {record.status}
+                        {record.status === "queued" ? "Ready to send" : record.status}
                       </Badge>
                     </TableCell>
                     <TableCell className="text-[10px] text-slate-500 max-w-[220px]">
-                      {record.error || (record.status === "queued" ? "Awaiting send" : "Accepted by gateway")}
+                      {record.error || (record.status === "queued" ? "Ready to send" : record.status === "failed" ? "Sending failed" : record.status === "delivered" ? "Delivery confirmed" : "Accepted by gateway")}
+                      <details className="mt-2"><summary className="cursor-pointer text-sky-700">View SMS message</summary><p className="mt-1 whitespace-pre-wrap break-words">{record.message}</p></details>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -142,7 +151,7 @@ export function SmsBatchDetailsSheet({
         </div>
 
         <div className="p-4 bg-white border-t shrink-0 flex justify-end">
-          <Button variant="outline" onClick={() => onOpenChange(false)} className="h-10 text-[10px] font-black uppercase tracking-widest">
+          <Button variant="outline" onClick={() => { setResult(null); onOpenChange(false) }} className="h-10 text-[10px] font-black uppercase tracking-widest">
             Close
           </Button>
         </div>
