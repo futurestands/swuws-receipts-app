@@ -40,6 +40,7 @@ import {
   COMPLAINT_PRIORITIES,
   type ComplaintPriority,
 } from "@/lib/crm-schemas"
+import { defaultSmsTemplate } from "@/lib/sms-template-preview"
 import { smsBalanceConditions, type SmsBalanceFilter } from "@/lib/sms-balance-filter"
 import { parseSmsFile } from "@/lib/sms-file-import"
 import { sendSMS } from "@/lib/sms-service"
@@ -62,10 +63,30 @@ async function resolveTemplateContent(code: string, fallback: string) {
   return version?.content || fallback
 }
 
+async function resolveSmsComposition(input: { category: string; templateId?: string; manualMessage?: string }) {
+  if (input.manualMessage?.trim()) return input.manualMessage.trim()
+  if (input.templateId) {
+    const [chosen] = await db.select().from(managedTemplate).where(and(eq(managedTemplate.id, input.templateId), eq(managedTemplate.type, "SMS"))).limit(1)
+    if (!chosen?.activeVersionId) throw new Error("The selected SMS template has no active version")
+    const [version] = await db.select().from(templateVersion).where(eq(templateVersion.id, chosen.activeVersionId)).limit(1)
+    if (!version?.content) throw new Error("The selected SMS template is empty")
+    return version.content
+  }
+  const template = defaultSmsTemplate(input.category)
+  return resolveTemplateContent(template.code, template.content)
+}
+
+export async function getSmsCompositionPreview(input: { category: string; templateId?: string; source: "directory" | "csv" }) {
+  const user = await requireUser()
+  if (!canCreateSmsBatch(user)) throw new Error("Forbidden")
+  const content = await resolveSmsComposition(input)
+  const thanksContent = input.source === "csv" && input.category === "Bill Reminders" && !input.templateId
+    ? await resolveTemplateContent("crm.payment.thanks.sms", DEFAULT_PAYMENT_THANKS) : null
+  return { content, thanksContent }
+}
+
 /** Old CRM: remaining balance below this is treated as paid — thank, do not remind. */
 const THANKS_BALANCE_THRESHOLD = 1500
-const DEFAULT_BILLING_REMINDER =
-  "Dear {{customer_name}}, your water bill for {{period}} is due. Balance: USh {{balance}}. SWUWS."
 const DEFAULT_PAYMENT_THANKS =
   "Dear {{name}}, thank you for paying your water bill. Your account is in good standing. SWUWS."
 
@@ -1422,19 +1443,9 @@ export async function importSmsBatch(formData: FormData) {
   // through the template engine, so {{placeholders}} are substituted --
   // custom messages used to be stored verbatim and customers received the
   // literal text "{{name}}".
-  let content = manualMessage?.trim() || null
-  if (!content && templateId) {
-    const [chosen] = await db.select().from(managedTemplate).where(eq(managedTemplate.id, templateId)).limit(1)
-    if (chosen?.activeVersionId) {
-      const [version] = await db.select().from(templateVersion).where(eq(templateVersion.id, chosen.activeVersionId)).limit(1)
-      content = version?.content || null
-    }
-  }
-  if (!content) {
-    content = await resolveTemplateContent("notif.billing.sms", DEFAULT_BILLING_REMINDER)
-  }
+  const content = await resolveSmsComposition({ category, templateId, manualMessage })
 
-  const autoThanks = !manualMessage?.trim() && !templateId
+  const autoThanks = category === BILL_REMINDER_CATEGORY && !manualMessage?.trim() && !templateId
   const thanksContent = autoThanks
     ? await resolveTemplateContent("crm.payment.thanks.sms", DEFAULT_PAYMENT_THANKS)
     : null
@@ -1664,22 +1675,7 @@ export async function createSmsBatchFromCustomers(input: SmsBalanceFilter & {
 
   const period = await getActiveBillingPeriod()
 
-  let content = input.manualMessage?.trim() || null
-  if (!content && input.templateId) {
-    const [chosen] = await db.select().from(managedTemplate).where(eq(managedTemplate.id, input.templateId)).limit(1)
-    if (chosen?.activeVersionId) {
-      const [version] = await db.select().from(templateVersion).where(eq(templateVersion.id, chosen.activeVersionId)).limit(1)
-      content = version?.content || null
-    }
-  }
-  if (!content) {
-    content = await resolveTemplateContent("notif.billing.sms", DEFAULT_BILLING_REMINDER)
-  }
-
-  const autoThanks = input.category !== BILL_REMINDER_CATEGORY && !input.manualMessage?.trim() && !input.templateId
-  const thanksContent = autoThanks
-    ? await resolveTemplateContent("crm.payment.thanks.sms", DEFAULT_PAYMENT_THANKS)
-    : null
+  const content = await resolveSmsComposition(input)
 
   const customers = await db
     .select({
@@ -1715,7 +1711,7 @@ export async function createSmsBatchFromCustomers(input: SmsBalanceFilter & {
   const batchId = randomUUID()
   const records: Array<typeof crmSmsRecord.$inferInsert> = []
   let skippedNumbers = 0
-  let thanked = 0
+  const thanked = 0
   let alreadyContacted = 0
 
   for (const row of customers) {
@@ -1730,14 +1726,12 @@ export async function createSmsBatchFromCustomers(input: SmsBalanceFilter & {
     }
     const customerName = row.name || "Customer"
     const balance = Number(row.balance || 0)
-    const useThanks = Boolean(thanksContent) && isThanksBalance(balance)
-    if (useThanks) thanked++
     records.push({
       id: randomUUID(),
       batchId,
       customerId: row.id,
       phoneNumber,
-      message: renderTemplate(useThanks && thanksContent ? thanksContent : content, {
+      message: renderTemplate(content, {
         customer_name: customerName,
         name: customerName,
         account: row.account || "",

@@ -21,6 +21,8 @@ import { Textarea } from "@/components/ui/textarea"
 import { useRouter } from "next/navigation"
 import { Plus, Loader2, Upload, Download } from "lucide-react"
 import { parseSmsBalanceFilter } from "@/lib/sms-balance-filter"
+import { SmsTemplatePreview } from "@/components/crm/sms-template-preview"
+import { defaultSmsTemplate } from "@/lib/sms-template-preview"
 import { cn } from "@/lib/utils"
 
 import { PEGASUS_SAMPLE_CSV as SAMPLE_CSV } from "@/lib/sms-file-import-sample"
@@ -239,7 +241,7 @@ export function SmsImportModal() {
             </div>
             <div className="space-y-2">
               <Label className="text-xs font-bold uppercase text-slate-500">Category</Label>
-              <Select onValueChange={(val) => setCategory(val || "")} value={category}>
+              <Select onValueChange={(val) => { setCategory(val || "Bill Reminders"); setTemplateId("default") }} value={category}>
                 <SelectTrigger>
                   <SelectValue placeholder="Select category" />
                 </SelectTrigger>
@@ -340,19 +342,13 @@ export function SmsImportModal() {
                   <SelectValue placeholder="Select a template" />
                 </SelectTrigger>
                 <SelectContent className="max-h-60">
-                  <SelectItem value="default">Default billing reminder</SelectItem>
+                  <SelectItem value="default">Default: {defaultSmsTemplate(category).label}</SelectItem>
                   {templates.map((t) => (
                     <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
-              {!useManualMessage && templateId === "default" && (
-                <p className="text-[10px] text-muted-foreground">
-                  Only Uganda 07 or 03 numbers (10 digits) are queued. 0700000000 is skipped.
-                  Bill reminders go once per account per billing period. {source === "directory" ? "Only customers with a positive outstanding balance in the selected range are included." : "With the default upload template, balances below USh 1,500 receive a thank-you."}
-                  After Send Now, failed numbers are emailed to you.
-                </p>
-              )}
+              <SmsTemplatePreview category={category} templateId={templateId} source={source} manualMessage={useManualMessage ? message : undefined} />
             </div>
 
             <div className="flex items-center space-x-2">
