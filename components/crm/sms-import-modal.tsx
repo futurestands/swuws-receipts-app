@@ -22,11 +22,7 @@ import { useRouter } from "next/navigation"
 import { Plus, Loader2, Upload, Download } from "lucide-react"
 import { cn } from "@/lib/utils"
 
-const SAMPLE_CSV = [
-  "60000123,+256770000001,Kato Yusuf,MARCH 2026,45000",
-  "60000124,+256782000002,Nakato Grace,MARCH 2026,12500",
-  "60000125,+256700000003,Tumusiime Robert,MARCH 2026,0",
-].join("\n")
+import { PEGASUS_SAMPLE_CSV as SAMPLE_CSV } from "@/lib/sms-file-import-sample"
 
 export function SmsImportModal() {
   const router = useRouter()
@@ -110,7 +106,7 @@ export function SmsImportModal() {
     const url = URL.createObjectURL(blob)
     const a = document.createElement("a")
     a.href = url
-    a.download = "swuws-sms-contact-list.csv"
+    a.download = "swuws-pegasus-sms-sample.csv"
     a.click()
     URL.revokeObjectURL(url)
   }
@@ -174,7 +170,7 @@ export function SmsImportModal() {
       return
     }
     if (!file) {
-      toast.error("Please attach a CSV file")
+      toast.error("Please attach a Pegasus Excel or CSV file")
       return
     }
 
@@ -240,7 +236,7 @@ export function SmsImportModal() {
               onClick={() => setSource("csv")}
               className={cn("flex-1 text-[10px] font-bold py-2 rounded-md transition-all", source === "csv" ? "bg-white shadow-sm text-primary" : "text-muted-foreground")}
             >
-              Upload CSV
+              Upload Excel / CSV
             </button>
           </div>
 
@@ -375,7 +371,7 @@ export function SmsImportModal() {
                   onChange={(e) => setMessage(e.target.value)}
                 />
                 <p className="text-[9px] text-muted-foreground italic">
-                  Placeholders: {"{{name}}"}, {"{{account}}"}, {"{{period}}"}, {"{{balance}}"}.
+                  Pegasus placeholders (file uploads): {"{{CustomerName}}"}, {"{{MeterRef}}"}, {"{{Phone}}"}, {"{{BillNumber}}"}, {"{{Period}}"}, {"{{AccountBalance}}"}. Existing {"{{name}}"}, {"{{account}}"}, {"{{period}}"}, {"{{balance}}"} remain supported.
                 </p>
               </div>
             )}
@@ -384,7 +380,7 @@ export function SmsImportModal() {
           {source === "csv" && (
             <>
               <div className="space-y-2">
-                <Label className="text-xs font-bold uppercase text-slate-500">Attach CSV Files</Label>
+                <Label className="text-xs font-bold uppercase text-slate-500">Attach Pegasus Excel or CSV File</Label>
                 <div
                   className="border-2 border-dashed rounded-lg p-6 flex flex-col items-center justify-center gap-2 hover:bg-slate-50 transition-colors cursor-pointer"
                   onClick={() => document.getElementById("sms-file-input")?.click()}
@@ -405,18 +401,19 @@ export function SmsImportModal() {
               </div>
 
               <div className="bg-slate-50 p-4 rounded-lg border border-slate-100">
-                <p className="text-[10px] font-bold text-slate-500 uppercase mb-2">Required Format (no header row):</p>
+                <p className="text-[10px] font-bold text-slate-500 uppercase mb-2">Pegasus export format — keep the header row:</p>
                 <ul className="text-[11px] space-y-1 text-slate-600 font-mono">
-                  <li>Column A - Customer Ref No</li>
-                  <li>Column B - Customer Phone number</li>
-                  <li>Column C - Customer Name</li>
-                  <li>Column D - Billing Period</li>
-                  <li>Column E - Outstanding Balance</li>
+                  <li>Column A - MeterRef</li>
+                  <li>Column B - Phone</li>
+                  <li>Column C - BillNumber</li>
+                  <li>Column D - CustomerName</li>
+                  <li>Column E - Period</li>
+                  <li>Column F - AccountBalance</li>
                 </ul>
                 <p className="text-[9px] text-slate-400 italic mt-2">
-                  Columns are read by position, so a header row would be treated as a recipient.
-                  Only Uganda 07 or 03 numbers (10 digits) are queued. 0700000000 is skipped.
-                  Local 0770000001 becomes +256770000001 automatically.
+                  Upload the original Pegasus .xlsx or .csv export, including its headers. Columns are matched by header name.
+                  Period uses YYYYMM (for example 202607 means July 2026). Numeric Uganda phones such as 770000001 are accepted.
+                  Existing five-column files without headers are also supported. Invalid rows are reported before a draft is saved.
                 </p>
                 <Button type="button" variant="ghost" size="sm" className="mt-2 h-7 px-0 text-[10px] font-bold text-sky-700" onClick={downloadSample}>
                   <Download className="h-3 w-3 mr-1" /> Download sample CSV

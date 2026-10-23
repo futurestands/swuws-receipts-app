@@ -37,12 +37,10 @@ import { revalidatePath } from "next/cache"
 import { writeAudit } from "@/lib/audit"
 import { createNotification } from "./notifications"
 import {
-  smsImportSchema,
-  smsImportMapping,
   COMPLAINT_PRIORITIES,
   type ComplaintPriority,
 } from "@/lib/crm-schemas"
-import { processExcelImport } from "@/lib/import-engine"
+import { parseSmsFile } from "@/lib/sms-file-import"
 import { sendSMS } from "@/lib/sms-service"
 import { sendOperationalEmail } from "@/lib/email-service"
 import { renderTemplate } from "@/lib/templates/template-engine"
@@ -1384,18 +1382,7 @@ export async function importSmsBatch(formData: FormData) {
   if (!file) throw new Error("File is required")
   if (!name?.trim()) throw new Error("List name is required")
 
-  const summary = await processExcelImport({
-    file,
-    schema: smsImportSchema,
-    mapping: smsImportMapping,
-    headerMode: "none"
-  })
-
-  if (summary.validRows === 0) {
-    throw new Error("No valid rows found in the imported file")
-  }
-
-  const validRows = summary.rows.filter(r => r.valid).map(r => r.data)
+  const validRows = await parseSmsFile(file)
 
   // Link rows to real customers via the account number in column A. Records
   // used to be stored with no customerId at all, which is also what made
@@ -1497,6 +1484,13 @@ export async function importSmsBatch(formData: FormData) {
       customerId,
       phoneNumber,
       message: renderTemplate(useThanks && thanksContent ? thanksContent : content, {
+        MeterRef: row.customerRef || "",
+        Phone: phoneNumber,
+        BillNumber: row.billNumber,
+        CustomerName: customerName,
+        Period: row.billingPeriod || "",
+        AccountBalance: balance,
+        bill_number: row.billNumber,
         customer_name: customerName,
         // The import modal advertises {{name}}, so accept both spellings.
         name: customerName,
@@ -1553,8 +1547,8 @@ export async function importSmsBatch(formData: FormData) {
     ok: true,
     batchId,
     summary: {
-      total: summary.totalRows,
-      valid: summary.validRows,
+      total: validRows.length,
+      valid: validRows.length,
       queued: records.length,
       skippedNumbers,
       filteredByScheme: validRows.length - scoped.length,
