@@ -40,6 +40,7 @@ import {
   COMPLAINT_PRIORITIES,
   type ComplaintPriority,
 } from "@/lib/crm-schemas"
+import { smsBalanceConditions, type SmsBalanceFilter } from "@/lib/sms-balance-filter"
 import { parseSmsFile } from "@/lib/sms-file-import"
 import { sendSMS } from "@/lib/sms-service"
 import { sendOperationalEmail } from "@/lib/email-service"
@@ -1564,8 +1565,10 @@ function smsAudienceConditions(
   user: Awaited<ReturnType<typeof requireUser>>,
   schemeId?: string | null,
   branchId?: string | null,
+  balanceFilter: SmsBalanceFilter = {},
 ) {
   const conditions = [
+    ...smsBalanceConditions(customer.accountBalance, balanceFilter),
     eq(customer.active, true),
     sql`coalesce(trim(${customer.phone}), '') <> ''`,
   ]
@@ -1584,11 +1587,11 @@ function smsAudienceConditions(
 /**
  * How many active customers with a phone number sit in the selected scheme or area.
  */
-export async function countSmsAudience(params: { schemeId?: string; branchId?: string; category?: string }) {
+export async function countSmsAudience(params: SmsBalanceFilter & { schemeId?: string; branchId?: string }) {
   const user = await requireUser()
   if (!canCreateSmsBatch(user)) throw new Error("Forbidden")
 
-  const conditions = smsAudienceConditions(user, params.schemeId, params.branchId)
+  const conditions = smsAudienceConditions(user, params.schemeId, params.branchId, params)
   if (!conditions) return { count: 0, skipped: 0, alreadyContacted: 0 }
 
   const rows = await db
@@ -1630,7 +1633,7 @@ export async function countSmsAudience(params: { schemeId?: string; branchId?: s
  * Build a contact list from customers already on the selected scheme or area.
  * No CSV. Phones come from the customer record; balance is the live EBS figure.
  */
-export async function createSmsBatchFromCustomers(input: {
+export async function createSmsBatchFromCustomers(input: SmsBalanceFilter & {
   name: string
   category: string
   schemeId?: string
@@ -1643,7 +1646,7 @@ export async function createSmsBatchFromCustomers(input: {
 
   const schemeId = input.schemeId && input.schemeId !== "all" ? input.schemeId : null
   const branchId = input.branchId && input.branchId !== "all" ? input.branchId : null
-  const conditions = smsAudienceConditions(user, schemeId, branchId)
+  const conditions = smsAudienceConditions(user, schemeId, branchId, input)
   if (!conditions) {
     throw new Error("Select a water scheme or an area first")
   }
@@ -1673,7 +1676,7 @@ export async function createSmsBatchFromCustomers(input: {
     content = await resolveTemplateContent("notif.billing.sms", DEFAULT_BILLING_REMINDER)
   }
 
-  const autoThanks = !input.manualMessage?.trim() && !input.templateId
+  const autoThanks = input.category !== BILL_REMINDER_CATEGORY && !input.manualMessage?.trim() && !input.templateId
   const thanksContent = autoThanks
     ? await resolveTemplateContent("crm.payment.thanks.sms", DEFAULT_PAYMENT_THANKS)
     : null
@@ -1691,7 +1694,7 @@ export async function createSmsBatchFromCustomers(input: {
     .where(and(...conditions))
 
   if (customers.length === 0) {
-    throw new Error(`No active customers with a phone number in ${scopeName}`)
+    throw new Error(`No active customers with a phone number match the balance range in ${scopeName}`)
   }
   if (customers.length > SMS_AUDIENCE_CAP) {
     throw new Error(`This selection has ${customers.length} customers. Choose a single scheme instead of the whole area.`)
@@ -1782,7 +1785,7 @@ export async function createSmsBatchFromCustomers(input: {
     action: "crm.sms.from_customers",
     entityType: "crm_sms_batch",
     entityId: batchId,
-    details: { name: listName, category: input.category, queued: records.length, schemeId, branchId, skippedNumbers, thanked, alreadyContacted },
+    details: { minBalance: input.minBalance || null, maxBalance: input.maxBalance || null, name: listName, category: input.category, queued: records.length, schemeId, branchId, skippedNumbers, thanked, alreadyContacted },
   })
 
   revalidatePath("/dashboard/crm/sms")

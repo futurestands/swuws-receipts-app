@@ -20,6 +20,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Textarea } from "@/components/ui/textarea"
 import { useRouter } from "next/navigation"
 import { Plus, Loader2, Upload, Download } from "lucide-react"
+import { parseSmsBalanceFilter } from "@/lib/sms-balance-filter"
 import { cn } from "@/lib/utils"
 
 import { PEGASUS_SAMPLE_CSV as SAMPLE_CSV } from "@/lib/sms-file-import-sample"
@@ -41,10 +42,11 @@ export function SmsImportModal() {
   const [selectedBranchId, setSelectedBranchId] = useState("all")
   const [schemes, setSchemes] = useState<{ id: string; name: string; branchId: string | null }[]>([])
   const [branches, setBranches] = useState<{ id: string; name: string }[]>([])
-  const [audienceCount, setAudienceCount] = useState<number | null>(null)
-  const [audienceSkipped, setAudienceSkipped] = useState(0)
-  const [audienceAlreadyContacted, setAudienceAlreadyContacted] = useState(0)
-  const [counting, setCounting] = useState(false)
+  const [audienceResult, setAudienceResult] = useState<{ key: string; count: number | null; skipped: number; alreadyContacted: number } | null>(null)
+  const [minBalance, setMinBalance] = useState("")
+  const [maxBalance, setMaxBalance] = useState("")
+  let balanceError = ""
+  try { parseSmsBalanceFilter({ minBalance, maxBalance, category }) } catch (error) { balanceError = error instanceof Error ? error.message : "Invalid balance range" }
 
   useEffect(() => {
     if (!open) return
@@ -59,47 +61,30 @@ export function SmsImportModal() {
     ? schemes
     : schemes.filter((s) => s.branchId === selectedBranchId)
 
+  const audienceKey = JSON.stringify([open, source, selectedSchemeId, selectedBranchId, category, minBalance, maxBalance])
+  const canCount = open && source === "directory" && !balanceError && (selectedSchemeId !== "all" || selectedBranchId !== "all")
+  const currentAudience = audienceResult?.key === audienceKey ? audienceResult : null
+  const audienceCount = currentAudience?.count ?? null
+  const audienceSkipped = currentAudience?.skipped ?? 0
+  const audienceAlreadyContacted = currentAudience?.alreadyContacted ?? 0
+  const counting = canCount && !currentAudience
+
   useEffect(() => {
-    if (!open || source !== "directory") {
-      setAudienceCount(null)
-      setAudienceSkipped(0)
-      setAudienceAlreadyContacted(0)
-      return
-    }
-    if (selectedSchemeId === "all" && selectedBranchId === "all") {
-      setAudienceCount(null)
-      setAudienceSkipped(0)
-      setAudienceAlreadyContacted(0)
-      return
-    }
+    if (!canCount) return
     let cancelled = false
-    setCounting(true)
     countSmsAudience({
       schemeId: selectedSchemeId,
       branchId: selectedSchemeId === "all" ? selectedBranchId : undefined,
       category,
+      minBalance,
+      maxBalance,
+    }).then(res => {
+      if (!cancelled) setAudienceResult({ key: audienceKey, count: res.count, skipped: res.skipped || 0, alreadyContacted: res.alreadyContacted || 0 })
+    }).catch(() => {
+      if (!cancelled) setAudienceResult({ key: audienceKey, count: null, skipped: 0, alreadyContacted: 0 })
     })
-      .then((res) => {
-        if (!cancelled) {
-          setAudienceCount(res.count)
-          setAudienceSkipped(res.skipped || 0)
-          setAudienceAlreadyContacted(res.alreadyContacted || 0)
-        }
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setAudienceCount(null)
-          setAudienceSkipped(0)
-          setAudienceAlreadyContacted(0)
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setCounting(false)
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [open, source, selectedSchemeId, selectedBranchId, category])
+    return () => { cancelled = true }
+  }, [canCount, audienceKey, selectedSchemeId, selectedBranchId, category, minBalance, maxBalance])
 
   function downloadSample() {
     const blob = new Blob([SAMPLE_CSV], { type: "text/csv;charset=utf-8" })
@@ -112,6 +97,8 @@ export function SmsImportModal() {
   }
 
   function resetForm() {
+    setMinBalance("")
+    setMaxBalance("")
     setName("")
     setCategory("Bill Reminders")
     setFile(null)
@@ -120,9 +107,7 @@ export function SmsImportModal() {
     setTemplateId("default")
     setSelectedSchemeId("all")
     setSelectedBranchId("all")
-    setAudienceCount(null)
-    setAudienceSkipped(0)
-    setAudienceAlreadyContacted(0)
+    setAudienceResult(null)
     setSource("directory")
   }
 
@@ -130,6 +115,7 @@ export function SmsImportModal() {
     e.preventDefault()
 
     if (source === "directory") {
+      if (balanceError) { toast.error(balanceError); return }
       if (selectedSchemeId === "all" && selectedBranchId === "all") {
         toast.error("Select an area or a water scheme")
         return
@@ -139,6 +125,8 @@ export function SmsImportModal() {
         const res = await createSmsBatchFromCustomers({
           name,
           category,
+          minBalance,
+          maxBalance,
           schemeId: selectedSchemeId,
           branchId: selectedSchemeId === "all" ? selectedBranchId : undefined,
           templateId: templateId !== "default" ? templateId : undefined,
@@ -298,6 +286,23 @@ export function SmsImportModal() {
           </div>
 
           {source === "directory" && (
+            <div className="space-y-2">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="sms-min-balance">Minimum outstanding balance (UGX)</Label>
+                  <Input id="sms-min-balance" type="number" min="0" step="0.01" value={minBalance} onChange={e => setMinBalance(e.target.value)} placeholder="No minimum" />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="sms-max-balance">Maximum outstanding balance (UGX)</Label>
+                  <Input id="sms-max-balance" type="number" min="0" step="0.01" value={maxBalance} onChange={e => setMaxBalance(e.target.value)} placeholder="No maximum" />
+                </div>
+              </div>
+              <p className="text-xs text-muted-foreground">Both limits are included. Uses the live account balance shown in the SMS. Bill reminders exclude zero and credit balances. Balances are checked again when saving.</p>
+              {balanceError && <p role="alert" className="text-xs text-red-600">{balanceError}</p>}
+            </div>
+          )}
+
+          {source === "directory" && (
             <p className="text-xs text-muted-foreground bg-muted/50 rounded-md px-3 py-2">
               {selectedSchemeId === "all" && selectedBranchId === "all"
                 ? "Pick an area, a scheme, or both. A scheme is narrower than an area."
@@ -310,7 +315,7 @@ export function SmsImportModal() {
                         ? `${audienceAlreadyContacted.toLocaleString()} already messaged this billing period. No new numbers to queue.`
                         : audienceSkipped > 0
                           ? "Customers in this selection have phone fields, but none can be used for SMS."
-                          : "No active customers with a phone number in this selection."
+                          : "No active customers with a usable phone match this balance range."
                       : `${audienceCount.toLocaleString()} customer(s) with a usable phone number will be queued.${
                           audienceAlreadyContacted > 0
                             ? ` ${audienceAlreadyContacted.toLocaleString()} already messaged this period will be skipped.`
@@ -344,7 +349,7 @@ export function SmsImportModal() {
               {!useManualMessage && templateId === "default" && (
                 <p className="text-[10px] text-muted-foreground">
                   Only Uganda 07 or 03 numbers (10 digits) are queued. 0700000000 is skipped.
-                  Bill reminders go once per account per billing period. Live balance below USh 1,500 gets a thank-you.
+                  Bill reminders go once per account per billing period. {source === "directory" ? "Only customers with a positive outstanding balance in the selected range are included." : "With the default upload template, balances below USh 1,500 receive a thank-you."}
                   After Send Now, failed numbers are emailed to you.
                 </p>
               )}
@@ -430,10 +435,12 @@ export function SmsImportModal() {
               type="submit"
               className="bg-emerald-600 hover:bg-emerald-700"
               disabled={
+                (source === "directory" && !!balanceError) ||
                 loading ||
                 (source === "directory" && (
                   (selectedSchemeId === "all" && selectedBranchId === "all") ||
                   counting ||
+                  audienceCount === null ||
                   audienceCount === 0
                 ))
               }
