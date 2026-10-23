@@ -91,6 +91,7 @@ export async function sendWithProvider(creds: GatewayCreds, to: string, message:
 
       const res = await fetch(url, {
         method: "POST",
+        signal: AbortSignal.timeout(10000),
         headers: {
           apiKey,
           "Content-Type": "application/x-www-form-urlencoded",
@@ -123,6 +124,7 @@ export async function sendWithProvider(creds: GatewayCreds, to: string, message:
 
       const res = await fetch(url, {
         method: "POST",
+        signal: AbortSignal.timeout(10000),
         headers: {
           Authorization: `Basic ${auth}`,
           "Content-Type": "application/x-www-form-urlencoded",
@@ -157,6 +159,7 @@ export async function sendWithProvider(creds: GatewayCreds, to: string, message:
 
       const res = await fetch(url, {
         method: "POST",
+        signal: AbortSignal.timeout(10000),
         headers: {
           Authorization: `App ${apiKey}`,
           "Content-Type": "application/json",

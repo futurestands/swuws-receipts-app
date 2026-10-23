@@ -20,13 +20,13 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Textarea } from "@/components/ui/textarea"
 import { useRouter } from "next/navigation"
 import { Plus, Loader2, Upload, Download } from "lucide-react"
+import { parseSmsBalanceFilter } from "@/lib/sms-balance-filter"
+import { parseSmsDueDate } from "@/lib/sms-due-date"
+import { SmsTemplatePreview } from "@/components/crm/sms-template-preview"
+import { defaultSmsTemplate } from "@/lib/sms-template-preview"
 import { cn } from "@/lib/utils"
 
-const SAMPLE_CSV = [
-  "60000123,+256770000001,Kato Yusuf,MARCH 2026,45000",
-  "60000124,+256782000002,Nakato Grace,MARCH 2026,12500",
-  "60000125,+256700000003,Tumusiime Robert,MARCH 2026,0",
-].join("\n")
+import { PEGASUS_SAMPLE_CSV as SAMPLE_CSV } from "@/lib/sms-file-import-sample"
 
 export function SmsImportModal() {
   const router = useRouter()
@@ -35,6 +35,7 @@ export function SmsImportModal() {
   const [name, setName] = useState("")
   const [category, setCategory] = useState("Bill Reminders")
   const [file, setFile] = useState<File | null>(null)
+  const [dueDate, setDueDate] = useState("")
   const [loading, setLoading] = useState(false)
 
   const [message, setMessage] = useState("")
@@ -45,10 +46,11 @@ export function SmsImportModal() {
   const [selectedBranchId, setSelectedBranchId] = useState("all")
   const [schemes, setSchemes] = useState<{ id: string; name: string; branchId: string | null }[]>([])
   const [branches, setBranches] = useState<{ id: string; name: string }[]>([])
-  const [audienceCount, setAudienceCount] = useState<number | null>(null)
-  const [audienceSkipped, setAudienceSkipped] = useState(0)
-  const [audienceAlreadyContacted, setAudienceAlreadyContacted] = useState(0)
-  const [counting, setCounting] = useState(false)
+  const [audienceResult, setAudienceResult] = useState<{ key: string; count: number | null; skipped: number; alreadyContacted: number } | null>(null)
+  const [minBalance, setMinBalance] = useState("")
+  const [maxBalance, setMaxBalance] = useState("")
+  let balanceError = ""
+  try { parseSmsBalanceFilter({ minBalance, maxBalance, category }) } catch (error) { balanceError = error instanceof Error ? error.message : "Invalid balance range" }
 
   useEffect(() => {
     if (!open) return
@@ -63,70 +65,54 @@ export function SmsImportModal() {
     ? schemes
     : schemes.filter((s) => s.branchId === selectedBranchId)
 
+  const audienceKey = JSON.stringify([open, source, selectedSchemeId, selectedBranchId, category, minBalance, maxBalance])
+  const canCount = open && source === "directory" && !balanceError && (selectedSchemeId !== "all" || selectedBranchId !== "all")
+  const currentAudience = audienceResult?.key === audienceKey ? audienceResult : null
+  const audienceCount = currentAudience?.count ?? null
+  const audienceSkipped = currentAudience?.skipped ?? 0
+  const audienceAlreadyContacted = currentAudience?.alreadyContacted ?? 0
+  const counting = canCount && !currentAudience
+
   useEffect(() => {
-    if (!open || source !== "directory") {
-      setAudienceCount(null)
-      setAudienceSkipped(0)
-      setAudienceAlreadyContacted(0)
-      return
-    }
-    if (selectedSchemeId === "all" && selectedBranchId === "all") {
-      setAudienceCount(null)
-      setAudienceSkipped(0)
-      setAudienceAlreadyContacted(0)
-      return
-    }
+    if (!canCount) return
     let cancelled = false
-    setCounting(true)
     countSmsAudience({
       schemeId: selectedSchemeId,
       branchId: selectedSchemeId === "all" ? selectedBranchId : undefined,
       category,
+      minBalance,
+      maxBalance,
+    }).then(res => {
+      if (!cancelled) setAudienceResult({ key: audienceKey, count: res.count, skipped: res.skipped || 0, alreadyContacted: res.alreadyContacted || 0 })
+    }).catch(() => {
+      if (!cancelled) setAudienceResult({ key: audienceKey, count: null, skipped: 0, alreadyContacted: 0 })
     })
-      .then((res) => {
-        if (!cancelled) {
-          setAudienceCount(res.count)
-          setAudienceSkipped(res.skipped || 0)
-          setAudienceAlreadyContacted(res.alreadyContacted || 0)
-        }
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setAudienceCount(null)
-          setAudienceSkipped(0)
-          setAudienceAlreadyContacted(0)
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setCounting(false)
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [open, source, selectedSchemeId, selectedBranchId, category])
+    return () => { cancelled = true }
+  }, [canCount, audienceKey, selectedSchemeId, selectedBranchId, category, minBalance, maxBalance])
 
   function downloadSample() {
     const blob = new Blob([SAMPLE_CSV], { type: "text/csv;charset=utf-8" })
     const url = URL.createObjectURL(blob)
     const a = document.createElement("a")
     a.href = url
-    a.download = "swuws-sms-contact-list.csv"
+    a.download = "swuws-pegasus-sms-sample.csv"
     a.click()
     URL.revokeObjectURL(url)
   }
 
   function resetForm() {
+    setMinBalance("")
+    setMaxBalance("")
     setName("")
     setCategory("Bill Reminders")
     setFile(null)
+    setDueDate("")
     setUseManualMessage(false)
     setMessage("")
     setTemplateId("default")
     setSelectedSchemeId("all")
     setSelectedBranchId("all")
-    setAudienceCount(null)
-    setAudienceSkipped(0)
-    setAudienceAlreadyContacted(0)
+    setAudienceResult(null)
     setSource("directory")
   }
 
@@ -134,6 +120,7 @@ export function SmsImportModal() {
     e.preventDefault()
 
     if (source === "directory") {
+      if (balanceError) { toast.error(balanceError); return }
       if (selectedSchemeId === "all" && selectedBranchId === "all") {
         toast.error("Select an area or a water scheme")
         return
@@ -143,6 +130,8 @@ export function SmsImportModal() {
         const res = await createSmsBatchFromCustomers({
           name,
           category,
+          minBalance,
+          maxBalance,
           schemeId: selectedSchemeId,
           branchId: selectedSchemeId === "all" ? selectedBranchId : undefined,
           templateId: templateId !== "default" ? templateId : undefined,
@@ -150,6 +139,7 @@ export function SmsImportModal() {
         })
         if (res.ok) {
           const notes = [
+            res.summary.duplicateRecipients > 0 ? `${res.summary.duplicateRecipients} duplicate recipient(s) skipped` : null,
             res.summary.skippedNumbers > 0 ? `${res.summary.skippedNumbers} unusable number(s) skipped` : null,
             res.summary.alreadyContacted > 0 ? `${res.summary.alreadyContacted} already messaged this period` : null,
             res.summary.thanked > 0 ? `${res.summary.thanked} thank-you(s) for balance below USh 1,500` : null,
@@ -174,17 +164,20 @@ export function SmsImportModal() {
       return
     }
     if (!file) {
-      toast.error("Please attach a CSV file")
+      toast.error("Please attach a Pegasus Excel or CSV file")
       return
     }
 
+    try { parseSmsDueDate(dueDate) } catch (error) { toast.error(error instanceof Error ? error.message : "Invalid due date"); return }
     setLoading(true)
     try {
       const formData = new FormData()
       formData.append("file", file)
+      formData.append("dueDate", dueDate)
       formData.append("name", name)
       formData.append("category", category)
       formData.append("schemeId", selectedSchemeId)
+      formData.append("branchId", selectedBranchId)
       if (useManualMessage && message.trim()) {
         formData.append("manualMessage", message)
       } else if (templateId && templateId !== "default") {
@@ -195,6 +188,7 @@ export function SmsImportModal() {
       if (res.ok) {
         const { queued, skippedNumbers, filteredByScheme, thanked, alreadyContacted } = res.summary
         const notes = [
+          res.summary.duplicateRecipients > 0 ? `${res.summary.duplicateRecipients} duplicate recipient(s) skipped` : null,
           skippedNumbers > 0 ? `${skippedNumbers} unusable number(s) skipped` : null,
           filteredByScheme > 0 ? `${filteredByScheme} outside the selected scheme` : null,
           alreadyContacted > 0 ? `${alreadyContacted} already messaged this period` : null,
@@ -240,7 +234,7 @@ export function SmsImportModal() {
               onClick={() => setSource("csv")}
               className={cn("flex-1 text-[10px] font-bold py-2 rounded-md transition-all", source === "csv" ? "bg-white shadow-sm text-primary" : "text-muted-foreground")}
             >
-              Upload CSV
+              Upload Excel / CSV
             </button>
           </div>
 
@@ -255,7 +249,7 @@ export function SmsImportModal() {
             </div>
             <div className="space-y-2">
               <Label className="text-xs font-bold uppercase text-slate-500">Category</Label>
-              <Select onValueChange={(val) => setCategory(val || "")} value={category}>
+              <Select onValueChange={(val) => { setCategory(val || "Bill Reminders"); setTemplateId("default") }} value={category}>
                 <SelectTrigger>
                   <SelectValue placeholder="Select category" />
                 </SelectTrigger>
@@ -302,6 +296,23 @@ export function SmsImportModal() {
           </div>
 
           {source === "directory" && (
+            <div className="space-y-2">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="sms-min-balance">Minimum outstanding balance (UGX)</Label>
+                  <Input id="sms-min-balance" type="number" min="0" step="0.01" value={minBalance} onChange={e => setMinBalance(e.target.value)} placeholder="No minimum" />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="sms-max-balance">Maximum outstanding balance (UGX)</Label>
+                  <Input id="sms-max-balance" type="number" min="0" step="0.01" value={maxBalance} onChange={e => setMaxBalance(e.target.value)} placeholder="No maximum" />
+                </div>
+              </div>
+              <p className="text-xs text-muted-foreground">Both limits are included. Uses the live account balance shown in the SMS. Bill reminders exclude zero and credit balances. Balances are checked again when saving.</p>
+              {balanceError && <p role="alert" className="text-xs text-red-600">{balanceError}</p>}
+            </div>
+          )}
+
+          {source === "directory" && (
             <p className="text-xs text-muted-foreground bg-muted/50 rounded-md px-3 py-2">
               {selectedSchemeId === "all" && selectedBranchId === "all"
                 ? "Pick an area, a scheme, or both. A scheme is narrower than an area."
@@ -314,7 +325,7 @@ export function SmsImportModal() {
                         ? `${audienceAlreadyContacted.toLocaleString()} already messaged this billing period. No new numbers to queue.`
                         : audienceSkipped > 0
                           ? "Customers in this selection have phone fields, but none can be used for SMS."
-                          : "No active customers with a phone number in this selection."
+                          : "No active customers with a usable phone match this balance range."
                       : `${audienceCount.toLocaleString()} customer(s) with a usable phone number will be queued.${
                           audienceAlreadyContacted > 0
                             ? ` ${audienceAlreadyContacted.toLocaleString()} already messaged this period will be skipped.`
@@ -325,6 +336,14 @@ export function SmsImportModal() {
                             : ""
                         }`}
             </p>
+          )}
+
+          {source === "csv" && (
+            <div className="space-y-2">
+              <Label htmlFor="sms-payment-due-date">Payment due date (optional)</Label>
+              <Input id="sms-payment-due-date" type="date" min="1900-01-01" max="9999-12-31" value={dueDate} onChange={event => setDueDate(event.target.value)} aria-describedby="sms-due-date-help" />
+              <p id="sms-due-date-help" className="text-xs text-muted-foreground">Format: DD/MM/YYYY. Enter the deadline here, not in Excel. It applies to this uploaded list. Leave blank for no deadline. Default bill reminders include it automatically; other templates can use {"{{due_date}}"}.</p>
+            </div>
           )}
 
           <div className="space-y-4 border p-4 rounded-xl bg-slate-50/50">
@@ -339,19 +358,13 @@ export function SmsImportModal() {
                   <SelectValue placeholder="Select a template" />
                 </SelectTrigger>
                 <SelectContent className="max-h-60">
-                  <SelectItem value="default">Default billing reminder</SelectItem>
+                  <SelectItem value="default">Default: {defaultSmsTemplate(category).label}</SelectItem>
                   {templates.map((t) => (
                     <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
-              {!useManualMessage && templateId === "default" && (
-                <p className="text-[10px] text-muted-foreground">
-                  Only Uganda 07 or 03 numbers (10 digits) are queued. 0700000000 is skipped.
-                  Bill reminders go once per account per billing period. Live balance below USh 1,500 gets a thank-you.
-                  After Send Now, failed numbers are emailed to you.
-                </p>
-              )}
+              <SmsTemplatePreview dueDate={source === "csv" ? dueDate : undefined} category={category} templateId={templateId} source={source} manualMessage={useManualMessage ? message : undefined} />
             </div>
 
             <div className="flex items-center space-x-2">
@@ -375,7 +388,7 @@ export function SmsImportModal() {
                   onChange={(e) => setMessage(e.target.value)}
                 />
                 <p className="text-[9px] text-muted-foreground italic">
-                  Placeholders: {"{{name}}"}, {"{{account}}"}, {"{{period}}"}, {"{{balance}}"}.
+                  Pegasus placeholders (file uploads): {"{{CustomerName}}"}, {"{{MeterRef}}"}, {"{{Phone}}"}, {"{{BillNumber}}"}, {"{{Period}}"}, {"{{AccountBalance}}"}. Optional deadline: {"{{due_date}}"}. Existing {"{{name}}"}, {"{{account}}"}, {"{{period}}"}, {"{{balance}}"} remain supported.
                 </p>
               </div>
             )}
@@ -384,7 +397,7 @@ export function SmsImportModal() {
           {source === "csv" && (
             <>
               <div className="space-y-2">
-                <Label className="text-xs font-bold uppercase text-slate-500">Attach CSV Files</Label>
+                <Label className="text-xs font-bold uppercase text-slate-500">Attach Pegasus Excel or CSV File</Label>
                 <div
                   className="border-2 border-dashed rounded-lg p-6 flex flex-col items-center justify-center gap-2 hover:bg-slate-50 transition-colors cursor-pointer"
                   onClick={() => document.getElementById("sms-file-input")?.click()}
@@ -405,18 +418,19 @@ export function SmsImportModal() {
               </div>
 
               <div className="bg-slate-50 p-4 rounded-lg border border-slate-100">
-                <p className="text-[10px] font-bold text-slate-500 uppercase mb-2">Required Format (no header row):</p>
+                <p className="text-[10px] font-bold text-slate-500 uppercase mb-2">Pegasus export format — keep the header row:</p>
                 <ul className="text-[11px] space-y-1 text-slate-600 font-mono">
-                  <li>Column A - Customer Ref No</li>
-                  <li>Column B - Customer Phone number</li>
-                  <li>Column C - Customer Name</li>
-                  <li>Column D - Billing Period</li>
-                  <li>Column E - Outstanding Balance</li>
+                  <li>Column A - MeterRef</li>
+                  <li>Column B - Phone</li>
+                  <li>Column C - BillNumber</li>
+                  <li>Column D - CustomerName</li>
+                  <li>Column E - Period</li>
+                  <li>Column F - AccountBalance</li>
                 </ul>
                 <p className="text-[9px] text-slate-400 italic mt-2">
-                  Columns are read by position, so a header row would be treated as a recipient.
-                  Only Uganda 07 or 03 numbers (10 digits) are queued. 0700000000 is skipped.
-                  Local 0770000001 becomes +256770000001 automatically.
+                  Upload the original Pegasus .xlsx or .csv export, including its headers. Columns are matched by header name.
+                  Period uses YYYYMM (for example 202607 means July 2026). Numeric Uganda phones such as 770000001 are accepted.
+                  Existing five-column files without headers are also supported. Invalid rows are reported before a draft is saved.
                 </p>
                 <Button type="button" variant="ghost" size="sm" className="mt-2 h-7 px-0 text-[10px] font-bold text-sky-700" onClick={downloadSample}>
                   <Download className="h-3 w-3 mr-1" /> Download sample CSV
@@ -433,10 +447,12 @@ export function SmsImportModal() {
               type="submit"
               className="bg-emerald-600 hover:bg-emerald-700"
               disabled={
+                (source === "directory" && !!balanceError) ||
                 loading ||
                 (source === "directory" && (
                   (selectedSchemeId === "all" && selectedBranchId === "all") ||
                   counting ||
+                  audienceCount === null ||
                   audienceCount === 0
                 ))
               }
