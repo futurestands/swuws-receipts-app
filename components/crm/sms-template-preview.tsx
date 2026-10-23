@@ -17,7 +17,7 @@ export function SmsTemplatePreview({ category, templateId, manualMessage, source
   }, [category, templateId, source, key, manualMessage])
   const current = result?.key === key ? result : null
   const content = manualMessage !== undefined ? manualMessage : current?.content
-  const preview = content ? previewSmsTemplate(content) : null
+  const preview = content ? previewSmsTemplate(content, source) : null
   return (
     <section aria-label="Message preview" aria-live="polite" className="space-y-2 rounded-md border bg-white p-3">
       <p className="text-xs font-semibold">Message preview</p>

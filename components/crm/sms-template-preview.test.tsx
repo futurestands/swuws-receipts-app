@@ -20,6 +20,9 @@ describe("composition message preview", () => {
   it("flags unsupported fields instead of silently hiding them", () => {
     expect(previewSmsTemplate("Notice: {{date}} {{scheme_name}}")).toEqual({ body: "Notice: [date required] [scheme_name required]", missing: ["date", "scheme_name"] })
   })
+  it("does not suggest file-only placeholders are supported by the directory builder", () => {
+    expect(previewSmsTemplate("{{BillNumber}} {{name}}", "directory").missing).toEqual(["BillNumber"])
+  })
   it("shows a loading state before fetching a managed template", () => {
     const html = renderToStaticMarkup(<SmsTemplatePreview category="Alerts" templateId="default" source="directory" />)
     expect(html).toContain("Loading message preview")

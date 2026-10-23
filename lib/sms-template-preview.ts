@@ -12,8 +12,12 @@ const SAMPLE_DATA = {
   period: "July 2026", Period: "July 2026", balance: 50000, AccountBalance: 50000, total_due: 50000, amount: 50000,
 }
 
-export function previewSmsTemplate(content: string) {
-  const missing = getPlaceholders(content).filter(key => !(key in SAMPLE_DATA))
-  const values = { ...SAMPLE_DATA, ...Object.fromEntries(missing.map(key => [key, `[${key} required]`])) }
+export function previewSmsTemplate(content: string, source: "directory" | "csv" = "csv") {
+  const data: Record<string, string | number> = { ...SAMPLE_DATA }
+  if (source === "directory") {
+    for (const key of ["CustomerName", "MeterRef", "Phone", "BillNumber", "Period", "AccountBalance", "bill_number"]) delete data[key]
+  }
+  const missing = getPlaceholders(content).filter(key => !(key in data))
+  const values = { ...data, ...Object.fromEntries(missing.map(key => [key, `[${key} required]`])) }
   return { body: renderTemplate(content, values), missing }
 }
