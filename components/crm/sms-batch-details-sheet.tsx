@@ -1,11 +1,11 @@
 "use client"
 
-import { useEffect, useState } from "react"
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
+import { useEffect, useId, useRef, useState } from "react"
+import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { SmsMessagePreview } from "./sms-message-preview"
 import { listSmsRecords } from "@/app/actions/crm"
 import { Loader2, Smartphone } from "lucide-react"
 import { cn } from "@/lib/utils"
@@ -43,19 +43,30 @@ export function SmsBatchDetailsSheet({
   open: boolean
   onOpenChange: (open: boolean) => void
 }) {
-  const [records, setRecords] = useState<SmsRecordRow[]>([])
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [result, setResult] = useState<{ batchId: string; status: string; records: SmsRecordRow[]; error: string | null } | null>(null)
   const [status, setStatus] = useState("all")
+  const [selectedRecordId, setSelectedRecordId] = useState<string | null>(null)
+  const id = useId()
+  const previewRef = useRef<HTMLDivElement>(null)
+  const current = result?.batchId === batchId && result.status === status ? result : null
+  const records = current?.records ?? []
+  const selectedRecord = records.find(record => record.id === selectedRecordId) ?? records[0]
+  const error = current?.error
+  const loading = open && !current
+
+  function closeDetails() {
+    setResult(null)
+    setSelectedRecordId(null)
+    onOpenChange(false)
+  }
 
   useEffect(() => {
     if (!open) return
-    setLoading(true)
-    setError(null)
+    let active = true
     listSmsRecords(batchId, { status })
-      .then((rows) => setRecords(rows as SmsRecordRow[]))
-      .catch((err) => setError(err instanceof Error ? err.message : String(err)))
-      .finally(() => setLoading(false))
+      .then(rows => { if (active) setResult({ batchId, status, records: rows, error: null }) })
+      .catch(err => { if (active) setResult({ batchId, status, records: [], error: err instanceof Error ? err.message : String(err) }) })
+    return () => { active = false }
   }, [open, batchId, status])
 
   const counts = {
@@ -65,7 +76,7 @@ export function SmsBatchDetailsSheet({
   }
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
+    <Sheet open={open} onOpenChange={value => value ? onOpenChange(true) : closeDetails()}>
       <SheetContent className="sm:max-w-[720px] p-0 border-none flex flex-col bg-slate-50">
         <div className="bg-[#0f172a] p-6 text-white shrink-0 space-y-4">
           <div className="flex items-center gap-3">
@@ -73,8 +84,9 @@ export function SmsBatchDetailsSheet({
               <Smartphone className="h-4 w-4 text-primary" />
             </div>
             <div>
-              <SheetTitle className="text-white text-sm font-black uppercase tracking-widest">Delivery Log</SheetTitle>
+              <SheetTitle className="text-white text-sm font-black uppercase tracking-widest">SMS list details</SheetTitle>
               <p className="text-[10px] text-slate-400 font-bold uppercase">{batchName}</p>
+              <SheetDescription className="mt-1 text-xs text-slate-300">Preview each recipient’s saved message and check its sending status.</SheetDescription>
             </div>
           </div>
           <div className="flex items-center gap-4 text-[10px] font-black uppercase tracking-widest">
@@ -85,26 +97,34 @@ export function SmsBatchDetailsSheet({
         </div>
 
         <div className="p-4 border-b bg-white shrink-0 flex items-center gap-3">
-          <Select value={status} onValueChange={(v) => setStatus(v ?? "all")}>
-            <SelectTrigger className="h-9 w-[180px] text-xs font-bold">
-              <SelectValue placeholder="All statuses" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All statuses</SelectItem>
-              <SelectItem value="queued">Queued</SelectItem>
-              <SelectItem value="sent">Sent</SelectItem>
-              <SelectItem value="failed">Failed</SelectItem>
-            </SelectContent>
-          </Select>
+          <label htmlFor={`${id}-status`} className="text-xs font-medium">Sending status</label>
+          <select id={`${id}-status`} className="h-9 rounded-md border bg-white px-3 text-xs" value={status} onChange={event => { setResult(null); setSelectedRecordId(null); setStatus(event.target.value) }}>
+            <option value="all">All statuses</option>
+            <option value="queued">Ready to send</option>
+            <option value="sent">Sent</option>
+            <option value="delivered">Delivered</option>
+            <option value="failed">Failed</option>
+          </select>
           {loading && <Loader2 className="h-4 w-4 animate-spin text-slate-400" />}
         </div>
 
-        <div className="flex-1 overflow-y-auto">
+        <div className="min-h-0 flex-1 overflow-y-auto">
           {error ? (
             <p className="p-6 text-xs font-bold text-rose-600">{error}</p>
           ) : records.length === 0 && !loading ? (
             <p className="p-6 text-xs italic text-slate-400">No messages match this filter.</p>
+          ) : loading ? (
+            <p role="status" className="p-6 text-sm text-muted-foreground">Loading recipients and messages…</p>
           ) : (
+            <>
+            {selectedRecord && <div ref={previewRef} id={`${id}-preview`} className="space-y-3 border-b p-4">
+              <h3 className="text-sm font-semibold">SMS message preview</h3>
+              <label htmlFor={`${id}-recipient`} className="block text-xs font-medium">Choose a recipient to preview their message</label>
+              <select id={`${id}-recipient`} className="h-10 w-full rounded-md border bg-white px-3 text-sm" value={selectedRecord.id} onChange={event => setSelectedRecordId(event.target.value)}>
+                {records.map(record => <option key={record.id} value={record.id}>{record.customerName || "Recipient"} — {record.customerAccount || record.phoneNumber}</option>)}
+              </select>
+              <div aria-live="polite" aria-atomic="true"><SmsMessagePreview recipient={selectedRecord} /></div>
+            </div>}
             <Table>
               <TableHeader>
                 <TableRow className="bg-slate-50">
@@ -132,17 +152,19 @@ export function SmsBatchDetailsSheet({
                       </Badge>
                     </TableCell>
                     <TableCell className="text-[10px] text-slate-500 max-w-[220px]">
-                      {record.error || (record.status === "queued" ? "Awaiting send" : "Accepted by gateway")}
+                      {record.error || (record.status === "queued" ? "Ready to send" : record.status === "failed" ? "Sending failed" : record.status === "delivered" ? "Delivery confirmed" : "Accepted by gateway")}
+                      <Button type="button" variant="outline" size="sm" className="mt-2 h-8 text-xs" aria-controls={`${id}-preview`} aria-pressed={selectedRecord?.id === record.id} onClick={() => { setSelectedRecordId(record.id); previewRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }) }}>Preview SMS</Button>
                     </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
             </Table>
+            </>
           )}
         </div>
 
         <div className="p-4 bg-white border-t shrink-0 flex justify-end">
-          <Button variant="outline" onClick={() => onOpenChange(false)} className="h-10 text-[10px] font-black uppercase tracking-widest">
+          <Button variant="outline" onClick={closeDetails} className="h-10 text-[10px] font-black uppercase tracking-widest">
             Close
           </Button>
         </div>
