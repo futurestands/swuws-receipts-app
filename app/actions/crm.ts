@@ -40,6 +40,7 @@ import {
   COMPLAINT_PRIORITIES,
   type ComplaintPriority,
 } from "@/lib/crm-schemas"
+import { applySmsDueDate, parseSmsDueDate } from "@/lib/sms-due-date"
 import { defaultSmsTemplate } from "@/lib/sms-template-preview"
 import { smsBalanceConditions, type SmsBalanceFilter } from "@/lib/sms-balance-filter"
 import { parseSmsFile } from "@/lib/sms-file-import"
@@ -1395,6 +1396,9 @@ export async function importSmsBatch(formData: FormData) {
   if (!canCreateSmsBatch(user)) throw new Error("Forbidden")
 
   const file = formData.get("file") as File
+  const rawDueDate = formData.get("dueDate")
+  if (rawDueDate !== null && typeof rawDueDate !== "string") throw new Error("Invalid payment due date")
+  const dueDate = parseSmsDueDate(rawDueDate)?.iso ?? null
   const name = formData.get("name") as string
   const category = formData.get("category") as string
   const templateId = formData.get("templateId") as string || undefined
@@ -1443,7 +1447,7 @@ export async function importSmsBatch(formData: FormData) {
   // through the template engine, so {{placeholders}} are substituted --
   // custom messages used to be stored verbatim and customers received the
   // literal text "{{name}}".
-  const content = await resolveSmsComposition({ category, templateId, manualMessage })
+  const content = applySmsDueDate(await resolveSmsComposition({ category, templateId, manualMessage }), dueDate, category === BILL_REMINDER_CATEGORY && !templateId && !manualMessage?.trim())
 
   const autoThanks = category === BILL_REMINDER_CATEGORY && !manualMessage?.trim() && !templateId
   const thanksContent = autoThanks
@@ -1495,7 +1499,7 @@ export async function importSmsBatch(formData: FormData) {
       batchId,
       customerId,
       phoneNumber,
-      message: renderTemplate(useThanks && thanksContent ? thanksContent : content, {
+      message: renderTemplate(useThanks && thanksContent ? applySmsDueDate(thanksContent, dueDate) : content, {
         MeterRef: row.customerRef || "",
         Phone: phoneNumber,
         BillNumber: row.billNumber,
@@ -1532,6 +1536,7 @@ export async function importSmsBatch(formData: FormData) {
     await tx.insert(crmSmsBatch).values({
       id: batchId,
       name: name.trim(),
+      dueDate,
       category,
       templateId: templateId || null,
       status: "draft",
@@ -1551,7 +1556,7 @@ export async function importSmsBatch(formData: FormData) {
     action: "crm.sms.import",
     entityType: "crm_sms_batch",
     entityId: batchId,
-    details: { name: name.trim(), category, queued: records.length, schemeId: targetSchemeId, skippedNumbers, thanked, alreadyContacted },
+    details: { dueDate, name: name.trim(), category, queued: records.length, schemeId: targetSchemeId, skippedNumbers, thanked, alreadyContacted },
   })
 
   revalidatePath("/dashboard/crm/sms")

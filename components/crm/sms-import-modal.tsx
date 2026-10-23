@@ -21,6 +21,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { useRouter } from "next/navigation"
 import { Plus, Loader2, Upload, Download } from "lucide-react"
 import { parseSmsBalanceFilter } from "@/lib/sms-balance-filter"
+import { parseSmsDueDate } from "@/lib/sms-due-date"
 import { SmsTemplatePreview } from "@/components/crm/sms-template-preview"
 import { defaultSmsTemplate } from "@/lib/sms-template-preview"
 import { cn } from "@/lib/utils"
@@ -34,6 +35,7 @@ export function SmsImportModal() {
   const [name, setName] = useState("")
   const [category, setCategory] = useState("Bill Reminders")
   const [file, setFile] = useState<File | null>(null)
+  const [dueDate, setDueDate] = useState("")
   const [loading, setLoading] = useState(false)
 
   const [message, setMessage] = useState("")
@@ -104,6 +106,7 @@ export function SmsImportModal() {
     setName("")
     setCategory("Bill Reminders")
     setFile(null)
+    setDueDate("")
     setUseManualMessage(false)
     setMessage("")
     setTemplateId("default")
@@ -164,10 +167,12 @@ export function SmsImportModal() {
       return
     }
 
+    try { parseSmsDueDate(dueDate) } catch (error) { toast.error(error instanceof Error ? error.message : "Invalid due date"); return }
     setLoading(true)
     try {
       const formData = new FormData()
       formData.append("file", file)
+      formData.append("dueDate", dueDate)
       formData.append("name", name)
       formData.append("category", category)
       formData.append("schemeId", selectedSchemeId)
@@ -330,6 +335,14 @@ export function SmsImportModal() {
             </p>
           )}
 
+          {source === "csv" && (
+            <div className="space-y-2">
+              <Label htmlFor="sms-payment-due-date">Payment due date (optional)</Label>
+              <Input id="sms-payment-due-date" type="date" min="1900-01-01" max="9999-12-31" value={dueDate} onChange={event => setDueDate(event.target.value)} aria-describedby="sms-due-date-help" />
+              <p id="sms-due-date-help" className="text-xs text-muted-foreground">Format: DD/MM/YYYY. Enter the deadline here, not in Excel. It applies to this uploaded list. Leave blank for no deadline. Default bill reminders include it automatically; other templates can use {"{{due_date}}"}.</p>
+            </div>
+          )}
+
           <div className="space-y-4 border p-4 rounded-xl bg-slate-50/50">
             <div className="space-y-2">
               <Label className="text-xs font-bold uppercase text-slate-500">Message template</Label>
@@ -348,7 +361,7 @@ export function SmsImportModal() {
                   ))}
                 </SelectContent>
               </Select>
-              <SmsTemplatePreview category={category} templateId={templateId} source={source} manualMessage={useManualMessage ? message : undefined} />
+              <SmsTemplatePreview dueDate={source === "csv" ? dueDate : undefined} category={category} templateId={templateId} source={source} manualMessage={useManualMessage ? message : undefined} />
             </div>
 
             <div className="flex items-center space-x-2">
@@ -372,7 +385,7 @@ export function SmsImportModal() {
                   onChange={(e) => setMessage(e.target.value)}
                 />
                 <p className="text-[9px] text-muted-foreground italic">
-                  Pegasus placeholders (file uploads): {"{{CustomerName}}"}, {"{{MeterRef}}"}, {"{{Phone}}"}, {"{{BillNumber}}"}, {"{{Period}}"}, {"{{AccountBalance}}"}. Existing {"{{name}}"}, {"{{account}}"}, {"{{period}}"}, {"{{balance}}"} remain supported.
+                  Pegasus placeholders (file uploads): {"{{CustomerName}}"}, {"{{MeterRef}}"}, {"{{Phone}}"}, {"{{BillNumber}}"}, {"{{Period}}"}, {"{{AccountBalance}}"}. Optional deadline: {"{{due_date}}"}. Existing {"{{name}}"}, {"{{account}}"}, {"{{period}}"}, {"{{balance}}"} remain supported.
                 </p>
               </div>
             )}

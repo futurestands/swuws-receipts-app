@@ -23,6 +23,11 @@ describe("composition message preview", () => {
   it("does not suggest file-only placeholders are supported by the directory builder", () => {
     expect(previewSmsTemplate("{{BillNumber}} {{name}}", "directory").missing).toEqual(["BillNumber"])
   })
+  it("previews the entered manual due date and warns when required but absent", () => {
+    const render = (dueDate?: string) => renderToStaticMarkup(<SmsTemplatePreview category="Bill Reminders" templateId="default" source="csv" manualMessage="Pay by {{due_date}}" dueDate={dueDate} />)
+    expect(render("2026-10-31")).toContain("Pay by 31 October 2026")
+    expect(render()).toContain("requires a payment due date")
+  })
   it("shows a loading state before fetching a managed template", () => {
     const html = renderToStaticMarkup(<SmsTemplatePreview category="Alerts" templateId="default" source="directory" />)
     expect(html).toContain("Loading message preview")
