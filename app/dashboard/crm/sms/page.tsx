@@ -162,12 +162,14 @@ export default async function SmsHubPage({
                           "h-5 px-1.5 text-[9px] uppercase font-black",
                           b.status === 'completed' ? 'bg-emerald-100 text-emerald-700 border-emerald-200 hover:bg-emerald-100' :
                           b.status === 'processing' || b.status === 'approved' ? 'bg-blue-100 text-blue-700 border-blue-200' :
-                          b.status === 'failed' || b.status === 'rejected' ? 'bg-rose-100 text-rose-700 border-rose-200' :
+                          b.status === 'failed' || b.status === 'rejected' || b.status === 'needs_review' || b.status === 'completed_with_errors' ? 'bg-rose-100 text-rose-700 border-rose-200' :
                           b.status === 'pending_approval' ? 'bg-violet-100 text-violet-700 border-violet-200' :
                           'bg-amber-100 text-amber-700 border-amber-200'
                         )}
                        >
-                         {b.status === 'completed' ? 'Sent Out'
+                         {b.status === 'needs_review' ? 'Delivery review needed'
+                          : b.status === 'completed_with_errors' ? 'Completed with failures'
+                          : b.status === 'completed' ? 'Sent Out'
                            : b.status === 'pending_approval' ? 'Awaiting approval'
                            : b.status === 'draft' ? 'Draft'
                            : b.status}

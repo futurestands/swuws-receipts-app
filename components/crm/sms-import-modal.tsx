@@ -139,6 +139,7 @@ export function SmsImportModal() {
         })
         if (res.ok) {
           const notes = [
+            res.summary.duplicateRecipients > 0 ? `${res.summary.duplicateRecipients} duplicate recipient(s) skipped` : null,
             res.summary.skippedNumbers > 0 ? `${res.summary.skippedNumbers} unusable number(s) skipped` : null,
             res.summary.alreadyContacted > 0 ? `${res.summary.alreadyContacted} already messaged this period` : null,
             res.summary.thanked > 0 ? `${res.summary.thanked} thank-you(s) for balance below USh 1,500` : null,
@@ -176,6 +177,7 @@ export function SmsImportModal() {
       formData.append("name", name)
       formData.append("category", category)
       formData.append("schemeId", selectedSchemeId)
+      formData.append("branchId", selectedBranchId)
       if (useManualMessage && message.trim()) {
         formData.append("manualMessage", message)
       } else if (templateId && templateId !== "default") {
@@ -186,6 +188,7 @@ export function SmsImportModal() {
       if (res.ok) {
         const { queued, skippedNumbers, filteredByScheme, thanked, alreadyContacted } = res.summary
         const notes = [
+          res.summary.duplicateRecipients > 0 ? `${res.summary.duplicateRecipients} duplicate recipient(s) skipped` : null,
           skippedNumbers > 0 ? `${skippedNumbers} unusable number(s) skipped` : null,
           filteredByScheme > 0 ? `${filteredByScheme} outside the selected scheme` : null,
           alreadyContacted > 0 ? `${alreadyContacted} already messaged this period` : null,

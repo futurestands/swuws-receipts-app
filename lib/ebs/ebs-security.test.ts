@@ -43,13 +43,13 @@ let mockCustomerQueryResult: Record<string, unknown>[] = [{ id: "cust-1", custom
 let mockBillQueryResult: Record<string, unknown>[] = [{ id: "bill-1", billingPeriodId: "p-1", totalDue: "5000", billingDate: new Date().toISOString(), createdAt: new Date() }]
 let mockUserQueryResult: Record<string, unknown>[] = [{ id: "admin-real-user-123", role: "SYSTEM_ADMIN" }]
 
-const mockDbInsertValues = vi.fn(() => ({
+const mockDbInsertValues = vi.fn<(...args: unknown[]) => { onConflictDoNothing: ReturnType<typeof vi.fn> }>(() => ({
   onConflictDoNothing: vi.fn(() => ({
     returning: vi.fn().mockImplementation(async () => mockInsertReturns)
   }))
 }))
 
-const mockTxInsertValues = vi.fn(() => ({
+const mockTxInsertValues = vi.fn<(...args: unknown[]) => { onConflictDoNothing: ReturnType<typeof vi.fn> }>(() => ({
   onConflictDoNothing: vi.fn().mockResolvedValue(true)
 }))
 
@@ -251,7 +251,7 @@ describe("EBS Security & Pipeline Hardening Tests", () => {
     mockBillQueryResult = [{ id: "bill-1", billingPeriodId: "p-1", totalDue: "10000", billingDate: new Date().toISOString(), createdAt: new Date() }] // bill is 10000, paid 5000
     const result = (await processPegasusEvent("evt-1")) as { ok: boolean; status?: string }
     expect(result.ok).toBe(true)
-    expect(result.status).toBe("partial_payment")
+    expect("status" in result && result.status).toBe("partial_payment")
   })
 
   it("Test 11: Processor flags unmatched customer as needs_review", async () => {
@@ -259,14 +259,14 @@ describe("EBS Security & Pipeline Hardening Tests", () => {
     mockCustomerQueryResult = [] // customer not found
     const result = (await processPegasusEvent("evt-1")) as { ok: boolean; reason?: string }
     expect(result.ok).toBe(false)
-    expect(result.reason).toBe("customer_not_found")
+    expect("reason" in result && result.reason).toBe("customer_not_found")
   })
 
   it("Test 12: Processor retry is idempotent on already processed/reviewed events", async () => {
     mockEventStatus = "matched_pending_review"
     const result = (await processPegasusEvent("evt-1")) as { ok: boolean; status?: string }
     expect(result.ok).toBe(true)
-    expect(result.status).toBe("matched_pending_review")
+    expect("status" in result && result.status).toBe("matched_pending_review")
   })
 
   it("Test 13: saveEbsConfigAction requires HTTPS in production and checks permissions", async () => {
@@ -445,7 +445,7 @@ describe("EBS Security & Pipeline Hardening Tests", () => {
 
     const result = await processPegasusEvent("evt-1")
     expect(result.ok).toBe(false)
-    expect(result.reason).toBe("amount_mismatch")
+    expect("reason" in result && result.reason).toBe("amount_mismatch")
 
     expect(mockTxInsertValues).toHaveBeenCalled()
     const insertedException = mockTxInsertValues.mock.calls[0][0] as { exceptionType: string }
@@ -472,7 +472,7 @@ describe("EBS Security & Pipeline Hardening Tests", () => {
 
     const result = await processPegasusEvent("evt-1")
     expect(result.ok).toBe(false)
-    expect(result.reason).toBe("customer_not_found")
+    expect("reason" in result && result.reason).toBe("customer_not_found")
 
     expect(createNotification).toHaveBeenCalled()
     const notificationCall = vi.mocked(createNotification).mock.calls[0][0]
@@ -487,7 +487,7 @@ describe("EBS Security & Pipeline Hardening Tests", () => {
 
     const result = await processPegasusEvent("evt-1")
     expect(result.ok).toBe(true)
-    expect(result.status).toBe("partial_payment")
+    expect("status" in result && result.status).toBe("partial_payment")
 
     expect(mockTxInsertValues).toHaveBeenCalled()
     const insertedException = mockTxInsertValues.mock.calls[0][0] as { exceptionType: string }
