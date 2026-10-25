@@ -6,6 +6,7 @@ import {
   integer,
   index,
   uniqueIndex,
+  type AnyPgColumn,
 } from "drizzle-orm/pg-core"
 
 // ---------------------------------------------------------------------------
@@ -20,13 +21,13 @@ export const iamRole = pgTable(
     code: text("code").notNull().unique(), // e.g. 'admin', 'commercial_officer'
     description: text("description"),
     level: integer("level").notNull().default(0),
-    parentId: text("parent_id").references((): any => iamRole.id, { onDelete: "set null" }),
+    parentId: text("parent_id").references((): AnyPgColumn => iamRole.id, { onDelete: "set null" }),
     active: boolean("active").notNull().default(true),
     isSystem: boolean("is_system").notNull().default(false), // Protected roles
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },
-  (table: any) => ({
+  (table) => ({
     codeIdx: uniqueIndex("iam_role_code_idx").on(table.code),
     parentIdx: index("iam_role_parent_idx").on(table.parentId),
   }),

@@ -106,3 +106,5 @@ pool.on("error", (err) => {
 })
 
 export const db = drizzle(pool, { schema })
+
+export type DatabaseTransaction = Parameters<Parameters<typeof db.transaction>[0]>[0]
