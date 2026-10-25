@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { sqliteService } from "@/lib/offline/sqlite-service"
 import { pullOfflineCache } from "@/lib/offline/pull-cache"
 import { syncOfflineReceiptBatch, syncOfflineMeterReadingBatch, type OfflineSyncResult } from "@/app/actions/offline-upload"
@@ -15,201 +15,153 @@ import { Search, RefreshCw, Wifi, Banknote, Clock, Calculator, AlertTriangle, Pr
 import { OfflineReceiptForm } from "./OfflineReceiptForm"
 import { OfflineMeterReadingForm } from "./OfflineMeterReadingForm"
 import { printerManager } from "@/lib/offline/printer-manager"
-import { searchCustomers } from "@/app/actions/customers"
 import { isNative } from "@/lib/mobile-hardware"
-import { watchNetwork } from "@/lib/offline/network-watch"
+import { useOfflineSearch, OFFLINE_PAGE_SIZE as PAGE_SIZE } from "@/lib/offline/use-offline-search"
+import { queuedReceiptsSchema, queuedReadingsSchema, offlineErrorMessage, type CachedCustomer, type QueuedReceipt } from "@/lib/offline/records"
 
-const PAGE_SIZE = 50
+let foregroundUpload: Promise<void> | null = null
+async function shareForegroundUpload(upload: () => Promise<void>) {
+  if (foregroundUpload) return foregroundUpload
+  const pending = upload()
+  foregroundUpload = pending
+  try { await pending } finally {
+    if (foregroundUpload === pending) foregroundUpload = null
+  }
+}
 
 export function OfflineSearchClient({ agentId }: { agentId: string }) {
-  const [query, setQuery] = useState("")
-  const [page, setPage] = useState(1)
-  const [localCustomers, setLocalCustomers] = useState<any[]>([])
-  const [localTotal, setLocalTotal] = useState(0)
-  const [localTotalPages, setLocalTotalPages] = useState(1)
-  const [serverCustomers, setServerCustomers] = useState<any[]>([])
-  const [syncMeta, setSyncMeta] = useState<any>(null)
-  const [isOnline, setIsOnline] = useState(true)
-  const [searchingServer, setSearchingServer] = useState(false)
+  return <OfflineWorkspace key={agentId} agentId={agentId} />
+}
+
+function OfflineWorkspace({ agentId }: { agentId: string }) {
+  const {
+    query, setQuery, page, setPage, localCustomers, localTotal, localTotalPages,
+    serverCustomers, syncMeta, queuedReceipts, queuedReadings, isOnline, searchingServer,
+    refreshData, captureLifetime, getIsOnline, subscribeToPending,
+  } = useOfflineSearch(agentId)
   const [syncing, setSyncing] = useState(false)
   const [syncStep, setSyncStep] = useState<string>("")
   const [uploading, setUploading] = useState(false)
-  const [queuedReceipts, setQueuedReceipts] = useState<any[]>([])
-  const [queuedReadings, setQueuedReadings] = useState<any[]>([])
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null)
   const [selectedCustomerIdForReading, setSelectedCustomerIdForReading] = useState<string | null>(null)
-  const [lastSyncAttempt, setLastSyncAttempt] = useState<number>(0)
+  const lastSyncAttempt = useRef(0)
   const SYNC_COOLDOWN = 30000 // 30 seconds cooldown
+  const pushing = useRef(false)
 
   const totalQueued = queuedReceipts.filter(r => r.status !== 'synced').length +
                       queuedReadings.filter(r => r.status !== 'synced').length
 
-  const hasNewItems = queuedReceipts.some(r => r.status === 'queued') ||
-                      queuedReadings.some(r => r.status === 'queued')
-
-  const handleSearch = async (pageNum = page) => {
-    const local = await sqliteService.searchCustomers(query, pageNum, PAGE_SIZE)
-    setLocalCustomers(local.customers)
-    setLocalTotal(local.total)
-    setLocalTotalPages(local.totalPages)
-    if (local.page !== pageNum) setPage(local.page)
-
-    // If online, search server
-    if (isOnline && query.trim().length >= 2) {
-      setSearchingServer(true)
-      try {
-        const res = await searchCustomers({ query })
-        const cachedIds = await sqliteService.filterCachedIds(res.customers.map(c => c.id))
-        const filteredServer = res.customers.filter(c => !cachedIds.has(c.id))
-        setServerCustomers(filteredServer)
-      } catch (err) {
-        console.warn('Server search failed', err)
-      } finally {
-        setSearchingServer(false)
-      }
-    } else {
-      setServerCustomers([])
-    }
-  }
-
-  const refreshData = async (pageNum = page) => {
-    const [meta, queue, readings] = await Promise.all([
-      sqliteService.getSyncMeta(),
-      sqliteService.getQueuedReceipts(),
-      sqliteService.getQueuedMeterReadings()
-    ])
-    setSyncMeta(meta)
-    setQueuedReceipts(queue)
-    setQueuedReadings(readings)
-    await handleSearch(pageNum)
-  }
-
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      handleSearch(page)
-    }, 300)
-    return () => clearTimeout(timer)
-  }, [query, isOnline, page])
-
-  useEffect(() => {
-    let active = true
-    const init = async () => {
-      try {
-        await sqliteService.initialize()
-      } catch (err) {
-        console.error("SQLite init failed", err)
-      }
-      if (active) await refreshData()
-    }
-    init()
-
-    const unsubNetwork = watchNetwork(({ connected }) => {
-      if (active) setIsOnline(connected)
-    })
-
-    return () => {
-      active = false
-      unsubNetwork()
-    }
-  }, [])
-
-  const handleSyncPush = async () => {
-    if (!isOnline) {
+  const handleSyncPush = useCallback(async () => {
+    if (!getIsOnline()) {
       toast.error("You must be online to upload data")
       return
     }
 
-    const pendingReceipts = queuedReceipts.filter(r => r.status === 'queued' || r.status === 'failed')
-    const pendingReadings = queuedReadings.filter(r => r.status === 'queued' || r.status === 'failed')
-
-    if (pendingReceipts.length === 0 && pendingReadings.length === 0) return
-
-    setUploading(true)
-    setLastSyncAttempt(Date.now())
+    if (pushing.current) return
+    pushing.current = true
+    const isCurrent = captureLifetime()
     try {
-      const allResults: OfflineSyncResult[] = []
+      await shareForegroundUpload(async () => {
+        const [receipts, readings] = await Promise.all([
+          sqliteService.getQueuedReceipts(), sqliteService.getQueuedMeterReadings(),
+        ])
+        if (!isCurrent() || !getIsOnline()) return
+        const pendingReceipts = queuedReceiptsSchema.parse(receipts).filter(r => r.status === 'queued' || r.status === 'failed')
+        const pendingReadings = queuedReadingsSchema.parse(readings).filter(r => r.status === 'queued' || r.status === 'failed')
+        if (pendingReceipts.length === 0 && pendingReadings.length === 0) return
+        setUploading(true)
+        lastSyncAttempt.current = Date.now()
+        const allResults: OfflineSyncResult[] = []
 
-      if (pendingReceipts.length > 0) {
-        const batch = pendingReceipts.map(r => ({
-          tempId: r.id,
-          data: {
-            billingRecordId: r.billingRecordId || undefined,
-            customerId: r.customerId,
-            customerName: r.customerName,
-            amount: r.amount,
-            paymentMethod: r.paymentMethod,
-            paymentReference: r.paymentReference || undefined,
-            notes: r.notes || undefined,
-            paymentDate: r.paymentDate || undefined,
-            idempotencyKey: r.idempotencyKey
+        if (pendingReceipts.length > 0) {
+          const batch = pendingReceipts.map(r => ({
+            tempId: r.id,
+            data: {
+              billingRecordId: r.billingRecordId || undefined,
+              customerId: r.customerId,
+              customerName: r.customerName ?? "",
+              amount: r.amount,
+              paymentMethod: r.paymentMethod,
+              paymentReference: r.paymentReference || undefined,
+              notes: r.notes || undefined,
+              paymentDate: r.paymentDate || undefined,
+              idempotencyKey: r.idempotencyKey || undefined
+            }
+          }))
+
+          const results = await syncOfflineReceiptBatch(batch)
+          for (const res of results) {
+            await sqliteService.updateQueuedReceiptStatus(res.tempId, res.success ? 'synced' : 'failed', res.serverId, res.error)
           }
-        }))
-
-        const results = await syncOfflineReceiptBatch(batch)
-        for (const res of results) {
-          await sqliteService.updateQueuedReceiptStatus(res.tempId, res.success ? 'synced' : 'failed', res.serverId, res.error)
+          allResults.push(...results)
         }
-        allResults.push(...results)
-      }
 
-      if (pendingReadings.length > 0) {
-        const batch = pendingReadings.map(r => ({
-          tempId: r.id,
-          data: {
-            customerId: r.customerId,
-            billingPeriodId: r.billingPeriodId,
-            currentReading: r.currentReading,
-            previousReading: r.previousReading,
-            notes: r.notes || undefined,
-            idempotencyKey: r.idempotencyKey
+        if (pendingReadings.length > 0) {
+          const batch = pendingReadings.map(r => ({
+            tempId: r.id,
+            data: {
+              customerId: r.customerId,
+              billingPeriodId: r.billingPeriodId,
+              currentReading: r.currentReading,
+              previousReading: r.previousReading,
+              notes: r.notes || undefined,
+              idempotencyKey: r.idempotencyKey || undefined
+            }
+          }))
+
+          const results = await syncOfflineMeterReadingBatch(batch)
+          for (const res of results) {
+            await sqliteService.updateQueuedReadingStatus(res.tempId, res.success ? 'synced' : 'failed', res.error)
           }
-        }))
-
-        const results = await syncOfflineMeterReadingBatch(batch)
-        for (const res of results) {
-          await sqliteService.updateQueuedReadingStatus(res.tempId, res.success ? 'synced' : 'failed', res.error)
+          allResults.push(...results)
         }
-        allResults.push(...results)
-      }
 
-      await refreshData()
-      await sqliteService.removeSyncedReceipts()
-      await sqliteService.removeSyncedReadings()
-      await refreshData()
+        if (isCurrent()) await refreshData()
+        await sqliteService.removeSyncedReceipts()
+        await sqliteService.removeSyncedReadings()
+        if (!isCurrent()) return
+        await refreshData()
+        if (!isCurrent()) return
 
-      const failed = allResults.filter((r) => !r.success)
-      const discrepancies = allResults.filter((r) => r.filedAs === "discrepancy")
-      if (failed.length > 0) {
-        toast.error(`${failed.length} item${failed.length === 1 ? "" : "s"} did not upload: ${failed[0].error}`)
-      } else if (discrepancies.length > 0) {
-        toast.success(`Uploaded. ${discrepancies.length} reading${discrepancies.length === 1 ? "" : "s"} already had a monthly bill — sent to Billing Exceptions.`)
-      } else {
-        toast.success("Push sync completed")
-      }
+        const failed = allResults.filter((r) => !r.success)
+        const discrepancies = allResults.filter((r) => r.filedAs === "discrepancy")
+        if (failed.length > 0) {
+          toast.error(`${failed.length} item${failed.length === 1 ? "" : "s"} did not upload: ${failed[0].error}`)
+        } else if (discrepancies.length > 0) {
+          toast.success(`Uploaded. ${discrepancies.length} reading${discrepancies.length === 1 ? "" : "s"} already had a monthly bill — sent to Billing Exceptions.`)
+        } else {
+          toast.success("Push sync completed")
+        }
+      })
+      pushing.current = false
+      if (isCurrent()) await refreshData()
     } catch (err) {
       console.error(err)
-      toast.error("Upload failed")
+      if (isCurrent()) toast.error("Upload failed")
     } finally {
-      setUploading(false)
+      pushing.current = false
+      if (isCurrent()) setUploading(false)
     }
-  }
+  }, [captureLifetime, getIsOnline, refreshData])
 
-  useEffect(() => {
-    const now = Date.now()
-    if (isOnline && hasNewItems && !uploading && (now - lastSyncAttempt > SYNC_COOLDOWN)) {
-      handleSyncPush()
+  useEffect(() => subscribeToPending(({ connected, hasNewItems }) => {
+    if (connected && hasNewItems && !pushing.current && Date.now() - lastSyncAttempt.current > SYNC_COOLDOWN) {
+      void handleSyncPush()
     }
-  }, [isOnline, hasNewItems, uploading])
+  }), [subscribeToPending, handleSyncPush])
 
   const handleSyncPull = async () => {
+    const isCurrent = captureLifetime()
     setSyncing(true)
     setSyncStep("Opening phone database...")
     try {
       await sqliteService.ensureReady()
+      if (!isCurrent()) return
 
       if (isNative()) {
         const { Network } = await import("@capacitor/network")
         const net = await Network.getStatus()
+        if (!isCurrent()) return
         if (!net.connected) {
           toast.error("Connect to the network, then tap Sync Cache.")
           return
@@ -223,12 +175,15 @@ export function OfflineSearchClient({ agentId }: { agentId: string }) {
       const result = await pullOfflineCache({
         agentId,
         onProgress: ({ loaded, total }) => {
+          if (!isCurrent()) return
           const denom = total > 0 ? total : loaded
           setSyncStep(`Saving ${loaded.toLocaleString()} / ${denom.toLocaleString()}...`)
         },
       })
+      if (!isCurrent()) return
       setPage(1)
       await refreshData(1)
+      if (!isCurrent()) return
       if (result.loaded === 0) {
         toast.error("Sync reached the server but returned 0 customers. This account may lack customers.view or a scheme/area assignment.")
       } else if (result.truncated) {
@@ -236,30 +191,40 @@ export function OfflineSearchClient({ agentId }: { agentId: string }) {
       } else {
         toast.success(`Offline cache updated · ${result.loaded.toLocaleString()} customers`)
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err)
-      const msg = err?.message || "Unknown error"
-      toast.error(`Sync failed: ${msg.slice(0, 120)}`)
+      const msg = offlineErrorMessage(err, "Unknown error")
+      if (isCurrent()) toast.error(`Sync failed: ${msg.slice(0, 120)}`)
     } finally {
-      setSyncing(false)
-      setSyncStep("")
+      if (isCurrent()) {
+        setSyncing(false)
+        setSyncStep("")
+      }
     }
   }
 
-  const handlePrintOffline = async (r: any) => {
+  const handlePrintOffline = async (r: QueuedReceipt) => {
+    const isCurrent = captureLifetime()
     try {
       await printerManager.print({
         receiptNumber: r.id.slice(0, 8).toUpperCase(), // Provisional #
-        customerName: r.customerName,
+        customerName: r.customerName ?? "",
         amount: r.amount,
         paymentMethod: r.paymentMethod,
         paymentDate: r.paymentDate,
         isProvisional: true
       })
-      toast.success("Printing receipt...")
-    } catch (err: any) {
-      toast.error(err.message || "Printing failed")
+      if (isCurrent()) toast.success("Printing receipt...")
+    } catch (err: unknown) {
+      if (isCurrent()) toast.error(offlineErrorMessage(err, "Printing failed"))
     }
+  }
+
+  const handleRefresh = () => {
+    const isCurrent = captureLifetime()
+    void refreshData().catch((error: unknown) => {
+      if (isCurrent()) toast.error(offlineErrorMessage(error, "Could not refresh offline data"))
+    })
   }
 
   if (selectedCustomerId) {
@@ -269,7 +234,7 @@ export function OfflineSearchClient({ agentId }: { agentId: string }) {
           customerId={selectedCustomerId}
           onSuccess={() => {
             setSelectedCustomerId(null)
-            refreshData()
+            handleRefresh()
           }}
           onCancel={() => setSelectedCustomerId(null)}
         />
@@ -284,7 +249,7 @@ export function OfflineSearchClient({ agentId }: { agentId: string }) {
           customerId={selectedCustomerIdForReading}
           onSuccess={() => {
             setSelectedCustomerIdForReading(null)
-            refreshData()
+            handleRefresh()
           }}
           onCancel={() => setSelectedCustomerIdForReading(null)}
         />
@@ -485,7 +450,7 @@ export function OfflineSearchClient({ agentId }: { agentId: string }) {
   )
 }
 
-function CustomerCard({ customer, onCollect, onReading, isLocal }: { customer: any, onCollect: () => void, onReading: () => void, isLocal: boolean }) {
+function CustomerCard({ customer, onCollect, onReading, isLocal }: { customer: Pick<CachedCustomer, "id" | "name" | "customerAccount" | "phone" | "accountBalance">, onCollect: () => void, onReading: () => void, isLocal: boolean }) {
   return (
     <Card className={cn(
       "overflow-hidden transition-colors shadow-sm",
@@ -536,7 +501,7 @@ function CustomerCard({ customer, onCollect, onReading, isLocal }: { customer: a
   )
 }
 
-function StatusBadge({ status, error }: { status: string, error?: string }) {
+function StatusBadge({ status, error }: { status: string, error?: string | null }) {
   if (status === 'queued') return <div className="flex items-center gap-1 text-orange-600 font-medium text-xs"><Clock className="h-3 w-3" /> Queued</div>
   if (status === 'syncing') return <div className="flex items-center gap-1 text-blue-600 font-medium text-xs"><RefreshCw className="h-3 w-3 animate-spin" /> Syncing</div>
   if (status === 'failed') return (

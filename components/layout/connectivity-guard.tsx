@@ -34,26 +34,32 @@ export function ConnectivityGuard({
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const routerRef = useRef(router)
 
-  pathnameRef.current = pathname
-  routerRef.current = router
+  useEffect(() => {
+    pathnameRef.current = pathname
+    routerRef.current = router
+  }, [pathname, router])
 
   useEffect(() => {
     onForcedOffline?.(offlineWorkspace)
   }, [offlineWorkspace, onForcedOffline])
 
   useEffect(() => {
+    let active = true
+    let revision = 0
+    let probe: AbortController | null = null
     const unsub = watchNetwork(({ connected }) => {
+      const ticket = ++revision
+      probe?.abort()
       if (timer.current) clearTimeout(timer.current)
       const delay = connected ? ONLINE_DEBOUNCE_MS : OFFLINE_DEBOUNCE_MS
       timer.current = setTimeout(async () => {
+        if (!active || ticket !== revision) return
         const prev = lastConnected.current
-        const path = pathnameRef.current
-        const onOfflineRoute =
-          path.startsWith("/dashboard/offline") || path.startsWith("/offline-shell")
+        const isOfflineRoute = () => pathnameRef.current.startsWith("/dashboard/offline") || pathnameRef.current.startsWith("/offline-shell")
 
         if (!connected) {
           lastConnected.current = false
-          if (isNative() && !onOfflineRoute) {
+          if (isNative() && !isOfflineRoute()) {
             setOfflineWorkspace(true)
             if (prev !== false) {
               toast.message("No internet — working from the phone cache")
@@ -62,15 +68,16 @@ export function ConnectivityGuard({
           return
         }
 
-        const reachable = await probeLiveServer()
-        if (!reachable) return
+        probe = new AbortController()
+        const reachable = await probeLiveServer(8000, probe.signal)
+        if (!active || ticket !== revision || !reachable) return
 
         lastConnected.current = true
         setOfflineWorkspace(false)
 
         if (prev === false) {
           toast.success("Back online")
-          if (onOfflineRoute) {
+          if (isOfflineRoute()) {
             routerRef.current.replace("/dashboard")
           }
         }
@@ -78,6 +85,9 @@ export function ConnectivityGuard({
     })
 
     return () => {
+      active = false
+      revision++
+      probe?.abort()
       unsub()
       if (timer.current) clearTimeout(timer.current)
     }

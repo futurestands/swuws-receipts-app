@@ -9,61 +9,66 @@ import Link from "next/link"
 import { formatDistanceToNow } from "date-fns"
 import { isNative } from "@/lib/mobile-hardware"
 
+type SyncSnapshot = {
+  agentId: string
+  status: 'synced' | 'syncing' | 'offline'
+  pendingCount: number
+  lastSync: Date | null
+}
+
 export function SyncStatus({ agentId }: { agentId: string }) {
-  const [status, setStatus] = useState<'synced' | 'syncing' | 'offline'>('synced')
-  const [pendingCount, setPendingTotal] = useState(0)
-  const [lastSync, setLastSync] = useState<Date | null>(null)
-  const [isOnline, setIsOnline] = useState(true)
-  const [mounted, setMounted] = useState(false)
+  const [snapshot, setSnapshot] = useState<SyncSnapshot | null>(null)
 
   useEffect(() => {
-    setMounted(true)
-  }, [])
-
-  useEffect(() => {
-    if (!mounted || !isNative()) return;
-
-    let cancelled = false
-
+    if (!isNative()) return
+    let active = true
+    let polling = false
+    let interval: ReturnType<typeof setInterval> | null = null
+    let stopSync = () => {}
+    const poll = async () => {
+      if (!active || polling) return
+      polling = true
+      try {
+        const [receipts, readings, meta, net] = await Promise.all([
+          sqliteService.getQueuedReceipts(), sqliteService.getQueuedMeterReadings(),
+          sqliteService.getSyncMeta(), Network.getStatus(),
+        ])
+        if (!active) return
+        const pendingCount = receipts.length + readings.length
+        const lastPull: unknown = meta?.lastSuccessfulPullAt
+        setSnapshot({
+          agentId, pendingCount,
+          lastSync: typeof lastPull === "string" ? new Date(lastPull) : null,
+          status: !net.connected ? 'offline' : pendingCount > 0 ? 'syncing' : 'synced',
+        })
+      } catch (err) {
+        if (active) console.warn("Sync status refresh failed", err)
+      } finally {
+        polling = false
+      }
+    }
     const start = async () => {
       try {
         await sqliteService.initialize()
+        if (!active) return
+        stopSync = syncManager.initialize(agentId)
+        await poll()
+        if (active) interval = setInterval(() => { void poll() }, 5000)
       } catch (err) {
-        console.error("SQLite init failed", err)
+        if (active) console.error("SQLite init failed", err)
       }
-      if (cancelled) return
-      syncManager.initialize(agentId)
     }
-    start()
-
-    // 2. Poll for status updates (every 10 seconds for UI)
-    const interval = setInterval(async () => {
-      const [receipts, readings, meta, net] = await Promise.all([
-        sqliteService.getQueuedReceipts(),
-        sqliteService.getQueuedMeterReadings(),
-        sqliteService.getSyncMeta(),
-        Network.getStatus()
-      ])
-
-      setPendingTotal(receipts.length + readings.length)
-      if (meta?.lastSuccessfulPullAt) {
-        setLastSync(new Date(meta.lastSuccessfulPullAt))
-      }
-      setIsOnline(net.connected)
-
-      // Logic for indicator color
-      if (!net.connected) setStatus('offline')
-      else if (receipts.length + readings.length > 0) setStatus('syncing')
-      else setStatus('synced')
-    }, 5000)
+    void start()
 
     return () => {
-      cancelled = true
-      clearInterval(interval)
+      active = false
+      if (interval) clearInterval(interval)
+      stopSync()
     }
   }, [agentId])
 
-  if (!mounted || !isNative()) return null
+  if (!snapshot || snapshot.agentId !== agentId) return null
+  const { status, pendingCount, lastSync } = snapshot
 
   return (
     <Link

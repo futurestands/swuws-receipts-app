@@ -1,53 +1,45 @@
 import { sqliteService } from './sqlite-service';
 import { pullOfflineCache } from './pull-cache';
 import { isNative } from '../mobile-hardware';
+import { watchNetwork } from './network-watch';
 
 /**
  * WHATSAPP-STYLE BACKGROUND SYNC MANAGER
  */
 
-class SyncManager {
+export class SyncManager {
   private isSyncing = false;
-  private syncInterval: ReturnType<typeof setInterval> | null = null;
+  private stopListening: (() => void) | null = null;
 
-  async initialize(agentId: string) {
-    if (!isNative()) return;
-
-    const { Network } = await import('@capacitor/network');
-
-    // 1. Listen for network changes
-    Network.addListener('networkStatusChange', async (status) => {
-      console.log('Network status changed', status);
-      if (status.connected) {
-        await this.autoSync(agentId);
-      }
-      this.setupPeriodicSync(agentId);
+  initialize(agentId: string): () => void {
+    this.stopListening?.();
+    if (!isNative()) return () => {};
+    let active = true;
+    let revision = 0;
+    let interval: ReturnType<typeof setInterval> | null = null;
+    const unsubscribe = watchNetwork(({ connected }) => {
+      const ticket = ++revision;
+      if (interval) clearInterval(interval);
+      interval = null;
+      if (!connected) return;
+      void this.autoSync(agentId);
+      void import('@capacitor/network').then(async ({ Network }) => {
+        const status = await Network.getStatus();
+        if (!active || ticket !== revision || !status.connected) return;
+        const intervalMs = status.connectionType === 'wifi' ? 30 * 60 * 1000 : 4 * 60 * 60 * 1000;
+        interval = setInterval(() => { void this.autoSync(agentId); }, intervalMs);
+      }).catch((error: unknown) => { console.warn('Sync scheduling failed', error); });
     });
-
-    // 2. Initial sync on open
-    const status = await Network.getStatus();
-    if (status.connected) {
-      this.autoSync(agentId);
-    }
-
-    this.setupPeriodicSync(agentId);
-  }
-
-  private async setupPeriodicSync(agentId: string) {
-    if (this.syncInterval) clearInterval(this.syncInterval);
-
-    const { Network } = await import('@capacitor/network');
-    const status = await Network.getStatus();
-    if (!status.connected) return;
-
-    // On WiFi: Sync every 30min. On Mobile Data: Sync every 4 hours
-    const intervalMs = status.connectionType === 'wifi'
-      ? 30 * 60 * 1000
-      : 4 * 60 * 60 * 1000;
-
-    this.syncInterval = setInterval(() => {
-      this.autoSync(agentId);
-    }, intervalMs);
+    const stop = () => {
+      if (!active) return;
+      active = false;
+      revision++;
+      unsubscribe();
+      if (interval) clearInterval(interval);
+      if (this.stopListening === stop) this.stopListening = null;
+    };
+    this.stopListening = stop;
+    return stop;
   }
 
   async autoSync(agentId: string) {
