@@ -1,19 +1,42 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
+import { PgDialect } from "drizzle-orm/pg-core"
+import type { SQL } from "drizzle-orm"
+import type { SessionUser } from "@/lib/session"
 
 const mocks = vi.hoisted(() => ({
-  requireUser: vi.fn(),
+  requireUser: vi.fn<() => Promise<SessionUser>>(),
   canIssueReceipt: vi.fn(),
   createReceipt: vi.fn(),
   select: vi.fn(),
   limit: vi.fn(),
+  where: vi.fn<(condition: SQL) => void>(),
 }))
 
 vi.mock("@/lib/db", () => ({ db: { select: mocks.select } }))
 vi.mock("@/lib/session", () => ({ requireUser: mocks.requireUser }))
-vi.mock("@/lib/permissions", () => ({ canIssueReceipt: mocks.canIssueReceipt }))
+vi.mock("@/lib/permissions", async (importOriginal) => ({
+  ...await importOriginal<typeof import("@/lib/permissions")>(),
+  canIssueReceipt: mocks.canIssueReceipt,
+}))
 vi.mock("@/app/actions/receipts", () => ({ createReceipt: mocks.createReceipt }))
 
 import { POST } from "./route"
+
+const current: SessionUser = {
+  id: "agent-1", name: "Agent One", email: "one@example.test", active: true,
+  role: "agent", organizationId: "org-1", clusterId: null, branchId: "branch-a",
+  schemeId: null, iamRoleId: null, roleLevel: 0, grants: [],
+  permissions: [{ code: "receipts.create", scope: "area" }],
+}
+
+function expectScopedLookup() {
+  const condition = mocks.where.mock.calls.at(-1)?.[0]
+  expect(condition).toBeDefined()
+  if (!condition) throw new Error("Expected scoped lookup")
+  const query = new PgDialect().sqlToQuery(condition)
+  expect(query.sql).toContain('"receipt"."branchId" =')
+  expect(query.params).toContain("branch-a")
+}
 
 function request(batch: unknown = [{ tempId: "local-1", data: {} }]) {
   return new Request("http://localhost/api/sync/receipts", {
@@ -25,10 +48,10 @@ function request(batch: unknown = [{ tempId: "local-1", data: {} }]) {
 
 beforeEach(() => {
   vi.resetAllMocks()
-  mocks.requireUser.mockResolvedValue({ id: "agent-1" })
+  mocks.requireUser.mockResolvedValue(current)
   mocks.canIssueReceipt.mockReturnValue(true)
   mocks.select.mockReturnValue({
-    from: () => ({ where: () => ({ limit: mocks.limit }) }),
+    from: () => ({ where: (condition: SQL) => { mocks.where(condition); return { limit: mocks.limit } } }),
   })
   mocks.limit.mockResolvedValue([{ id: "receipt-1", receiptNumber: "R-001" }])
 })
@@ -46,6 +69,7 @@ describe("receipt batch sync", () => {
       tempId: "local-1", success: true, serverId: "receipt-1", receiptNumber: "R-001", deduplicated: true,
     }])
     expect(mocks.createReceipt).not.toHaveBeenCalled()
+    expectScopedLookup()
   })
 
   it("recovers a duplicate receipt race without creating a second receipt", async () => {
@@ -56,6 +80,42 @@ describe("receipt batch sync", () => {
       tempId: "local-1", success: true, serverId: "receipt-1", receiptNumber: "R-001", deduplicated: true,
     }])
     expect(mocks.createReceipt).toHaveBeenCalledTimes(1)
+    expectScopedLookup()
+  })
+
+  it("does not acknowledge or disclose a duplicate outside the issuing scope", async () => {
+    mocks.limit.mockResolvedValue([])
+    mocks.createReceipt.mockRejectedValue(Object.assign(new Error("DUPLICATE_RECEIPT"), { duplicateReceiptId: "foreign-receipt" }))
+    expect(await (await POST(request())).json()).toEqual([{
+      tempId: "local-1", success: false, error: "Receipt not found or access denied",
+    }])
+    expectScopedLookup()
+  })
+
+  it("does not short-circuit authorization when a foreign idempotency key is retried", async () => {
+    mocks.limit.mockResolvedValue([])
+    mocks.createReceipt.mockResolvedValue({ ok: false, error: "Receipt not found or access denied" })
+    expect(await (await POST(request([{ tempId: "local-1", data: { idempotencyKey: "foreign-key" } }]))).json())
+      .toEqual([{ tempId: "local-1", success: false, error: "Receipt not found or access denied" }])
+    expectScopedLookup()
+    expect(mocks.createReceipt).toHaveBeenCalledTimes(1)
+  })
+
+  it("rejects a foreign target branch before the idempotency fast path", async () => {
+    const response = await POST(request([{ tempId: "local-1", data: { branchId: "branch-b", idempotencyKey: "key-1" } }]))
+    expect(await response.json()).toEqual([{
+      tempId: "local-1", success: false, error: "You are not authorized to issue receipts for this branch",
+    }])
+    expect(mocks.select).not.toHaveBeenCalled()
+    expect(mocks.createReceipt).not.toHaveBeenCalled()
+  })
+
+  it("does not use a global view grant to bypass the receipt-creation scope", async () => {
+    mocks.requireUser.mockResolvedValue({ ...current, permissions: [
+      { code: "receipts.create", scope: "area" }, { code: "receipts.view", scope: "global" },
+    ] })
+    await POST(request([{ tempId: "local-1", data: { idempotencyKey: "key-1" } }]))
+    expectScopedLookup()
   })
 
   it.each([new Error("database unavailable"), { message: "database unavailable" }])(

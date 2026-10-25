@@ -1,7 +1,7 @@
-import { eq, and, or, sql, inArray } from "drizzle-orm"
+import { eq, and, or, sql, inArray, isNull, type SQL } from "drizzle-orm"
 import { UserPermissionsContext, canViewAllData } from "../permissions"
 import { receipt, customer, branch, waterScheme, billingRun, billingRecord, meterReading, dailyCollectionRecord, crmSmsBatch, user as userTable } from "../db/schema"
-import { Scope } from "../iam"
+import type { Scope } from "../iam"
 import { db } from "../db"
 
 export type { UserPermissionsContext }
@@ -13,19 +13,32 @@ export type { UserPermissionsContext }
  * Derived dynamically from IAM permission scopes.
  */
 
+function parseScope(value: unknown): Scope | null {
+  switch (value) {
+    case "own":
+    case "scheme":
+    case "area":
+    case "cluster":
+    case "global":
+      return value
+    default:
+      return null
+  }
+}
+
 function getScope(user: UserPermissionsContext, permissionCode: string): Scope | null {
-  const grant = user.permissions?.find((p: any) =>
-    typeof p === "object" ? p.code === permissionCode : p === permissionCode
+  const grant = user.permissions?.find((p) =>
+    typeof p === "object" && p !== null ? p.code === permissionCode : p === permissionCode
   )
 
   let scope: Scope | null = null
 
   if (typeof grant === "object" && grant !== null) {
-    scope = (grant as any).scope as Scope
+    scope = parseScope(grant.scope)
   } else if (typeof grant === "string") {
     // Legacy fallback
     const g = user.grants?.find(g => g.code === permissionCode)
-    scope = (g?.scope as Scope) || null
+    scope = parseScope(g?.scope)
   }
 
   // HIERARCHY OVERRIDE 1: Global Authority check
@@ -85,30 +98,59 @@ export function applyUserScope(user: UserPermissionsContext) {
 /**
  * Applies organizational scope to Receipt queries.
  */
-export function applyReceiptScope(user: UserPermissionsContext) {
-  const scope = getScope(user, "receipts.view") || getScope(user, "dashboard.metrics.view")
+export function applyReceiptScope(user: UserPermissionsContext, permissionCode = "receipts.view") {
+  const scope = getScope(user, permissionCode) ||
+    (permissionCode === "receipts.view" ? getScope(user, "dashboard.metrics.view") : null)
   if (!scope) return sql`1 = 0`
 
   if (scope === "global") return undefined
 
+  // Older offline receipts may lack a branch snapshot. Creation retries use the
+  // recorded scheme first, and the linked customer only if both snapshots are
+  // absent. Present snapshots stay authoritative; view filters are unchanged.
+  const withCustomerFallback = (
+    predicate: SQL,
+    snapshot: typeof receipt.branchId | typeof receipt.schemeId,
+    customers: SQL,
+    schemes?: SQL,
+  ) => {
+    if (permissionCode !== "receipts.create") return predicate
+    const fallback = schemes
+      ? or(inArray(receipt.schemeId, schemes), and(isNull(receipt.schemeId), inArray(receipt.customerId, customers)))
+      : and(isNull(receipt.branchId), inArray(receipt.customerId, customers))
+    return or(predicate, and(isNull(snapshot), fallback))
+  }
+
+  const area = (branchId: string) => withCustomerFallback(
+    eq(receipt.branchId, branchId), receipt.branchId,
+    sql`(SELECT id FROM customer WHERE "waterSchemeId" IN (SELECT id FROM water_scheme WHERE "branchId" = ${branchId}))`,
+    sql`(SELECT id FROM water_scheme WHERE "branchId" = ${branchId})`,
+  )
+  const scheme = (schemeId: string) => withCustomerFallback(
+    eq(receipt.schemeId, schemeId), receipt.schemeId,
+    sql`(SELECT id FROM customer WHERE "waterSchemeId" = ${schemeId})`,
+  )
+
   if (scope === "cluster" && user.clusterId) {
-    return inArray(
+    return withCustomerFallback(
+      inArray(receipt.branchId, sql`(SELECT id FROM branch WHERE "clusterId" = ${user.clusterId})`),
       receipt.branchId,
-      sql`(SELECT id FROM branch WHERE "clusterId" = ${user.clusterId})`
+      sql`(SELECT id FROM customer WHERE "waterSchemeId" IN (SELECT id FROM water_scheme WHERE "branchId" IN (SELECT id FROM branch WHERE "clusterId" = ${user.clusterId})))`,
+      sql`(SELECT id FROM water_scheme WHERE "branchId" IN (SELECT id FROM branch WHERE "clusterId" = ${user.clusterId}))`,
     )
   }
 
   if (scope === "area" && user.branchId) {
-    return eq(receipt.branchId, user.branchId)
+    return area(user.branchId)
   }
 
   if (scope === "scheme" && user.schemeId) {
-    return eq(receipt.schemeId, user.schemeId)
+    return scheme(user.schemeId)
   }
 
   if (scope === "own") {
-    if (user.branchId) return eq(receipt.branchId, user.branchId)
-    if (user.schemeId) return eq(receipt.schemeId, user.schemeId)
+    if (user.branchId) return area(user.branchId)
+    if (user.schemeId) return scheme(user.schemeId)
     return eq(receipt.agentId, user.id)
   }
 

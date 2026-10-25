@@ -90,6 +90,7 @@ export async function createReceipt(input: CreateReceiptInput & { idempotencyKey
   }
 
   const amount = data.amount
+  const retryScope = applyReceiptScope(current, "receipts.create")
 
   try {
     const row = await db.transaction(async (tx) => {
@@ -102,6 +103,9 @@ export async function createReceipt(input: CreateReceiptInput & { idempotencyKey
           .limit(1)
 
         if (existing) {
+          const [accessible] = await tx.select({ id: receipt.id }).from(receipt)
+            .where(and(eq(receipt.id, existing.id), retryScope)).limit(1)
+          if (!accessible) throw new Error("Receipt not found or access denied")
           return existing
         }
       }
@@ -178,9 +182,7 @@ export async function createReceipt(input: CreateReceiptInput & { idempotencyKey
             : sql`SELECT id FROM receipt WHERE "customerId" = ${data.customerId} AND "agentId" = ${current.id} AND amount = ${amount} AND "billingRecordId" IS NULL AND "createdAt" > NOW() - INTERVAL '15 seconds' ORDER BY "createdAt" DESC LIMIT 1`
         )
         if (dup.rows[0]) {
-          const err = new Error("DUPLICATE_RECEIPT")
-          // @ts-expect-error - Custom property for error handling
-          err.duplicateReceiptId = dup.rows[0].id
+          const err = Object.assign(new Error("DUPLICATE_RECEIPT"), { duplicateReceiptId: dup.rows[0].id })
           throw err
         }
       }
@@ -392,14 +394,15 @@ export async function createReceipt(input: CreateReceiptInput & { idempotencyKey
     revalidatePath("/admin")
     return { ok: true as const, receipt: row }
   } catch (e: unknown) {
-    if (typeof e === 'object' && e !== null && 'duplicateReceiptId' in e) {
-      const duplicateReceiptId = (e as { duplicateReceiptId: string }).duplicateReceiptId
+    if (typeof e === 'object' && e !== null && 'duplicateReceiptId' in e && typeof e.duplicateReceiptId === "string") {
+      const duplicateReceiptId = e.duplicateReceiptId
       // Not a real failure — a near-identical receipt was already created
       // moments ago (double-click, retry after a dropped response, etc).
       // Return the existing receipt so the UI shows the same success
       // state instead of a confusing error, without creating a second
       // real financial record.
-      const [existing] = await db.select().from(receipt).where(eq(receipt.id, duplicateReceiptId)).limit(1)
+      const [existing] = await db.select().from(receipt)
+        .where(and(eq(receipt.id, duplicateReceiptId), retryScope)).limit(1)
       if (existing) {
         return { ok: true as const, receipt: existing, duplicate: true as const }
       }
