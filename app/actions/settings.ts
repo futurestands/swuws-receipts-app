@@ -54,7 +54,7 @@ export const getSettings = unstable_cache(
   { tags: ["settings"], revalidate: 3600 }
 )
 
-export async function updateBranding(input: any) {
+export async function updateBranding(input: Partial<typeof orgSettings.$inferInsert>) {
   const current = await requireUser(); if (!canConfigureSystem(current)) throw new Error("Forbidden")
   await db.update(orgSettings).set({ ...input, updatedAt: new Date() }).where(eq(orgSettings.id, 1))
   await writeAudit({ user: current, action: "settings.branding.update", entityType: "org_settings", entityId: "1" })
@@ -200,7 +200,7 @@ export async function listWaterSchemes() {
   return baseQuery.where(and(...conditions))
 }
 
-export async function createWaterScheme(input: any) {
+export async function createWaterScheme(input: Omit<typeof waterScheme.$inferInsert, "id">) {
   const current = await requireUser(); if (!canManageSchemes(current)) throw new Error("Forbidden")
   try {
     const [row] = await db.insert(waterScheme).values({ id: randomUUID(), ...input, code: input.code.toLowerCase() }).returning()
