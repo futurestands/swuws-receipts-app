@@ -8,7 +8,7 @@ import { isNative } from '../mobile-hardware';
 
 class SyncManager {
   private isSyncing = false;
-  private syncInterval: any = null;
+  private syncInterval: ReturnType<typeof setInterval> | null = null;
 
   async initialize(agentId: string) {
     if (!isNative()) return;
@@ -79,8 +79,7 @@ class SyncManager {
   }
 
   private async performSync(agentId: string) {
-    const startTime = Date.now();
-    let pushResults = { receipts: 0, readings: 0, failures: 0 };
+    const pushResults = { receipts: 0, readings: 0, failures: 0 };
 
     try {
       // 1. PUSH: Upload pending local items
@@ -176,9 +175,10 @@ class SyncManager {
         details: { customers: pull.loaded, total: pull.total, truncated: pull.truncated },
       });
 
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const errMessage = err instanceof Error ? err.message : String(err);
       console.error('Sync failed', err);
-      await sqliteService.logSync({ action: 'pull', status: 'failed', error: err.message });
+      await sqliteService.logSync({ action: 'pull', status: 'failed', error: errMessage });
 
       // If we have pending items and it failed, notify
       const pendingTotal = (await sqliteService.getQueuedReceipts()).length + (await sqliteService.getQueuedMeterReadings()).length;
