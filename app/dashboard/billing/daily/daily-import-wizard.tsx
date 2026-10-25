@@ -3,8 +3,6 @@
 import { useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
 import { toast } from "sonner"
@@ -15,7 +13,6 @@ import {
   Loader2,
   ChevronRight,
   FileSpreadsheet,
-  ShieldAlert,
 } from "lucide-react"
 import {
   validateDailyCollectionImport,
@@ -23,12 +20,13 @@ import {
   validateDailyBalanceSync,
   commitDailyBalanceSync,
   downloadDailyCollectionTemplate,
+  type DailyValidationSummary,
+  type DailySyncSummary,
 } from "@/app/actions/daily-collections"
 import { cn } from "@/lib/utils"
 import { formatUGX, formatDate } from "@/lib/format"
 import { StatCard, StatCardGrid } from "@/components/ui/stat-card"
 import { ScrollableTableContainer } from "@/components/ui/responsive-table"
-import { DynamicIcon } from "@/components/layout/icons"
 import * as XLSX from "xlsx"
 import {
   Dialog,
@@ -49,8 +47,9 @@ export function DailyImportWizard() {
   const [file, setFile] = useState<File | null>(null)
 
   // Unified summary state to prevent logic mismatches
-  const [summary, setSummary] = useState<any | null>(null)
+  const [summary, setSummary] = useState<DailyValidationSummary | DailySyncSummary | null>(null)
   const [isProcessing, startTransition] = useTransition()
+  const totalRecovery = summary ? ("totalCollection" in summary ? summary.totalCollection : summary.totalAmount) : 0
 
   async function handleDownloadTemplate(format: "xlsx" | "csv") {
     if (mode === "sync") {
@@ -80,7 +79,7 @@ export function DailyImportWizard() {
       a.download = `daily_collection_template.${format}`
       a.click()
       window.URL.revokeObjectURL(url)
-    } catch (err) {
+    } catch {
       toast.error("Failed to download template")
     }
   }
@@ -250,11 +249,11 @@ export function DailyImportWizard() {
                <StatCardGrid className="sm:grid-cols-2 lg:grid-cols-4 gap-2">
                   <StatCard
                     label={mode === 'sync' ? "Sync Records" : "Report Date"}
-                    value={mode === 'sync' ? summary.totalRecords : formatDate(summary.businessDate)}
+                    value={"businessDate" in summary ? formatDate(summary.businessDate) : summary.totalRecords}
                   />
                   <StatCard label="Valid" value={<span className="text-green-600">{summary.validRecords}</span>} />
                   <StatCard label="Errors" value={<span className="text-destructive">{summary.failedRecords}</span>} />
-                  <StatCard label="Total Recovery" value={<span className="text-primary">{formatUGX(mode === 'sync' ? summary.totalCollection : summary.totalAmount)}</span>} />
+                  <StatCard label="Total Recovery" value={<span className="text-primary">{formatUGX(totalRecovery)}</span>} />
                </StatCardGrid>
 
                <div className="border rounded-xl overflow-hidden shadow-sm">
@@ -269,11 +268,11 @@ export function DailyImportWizard() {
                            </TableRow>
                         </TableHeader>
                         <TableBody>
-                           {summary.previewRows?.map((row: any, i: number) => (
+                           {summary.previewRows.map((row, i) => (
                              <TableRow key={i} className={cn(!row.valid && "bg-destructive/5")}>
-                                <TableCell className="text-[11px] font-mono font-medium">{row.data.accountNumber}</TableCell>
-                                <TableCell className="text-[11px] font-medium">{formatUGX(mode === 'sync' ? row.data.totalDue : row.data.amountPaid)}</TableCell>
-                                {mode === 'sync' && <TableCell className="text-[11px] text-green-600 font-bold">{(row as any).collection > 0 ? `+${formatUGX((row as any).collection)}` : '—'}</TableCell>}
+                                <TableCell className="text-[11px] font-mono font-medium">{typeof row.data.accountNumber === "string" || typeof row.data.accountNumber === "number" ? row.data.accountNumber : null}</TableCell>
+                                <TableCell className="text-[11px] font-medium">{formatUGX(Number("collection" in row ? row.data.totalDue : row.data.amountPaid))}</TableCell>
+                                {mode === 'sync' && <TableCell className="text-[11px] text-green-600 font-bold">{"collection" in row && row.collection > 0 ? `+${formatUGX(row.collection)}` : '—'}</TableCell>}
                                 <TableCell>
                                    {row.valid ? <Badge variant="outline" className="text-[10px] text-green-600 bg-green-50 border-green-200">Valid</Badge> : <Badge variant="destructive" className="text-[10px]">Error</Badge>}
                                 </TableCell>
@@ -304,7 +303,7 @@ export function DailyImportWizard() {
                   <p className="text-sm text-muted-foreground px-6 leading-relaxed">
                     You are about to process <strong>{summary.validRecords}</strong> records.
                     {mode === 'sync' ? ' Customer balances will be updated to the latest EBS values and ' : ''}
-                    <strong>{formatUGX(mode === 'sync' ? summary.totalCollection : summary.totalAmount)}</strong> will be added to today&apos;s collections.
+                    <strong>{formatUGX(totalRecovery)}</strong> will be added to today&apos;s collections.
                   </p>
                </div>
             </div>
@@ -326,7 +325,7 @@ export function DailyImportWizard() {
                   </div>
                   <div className="flex justify-between text-[10px] font-bold text-muted-foreground uppercase">
                      <span>New Recovery:</span>
-                     <span className="text-primary">{formatUGX(mode === 'sync' ? summary.totalCollection : summary.totalAmount)}</span>
+                     <span className="text-primary">{formatUGX(totalRecovery)}</span>
                   </div>
                </div>
             </div>

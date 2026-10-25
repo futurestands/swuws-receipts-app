@@ -280,10 +280,10 @@ export function BillingImportClient({ schemes, periods }: Props) {
                 </TableHeader>
                 <TableBody>
                   {summary.rows.map((row, i) => {
-                    const rowData = row.valid ? row.data : (row.raw as any)
+                    const rowData = row.valid ? row.data : row.raw
                     return (
                     <TableRow key={i} className={cn(!row.valid && "bg-destructive/5")}>
-                      <TableCell className="font-medium text-xs">{rowData.accountNumber}</TableCell>
+                      <TableCell className="font-medium text-xs">{typeof rowData.accountNumber === "string" || typeof rowData.accountNumber === "number" ? rowData.accountNumber : null}</TableCell>
                       <TableCell className="text-xs">
                         {isNaN(Number(rowData.totalDue)) ? "Invalid Amount" : formatUGX(Number(rowData.totalDue))}
                       </TableCell>

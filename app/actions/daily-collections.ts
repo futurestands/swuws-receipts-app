@@ -317,7 +317,10 @@ export interface DailySyncSummary {
   validRecords: number
   failedRecords: number
   totalCollection: number
-  previewRows: { valid: boolean; errors: string[]; data: DailySyncRow | Record<string, unknown>; collection: number }[]
+  previewRows: Array<
+    ({ valid: true; data: DailySyncRow } | { valid: false; data: Record<string, unknown> })
+    & { errors: string[]; collection: number }
+  >
 }
 
 /**
@@ -407,19 +410,16 @@ export async function validateDailyBalanceSync(formData: FormData): Promise<{ ok
     })
 
     let totalCollection = 0
-    const rows = engineSummary.rows.map(r => {
+    const rows: DailySyncSummary["previewRows"] = engineSummary.rows.map(r => {
       let collection = 0
       if (r.valid) {
         const cust = customerMap.get(r.data.accountNumber.toLowerCase().trim())!
         collection = Math.max(0, Number(cust.balance) - r.data.totalDue)
         totalCollection += collection
       }
-      return {
-        valid: r.valid,
-        errors: r.errors,
-        data: (r.valid ? r.data : r.raw as unknown as DailySyncRow),
-        collection
-      }
+      return r.valid
+        ? { valid: true, errors: r.errors, data: r.data, collection }
+        : { valid: false, errors: r.errors, data: r.raw, collection }
     })
 
     return {
