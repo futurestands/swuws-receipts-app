@@ -193,13 +193,15 @@ export function HierarchyImportClient() {
               <Table>
                 <TableHeader><TableRow><TableHead>#</TableHead><TableHead>Type</TableHead><TableHead>Name</TableHead><TableHead>Code</TableHead><TableHead>Parent</TableHead><TableHead>Issues</TableHead></TableRow></TableHeader>
                 <TableBody>
-                  {summary.rows.map((row, i) => (
+                  {summary.rows.map((row, i) => {
+                    const rowData = row.valid ? row.data : (row.raw as Record<string, string>)
+                    return (
                     <TableRow key={i} className={cn(!row.valid && "bg-destructive/5")}>
                       <TableCell className="text-xs text-muted-foreground">{i + 1}</TableCell>
-                      <TableCell><Badge variant="outline">{row.data.type}</Badge></TableCell>
-                      <TableCell className="font-medium text-xs">{row.data.name}</TableCell>
-                      <TableCell className="text-xs font-mono">{row.data.code}</TableCell>
-                      <TableCell className="text-xs">{row.data.parentName || "—"}</TableCell>
+                      <TableCell><Badge variant="outline">{rowData.type || "—"}</Badge></TableCell>
+                      <TableCell className="font-medium text-xs">{rowData.name}</TableCell>
+                      <TableCell className="text-xs font-mono">{rowData.code}</TableCell>
+                      <TableCell className="text-xs">{rowData.parentName || "—"}</TableCell>
                       <TableCell>
                         <div className="space-y-1">
                           {row.errors.map((err, j) => (
@@ -215,7 +217,7 @@ export function HierarchyImportClient() {
                         </div>
                       </TableCell>
                     </TableRow>
-                  ))}
+                  )})}
                 </TableBody>
               </Table>
             </div>

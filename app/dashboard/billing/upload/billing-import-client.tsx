@@ -279,11 +279,13 @@ export function BillingImportClient({ schemes, periods }: Props) {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {summary.rows.map((row, i) => (
+                  {summary.rows.map((row, i) => {
+                    const rowData = row.valid ? row.data : (row.raw as any)
+                    return (
                     <TableRow key={i} className={cn(!row.valid && "bg-destructive/5")}>
-                      <TableCell className="font-medium text-xs">{row.data.accountNumber}</TableCell>
+                      <TableCell className="font-medium text-xs">{rowData.accountNumber}</TableCell>
                       <TableCell className="text-xs">
-                        {isNaN(Number(row.data.totalDue)) ? "Invalid Amount" : formatUGX(Number(row.data.totalDue))}
+                        {isNaN(Number(rowData.totalDue)) ? "Invalid Amount" : formatUGX(Number(rowData.totalDue))}
                       </TableCell>
                       <TableCell>
                         {row.valid ? (
@@ -298,7 +300,7 @@ export function BillingImportClient({ schemes, periods }: Props) {
                         ))}
                       </TableCell>
                     </TableRow>
-                  ))}
+                  )})}
                 </TableBody>
               </Table>
             </ScrollableTableContainer>

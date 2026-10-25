@@ -226,7 +226,8 @@ export async function importCustomers(summary: CustomerImportSummary): Promise<{
 
   // Include rows that failed the initial validation in the final report
   summary.rows.filter(r => !r.valid).forEach(r => {
-    reportRows.push({ ...r.data, Result: "Validation Failed", Details: r.errors.join("; ") })
+    const data = "data" in r ? r.data : r.raw
+    reportRows.push({ ...(data as any), Result: "Validation Failed", Details: r.errors.join("; ") })
     failedCount++
   })
 

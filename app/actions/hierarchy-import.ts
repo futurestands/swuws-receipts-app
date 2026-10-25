@@ -160,7 +160,8 @@ export async function importHierarchy(summary: HierarchyImportSummary): Promise<
 
   // Include invalid rows in the report
   summary.rows.filter(r => !r.valid).forEach(r => {
-    reportRows.push({ ...r.data, Result: "Validation Failed", Details: r.errors.join("; ") })
+    const data = "data" in r ? r.data : r.raw
+    reportRows.push({ ...(data as any), Result: "Validation Failed", Details: r.errors.join("; ") })
   })
 
   await writeAudit({

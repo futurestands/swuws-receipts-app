@@ -83,7 +83,7 @@ export function BulkImportClient() {
     startValidating(async () => {
       const response = await validateBulkUsers(formData)
       if (response.ok) {
-        setSummary(response.summary)
+        setSummary(response.summary as any)
         setStep("preview")
         toast.success("Validation complete")
       } else {
@@ -96,7 +96,7 @@ export function BulkImportClient() {
     if (!summary) return
 
     startImporting(async () => {
-      const response = await importBulkUsers(summary)
+      const response = await importBulkUsers(summary as any)
       if (response.ok) {
         setResult({ imported: response.imported, failed: response.failed, report: response.report })
         setStep("complete")
@@ -253,7 +253,9 @@ export function BulkImportClient() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {summary.rows.map((row, i) => (
+                  {summary.rows.map((row, i) => {
+                    const rowData = row.valid ? row.data : (row.raw as any)
+                    return (
                     <TableRow key={i} className={cn(!row.valid ? "bg-destructive/5" : "hover:bg-muted/50")}>
                       <TableCell className="text-xs text-muted-foreground">{i + 1}</TableCell>
                       <TableCell>
@@ -265,21 +267,21 @@ export function BulkImportClient() {
                           <Badge variant="destructive">Error</Badge>
                         )}
                       </TableCell>
-                      <TableCell className="font-medium text-xs">{row.data.name}</TableCell>
-                      <TableCell className="text-xs">{row.data.email}</TableCell>
+                      <TableCell className="font-medium text-xs">{rowData.name}</TableCell>
+                      <TableCell className="text-xs">{rowData.email}</TableCell>
                       <TableCell className="text-xs">
-                        {row.data.password ? (
-                          <span className="font-mono text-[10px]">{row.data.password}</span>
+                        {rowData.password ? (
+                          <span className="font-mono text-[10px]">{rowData.password}</span>
                         ) : (
                           <span className="text-muted-foreground italic text-[10px]">Auto-generated</span>
                         )}
                       </TableCell>
-                      <TableCell className="text-xs">{row.data.role}</TableCell>
+                      <TableCell className="text-xs">{rowData.role}</TableCell>
                       <TableCell className="text-xs">
                         <div className="flex flex-col">
-                          <span className="text-muted-foreground">{row.data.cluster}</span>
-                          <span>{row.data.area}</span>
-                          <span className="text-muted-foreground italic text-[10px]">{row.data.scheme}</span>
+                          <span className="text-muted-foreground">{rowData.cluster}</span>
+                          <span>{rowData.area}</span>
+                          <span className="text-muted-foreground italic text-[10px]">{rowData.scheme}</span>
                         </div>
                       </TableCell>
                       <TableCell>
@@ -297,7 +299,7 @@ export function BulkImportClient() {
                         </div>
                       </TableCell>
                     </TableRow>
-                  ))}
+                  )})}
                 </TableBody>
               </Table>
             </div>

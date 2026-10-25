@@ -800,7 +800,7 @@ export async function importBilling(
     }, current)
 
     summary.rows.forEach((r) => {
-      reportRows.push({ ...r.data, Result: r.valid ? "Success" : "Failed", Details: r.errors.join("; ") })
+      reportRows.push({ ...(r.valid ? r.data : r.raw), Result: r.valid ? "Success" : "Failed", Details: r.errors.join("; ") })
     })
 
     revalidatePath("/dashboard/billing")
