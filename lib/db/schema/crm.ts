@@ -1,4 +1,5 @@
 import {
+  date,
   pgTable,
   text,
   timestamp,
@@ -107,6 +108,7 @@ export const crmComplaint = pgTable("crm_complaint", {
 export const crmSmsBatch = pgTable("crm_sms_batch", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
+  dueDate: date("dueDate", { mode: "string" }),
   category: text("category").notNull(), // 'Bill Reminders', 'Seasonal Greetings', 'Alerts'
   templateId: text("templateId").references(() => managedTemplate.id, { onDelete: "set null" }),
   // draft → pending_approval → approved → processing → completed | failed

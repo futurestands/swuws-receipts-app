@@ -48,7 +48,7 @@ export async function middleware(request: NextRequest) {
 
   // 2. Auth checks
   const sessionCookie = getSessionCookie(request)
-  const isPublic = PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`)) || pathname.startsWith("/api/auth")
+  const isPublic = PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`)) || pathname.startsWith("/api/auth") || pathname === "/api/webhooks/pegasus"
 
   if (!sessionCookie && !isPublic && pathname !== "/") {
     const url = request.nextUrl.clone()

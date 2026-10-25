@@ -73,7 +73,7 @@ export function SmsBatchActions({
   const showSubmit = canSubmit && (status === "draft" || status === "rejected")
   const showApprove = canApprove && (status === "pending_approval" || status === "draft")
   const showReject = canApprove && status === "pending_approval"
-  const showResume = canApprove && (status === "processing" || status === "failed" || status === "approved")
+  const showResume = canApprove && (status === "processing" || status === "pending" || status === "failed" || status === "approved")
 
   return (
     <>

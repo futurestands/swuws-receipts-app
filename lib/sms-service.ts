@@ -46,6 +46,7 @@ async function getGatewayCredentials(): Promise<GatewayCreds | null> {
 }
 
 async function sendViaProvider(to: string, message: string) {
+  if (process.env.VERCEL_ENV === "preview") return { ok: false as const, error: "preview_disabled" }
   const creds = await getGatewayCredentials()
   if (!creds) return { ok: false as const, error: "not_configured" }
   return sendWithProvider(creds, to, message)
@@ -79,7 +80,7 @@ export async function sendSMS(
     ? null
     : result.error === "invalid_number"
       ? "invalid_number"
-      : result.error === "not_configured"
+      : (result.error === "not_configured" || result.error === "preview_disabled")
         ? "not_configured"
         : "gateway_error"
 

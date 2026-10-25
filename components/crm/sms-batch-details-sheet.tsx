@@ -24,6 +24,8 @@ const STATUS_STYLES: Record<string, string> = {
   sent: "bg-emerald-100 text-emerald-700 border-emerald-200",
   delivered: "bg-emerald-100 text-emerald-700 border-emerald-200",
   failed: "bg-rose-100 text-rose-700 border-rose-200",
+  unknown: "bg-rose-100 text-rose-700 border-rose-200",
+  processing: "bg-amber-100 text-amber-700 border-amber-200",
   queued: "bg-amber-100 text-amber-700 border-amber-200",
 }
 
@@ -104,6 +106,8 @@ export function SmsBatchDetailsSheet({
             <option value="sent">Sent</option>
             <option value="delivered">Delivered</option>
             <option value="failed">Failed</option>
+            <option value="unknown">Delivery uncertain — review required</option>
+            <option value="processing">Sending / interrupted</option>
           </select>
           {loading && <Loader2 className="h-4 w-4 animate-spin text-slate-400" />}
         </div>
@@ -152,7 +156,7 @@ export function SmsBatchDetailsSheet({
                       </Badge>
                     </TableCell>
                     <TableCell className="text-[10px] text-slate-500 max-w-[220px]">
-                      {record.error || (record.status === "queued" ? "Ready to send" : record.status === "failed" ? "Sending failed" : record.status === "delivered" ? "Delivery confirmed" : "Accepted by gateway")}
+                      {record.error || (record.status === "queued" ? "Ready to send" : record.status === "processing" || record.status === "unknown" ? "Delivery requires review; do not resend automatically" : record.status === "failed" ? "Sending failed" : record.status === "delivered" ? "Delivery confirmed" : "Accepted by gateway")}
                       <Button type="button" variant="outline" size="sm" className="mt-2 h-8 text-xs" aria-controls={`${id}-preview`} aria-pressed={selectedRecord?.id === record.id} onClick={() => { setSelectedRecordId(record.id); previewRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }) }}>Preview SMS</Button>
                     </TableCell>
                   </TableRow>

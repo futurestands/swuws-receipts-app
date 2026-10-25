@@ -26,7 +26,7 @@ jobs:
         run: |
           # .env.example files document the key name. Fail only if a real
           # assignment is committed outside those templates.
-          if git grep -n "BETTER_AUTH_SECRET=" -- ':!.env.example' ':!.env.production.example' ':!*.md'; then
+          if git grep -n -E '^[[:space:]]*(export[[:space:]]+)?BETTER_AUTH_SECRET[[:space:]]*=' -- ':!.env.example' ':!.env.production.example' ':!*.md'; then
             echo "CRITICAL SECURITY ERROR: BETTER_AUTH_SECRET assigned outside example files"
             exit 1
           fi
