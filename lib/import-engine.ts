@@ -59,10 +59,12 @@ export async function getImportMapping(code: string): Promise<Record<string, str
  * Core engine to process an Excel file into validated typed objects.
  * Supports both Header-based mapping (with aliases) and Positional mapping.
  */
+export type ImportColumnMapping = Record<string, string | (string | number)[] | number>
+
 export async function processExcelImport<Output, Input = unknown>(params: {
   file: File
   schema: z.ZodType<Output, z.ZodTypeDef, Input>
-  mapping: Record<string, string | string[] | number>
+  mapping: ImportColumnMapping
   headerMode?: "headers" | "none"
   onValidateRow?: (
     row: Output,

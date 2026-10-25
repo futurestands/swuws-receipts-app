@@ -61,32 +61,41 @@ export async function POST(req: Request) {
         } else {
           results.push({ tempId: item.tempId, success: false, error: res.error })
         }
-      } catch (err: any) {
+      } catch (err: unknown) {
+        const message = typeof err === "object" && err !== null && "message" in err && typeof err.message === "string"
+          ? err.message
+          : undefined
+        const duplicateReceiptId = typeof err === "object" && err !== null && "duplicateReceiptId" in err && typeof err.duplicateReceiptId === "string"
+          ? err.duplicateReceiptId
+          : undefined
         // Handle the specific DUPLICATE_RECEIPT error thrown by the action if a race occurred
-        if (err.message === "DUPLICATE_RECEIPT" && err.duplicateReceiptId) {
+        if (message === "DUPLICATE_RECEIPT" && duplicateReceiptId) {
            // Fetch the number for the response
            const [existing] = await db
              .select({ receiptNumber: receipt.receiptNumber })
              .from(receipt)
-             .where(eq(receipt.id, err.duplicateReceiptId))
+             .where(eq(receipt.id, duplicateReceiptId))
              .limit(1)
 
            results.push({
              tempId: item.tempId,
              success: true,
-             serverId: err.duplicateReceiptId,
+             serverId: duplicateReceiptId,
              receiptNumber: existing?.receiptNumber,
              deduplicated: true
            })
         } else {
-          results.push({ tempId: item.tempId, success: false, error: err.message || "Sync failed" })
+          results.push({ tempId: item.tempId, success: false, error: message || "Sync failed" })
         }
       }
     }
 
     return NextResponse.json(results)
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error("Batch receipt sync error:", err)
-    return NextResponse.json({ error: err.message || "Internal server error" }, { status: 500 })
+    const message = typeof err === "object" && err !== null && "message" in err && typeof err.message === "string"
+      ? err.message
+      : undefined
+    return NextResponse.json({ error: message || "Internal server error" }, { status: 500 })
   }
 }

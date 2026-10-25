@@ -33,7 +33,7 @@ import * as XLSX from "xlsx"
 import { randomUUID } from "crypto"
 import { revalidatePath } from "next/cache"
 import { createNotification } from "./notifications"
-import { processExcelImport, getImportMapping, type ImportSummary } from "@/lib/import-engine"
+import { processExcelImport, getImportMapping, type ImportSummary, type ImportColumnMapping } from "@/lib/import-engine"
 import { DEFAULT_BILLING_IMPORT_MAPPING } from "@/lib/import-mappings"
 import { billingImportSchema, type BillingImportRow } from "@/lib/import-schemas"
 import { logEvent, logFinancial } from "@/lib/logger"
@@ -471,8 +471,7 @@ export async function validateBillingImport(
       const dbMappingRaw = await getImportMapping("import.billing.monthly")
 
       // ULTIMATE RESILIENCE: Merge custom keys ADDITIVELY with defaults
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const mapping = { ...DEFAULT_BILLING_IMPORT_MAPPING } as Record<string, any>
+      const mapping: ImportColumnMapping = { ...DEFAULT_BILLING_IMPORT_MAPPING }
       if (dbMappingRaw) {
         for (const [k, v] of Object.entries(dbMappingRaw)) {
           const lowerK = k.toLowerCase()
@@ -496,7 +495,7 @@ export async function validateBillingImport(
 
   const engineSummary = await processExcelImport({
     file,
-    schema: billingImportSchema as any,
+    schema: billingImportSchema,
     mapping,
     headerMode: noHeaders ? "none" : "headers",
     onValidateRow: (data: BillingImportRow) => {
