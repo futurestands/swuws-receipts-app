@@ -14,8 +14,9 @@ import {
   validateBulkUsers,
   importBulkUsers,
   downloadBulkImportTemplate,
-  type ImportSummary,
+  type UserImportSummary,
 } from "@/app/actions/bulk-import"
+import type { UserImportRow } from "@/lib/import-schemas"
 import { cn } from "@/lib/utils"
 
 type Step = "setup" | "preview" | "confirm" | "complete"
@@ -23,7 +24,7 @@ type Step = "setup" | "preview" | "confirm" | "complete"
 export function BulkImportClient() {
   const [step, setStep] = useState<Step>("setup")
   const [file, setFile] = useState<File | null>(null)
-  const [summary, setSummary] = useState<ImportSummary | null>(null)
+  const [summary, setSummary] = useState<UserImportSummary | null>(null)
   const [isValidating, startValidating] = useTransition()
   const [isImporting, startImporting] = useTransition()
   const [result, setResult] = useState<{ imported: number; failed: number; report: string } | null>(null)
@@ -241,7 +242,7 @@ export function BulkImportClient() {
                 </TableHeader>
                 <TableBody>
                   {summary.rows.map((row, i) => {
-                    const rowData = row.data
+                    const rowData = row.valid ? row.data : (row.raw as unknown as UserImportRow)
                     return (
                     <TableRow key={i} className={cn(!row.valid ? "bg-destructive/5" : "hover:bg-muted/50")}>
                       <TableCell className="text-xs text-muted-foreground">{i + 1}</TableCell>

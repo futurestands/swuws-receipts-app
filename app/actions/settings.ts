@@ -54,9 +54,15 @@ export const getSettings = unstable_cache(
   { tags: ["settings"], revalidate: 3600 }
 )
 
-export async function updateBranding(input: Partial<typeof orgSettings.$inferInsert>) {
+import { updateBrandingSchema, createWaterSchemeSchema, type UpdateBrandingInput, type CreateWaterSchemeInput } from "@/lib/settings-schemas"
+
+export async function updateBranding(input: UpdateBrandingInput) {
   const current = await requireUser(); if (!canConfigureSystem(current)) throw new Error("Forbidden")
-  await db.update(orgSettings).set({ ...input, updatedAt: new Date() }).where(eq(orgSettings.id, 1))
+  const parsed = updateBrandingSchema.safeParse(input)
+  if (!parsed.success) {
+    return { ok: false as const, error: "Invalid settings input" }
+  }
+  await db.update(orgSettings).set({ ...parsed.data, updatedAt: new Date() }).where(eq(orgSettings.id, 1))
   await writeAudit({ user: current, action: "settings.branding.update", entityType: "org_settings", entityId: "1" })
   revalidatePath("/", "layout"); return { ok: true as const }
 }
@@ -200,12 +206,23 @@ export async function listWaterSchemes() {
   return baseQuery.where(and(...conditions))
 }
 
-export async function createWaterScheme(input: Omit<typeof waterScheme.$inferInsert, "id">) {
+export async function createWaterScheme(input: CreateWaterSchemeInput) {
   const current = await requireUser(); if (!canManageSchemes(current)) throw new Error("Forbidden")
+  const parsed = createWaterSchemeSchema.safeParse(input)
+  if (!parsed.success) {
+    return { ok: false as const, error: "Invalid scheme input" }
+  }
   try {
-    const [row] = await db.insert(waterScheme).values({ id: randomUUID(), ...input, code: input.code.toLowerCase() }).returning()
+    const schemeId = randomUUID()
+    const [row] = await db.insert(waterScheme).values({
+      id: schemeId,
+      ...parsed.data,
+      code: parsed.data.code.toLowerCase(),
+    }).returning()
     revalidatePath("/admin"); return { ok: true as const, scheme: row }
-  } catch (e: unknown) { return { ok: false as const, error: e instanceof Error ? e.message : "Unable to save settings" } }
+  } catch {
+    return { ok: false as const, error: "Unable to save settings" }
+  }
 }
 
 export async function setWaterSchemeActive(id: string, active: boolean) {
