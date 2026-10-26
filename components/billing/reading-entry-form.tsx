@@ -15,7 +15,7 @@ import {
 } from "@/components/ui/dialog"
 import { toast } from "sonner"
 import { formatUGX, formatDateTime, formatDate } from "@/lib/format"
-import { CheckCircle2, Calculator, Send, Search, User, Printer, XCircle, History, Trash2, Smartphone, Loader2, ShieldAlert } from "lucide-react"
+import { CheckCircle2, Calculator, Send, Search, Printer, XCircle, History, Trash2, Smartphone, Loader2, ShieldAlert } from "lucide-react"
 import { getTariffForCustomer, submitMeterReading, searchCustomersForReading, cancelMeterReading, sendReadingSms, reportBillingDiscrepancy } from "@/app/actions/billing-engine"
 import { calculateBill, type BillingCalculation } from "@/lib/billing/math"
 import type { Customer, BillingPeriod, TariffConfiguration } from "@/lib/db/schema"
@@ -65,10 +65,6 @@ export function ReadingEntryForm({
   const [isPending, startTransition] = useTransition()
   const [isSendingSms, setIsSendingSms] = useState(false)
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-
-  useEffect(() => {
-    setPrintedAt(formatDateTime(new Date()))
-  }, [])
 
   // Quick Search Logic
   useEffect(() => {
@@ -190,6 +186,7 @@ export function ReadingEntryForm({
             }
 
             setLastSubmission(newSubmission)
+            setPrintedAt(formatDateTime(new Date()))
 
             // Update local history
             setHistory(prev => [{

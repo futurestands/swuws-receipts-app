@@ -19,9 +19,7 @@ dns.setDefaultResultOrder("ipv4first")
  */
 
 declare global {
-  // eslint-disable-next-line no-var
   var __pool: Pool | undefined
-  // eslint-disable-next-line no-var
   var __poolGen: number | undefined
 }
 
@@ -32,7 +30,6 @@ function createPool(): Pool {
     return new Pool()
   }
 
-  const isProduction = process.env.NODE_ENV === "production"
   const isVercel = !!process.env.VERCEL
 
   // Goal Alignment: More robust SSL detection. Enable SSL for all remote hosts.
@@ -40,7 +37,7 @@ function createPool(): Pool {
   try {
     const url = new URL(urlString)
     useSsl = url.hostname !== "localhost" && url.hostname !== "127.0.0.1"
-  } catch (e) {
+  } catch {
     useSsl = urlString.includes("supabase.co") || urlString.includes("pooler.supabase.com")
   }
   const sslConfig = useSsl ? { rejectUnauthorized: false } : false
@@ -68,7 +65,7 @@ function createPool(): Pool {
 
     console.log(`[DB Init] Connection config: ${config.user}@${config.host}:${config.port}/${config.database} (SSL: ${!!config.ssl})`)
     return new Pool(config)
-  } catch (e) {
+  } catch {
     console.warn("[DB Init] URL parsing failed, falling back to connectionString")
     return new Pool({
       connectionString: urlString,

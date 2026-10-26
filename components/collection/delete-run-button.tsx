@@ -31,7 +31,7 @@ export function DeleteRunButton({ runId, schemeName }: { runId: string, schemeNa
       } else {
         toast.error(res.error || "Failed to delete billing run")
       }
-    } catch (err) {
+    } catch {
       toast.error("A connection error occurred")
     } finally {
       setLoading(false)

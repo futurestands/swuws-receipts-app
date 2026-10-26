@@ -9,26 +9,13 @@ import { Label } from "@/components/ui/label"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
 import { toast } from "sonner"
-import {
-  Download,
-  Upload,
-  CheckCircle2,
-  AlertCircle,
-  AlertTriangle,
-  FileSpreadsheet,
-  Loader2,
-  ChevronRight,
-  ChevronLeft,
-  XCircle,
-  RefreshCw,
-} from "lucide-react"
+import { Download, Upload, CheckCircle2, AlertCircle, AlertTriangle, Loader2, ChevronRight, ChevronLeft, XCircle, RefreshCw } from "lucide-react"
 import {
   validateBulkUsers,
   importBulkUsers,
   downloadBulkImportTemplate,
+  type ImportSummary,
 } from "@/app/actions/bulk-import"
-import { type UserImportRow } from "@/lib/import-schemas"
-import { type ImportSummary } from "@/lib/import-engine"
 import { cn } from "@/lib/utils"
 
 type Step = "setup" | "preview" | "confirm" | "complete"
@@ -36,7 +23,7 @@ type Step = "setup" | "preview" | "confirm" | "complete"
 export function BulkImportClient() {
   const [step, setStep] = useState<Step>("setup")
   const [file, setFile] = useState<File | null>(null)
-  const [summary, setSummary] = useState<ImportSummary<UserImportRow> | null>(null)
+  const [summary, setSummary] = useState<ImportSummary | null>(null)
   const [isValidating, startValidating] = useTransition()
   const [isImporting, startImporting] = useTransition()
   const [result, setResult] = useState<{ imported: number; failed: number; report: string } | null>(null)
@@ -83,7 +70,7 @@ export function BulkImportClient() {
     startValidating(async () => {
       const response = await validateBulkUsers(formData)
       if (response.ok) {
-        setSummary(response.summary as any)
+        setSummary(response.summary)
         setStep("preview")
         toast.success("Validation complete")
       } else {
@@ -96,7 +83,7 @@ export function BulkImportClient() {
     if (!summary) return
 
     startImporting(async () => {
-      const response = await importBulkUsers(summary as any)
+      const response = await importBulkUsers(summary)
       if (response.ok) {
         setResult({ imported: response.imported, failed: response.failed, report: response.report })
         setStep("complete")
@@ -254,7 +241,7 @@ export function BulkImportClient() {
                 </TableHeader>
                 <TableBody>
                   {summary.rows.map((row, i) => {
-                    const rowData = row.valid ? row.data : (row.raw as any)
+                    const rowData = row.data
                     return (
                     <TableRow key={i} className={cn(!row.valid ? "bg-destructive/5" : "hover:bg-muted/50")}>
                       <TableCell className="text-xs text-muted-foreground">{i + 1}</TableCell>

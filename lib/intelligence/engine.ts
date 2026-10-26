@@ -1,16 +1,5 @@
 import { db } from "@/lib/db"
-import {
-  waterScheme,
-  branch,
-  cluster,
-  billingPeriod,
-  billingRecord,
-  meterReading,
-  waterSchemeSource,
-  waterProductionLog,
-  schemeTarget,
-  intelligenceFinding,
-} from "@/lib/db/schema"
+import { waterScheme, billingPeriod, billingRecord, meterReading, waterSchemeSource, waterProductionLog, schemeTarget, intelligenceFinding } from "@/lib/db/schema"
 import { eq, and, sql, sum, count, desc, inArray } from "drizzle-orm"
 import { UserPermissionsContext } from "@/lib/permissions"
 import { applyIntelligenceSchemeFilter } from "./scope"
@@ -93,7 +82,7 @@ export async function runIntelligenceEngine(
   const periodName = selectedPeriod?.periodName || "Current Period"
 
   // 4. Gather DB Data Across Schemes in Parallel
-  const [sourcesRows, prodLogRows, meterReadingsRows, billingRows, targetRows, storedPersistedFindings] = await Promise.all([
+  const [sourcesRows, prodLogRows, meterReadingsRows, billingRows, targetRows] = await Promise.all([
     // A. Scheme Sources
     db
       .select({

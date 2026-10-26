@@ -1,13 +1,13 @@
 import { requireUser } from "@/lib/session"
 import Link from "next/link"
 import { canViewReports } from "@/lib/permissions"
-import { getDashboardStats, getCollectionTrends, getTopDebtors } from "@/app/actions/reports"
+import { getDashboardStats, getTopDebtors } from "@/app/actions/reports"
 import { getCollectionPeriods, getAuthorizedSchemes } from "@/app/actions/billing"
 import { listActiveBranches } from "@/app/actions/receipts"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { formatUGX, formatPercent } from "@/lib/format"
-import { AlertCircle, TrendingUp, Users, FileText, Landmark, Percent } from "lucide-react"
+import { AlertCircle, TrendingUp, FileText, Percent } from "lucide-react"
 import { ReportFilters } from "./report-filters"
 import { Progress } from "@/components/ui/progress"
 
@@ -72,7 +72,7 @@ export default async function ReportsPage({
   }
 
   // Explicit type matching for ReportFilters
-  const schemes = schemesData.map((s: any) => ({
+  const schemes = schemesData.map((s) => ({
     ...s,
     code: s.id, // Fallback code
     active: true,

@@ -13,7 +13,6 @@ import {
 } from "@/app/actions/decision-support"
 import {
   TrustedPerformanceDataset,
-  ManagementActionItem,
 } from "@/lib/decision-support/types"
 import { StructuredFinding } from "@/lib/intelligence/types"
 import { FullReconciliationReport, ReconciledSchemeItem } from "@/lib/decision-support/scheme-matcher"
@@ -26,35 +25,18 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { formatUGX } from "@/lib/format"
-import {
-  Activity,
-  AlertTriangle,
-  FileText,
-  Presentation,
-  CheckCircle2,
-  Download,
-  ListTodo,
-  ExternalLink,
-  Printer,
-  ShieldCheck,
-  Search,
-  Filter,
-  Eye,
-  XCircle,
-  HelpCircle,
-  Info,
-} from "lucide-react"
+import { Activity, AlertTriangle, Presentation, CheckCircle2, Download, ListTodo, ExternalLink, Printer, ShieldCheck, Search, Eye, XCircle, Info } from "lucide-react"
 
 export default function DecisionSupportPage() {
   const [dataset, setDataset] = useState<TrustedPerformanceDataset | null>(null)
   const [attentionItems, setAttentionItems] = useState<StructuredFinding[]>([])
-  const [actions, setActions] = useState<ManagementActionItem[]>([])
+  const [actions, setActions] = useState<Awaited<ReturnType<typeof getDecisionSupportOverviewAction>>["actions"]>([])
   const [reconciliationReport, setReconciliationReport] = useState<FullReconciliationReport | null>(null)
   const [activeTab, setActiveTab] = useState("overview")
 
-  const [isLoading, startTransition] = useTransition()
+  const [, startTransition] = useTransition()
   const [isGeneratingPptx, setIsGeneratingPptx] = useState(false)
-  const [reportOutput, setReportOutput] = useState<any>(null)
+  const [reportOutput, setReportOutput] = useState<Awaited<ReturnType<typeof generateManagementReportAction>> | null>(null)
 
   // Reconciliation Filters & Inspection Modal State
   const [reconFilter, setReconFilter] = useState<"ALL" | "APPROVED" | "HIERARCHY_MISMATCH" | "UNMATCHED" | "NORMALIZED">("ALL")
@@ -77,7 +59,7 @@ export default function DecisionSupportPage() {
         ])
         setDataset(resOverview.dataset)
         setAttentionItems(resOverview.attentionItems)
-        setActions(resOverview.actions as any)
+        setActions(resOverview.actions)
         setReconciliationReport(resRecon)
       } catch (err) {
         console.error("Failed to load decision support overview:", err)
@@ -119,7 +101,7 @@ export default function DecisionSupportPage() {
     }
   }
 
-  const handleGenerateReport = async (type: any) => {
+  const handleGenerateReport = async (type: Parameters<typeof generateManagementReportAction>[0]) => {
     try {
       const rep = await generateManagementReportAction(type)
       setReportOutput(rep)
@@ -141,7 +123,7 @@ export default function DecisionSupportPage() {
     loadData()
   }
 
-  const handleUpdateActionStatus = async (actionId: string, status: any) => {
+  const handleUpdateActionStatus = async (actionId: string, status: Parameters<typeof updateManagementActionStatusAction>[0]["status"]) => {
     await updateManagementActionStatusAction({ actionId, status })
     loadData()
   }
@@ -722,7 +704,7 @@ export default function DecisionSupportPage() {
                     <p className="text-foreground leading-relaxed bg-muted/20 p-4 rounded-lg border">{reportOutput.summaryNarrative}</p>
                   </div>
 
-                  {reportOutput.sections.map((sec: any, idx: number) => (
+                  {reportOutput.sections.map((sec, idx) => (
                     <div key={idx} className="space-y-3">
                       <h3 className="text-sm font-bold border-b pb-1">{sec.heading}</h3>
                       <p className="text-xs text-muted-foreground">{sec.content}</p>
@@ -737,7 +719,7 @@ export default function DecisionSupportPage() {
                               </tr>
                             </thead>
                             <tbody className="divide-y">
-                              {sec.metricsTable.rows.map((r: any[], i: number) => (
+                              {sec.metricsTable.rows.map((r, i) => (
                                 <tr key={i}>
                                   {r.map((c, j) => (
                                     <td key={j} className="p-2 font-mono">{String(c)}</td>

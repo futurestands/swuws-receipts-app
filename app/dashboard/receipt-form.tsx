@@ -6,7 +6,7 @@ import { createReceipt } from "@/app/actions/receipts"
 import { type CreateReceiptInput } from "@/lib/finance-schemas"
 import { quickSearchCustomers } from "@/app/actions/customers"
 import { getOpenBillsForCustomer } from "@/app/actions/billing"
-import type { EditableFields, Branch, PaymentMethod, Customer, BillingPeriod, WaterScheme } from "@/lib/db/schema"
+import type { EditableFields, Branch, PaymentMethod, Customer, BillingPeriod } from "@/lib/db/schema"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
@@ -22,7 +22,7 @@ import { SearchableSelect } from "@/components/ui/searchable-select"
 import { toast } from "sonner"
 import { formatUGX, formatDate } from "@/lib/format"
 import { cn } from "@/lib/utils"
-import { ResponsiveFormLayout, FormField, FormActions } from "@/components/ui/form-layout"
+import { FormField, FormActions } from "@/components/ui/form-layout"
 import Link from "next/link"
 import { AlertCircle, Search, UserPlus } from "lucide-react"
 import { effectiveBillTakenDate, resolveBillForPayment } from "@/lib/billing/period-dates"
@@ -79,7 +79,7 @@ export function ReceiptForm({
   branches: Branch[]
   paymentMethods: PaymentMethod[]
   billingPeriods?: BillingPeriod[]
-  schemes?: WaterScheme[]
+  schemes?: Array<{ id: string; name: string; branchId: string | null }>
   activePeriodId?: string
 }) {
   const router = useRouter()
@@ -99,7 +99,6 @@ export function ReceiptForm({
   const [customerResults, setCustomerResults] = useState<Customer[]>([])
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null)
   const [bills, setBills] = useState<Bill[]>([])
-  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   // Stability fix: without this, a slower earlier request that resolves
   // after a faster later one could overwrite fresher results with stale
   // ones. Each debounced search gets a ticket; only the most recent
@@ -117,7 +116,9 @@ export function ReceiptForm({
         if (active) setBills(data)
       })
     } else {
-      setBills([])
+      Promise.resolve().then(() => {
+        if (active) setBills([])
+      })
     }
     return () => {
       active = false
@@ -158,17 +159,19 @@ export function ReceiptForm({
       activePeriodId || null,
     )
     if (!resolved.billingRecordId && !resolved.billingPeriodId) return
-    setForm((f) => {
-      const nextRecordId = resolved.billingRecordId || ""
-      const nextPeriodId = resolved.billingPeriodId || f.billingPeriodId
-      if (f.billingRecordId === nextRecordId && f.billingPeriodId === nextPeriodId) {
-        return f
-      }
-      return {
-        ...f,
-        billingRecordId: nextRecordId,
-        billingPeriodId: nextPeriodId,
-      }
+    queueMicrotask(() => {
+      setForm((f) => {
+        const nextRecordId = resolved.billingRecordId || ""
+        const nextPeriodId = resolved.billingPeriodId || f.billingPeriodId
+        if (f.billingRecordId === nextRecordId && f.billingPeriodId === nextPeriodId) {
+          return f
+        }
+        return {
+          ...f,
+          billingRecordId: nextRecordId,
+          billingPeriodId: nextPeriodId,
+        }
+      })
     })
   }, [selectedCustomer, bills, form.paymentDate, activePeriodId, billingPeriods])
 

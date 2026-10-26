@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useTransition } from "react"
+import { useState, useEffect, useTransition, useCallback } from "react"
 import Link from "next/link"
 import {
   getIntelligenceDashboard,
@@ -17,22 +17,9 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Input } from "@/components/ui/input"
+
 import { formatUGX } from "@/lib/format"
-import {
-  AlertCircle,
-  AlertTriangle,
-  Activity,
-  CheckCircle2,
-  TrendingDown,
-  TrendingUp,
-  Search,
-  SlidersHorizontal,
-  Lightbulb,
-  Gauge,
-  ArrowRight,
-  ExternalLink,
-} from "lucide-react"
+import { Activity, CheckCircle2, TrendingDown, TrendingUp, SlidersHorizontal, Lightbulb, ExternalLink } from "lucide-react"
 
 export default function IntelligencePage() {
   const [data, setData] = useState<{
@@ -52,7 +39,7 @@ export default function IntelligencePage() {
   const [selectedFinding, setSelectedFinding] = useState<StructuredFinding | null>(null)
   const [drawerOpen, setDrawerOpen] = useState(false)
 
-  const loadData = () => {
+  const loadData = useCallback(() => {
     startTransition(async () => {
       try {
         const res = await getIntelligenceDashboard(filters)
@@ -61,11 +48,11 @@ export default function IntelligencePage() {
         console.error("Failed to load intelligence dashboard:", err)
       }
     })
-  }
+  }, [filters])
 
   useEffect(() => {
     loadData()
-  }, [filters.category, filters.severity, filters.status])
+  }, [loadData])
 
   const openInvestigation = (finding: StructuredFinding) => {
     setSelectedFinding(finding)

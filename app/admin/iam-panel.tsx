@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useTransition, useEffect } from "react"
+import { useState, useTransition } from "react"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -10,7 +10,7 @@ import { Switch } from "@/components/ui/switch"
 import { Shield, Plus, Key, Users, Edit2, Loader2, ChevronRight } from "lucide-react"
 import { toast } from "sonner"
 import type { IamRole, IamPermission } from "@/lib/db/schema"
-import { listRoles, listAllPermissions, createRole, updateRole, setRoleActive, getRolePermissions, updateRolePermissions, getSmsWorkflowMatrix, saveSmsWorkflowMatrix } from "@/app/actions/iam"
+import { listRoles, createRole, updateRole, setRoleActive, getRolePermissions, updateRolePermissions, getSmsWorkflowMatrix, saveSmsWorkflowMatrix } from "@/app/actions/iam"
 import type { SmsWorkflowRow } from "@/app/actions/iam"
 import {
   Dialog,
@@ -68,13 +68,13 @@ export function IamPanel({
     }
   }
 
-  useEffect(() => {
-    if (activeTab === "permissions") {
+  function changeTab(tab: string, roleId = selectedRoleId) {
+    setActiveTab(tab)
+    if (tab === "permissions") {
       void loadSmsMatrix()
-      if (selectedRoleId) void loadRolePermissions(selectedRoleId)
+      if (roleId) void loadRolePermissions(roleId)
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab])
+  }
 
   async function loadRolePermissions(roleId: string) {
     setIsPermissionsLoading(true)
@@ -82,7 +82,7 @@ export function IamPanel({
       const grants = await getRolePermissions(roleId)
       const mapped = grants.reduce((acc, g) => ({ ...acc, [g.permissionId]: g.scope }), {})
       setRolePermissions(mapped)
-    } catch (err) {
+    } catch {
       toast.error("Failed to load permissions")
     } finally {
       setIsPermissionsLoading(false)
@@ -200,7 +200,7 @@ export function IamPanel({
         </Button>
       </div>
 
-      <Tabs value={activeTab} onValueChange={setActiveTab}>
+      <Tabs value={activeTab} onValueChange={(value) => changeTab(value)}>
         <TabsList className="grid w-full grid-cols-2 max-w-md">
           <TabsTrigger value="roles">Roles &amp; Hierarchy</TabsTrigger>
           <TabsTrigger value="permissions">Permission Matrix</TabsTrigger>
@@ -257,8 +257,7 @@ export function IamPanel({
                           </Button>
                           <Button variant="ghost" size="icon-sm" onClick={() => {
                             setSelectedRoleId(role.id)
-                            setActiveTab("permissions")
-                            loadRolePermissions(role.id)
+                            changeTab("permissions", role.id)
                           }}>
                             <Key className="h-4 w-4" />
                           </Button>

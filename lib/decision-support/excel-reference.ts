@@ -77,8 +77,8 @@ export function parseExcelReferenceDataset(filePath = DEFAULT_FILE_PATH): ExcelR
   const summerySheet = wb.Sheets["GLOBAL SUMMERY"]
   const targetSheet = wb.Sheets["TARGETS GOLBAL"]
 
-  const summeryRows = XLSX.utils.sheet_to_json<any[]>(summerySheet, { header: 1 })
-  const targetRows = targetSheet ? XLSX.utils.sheet_to_json<any[]>(targetSheet, { header: 1 }) : []
+  const summeryRows = XLSX.utils.sheet_to_json<unknown[]>(summerySheet, { header: 1 })
+  const targetRows = targetSheet ? XLSX.utils.sheet_to_json<unknown[]>(targetSheet, { header: 1 }) : []
 
   // Build Targets Lookup Map by Scheme Name
   const targetMap = new Map<string, { targetUtil?: number; targetNrw?: number; targetColl?: number; tariff?: number; arrears?: number }>()
@@ -128,7 +128,7 @@ export function parseExcelReferenceDataset(filePath = DEFAULT_FILE_PATH): ExcelR
 
       schemes.push({
         areaName: currentArea,
-        schemeNumber: colNum || schemes.length + 1,
+        schemeNumber: (typeof colNum === "number" || typeof colNum === "string") && colNum ? colNum : schemes.length + 1,
         schemeName: colScheme,
         isOperationalScheme: isOp,
         capacityCurrentM3Day: Number(row[3] || 0),

@@ -1,7 +1,8 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, useSyncExternalStore } from "react"
 import Link from "next/link"
+import Image from "next/image"
 import { usePathname } from "next/navigation"
 import { ArrowLeft, Menu, PanelLeftClose, PanelLeftOpen } from "lucide-react"
 import { cn } from "@/lib/utils"
@@ -17,6 +18,23 @@ import { ConnectivityGuard } from "./connectivity-guard"
 import { Badge } from "@/components/ui/badge"
 
 const COLLAPSE_KEY = "swuws:sidebar-collapsed"
+const COLLAPSE_EVENT = "swuws:sidebar-change"
+
+function subscribeSidebar(onChange: () => void) {
+  window.addEventListener("storage", onChange)
+  window.addEventListener(COLLAPSE_EVENT, onChange)
+  return () => {
+    window.removeEventListener("storage", onChange)
+    window.removeEventListener(COLLAPSE_EVENT, onChange)
+  }
+}
+
+function sidebarSnapshot() {
+  return window.localStorage.getItem(COLLAPSE_KEY) === "1"
+}
+
+const subscribeNative = () => () => {}
+const serverSnapshot = () => false
 
 /** Official letterhead split used on receipts: "… Umbrella" / "of Water and Sanitation". */
 function letterheadLines(name: string) {
@@ -33,7 +51,6 @@ export function AppShell({
   orgName = "Southwestern Umbrella of Water and Sanitation",
   logoUrl,
   receiptPrefix = "SWUWS",
-  brand = "SWUWS Collection Portal",
   brandHref = "/dashboard",
   children,
   agentId,
@@ -50,23 +67,17 @@ export function AppShell({
   children: React.ReactNode
   agentId: string
 }) {
-  const [collapsed, setCollapsed] = useState(false)
+  const collapsed = useSyncExternalStore(subscribeSidebar, sidebarSnapshot, serverSnapshot)
   const [mobileOpen, setMobileOpen] = useState(false)
   const [imgError, setImgError] = useState(false)
-  const [native, setNative] = useState(false)
+  const native = useSyncExternalStore(subscribeNative, isNative, serverSnapshot)
   const [forcedOffline, setForcedOffline] = useState(false)
   const pathname = usePathname()
   const hideSidebar = pathname.startsWith("/dashboard/offline") || forcedOffline
   const lines = letterheadLines(orgName)
 
   useEffect(() => {
-    // 1. Initial collapsed state from localStorage (prevents hydration mismatch)
-    const stored = window.localStorage.getItem(COLLAPSE_KEY)
-    if (stored === "1") setCollapsed(true)
-
-    // 2. Native hardware setup
     if (isNative()) {
-      setNative(true)
       // Initialize system status bar for native app
       setupStatusBar()
     }
@@ -83,11 +94,8 @@ export function AppShell({
   })).filter(section => section.items.length > 0)
 
   function toggleCollapsed() {
-    setCollapsed((prev) => {
-      const next = !prev
-      window.localStorage.setItem(COLLAPSE_KEY, next ? "1" : "0")
-      return next
-    })
+    window.localStorage.setItem(COLLAPSE_KEY, collapsed ? "0" : "1")
+    window.dispatchEvent(new Event(COLLAPSE_EVENT))
   }
 
   return (
@@ -112,8 +120,11 @@ export function AppShell({
             <Link href={brandHref} className="flex items-center gap-2 group leading-tight overflow-hidden">
               {logoUrl && !imgError ? (
                 <div className="size-8 rounded-full bg-white p-0.5 flex items-center justify-center shrink-0 border border-black/5 shadow-sm overflow-hidden">
-                  <img
+                  <Image
                     src={logoUrl}
+                    width={32}
+                    height={32}
+                    unoptimized
                     alt=""
                     className="w-full h-full object-cover"
                     onError={() => setImgError(true)}

@@ -1,24 +1,15 @@
 "use server"
 
 import { db } from "@/lib/db"
-import {
-  managementAction,
-  reportGenerationHistory,
-  intelligenceFinding,
-  waterScheme,
-  branch,
-  cluster,
-  organization,
-  decisionSupportSchemeMapping,
-} from "@/lib/db/schema"
+import { managementAction, reportGenerationHistory, waterScheme, branch, cluster, organization, decisionSupportSchemeMapping } from "@/lib/db/schema"
 import { requireUser } from "@/lib/session"
-import { canViewIntelligence, canInvestigateIntelligence, canExportReports, canManageIntelligenceRules } from "@/lib/permissions"
+import { canViewIntelligence, canInvestigateIntelligence, canManageIntelligenceRules } from "@/lib/permissions"
 import { writeAudit } from "@/lib/audit"
 import { getTrustedPerformanceDataset } from "@/lib/decision-support/performance-engine"
 import { generateManagementAttentionItems } from "@/lib/decision-support/attention-engine"
 import { generateManagementReport } from "@/lib/decision-support/reports"
 import { generateBoardPackPptx } from "@/lib/decision-support/board-pack"
-import { performSchemeReconciliation } from "@/lib/decision-support/scheme-matcher"
+import { performSchemeReconciliation, type ReconciledSchemeItem } from "@/lib/decision-support/scheme-matcher"
 import { applyIntelligenceSchemeFilter } from "@/lib/intelligence/scope"
 import { eq, desc, and } from "drizzle-orm"
 import { randomUUID } from "crypto"
@@ -214,7 +205,7 @@ export async function getSchemeReconciliationAction() {
       return {
         ...s,
         approved: override.approved,
-        matchStatus: override.matchStatus as any,
+        matchStatus: override.matchStatus as ReconciledSchemeItem["matchStatus"],
         matchMethod: override.matchMethod,
         portalSchemeId: override.waterSchemeId || s.portalSchemeId,
       }

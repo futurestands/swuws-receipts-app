@@ -5,8 +5,8 @@ import { parseExcelReferenceDataset } from "./excel-reference"
 
 describe("SWUWS Scheme Reconciliation Server-Side Hardening & Governance Tests", () => {
   it("Test 1: Server-Side Scope Security — Global admin can view all, branch-scoped user trapped in branch", () => {
-    const adminUser = { id: "u-admin", role: "admin", permissions: ["manage_intelligence_rules"] } as any
-    const branchUser = { id: "u-branch", role: "branch_manager", branchId: "br-kabale", permissions: ["investigate_intelligence"] } as any
+    const adminUser = { id: "u-admin", role: "admin", permissions: ["manage_intelligence_rules"] }
+    const branchUser = { id: "u-branch", role: "branch_manager", branchId: "br-kabale", permissions: ["investigate_intelligence"] }
 
     const adminFilter = applyIntelligenceSchemeFilter(adminUser, "2ffe2035-234d-4810-89a3-c889e78cc21e")
     expect(adminFilter).toBeDefined()

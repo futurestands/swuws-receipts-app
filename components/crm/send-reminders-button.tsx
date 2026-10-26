@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useTransition } from "react"
+import { useTransition } from "react"
 import { Button } from "@/components/ui/button"
 import { Send, Loader2 } from "lucide-react"
 import { generateRemindersFromImport } from "@/app/actions/crm"
@@ -24,7 +24,7 @@ export function SendRemindersButton({ runId }: { runId: string }) {
           const errorMessage = "error" in res ? res.error : "Failed to generate reminders"
           toast.error(errorMessage)
         }
-      } catch (err) {
+      } catch {
         toast.error("An unexpected error occurred")
       }
     })

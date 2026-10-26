@@ -1,18 +1,18 @@
 "use server"
 
 import { db } from "@/lib/db"
-import { orgSettings, branch, paymentMethod, waterScheme, cluster, notification, user, type EditableFields } from "@/lib/db/schema"
-import { getCurrentUser, requireUser } from "@/lib/session"
+import { orgSettings, branch, paymentMethod, waterScheme, cluster, type EditableFields } from "@/lib/db/schema"
+import { requireUser } from "@/lib/session"
 import { writeAudit } from "@/lib/audit"
 import { eq, inArray, and } from "drizzle-orm"
 import { put } from "@vercel/blob"
 import { revalidatePath, unstable_cache } from "next/cache"
 import { randomUUID } from "crypto"
-import { isUniqueViolation } from "@/lib/db/errors"
-import { ROLES } from "@/lib/permissions/roles"
-import { logEvent } from "@/lib/logger"
-import fs from "fs/promises"
-import path from "path"
+
+
+
+
+
 import {
   canConfigureSystem,
   canManageAreas,
@@ -40,7 +40,7 @@ export const getSettings = unstable_cache(
       if (row) return row
       const [created] = await db.insert(orgSettings).values({ id: 1, editableFields: DEFAULT_EDITABLE }).onConflictDoUpdate({ target: orgSettings.id, set: { updatedAt: new Date() } }).returning()
       return created
-    } catch (e) {
+    } catch {
       return {
         id: 1, orgName: "South Western Umbrella of Water and Sanitation", logoUrl: "/logo.jpg",
         disclaimer: "Official receipt issued by SWUWS.", footerText: "Thank you.",
@@ -99,7 +99,7 @@ export async function uploadLogo(formData: FormData) {
     const blob = await put(`logos/${Date.now()}-${file.name}`, buffer, { access: "public", token })
     await db.update(orgSettings).set({ logoUrl: blob.url, updatedAt: new Date() }).where(eq(orgSettings.id, 1))
     revalidatePath("/", "layout"); return { ok: true as const, url: blob.url }
-  } catch (err: any) { return { ok: false as const, error: err.message } }
+  } catch (err: unknown) { return { ok: false as const, error: err instanceof Error ? err.message : "Unable to save settings" } }
 }
 
 export async function listClusters() {
@@ -142,7 +142,7 @@ export async function createBranch(input: { name: string, code: string }) {
   try {
     const [row] = await db.insert(branch).values({ id: randomUUID(), name: input.name, code: input.code.toLowerCase() }).returning()
     revalidatePath("/admin"); return { ok: true as const, branch: row }
-  } catch (e: any) { return { ok: false as const, error: e.message } }
+  } catch (e: unknown) { return { ok: false as const, error: e instanceof Error ? e.message : "Unable to save settings" } }
 }
 
 export async function setBranchActive(id: string, active: boolean) {
@@ -150,7 +150,7 @@ export async function setBranchActive(id: string, active: boolean) {
   try {
     await db.update(branch).set({ active }).where(eq(branch.id, id))
     revalidatePath("/admin"); return { ok: true as const }
-  } catch (e: any) { return { ok: false as const, error: e.message } }
+  } catch (e: unknown) { return { ok: false as const, error: e instanceof Error ? e.message : "Unable to save settings" } }
 }
 
 export async function listPaymentMethods() {
@@ -163,7 +163,7 @@ export async function createPaymentMethod(input: { name: string, code: string })
   try {
     const [row] = await db.insert(paymentMethod).values({ id: randomUUID(), name: input.name, code: input.code.toLowerCase() }).returning()
     revalidatePath("/admin"); return { ok: true as const, method: row }
-  } catch (e: any) { return { ok: false as const, error: e.message } }
+  } catch (e: unknown) { return { ok: false as const, error: e instanceof Error ? e.message : "Unable to save settings" } }
 }
 
 export async function setPaymentMethodActive(id: string, active: boolean) {
@@ -171,7 +171,7 @@ export async function setPaymentMethodActive(id: string, active: boolean) {
   try {
     await db.update(paymentMethod).set({ active }).where(eq(paymentMethod.id, id))
     revalidatePath("/admin"); return { ok: true as const }
-  } catch (e: any) { return { ok: false as const, error: e.message } }
+  } catch (e: unknown) { return { ok: false as const, error: e instanceof Error ? e.message : "Unable to save settings" } }
 }
 
 export async function listWaterSchemes() {
@@ -205,7 +205,7 @@ export async function createWaterScheme(input: Omit<typeof waterScheme.$inferIns
   try {
     const [row] = await db.insert(waterScheme).values({ id: randomUUID(), ...input, code: input.code.toLowerCase() }).returning()
     revalidatePath("/admin"); return { ok: true as const, scheme: row }
-  } catch (e: any) { return { ok: false as const, error: e.message } }
+  } catch (e: unknown) { return { ok: false as const, error: e instanceof Error ? e.message : "Unable to save settings" } }
 }
 
 export async function setWaterSchemeActive(id: string, active: boolean) {
@@ -213,7 +213,7 @@ export async function setWaterSchemeActive(id: string, active: boolean) {
   try {
     await db.update(waterScheme).set({ active }).where(eq(waterScheme.id, id))
     revalidatePath("/admin"); return { ok: true as const }
-  } catch (e: any) { return { ok: false as const, error: e.message } }
+  } catch (e: unknown) { return { ok: false as const, error: e instanceof Error ? e.message : "Unable to save settings" } }
 }
 
 export async function updateLatestAppVersion(version: string) {

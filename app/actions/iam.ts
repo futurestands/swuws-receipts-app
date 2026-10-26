@@ -1,11 +1,11 @@
 "use server"
 
 import { db } from "@/lib/db"
-import { iamRole, iamPermission, iamRolePermission, user as userTable, type IamRole } from "@/lib/db/schema"
+import { iamRole, iamPermission, iamRolePermission, type IamRole } from "@/lib/db/schema"
 import { requireUser } from "@/lib/session"
 import { writeAudit } from "@/lib/audit"
 import { hasPermission, getOwnRoleLevel } from "@/lib/iam"
-import { eq, and, sql, desc, asc, not, lte, inArray } from "drizzle-orm"
+import { eq, and, desc, asc, lte, inArray } from "drizzle-orm"
 import { randomUUID } from "crypto"
 import { revalidatePath } from "next/cache"
 import { z } from "zod"

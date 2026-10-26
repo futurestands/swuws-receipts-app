@@ -23,8 +23,10 @@ import { bluetoothLePrinter } from "@/lib/offline/bluetooth-printer"
 import { printerKindLabel } from "@/lib/offline/printer-kind"
 import { openPrinterDriverStore } from "@/lib/offline/office-print"
 
+type PrinterSettings = NonNullable<Awaited<ReturnType<typeof sqliteService.getPrinterSettings>>>
+
 export function PrinterSettingsClient() {
-  const [settings, setSettings] = useState<any>({ type: 'auto', paperWidth: '58mm', networkIp: '' })
+  const [settings, setSettings] = useState<PrinterSettings>({ type: 'auto', paperWidth: '58mm', networkIp: '' })
   const [loading, setLoading] = useState(true)
   const [scanning, setScanning] = useState(false)
   const [scanProgress, setScanProgress] = useState(0)
@@ -36,7 +38,7 @@ export function PrinterSettingsClient() {
   useEffect(() => {
     sqliteService.initialize().then(() => {
       sqliteService.getPrinterSettings().then(s => {
-        setSettings(s)
+        setSettings(s ?? { type: "auto", paperWidth: "58mm", networkIp: "" })
         setManualIp(s?.networkIp || '')
         // A previously-saved network IP was, by definition, verified when
         // it was saved (see handleConnectToIp below) -- trust it until the
@@ -47,7 +49,7 @@ export function PrinterSettingsClient() {
     })
   }, [])
 
-  const handleSave = async (updates: Partial<any>) => {
+  const handleSave = async (updates: Partial<PrinterSettings>) => {
     const updated = { ...settings, ...updates }
     setSettings(updated)
     await sqliteService.updatePrinterSettings(updated)
@@ -64,8 +66,8 @@ export function PrinterSettingsClient() {
         isProvisional: true
       })
       toast.success("Test print sent!")
-    } catch (err: any) {
-      toast.error(err.message || "Test print failed")
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Test print failed")
     }
   }
 
@@ -86,8 +88,8 @@ export function PrinterSettingsClient() {
       } else {
         toast.success(`Found ${found.length} printer${found.length > 1 ? 's' : ''} on the network`)
       }
-    } catch (err: any) {
-      toast.error(err.message || "Scan failed")
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Scan failed")
     } finally {
       setScanning(false)
     }
@@ -129,8 +131,8 @@ export function PrinterSettingsClient() {
       } else {
         toast.error(result.error || "Bluetooth pairing cancelled")
       }
-    } catch (err: any) {
-      toast.error(err.message || "Bluetooth pairing failed")
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Bluetooth pairing failed")
     } finally {
       setConnecting(null)
     }

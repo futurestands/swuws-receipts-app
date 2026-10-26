@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Plus, Settings2, Building2, Tag } from "lucide-react"
+import { Building2, Tag } from "lucide-react"
 import { DepartmentDialog } from "@/components/crm/department-dialog"
 import { CategoryDialog } from "@/components/crm/category-dialog"
 

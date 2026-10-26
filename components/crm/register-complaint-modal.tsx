@@ -1,7 +1,7 @@
 "use client"
 
-import { useState, useEffect, useMemo, useRef } from "react"
-import { useForm } from "react-hook-form"
+import { useState, useEffect, useMemo, useRef, useCallback } from "react"
+import { useForm, useWatch } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import * as z from "zod"
 import { Dialog, DialogContent, DialogTrigger } from "@/components/ui/dialog"
@@ -15,7 +15,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { registerComplaint, listUsersByArea, listSchemesByArea, lookupComplaintCustomer } from "@/app/actions/crm"
 import { useToast } from "@/hooks/use-toast"
 import { Loader2, Plus, User, Tag, UserCheck, ShieldCheck, CheckCircle2, FileText, Search, X } from "lucide-react"
-import type { CrmComplaintCategory, CrmDepartment, Branch } from "@/lib/db/schema"
+import type { CrmComplaintCategory, Branch } from "@/lib/db/schema"
 import { format } from "date-fns"
 import { useRouter } from "next/navigation"
 
@@ -97,7 +97,7 @@ export function RegisterComplaintModal({ categories, areas, userName }: Register
   const categoryNameMap = useMemo(() => new Map((categories || []).map(c => [c.id, c.name])), [categories])
 
   // Fetch users and schemes when area changes
-  const selectedAreaId = form.watch("area")
+  const selectedAreaId = useWatch({ control: form.control, name: "area" })
   useEffect(() => {
     async function fetchData() {
       if (!selectedAreaId) {
@@ -131,16 +131,31 @@ export function RegisterComplaintModal({ categories, areas, userName }: Register
     }
   }, [areaSchemes, form])
 
+  const applyCustomerMatch = useCallback((match: CustomerMatch) => {
+    const phone = match.phone && match.phone.toUpperCase() !== "NULL" ? match.phone : ""
+    form.setValue("customerId", match.id)
+    form.setValue("complainantName", match.name)
+    form.setValue("complainantPhone", phone)
+    form.setValue("complainantAddress", match.address && match.address.toUpperCase() !== "NULL" ? match.address : "")
+    form.setValue("customerAccount", match.customerAccount || "")
+    pendingSchemeId.current = match.waterSchemeId
+    if (match.branchId) form.setValue("area", match.branchId)
+    setLookupQuery(match.customerAccount || match.name)
+    setMatches([])
+  }, [form])
+
   useEffect(() => {
     const q = lookupQuery.trim()
     if (q.length < 3) {
-      setMatches([])
-      setLookingUp(false)
+      queueMicrotask(() => {
+        setMatches([])
+        setLookingUp(false)
+      })
       return
     }
     let cancelled = false
-    setLookingUp(true)
     const handle = window.setTimeout(async () => {
+      setLookingUp(true)
       try {
         const rows = await lookupComplaintCustomer(q)
         if (!cancelled) {
@@ -158,20 +173,9 @@ export function RegisterComplaintModal({ categories, areas, userName }: Register
       cancelled = true
       window.clearTimeout(handle)
     }
-  }, [lookupQuery])
+  }, [lookupQuery, applyCustomerMatch])
 
-  function applyCustomerMatch(match: CustomerMatch) {
-    const phone = match.phone && match.phone.toUpperCase() !== "NULL" ? match.phone : ""
-    form.setValue("customerId", match.id)
-    form.setValue("complainantName", match.name)
-    form.setValue("complainantPhone", phone)
-    form.setValue("complainantAddress", match.address && match.address.toUpperCase() !== "NULL" ? match.address : "")
-    form.setValue("customerAccount", match.customerAccount || "")
-    pendingSchemeId.current = match.waterSchemeId
-    if (match.branchId) form.setValue("area", match.branchId)
-    setLookupQuery(match.customerAccount || match.name)
-    setMatches([])
-  }
+
 
   function clearLinkedCustomer() {
     form.setValue("customerId", "")
@@ -206,7 +210,7 @@ export function RegisterComplaintModal({ categories, areas, userName }: Register
     }
   }
 
-  const linkedCustomerId = form.watch("customerId")
+  const linkedCustomerId = useWatch({ control: form.control, name: "customerId" })
 
   return (
     <Dialog open={open} onOpenChange={(next) => {

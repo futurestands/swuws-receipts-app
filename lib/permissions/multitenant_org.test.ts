@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest"
 import { createAgent } from "../../app/actions/admin"
 import { db } from "../../lib/db"
 import { requireUser } from "../../lib/session"
-import { organization, user } from "../../lib/db/schema"
+import { organization } from "../../lib/db/schema"
 
 vi.mock('server-only', () => ({}))
 
@@ -67,7 +67,7 @@ describe("Multi-tenant Organization Assignment Audit", () => {
       organizationId: "org-b-id",
       role: "admin"
     }
-    vi.mocked(requireUser).mockResolvedValue(currentUser as any)
+    vi.mocked(requireUser).mockResolvedValue(currentUser as Awaited<ReturnType<typeof requireUser>>)
 
     // Database has multiple organizations. "Org A" is the first one returned by limit(1).
     const mockOrganizations = [
@@ -80,9 +80,9 @@ describe("Multi-tenant Organization Assignment Audit", () => {
       from: vi.fn().mockReturnThis(),
       limit: vi.fn().mockResolvedValue([mockOrganizations[0]]),
     }
-    vi.mocked(db.select).mockImplementation((fields: any) => {
-        if (fields.id === organization.id) return orgSelectChain as any
-        return { from: vi.fn().mockReturnThis(), where: vi.fn().mockReturnThis(), limit: vi.fn().mockResolvedValue([]) } as any
+    vi.mocked(db.select).mockImplementation((fields?: Record<string, unknown>) => {
+        if (fields?.id === organization.id) return orgSelectChain as unknown as ReturnType<typeof db.select>
+        return { from: vi.fn().mockReturnThis(), where: vi.fn().mockReturnThis(), limit: vi.fn().mockResolvedValue([]) } as unknown as ReturnType<typeof db.select>
     })
 
     // Mock update user
@@ -91,7 +91,7 @@ describe("Multi-tenant Organization Assignment Audit", () => {
       where: vi.fn().mockReturnThis(),
       returning: vi.fn().mockResolvedValue([{ id: "new-user-id" }])
     }
-    vi.mocked(db.update).mockReturnValue(updateChain as any)
+    vi.mocked(db.update).mockReturnValue(updateChain as unknown as ReturnType<typeof db.update>)
 
     await createAgent({
       name: "New Agent",
@@ -100,7 +100,7 @@ describe("Multi-tenant Organization Assignment Audit", () => {
       role: "agent"
     })
 
-    const updateArgs = vi.mocked(updateChain.set).mock.calls[0][0] as any
+    const updateArgs = vi.mocked(updateChain.set).mock.calls[0][0] as { organizationId: string }
 
     // When this is un-skipped, it must assert the *correct* assignment.
     // Do not flip these back to org-a-id — that made CI pass while the bug was live.

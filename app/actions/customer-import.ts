@@ -1,18 +1,13 @@
 "use server"
 
 import { db } from "@/lib/db"
-import {
-  customer,
-  waterScheme,
-  managedTemplate,
-  templateVersion,
-} from "@/lib/db/schema"
+import { customer, waterScheme } from "@/lib/db/schema"
 import { requireUser } from "@/lib/session"
 import { writeAudit } from "@/lib/audit"
 import { canUploadCustomers } from "@/lib/permissions"
 import { eq, sql } from "drizzle-orm"
 import * as XLSX from "xlsx"
-import { z } from "zod"
+
 import { randomUUID } from "crypto"
 import { revalidatePath } from "next/cache"
 import { processExcelImport, getImportMapping, type ImportSummary } from "@/lib/import-engine"
@@ -45,7 +40,7 @@ export async function validateCustomerImport(formData: FormData): Promise<{ ok: 
   const dbMapping = await getImportMapping("import.customers.bulk")
   const mapping = {
     ...DEFAULT_CUSTOMER_IMPORT_MAPPING,
-    ...(dbMapping as any)
+    ...dbMapping
   } as Record<string, string | string[] | number>
 
   const summary = await processExcelImport({
@@ -160,7 +155,7 @@ export async function importCustomers(summary: CustomerImportSummary): Promise<{
       chunk.forEach(row => {
         reportRows.push({ ...row.data, Result: "Success", Details: "Processed via Bulk Engine" })
       })
-    } catch (e: unknown) {
+    } catch {
       // If a bulk chunk fails (rare with pre-validation), fall back to row-by-row
       // for this specific chunk to preserve accuracy and identify errors.
       logEvent({
@@ -226,8 +221,8 @@ export async function importCustomers(summary: CustomerImportSummary): Promise<{
 
   // Include rows that failed the initial validation in the final report
   summary.rows.filter(r => !r.valid).forEach(r => {
-    const data = "data" in r ? r.data : r.raw
-    reportRows.push({ ...(data as any), Result: "Validation Failed", Details: r.errors.join("; ") })
+    const data = r.raw
+    reportRows.push({ ...data, Result: "Validation Failed", Details: r.errors.join("; ") })
     failedCount++
   })
 

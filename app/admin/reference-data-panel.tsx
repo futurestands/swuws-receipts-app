@@ -1,14 +1,7 @@
 "use client"
 
 import { useState, useTransition } from "react"
-import {
-  createBranch,
-  setBranchActive,
-  createPaymentMethod,
-  setPaymentMethodActive,
-  createWaterScheme,
-  setWaterSchemeActive,
-} from "@/app/actions/settings"
+import { createPaymentMethod, setPaymentMethodActive, createWaterScheme, setWaterSchemeActive } from "@/app/actions/settings"
 import type { Branch, PaymentMethod, WaterScheme, Cluster } from "@/lib/db/schema"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -18,7 +11,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Switch } from "@/components/ui/switch"
 import { SearchableSelect } from "@/components/ui/searchable-select"
 import { toast } from "sonner"
-import { FileUp, Download, Globe, Home, FileSpreadsheet } from "lucide-react"
+import { FileUp, Download, Globe, FileSpreadsheet } from "lucide-react"
 import Link from "next/link"
 import { downloadUnifiedHierarchyTemplate } from "@/app/actions/hierarchy-engine"
 import * as XLSX from "xlsx"
@@ -37,14 +30,12 @@ export function ReferenceDataPanel({
   clusters: Cluster[]
   isAdmin?: boolean
 }) {
-  const [branches, setBranches] = useState(initialBranches)
+  const branches = initialBranches
   const [methods, setMethods] = useState(initialMethods)
   const [schemes, setSchemes] = useState(initialSchemes)
-  const [clusters, setClusters] = useState(initialClusters)
+  const clusters = initialClusters
   const [pending, startTransition] = useTransition()
 
-  const [branchName, setBranchName] = useState("")
-  const [branchCode, setBranchCode] = useState("")
   const [methodName, setMethodName] = useState("")
   const [methodCode, setMethodCode] = useState("")
   const [schemeName, setSchemeName] = useState("")
@@ -53,7 +44,6 @@ export function ReferenceDataPanel({
   const [schemeArea, setSchemeArea] = useState("")
 
   const [schemeSearch, setSchemeSearch] = useState("")
-  const [branchSearch, setBranchSearch] = useState("")
 
   function handleExportSchemes() {
     try {
@@ -87,19 +77,7 @@ export function ReferenceDataPanel({
     }
   }
 
-  function handleAddBranch(e: React.FormEvent) {
-    e.preventDefault()
-    startTransition(async () => {
-      const result = await createBranch({ name: branchName, code: branchCode })
-      if (!result.ok) {
-        toast.error(result.error)
-        return
-      }
-      setBranches((prev) => [...prev, result.branch])
-      setBranchName("")
-      setBranchCode("")
-    })
-  }
+  
 
   function handleAddMethod(e: React.FormEvent) {
     e.preventDefault()

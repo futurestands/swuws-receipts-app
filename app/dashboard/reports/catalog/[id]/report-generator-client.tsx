@@ -22,7 +22,7 @@ import {
   Table as TableIcon
 } from "lucide-react"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { formatUGX, formatDate, formatDateTime } from "@/lib/format"
+import { formatUGX, formatDate } from "@/lib/format"
 import * as XLSX from "xlsx"
 
 export function ReportGeneratorClient({ reportId, title }: { reportId: string, title: string }) {

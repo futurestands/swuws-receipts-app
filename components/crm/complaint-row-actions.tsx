@@ -7,11 +7,11 @@ import type { CrmComplaint } from "@/lib/db/schema"
 
 interface ComplaintRowActionsProps {
   complaint: CrmComplaint & {
-    categoryName?: string;
-    assignedToName?: string;
-    customerAccount?: string;
-    areaName?: string;
-    schemeName?: string;
+    categoryName?: string | null;
+    assignedToName?: string | null;
+    customerAccount?: string | null;
+    areaName?: string | null;
+    schemeName?: string | null;
   }
 }
 

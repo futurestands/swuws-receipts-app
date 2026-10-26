@@ -1,5 +1,4 @@
 import { isNative } from '../mobile-hardware';
-import { generateReceiptCommands, encodeESC, ReceiptData } from './esc-pos-helper';
 
 /**
  * NATIVE USB PRINTER SERVICE (OTG)
@@ -17,7 +16,7 @@ class UsbPrinterService {
     // No-op
   }
 
-  async printReceipt(data: ReceiptData, paperWidth: '58mm' | '80mm' = '58mm') {
+  async printReceipt() {
     if (!isNative()) return false;
 
     console.warn('USB printer driver is currently disabled due to dependency conflicts.');

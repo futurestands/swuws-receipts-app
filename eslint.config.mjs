@@ -9,7 +9,7 @@ import nextTypescriptConfig from "eslint-config-next/typescript"
  */
 const eslintConfig = [
   {
-    ignores: [".next/**", "node_modules/**", "*.config.*", "public/**", "scripts/**", "android/**"],
+    ignores: [".next/**", "node_modules/**", "*.config.*", "public/**", "scripts/**", "android/**", ".artifacts/**", "scratch/apk_test/**"],
   },
   ...nextConfig,
   ...nextTypescriptConfig,

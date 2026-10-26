@@ -1,7 +1,7 @@
 "use server"
 
 import { db } from "@/lib/db"
-import { cluster, branch, waterScheme, managedTemplate, templateVersion } from "@/lib/db/schema"
+import { cluster, branch, waterScheme } from "@/lib/db/schema"
 import { requireUser } from "@/lib/session"
 import { writeAudit } from "@/lib/audit"
 import { canManageAreas, canManageSchemes } from "@/lib/permissions"
@@ -33,7 +33,7 @@ export async function importUnifiedHierarchy(formData: FormData) {
   const dbMapping = await getImportMapping('import.hierarchy.master')
   const mapping = {
     ...DEFAULT_HIERARCHY_IMPORT_MAPPING,
-    ...(dbMapping as any)
+    ...dbMapping
   } as Record<string, string | string[]>
 
   let importedCount = 0
@@ -119,7 +119,7 @@ export async function downloadUnifiedHierarchyTemplate() {
   const dbMapping = await getImportMapping('import.hierarchy.master')
   const mapping = {
     ...DEFAULT_HIERARCHY_IMPORT_MAPPING,
-    ...(dbMapping as any)
+    ...dbMapping
   } as Record<string, string | string[]>
 
   const headers = [

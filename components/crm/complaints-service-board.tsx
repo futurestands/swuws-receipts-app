@@ -2,31 +2,20 @@
 
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
-import { formatDateTime } from "@/lib/format"
-import {
-  User,
-  Phone,
-  MapPin,
-  Clock,
-  AlertCircle,
-  CheckCircle2,
-  MessageSquare,
-  ArrowRight,
-  UserCheck,
-  Zap
-} from "lucide-react"
+
+
+import { Phone, MapPin, MessageSquare } from "lucide-react"
 import { cn } from "@/lib/utils"
 import type { CrmComplaint } from "@/lib/db/schema"
 import { ComplaintRowActions } from "./complaint-row-actions"
 
 interface ComplaintCardProps {
   complaint: CrmComplaint & {
-    categoryName?: string;
-    assignedToName?: string;
-    customerAccount?: string;
-    areaName?: string;
-    schemeName?: string;
+    categoryName?: string | null;
+    assignedToName?: string | null;
+    customerAccount?: string | null;
+    areaName?: string | null;
+    schemeName?: string | null;
   }
 }
 
@@ -104,7 +93,7 @@ function ComplaintCard({ complaint }: ComplaintCardProps) {
 export function ComplaintsServiceBoard({
   complaints
 }: {
-  complaints: any[]
+  complaints: ComplaintCardProps["complaint"][]
 }) {
   if (complaints.length === 0) {
     return (

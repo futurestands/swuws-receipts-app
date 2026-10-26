@@ -18,13 +18,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
 import { Switch } from "@/components/ui/switch"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
+import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select"
 import { SearchableSelect } from "@/components/ui/searchable-select"
 import {
   Dialog,
@@ -49,12 +43,12 @@ import {
 import { toast } from "sonner"
 import { formatDate } from "@/lib/format"
 import type { Branch, Cluster, WaterScheme, IamRole } from "@/lib/db/schema"
-import { FileUp, Download, Edit2, Trash2, Key, MapPin, Shield } from "lucide-react"
+import { FileUp, Download, Edit2, Trash2, Key, MapPin } from "lucide-react"
 import Link from "next/link"
 import { downloadBulkImportTemplate } from "@/app/actions/bulk-import"
-import { cn } from "@/lib/utils"
 
-import { ROLES, ALL_ROLES, ROLE_LABELS, type Role } from "@/lib/permissions/roles"
+
+
 
 type Agent = {
   id: string
@@ -130,7 +124,7 @@ export function AgentsPanel({
   const [email, setEmail] = useState("")
   const [phone, setPhone] = useState("")
   const [password, setPassword] = useState("")
-  const [role, setRole] = useState<string>("")
+  const [, setRole] = useState<string>("")
   const [selectedIamRoleId, setSelectedIamRoleId] = useState<string | null>(null)
   const [selectedClusterId, setSelectedClusterId] = useState<string | null>(null)
   const [selectedBranchId, setSelectedBranchId] = useState<string | null>(null)
@@ -197,52 +191,9 @@ export function AgentsPanel({
     })
   }
 
-  function changeRole(agent: Agent, nextRoleId: string | null) {
-    if (!nextRoleId) return
-    const nextRoleObj = iamRoles.find(r => r.id === nextRoleId)
-    if (!nextRoleObj) return
+  
 
-    startTransition(async () => {
-      const result = await setAgentRole(agent.id, nextRoleObj.code, nextRoleId)
-      if (!result.ok) {
-        toast.error(result.error)
-        return
-      }
-      setAgents((prev) => prev.map((a) => (a.id === agent.id ? { ...a, role: nextRoleObj.code, iamRoleId: nextRoleId } : a)))
-    })
-  }
-
-  function updateHierarchy(
-    agent: Agent,
-    level: "cluster" | "branch" | "scheme",
-    value: string | null,
-  ) {
-    const nextValue = value === "none" ? null : value
-    const update = {
-      clusterId: level === "cluster" ? nextValue : agent.clusterId,
-      branchId: level === "branch" ? nextValue : agent.branchId,
-      schemeId: level === "scheme" ? nextValue : agent.schemeId,
-    }
-
-    // Reset children if parent changes
-    if (level === "cluster") {
-      update.branchId = null
-      update.schemeId = null
-    } else if (level === "branch") {
-      update.schemeId = null
-    }
-
-    startTransition(async () => {
-      const result = await setAgentHierarchy(agent.id, update)
-      if (!result.ok) {
-        toast.error("Failed to update hierarchy")
-        return
-      }
-      setAgents((prev) =>
-        prev.map((a) => (a.id === agent.id ? { ...a, ...update } : a)),
-      )
-    })
-  }
+  
 
   async function handleDelete(agentId: string) {
     const result = await deleteAgent(agentId)

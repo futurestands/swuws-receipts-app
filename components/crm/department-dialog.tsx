@@ -71,7 +71,7 @@ export function DepartmentDialog({
           if (!department) form.reset()
           router.refresh()
         }
-      } catch (err) {
+      } catch {
         toast.error("Failed to save department")
       }
     })

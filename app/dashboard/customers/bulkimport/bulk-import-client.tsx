@@ -9,19 +9,7 @@ import { Label } from "@/components/ui/label"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
 import { toast } from "sonner"
-import {
-  Download,
-  Upload,
-  CheckCircle2,
-  AlertCircle,
-  AlertTriangle,
-  FileSpreadsheet,
-  Loader2,
-  ChevronRight,
-  ChevronLeft,
-  XCircle,
-  RefreshCw,
-} from "lucide-react"
+import { Download, Upload, CheckCircle2, AlertCircle, Loader2, ChevronRight, ChevronLeft, XCircle, RefreshCw } from "lucide-react"
 import {
   validateCustomerImport,
   importCustomers,
@@ -265,7 +253,7 @@ export function CustomerBulkImportClient() {
                 </TableHeader>
                 <TableBody>
                   {summary.rows.slice(0, 100).map((row, i) => {
-                    const rowData = row.valid ? row.data : (row.raw as any)
+                    const rowData = Object.fromEntries(Object.entries(row.valid ? row.data : row.raw).map(([key, value]) => [key, String(value ?? "")]))
                     return (
                     <TableRow key={i} className={cn(!row.valid ? "bg-destructive/5" : "hover:bg-muted/50")}>
                       <TableCell className="text-xs text-muted-foreground">{i + 1}</TableCell>

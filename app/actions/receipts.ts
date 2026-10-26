@@ -18,18 +18,18 @@ import { writeAudit } from "@/lib/audit"
 import { getSettings } from "@/app/actions/settings"
 import { and, desc, eq, gte, lte, sql, sum, inArray, getTableColumns, count, ne } from "drizzle-orm"
 import { randomUUID } from "crypto"
-import { revalidatePath, revalidateTag } from "next/cache"
+import { revalidatePath } from "next/cache"
 import { put } from "@vercel/blob"
 import { checkRateLimit } from "@/lib/rate-limit"
-import { ROLES } from "@/lib/permissions/roles"
+
 import { canViewAllData, canIssueReceipt, canPrintReceipt, canReprintReceipt } from "@/lib/permissions"
 import { applyReceiptScope, validateWriteScope } from "@/lib/scopes"
 import { closeExpiredActivePeriods } from "@/lib/billing/close-expired"
 import { effectiveBillTakenDate, kampalaCalendarDate, resolveBillForPayment } from "@/lib/billing/period-dates"
 import { hasPermission } from "@/lib/iam"
-import { receiptPrintHistory, user as userTable } from "@/lib/db/schema"
+import { receiptPrintHistory } from "@/lib/db/schema"
 import { headers } from "next/headers"
-import { logEvent, logFinancial, logSecurity } from "@/lib/logger"
+import { logEvent, logFinancial } from "@/lib/logger"
 import { createReceiptSchema, type CreateReceiptInput } from "@/lib/finance-schemas"
 
 function generatePaymentReference(): string {
@@ -38,14 +38,7 @@ function generatePaymentReference(): string {
   )}`
 }
 
-async function assertPaymentMethodAllowed(code: string) {
-  const [row] = await db
-    .select({ id: paymentMethodTable.id })
-    .from(paymentMethodTable)
-    .where(and(eq(paymentMethodTable.code, code), eq(paymentMethodTable.active, true)))
-    .limit(1)
-  return Boolean(row)
-}
+
 
 export async function createReceipt(input: CreateReceiptInput & { idempotencyKey?: string }) {
   const current = await requireUser()
@@ -628,7 +621,15 @@ export async function uploadReceiptAttachment(receiptId: string, formData: FormD
   revalidatePath(`/dashboard/receipts/${receiptId}`)
   // SECURITY: Use authenticated proxy for downloads.
   // Downloads happen only through the authenticated proxy route, keyed by id.
-  const { url: _url, ...attachmentWithoutUrl } = row
+  const attachmentWithoutUrl = {
+    id: row.id,
+    receiptId: row.receiptId,
+    fileName: row.fileName,
+    fileSize: row.fileSize,
+    uploadedById: row.uploadedById,
+    uploadedByName: row.uploadedByName,
+    createdAt: row.createdAt,
+  }
   return { ok: true as const, attachment: attachmentWithoutUrl }
 }
 

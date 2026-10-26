@@ -2,14 +2,14 @@
 
 import { useEffect, useState } from "react"
 import { sqliteService } from "@/lib/offline/sqlite-service"
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { format } from "date-fns"
 import { RefreshCw, ArrowUp, ArrowDown, AlertCircle, CheckCircle2 } from "lucide-react"
 
 export function LogsClient() {
-  const [logs, setLogs] = useState<any[]>([])
-  const [notifs, setNotifs] = useState<any[]>([])
+  const [logs, setLogs] = useState<Awaited<ReturnType<typeof sqliteService.getSyncLogs>>>([])
+  const [notifs, setNotifs] = useState<Awaited<ReturnType<typeof sqliteService.getNotifications>>>([])
 
   useEffect(() => {
     sqliteService.initialize().then(async () => {

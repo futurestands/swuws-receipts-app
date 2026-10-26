@@ -26,7 +26,7 @@ export async function getNotifications(limit = 20) {
       ))
       .orderBy(desc(notification.createdAt))
       .limit(limit)
-  } catch (e) {
+  } catch {
     return []
   }
 }
@@ -42,7 +42,7 @@ export async function getUnreadCount() {
         eq(notification.status, 'unread')
       ))
     return Number(result?.count || 0)
-  } catch (e) {
+  } catch {
     // Gracefully handle unauthenticated state (common during session expiry or DB switch)
     return 0
   }
