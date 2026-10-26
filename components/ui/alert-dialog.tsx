@@ -15,13 +15,19 @@ function AlertDialogTrigger({
   children,
   ...props
 }: AlertDialogPrimitive.Trigger.Props & { asChild?: boolean }) {
+  if (asChild) {
+    return (
+      <AlertDialogPrimitive.Trigger
+        data-slot="alert-dialog-trigger"
+        render={children as React.ReactElement}
+        {...props}
+      />
+    )
+  }
+
   return (
-    <AlertDialogPrimitive.Trigger
-      data-slot="alert-dialog-trigger"
-      render={asChild ? (children as React.ReactElement) : undefined}
-      {...props}
-    >
-      {asChild ? undefined : children}
+    <AlertDialogPrimitive.Trigger data-slot="alert-dialog-trigger" {...props}>
+      {children}
     </AlertDialogPrimitive.Trigger>
   )
 }
