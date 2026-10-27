@@ -1,8 +1,9 @@
-import { defineConfig } from 'vitest/config'
+import { configDefaults, defineConfig } from 'vitest/config'
 import path from 'path'
 
 export default defineConfig({
   test: {
+    exclude: [...configDefaults.exclude, ...(process.env.SWUWS_PRODUCTION_INTEGRATION === '1' ? [] : ['lib/production/integrity.integration.test.ts'])],
     environment: 'node',
     alias: {
       '@': path.resolve(__dirname, './'),

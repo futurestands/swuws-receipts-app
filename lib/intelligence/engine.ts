@@ -1,5 +1,7 @@
+import { loadProductionSummary, productionMonth } from "@/lib/production/reporting"
+import { kampalaCalendarDate } from "@/lib/billing/period-dates"
 import { db } from "@/lib/db"
-import { waterScheme, billingPeriod, billingRecord, meterReading, waterSchemeSource, waterProductionLog, schemeTarget, intelligenceFinding } from "@/lib/db/schema"
+import { waterScheme, billingPeriod, billingRecord, meterReading, schemeTarget, intelligenceFinding } from "@/lib/db/schema"
 import { eq, and, sql, sum, count, desc, inArray } from "drizzle-orm"
 import { UserPermissionsContext } from "@/lib/permissions"
 import { applyIntelligenceSchemeFilter } from "./scope"
@@ -60,17 +62,17 @@ export async function runIntelligenceEngine(
   const schemeIds = activeSchemes.map((s) => s.id)
 
   // 3. Resolve Active or Selected Billing Period
-  let selectedPeriod: { id: string; periodName: string } | undefined
+  let selectedPeriod: { id: string; periodName: string; year: number; month: number } | undefined
   if (filters.periodId && filters.periodId !== "all") {
     const [p] = await db
-      .select({ id: billingPeriod.id, periodName: billingPeriod.periodName })
+      .select({ id: billingPeriod.id, periodName: billingPeriod.periodName, year: billingPeriod.year, month: billingPeriod.month })
       .from(billingPeriod)
       .where(eq(billingPeriod.id, filters.periodId))
       .limit(1)
     selectedPeriod = p
   } else {
     const [p] = await db
-      .select({ id: billingPeriod.id, periodName: billingPeriod.periodName })
+      .select({ id: billingPeriod.id, periodName: billingPeriod.periodName, year: billingPeriod.year, month: billingPeriod.month })
       .from(billingPeriod)
       .where(eq(billingPeriod.status, "active"))
       .orderBy(desc(billingPeriod.year), desc(billingPeriod.month))
@@ -81,30 +83,12 @@ export async function runIntelligenceEngine(
   const periodId = selectedPeriod?.id
   const periodName = selectedPeriod?.periodName || "Current Period"
 
+  const productionMonthKey = selectedPeriod ? `${selectedPeriod.year}-${String(selectedPeriod.month).padStart(2, "0")}` : kampalaCalendarDate(new Date()).slice(0, 7)
+  const productionBounds = productionMonth(productionMonthKey)
   // 4. Gather DB Data Across Schemes in Parallel
-  const [sourcesRows, prodLogRows, meterReadingsRows, billingRows, targetRows] = await Promise.all([
-    // A. Scheme Sources
-    db
-      .select({
-        schemeId: waterSchemeSource.schemeId,
-        sourceId: waterSchemeSource.id,
-        practicalCapacityM3Month: waterSchemeSource.practicalCapacityM3Month,
-      })
-      .from(waterSchemeSource)
-      .where(and(inArray(waterSchemeSource.schemeId, schemeIds), eq(waterSchemeSource.active, true))),
-
-    // B. Production Logs (for active period)
-    periodId
-      ? db
-          .select({
-            schemeId: waterProductionLog.schemeId,
-            totalWaterProducedM3: sum(waterProductionLog.waterProducedM3),
-            logsCount: count(waterProductionLog.id),
-          })
-          .from(waterProductionLog)
-          .where(and(inArray(waterProductionLog.schemeId, schemeIds), eq(waterProductionLog.billingPeriodId, periodId)))
-          .groupBy(waterProductionLog.schemeId)
-      : Promise.resolve([]),
+  const [prodLogRows, previousRows, meterReadingsRows, billingRows, targetRows] = await Promise.all([
+    loadProductionSummary(db, schemeIds, productionMonthKey),
+    loadProductionSummary(db, schemeIds, productionBounds.previousMonth),
 
     // C. Billed Meter Readings ($M^3$ sold / consumption)
     periodId
@@ -178,21 +162,11 @@ export async function runIntelligenceEngine(
   // 5. Build Lookups
   const sourcesByScheme = new Map<string, number>()
   const capacityByScheme = new Map<string, number>()
-  for (const s of sourcesRows) {
-    sourcesByScheme.set(s.schemeId, (sourcesByScheme.get(s.schemeId) || 0) + 1)
-    capacityByScheme.set(
-      s.schemeId,
-      (capacityByScheme.get(s.schemeId) || 0) + Number(s.practicalCapacityM3Month || 0)
-    )
-  }
-
-  const prodByScheme = new Map<string, { producedM3: number; logsCount: number }>()
   for (const p of prodLogRows) {
-    prodByScheme.set(p.schemeId, {
-      producedM3: Number(p.totalWaterProducedM3 || 0),
-      logsCount: Number(p.logsCount || 0),
-    })
+    sourcesByScheme.set(p.schemeId, p.sourceCount)
+    capacityByScheme.set(p.schemeId, p.currentCapacityM3Month ?? 0)
   }
+  const prodByScheme = new Map(prodLogRows.map(p => [p.schemeId, { producedM3: Number(p.totalWaterProducedM3), logsCount: p.logsCount, days: p.loggedDaysCount }]))
 
   const salesByScheme = new Map<string, { soldM3: number; billedUgx: number; count: number }>()
   for (const m of meterReadingsRows) {
@@ -226,18 +200,18 @@ export async function runIntelligenceEngine(
   const generatedFindings: StructuredFinding[] = []
   const periodChanges: PeriodChangeItem[] = []
 
-  const daysInPeriod = 30 // Month baseline
+  const daysInPeriod = productionBounds.expectedDays
 
   for (const sch of activeSchemes) {
     const sourcesCount = sourcesByScheme.get(sch.id) || 0
     const practicalCapacity = capacityByScheme.get(sch.id) || 0
-    const prodData = prodByScheme.get(sch.id) || { producedM3: 0, logsCount: 0 }
+    const prodData = prodByScheme.get(sch.id) || { producedM3: 0, logsCount: 0, days: 0 }
     const salesData = salesByScheme.get(sch.id) || { soldM3: 0, billedUgx: 0, count: 0 }
     const commData = billingByScheme.get(sch.id) || { currentBilled: 0, cashCollected: 0, totalArrears: 0 }
     const tgtData = targetByScheme.get(sch.id) || {}
 
-    const loggedDays = prodData.logsCount
-    const dataCompleteness = Math.min(100, Math.round((loggedDays / daysInPeriod) * 100))
+    const loggedDays = prodData.days
+    const dataCompleteness = Math.min(100, Math.round((loggedDays / Math.max(1, daysInPeriod)) * 100))
 
     // Domain A: Data Quality
     const dqFindings = evaluateDataQuality({
@@ -267,16 +241,19 @@ export async function runIntelligenceEngine(
     generatedFindings.push(...capFindings)
 
     // Domain C: Production Trends
-    const prodFindings = evaluateProductionTrends({
+    const previous = previousRows.find(p => p.schemeId === sch.id)
+    // Compare completed calendar months only: a partial current month is not a comparable total.
+    const comparable = productionMonthKey < kampalaCalendarDate(new Date()).slice(0, 7) && dataCompleteness >= 60 && previous && previous.coveragePercent >= 60 && previous.available
+    const prodFindings = comparable ? evaluateProductionTrends({
       schemeId: sch.id,
       schemeName: sch.name,
       branchId: sch.branchId,
       periodName,
       currentProductionM3: prodData.producedM3,
-      previousProductionM3: prodData.producedM3 * 0.9, // Baseline comparison
-      historicalAvgProductionM3: practicalCapacity * 0.75,
+      previousProductionM3: Number(previous.totalWaterProducedM3),
+      historicalAvgProductionM3: 0,
       dataCompletenessPercent: dataCompleteness,
-    })
+    }) : []
     generatedFindings.push(...prodFindings)
 
     // Domain D: NRW / Production-to-Sales Loss
@@ -322,13 +299,13 @@ export async function runIntelligenceEngine(
     generatedFindings.push(...tgtFindings)
 
     // Domain G: Trends / "What Changed?"
-    if (prodData.producedM3 > 0 && salesData.soldM3 > 0) {
+    if (comparable) {
       const delta = calculatePeriodDelta({
         schemeId: sch.id,
         schemeName: sch.name,
         metric: "Water Production",
         currentValue: prodData.producedM3,
-        previousValue: Math.round(prodData.producedM3 * 0.92),
+        previousValue: Number(previous.totalWaterProducedM3),
         unit: "m³",
         higherIsBetter: true,
       })

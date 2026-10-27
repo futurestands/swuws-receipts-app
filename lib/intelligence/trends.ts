@@ -14,8 +14,8 @@ export function calculatePeriodDelta(input: SchemePeriodComparisonInput): Period
   if (input.previousValue === 0 && input.currentValue === 0) return null
 
   const deltaValue = Math.round((input.currentValue - input.previousValue) * 100) / 100
-  const base = input.previousValue !== 0 ? input.previousValue : 1
-  const deltaPercent = Math.round((deltaValue / Math.abs(base)) * 1000) / 10
+  const base = input.previousValue
+  const deltaPercent = base === 0 ? null : Math.round((deltaValue / Math.abs(base)) * 1000) / 10
 
   let direction: "increased" | "decreased" | "stable" = "stable"
   if (deltaValue > 0.01) direction = "increased"
@@ -31,7 +31,7 @@ export function calculatePeriodDelta(input: SchemePeriodComparisonInput): Period
   }
 
   const actionWord = direction === "increased" ? "increased" : direction === "decreased" ? "decreased" : "remained stable"
-  const summary = `${input.metric} at ${input.schemeName} ${actionWord} by ${Math.abs(deltaPercent)}% (${input.previousValue.toLocaleString()} ${input.unit} → ${input.currentValue.toLocaleString()} ${input.unit}).`
+  const summary = `${input.metric} at ${input.schemeName} ${actionWord} by ${deltaPercent === null ? `${Math.abs(deltaValue)} ${input.unit} (percentage unavailable: zero baseline)` : `${Math.abs(deltaPercent)}%`} (${input.previousValue.toLocaleString()} ${input.unit} → ${input.currentValue.toLocaleString()} ${input.unit}).`
 
   return {
     id: `trend-${input.schemeId}-${input.metric.toLowerCase().replace(/\s+/g, "_")}`,

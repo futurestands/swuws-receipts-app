@@ -3,7 +3,7 @@ import { getCurrentUser } from "@/lib/session"
 import { AppShell } from "@/components/layout/app-shell"
 import { getNavSections } from "@/lib/nav-config"
 import { ROLE_LABELS, type Role } from "@/lib/permissions/roles"
-import { canConfigureSystem, canViewIntelligence } from "@/lib/permissions"
+import { canConfigureSystem, canViewIntelligence, canViewProduction } from "@/lib/permissions"
 import { getSettings } from "@/app/actions/settings"
 
 export const dynamic = "force-dynamic"
@@ -16,7 +16,7 @@ export default async function DecisionSupportLayout({ children }: { children: Re
 
   if (!current) redirect("/login")
 
-  if (!canViewIntelligence(current)) {
+  if (!canViewIntelligence(current) && !canViewProduction(current)) {
     redirect("/dashboard")
   }
 

@@ -1,11 +1,10 @@
+import { loadProductionSummary, productionMonth } from "@/lib/production/reporting"
 import { db } from "@/lib/db"
 import {
   waterScheme,
   billingPeriod,
   billingRecord,
   meterReading,
-  waterSchemeSource,
-  waterProductionLog,
   schemeTarget,
 } from "@/lib/db/schema"
 import { eq, and, sql, sum, count, desc, inArray } from "drizzle-orm"
@@ -72,7 +71,7 @@ export async function getTrustedPerformanceDataset(
     month: new Date().getMonth() + 1,
   }
 
-  if (schemeIds.length === 0) {
+  if (schemeIds.length === 0 || !selectedPeriod) {
     return {
       period,
       scope: { level: "organization" },
@@ -94,37 +93,19 @@ export async function getTrustedPerformanceDataset(
         collectionEfficiencyPercent: 0,
         arrearsRecoveryPercent: 0,
       },
-      dataQuality: { completenessPercent: 0, flagsCount: 0, issues: [] },
+      production: { available: false, suppliedComplete: false, capacityComplete: false, provisionalProducedM3: 0, legacyCount: 0, label: "Select a real billing/reporting month for financial comparisons" },
+      dataQuality: { completenessPercent: 0, flagsCount: 0, issues: !selectedPeriod ? ["No billing/reporting month is available. Use the production workspace for date-based operational totals."] : [] },
       schemesMatrix: [],
       periodDeltas: [],
       traceability: [],
     }
   }
 
+  const monthKey = `${period.year}-${String(period.month).padStart(2, "0")}`
+  const productionBounds = productionMonth(monthKey)
   // 3. Fetch Operational & Commercial Data in Parallel
-  const [sourcesRows, prodLogRows, meterReadingsRows, billingRows] = await Promise.all([
-    // A. Scheme Sources (Capacity)
-    db
-      .select({
-        schemeId: waterSchemeSource.schemeId,
-        practicalCapacityM3Month: waterSchemeSource.practicalCapacityM3Month,
-      })
-      .from(waterSchemeSource)
-      .where(and(inArray(waterSchemeSource.schemeId, schemeIds), eq(waterSchemeSource.active, true))),
-
-    // B. Water Production Logs
-    period.id !== "active"
-      ? db
-          .select({
-            schemeId: waterProductionLog.schemeId,
-            totalWaterProducedM3: sum(waterProductionLog.waterProducedM3),
-            totalWaterSuppliedM3: sum(waterProductionLog.waterSuppliedM3),
-            logsCount: count(waterProductionLog.id),
-          })
-          .from(waterProductionLog)
-          .where(and(inArray(waterProductionLog.schemeId, schemeIds), eq(waterProductionLog.billingPeriodId, period.id)))
-          .groupBy(waterProductionLog.schemeId)
-      : Promise.resolve([]),
+  const [prodLogRows, meterReadingsRows, billingRows] = await Promise.all([
+    loadProductionSummary(db, schemeIds, monthKey),
 
     // C. Billed Meter Readings ($M^3$ Sales)
     period.id !== "active"
@@ -210,19 +191,15 @@ export async function getTrustedPerformanceDataset(
   let totalLogsCount = 0
 
   const capacityMap = new Map<string, number>()
-  for (const s of sourcesRows) {
-    capacityMap.set(s.schemeId, (capacityMap.get(s.schemeId) || 0) + Number(s.practicalCapacityM3Month || 0))
-  }
-
+  for (const p of prodLogRows) capacityMap.set(p.schemeId, p.currentCapacityM3Month ?? 0)
   const prodMap = new Map<string, { prod: number; sup: number; logs: number }>()
   for (const p of prodLogRows) {
-    const prod = Number(p.totalWaterProducedM3 || 0)
-    const sup = Number(p.totalWaterSuppliedM3 || 0)
-    const logs = Number(p.logsCount || 0)
-    prodMap.set(p.schemeId, { prod, sup, logs })
+    const prod = Number(p.totalWaterProducedM3)
+    const sup = Number(p.totalWaterSuppliedM3)
+    prodMap.set(p.schemeId, { prod, sup, logs: p.loggedDaysCount })
     aggProducedM3 += prod
     aggSuppliedM3 += sup
-    totalLogsCount += logs
+    totalLogsCount += p.loggedDaysCount
   }
 
   const salesMap = new Map<string, { sold: number; billed: number }>()
@@ -264,7 +241,7 @@ export async function getTrustedPerformanceDataset(
       waterProducedM3: pData.prod,
       waterBilledSoldM3: sData.sold,
       loggedDaysCount: pData.logs,
-      daysInPeriod: 30,
+      daysInPeriod: productionBounds.expectedDays,
       practicalCapacityM3Period: cap,
     })
 
@@ -283,6 +260,8 @@ export async function getTrustedPerformanceDataset(
       schemeName: sch.name,
       branchId: sch.branchId,
       producedM3: pData.prod,
+      productionAvailable: prodLogRows.find(p => p.schemeId === sch.id)?.available ?? false,
+      capacityAvailable: prodLogRows.find(p => p.schemeId === sch.id)?.currentCapacityM3Month != null,
       practicalCapacityM3: cap,
       utilizationPercent: validation.capacityUtilizationPercent,
       soldM3: sData.sold,
@@ -302,7 +281,7 @@ export async function getTrustedPerformanceDataset(
     waterProducedM3: aggProducedM3,
     waterBilledSoldM3: aggSoldM3,
     loggedDaysCount: totalLogsCount,
-    daysInPeriod: 30 * Math.max(1, activeSchemes.length),
+    daysInPeriod: productionBounds.expectedDays * Math.max(1, activeSchemes.length),
     practicalCapacityM3Period: aggPracticalCapacityM3,
   })
 
@@ -310,17 +289,24 @@ export async function getTrustedPerformanceDataset(
   const globalCollectionEff = aggCurrentBilledUgx > 0 ? Math.round((totalCollectedUgx / aggCurrentBilledUgx) * 1000) / 10 : 0
   const globalArrearsRecovery = aggArrearsBilledUgx > 0 ? Math.round((aggCashToArrearsUgx / aggArrearsBilledUgx) * 1000) / 10 : 0
 
+  const available = prodLogRows.some(p => p.available)
+  const suppliedComplete = available && prodLogRows.every(p => !p.available || p.suppliedComplete)
+  const capacityComplete = prodLogRows.every(p => p.currentCapacityM3Month !== null)
+  if (!available) globalValidation.dataQualityIssues.push("No verified production observations; zero is not an observed result")
+  if (!suppliedComplete) globalValidation.dataQualityIssues.push("Incomplete supplied data")
+  if (!capacityComplete) globalValidation.dataQualityIssues.push("Capacity benchmark unavailable for some schemes")
+  globalValidation.dataQualityIssues.push("Official totals use verified records only. Day coverage is not all-source completeness. Capacity uses confirmed current configuration, not historical installed capacity.")
   // 7. Build Traceability Records
   const traceability: TraceableMetric[] = [
     {
       metricName: "Water Production (m³)",
       period: period.periodName,
       scopeName: user.branchId ? "Branch Scope" : "Organization Scope",
-      sourceRecordsSummary: `Sum of ${totalLogsCount} water_production_log records across ${activeSchemes.length} schemes`,
-      formulaDescription: "sum(water_production_log.waterProducedM3)",
+      sourceRecordsSummary: `Verified production records; ${totalLogsCount} distinct scheme-days across ${activeSchemes.length} schemes`,
+      formulaDescription: "Sum verified workflowVersion=1 records by production DATE month; provisional and legacy excluded",
       rawResult: aggProducedM3,
       validationStatus: globalValidation.completenessPercent >= 80 ? "VALID" : "INCOMPLETE_DATA",
-      displayedResult: `${aggProducedM3.toLocaleString()} m³`,
+      displayedResult: available ? `${aggProducedM3.toLocaleString()} m³ (verified)` : "Unavailable: no verified observations",
     },
     {
       metricName: "Capacity Utilisation %",
@@ -329,8 +315,8 @@ export async function getTrustedPerformanceDataset(
       sourceRecordsSummary: `Aggregated production (${aggProducedM3.toLocaleString()} m³) ÷ Aggregated practical capacity (${aggPracticalCapacityM3.toLocaleString()} m³)`,
       formulaDescription: "(Total Production m³ ÷ Total Practical Capacity m³) × 100",
       rawResult: globalValidation.capacityUtilizationPercent,
-      validationStatus: aggPracticalCapacityM3 > 0 ? "VALID" : "TARGET_UNAVAILABLE",
-      displayedResult: aggPracticalCapacityM3 > 0 ? `${globalValidation.capacityUtilizationPercent}%` : "Benchmark unavailable",
+      validationStatus: capacityComplete && available && aggPracticalCapacityM3 > 0 ? "VALID" : "TARGET_UNAVAILABLE",
+      displayedResult: capacityComplete && available && aggPracticalCapacityM3 > 0 ? `${globalValidation.capacityUtilizationPercent}%` : "Benchmark unavailable",
     },
     {
       metricName: "Production-to-Sales Loss Indicator %",
@@ -346,6 +332,7 @@ export async function getTrustedPerformanceDataset(
 
   return {
     period,
+    production: { available, suppliedComplete, capacityComplete, provisionalProducedM3: prodLogRows.reduce((n,p) => n + Number(p.provisionalProducedM3), 0), legacyCount: prodLogRows.reduce((n,p) => n + p.legacyCount, 0), label: "Verified records only; current-configuration capacity benchmark" },
     scope: { level: "organization" },
     kpis: {
       waterProducedM3: aggProducedM3,

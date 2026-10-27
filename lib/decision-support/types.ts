@@ -12,6 +12,7 @@ export interface TraceableMetric {
 }
 
 export interface TrustedPerformanceDataset {
+  production?: { available: boolean; suppliedComplete: boolean; capacityComplete: boolean; provisionalProducedM3: number; legacyCount: number; label: string }
   period: { id: string; periodName: string; year: number; month: number }
   scope: { level: "organization" | "cluster" | "branch" | "scheme"; id?: string; name?: string }
   kpis: {
@@ -47,6 +48,8 @@ export interface TrustedPerformanceDataset {
 }
 
 export interface SchemePerformanceMatrixItem {
+  productionAvailable?: boolean
+  capacityAvailable?: boolean
   schemeId: string
   schemeName: string
   branchId?: string | null
@@ -72,7 +75,7 @@ export interface DecisionSupportDeltaItem {
   currentValue: number
   previousValue: number
   deltaValue: number
-  deltaPercent: number
+  deltaPercent: number | null
   unit: string
   summary: string
 }

@@ -91,3 +91,39 @@ After `0054_receipt_recon_status_allowlist.sql`, a `reconciliationStatus`-only
 update (matched / void) must succeed. Changing any other receipt column must
 still raise.
 
+## Phase 1 production migrations (0069–0070)
+
+These migration files are implemented and tested locally; they have **not** been
+applied to a production/business database. Deployment requires separate approval.
+
+- `0069_production_integrity.sql` extends existing production/source tables with
+  calendar dates, workflow/version/idempotency and verification fields, confirmation
+  metadata, constraints, indexes and history-protection triggers. Existing rows stay
+  at workflow version 0 and are not rewritten or automatically verified.
+- `0070_production_permissions.sql` creates four permission definitions only. It
+  assigns no role grants. Use existing IAM administration after reviewing the actual
+  operator/verifier/source-manager role and scope matrix.
+
+Before deployment, inspect a safely obtained, authorised disposable schema/data copy
+for invalid numerics/states, source/scheme mismatches, missing ancestry, duplicate
+active source/day and request keys, and foreign-key dependencies. The migration
+validates its new constraints and fails transactionally rather than fixing historic
+rows silently. Reconcile any failures explicitly before deployment. The previously
+observed ledger-only `0011_receipt_billing_snapshots.sql` entry remains an operational
+preflight item; no development connection to the business database was made to
+investigate it.
+
+Do not use `db/migrate.js` during development tests: it intentionally loads `.env`.
+Production integration tests instead require `PRODUCTION_TEST_DATABASE_URL` with
+loopback host, a database name ending `_production_test`, no query overrides, and
+an identity different from `DATABASE_URL`. Set `SWUWS_PRODUCTION_INTEGRATION=1`, then
+run `npx vitest run lib/production/integrity.integration.test.ts --no-cache`.
+Missing/unsafe targets fail; tests never fall back to `.env`. The suite creates
+and cleans a unique namespace containing synthetic fixtures inside that disposable
+database. CI provisions PostgreSQL 17 and runs this suite separately from unit tests.
+
+For rollback, stop application rollout and retain new fields, audit history and
+measurements. Do not drop the added data or restore an older production writer that
+ignores verification/version controls. Verify receipt, attachment, audit and Pegasus
+protections on the actual deployment schema before enabling the release.
+

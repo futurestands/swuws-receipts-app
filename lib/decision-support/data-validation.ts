@@ -22,7 +22,7 @@ export function validateWaterBalanceAndCapacity(
   const issues: string[] = []
   const completenessPercent = Math.min(
     100,
-    Math.round((input.loggedDaysCount / (input.daysInPeriod || 30)) * 100)
+    input.daysInPeriod > 0 ? Math.round((input.loggedDaysCount / input.daysInPeriod) * 100) : 0
   )
 
   // 1. Loss Indicator Calculation (Preserve Raw Negative Result)
@@ -34,7 +34,7 @@ export function validateWaterBalanceAndCapacity(
   }
 
   let lossValidationStatus: "VALID" | "DATA_INCONSISTENCY" | "INCOMPLETE_DATA" = "VALID"
-  let displayLossIndicator = `${rawCalculatedLossIndicator}%`
+  let displayLossIndicator = input.waterProducedM3 > 0 ? `${rawCalculatedLossIndicator}%` : "Unavailable: zero or missing verified production"
 
   if (input.waterBilledSoldM3 > input.waterProducedM3 && input.waterProducedM3 > 0) {
     lossValidationStatus = "DATA_INCONSISTENCY"

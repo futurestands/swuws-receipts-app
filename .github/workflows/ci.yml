@@ -9,6 +9,20 @@ on:
 jobs:
   validate:
     runs-on: ubuntu-latest
+    services:
+      production-test-db:
+        image: postgres:17
+        env:
+          POSTGRES_USER: swuws_test
+          POSTGRES_PASSWORD: disposable-test-only
+          POSTGRES_DB: swuws_production_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U swuws_test -d swuws_production_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     
     steps:
       - uses: actions/checkout@v4
@@ -41,9 +55,17 @@ jobs:
       - name: Unit Tests (Math & Logic)
         run: npm test
 
+      - name: Production integrity integration tests (disposable database only)
+        run: npx vitest run lib/production/integrity.integration.test.ts --no-cache
+        env:
+          SWUWS_PRODUCTION_INTEGRATION: '1'
+          PRODUCTION_TEST_DATABASE_URL: postgres://swuws_test:disposable-test-only@127.0.0.1:5432/swuws_production_test
+          DATABASE_URL: postgres://dummy:unused@127.0.0.1:5432/unused
+
       - name: Production Build
         run: npm run build
         env:
           DATABASE_URL: postgres://dummy:password@localhost:5432/db
           BETTER_AUTH_SECRET: dummy-secret
-          BETTER_AUTH_URL: http://localhost:3000
+          BETTER_AUTH_URL: https://swuws-test.invalid
+          NEXT_PUBLIC_APP_URL: https://swuws-test.invalid

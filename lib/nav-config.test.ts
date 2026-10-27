@@ -26,6 +26,15 @@ function hrefs(user: UserPermissionsContext) {
 }
 
 describe("finance nav vs page gates", () => {
+  it("links a production-only viewer to the existing workspace", () => {
+    const sections = getNavSections({ id: "operator", role: "agent", permissions: [{ code: "production.view", scope: "scheme" }] })
+    const items = sections.flatMap(section => section.items)
+    expect(items.find(item => item.href === "/intelligence")?.label).toBe("Water Production")
+    expect(items.some(item => item.href === "/decision-support")).toBe(false)
+  })
+  it("does not advertise production on write authority without view permission", () => {
+    expect(hrefs({ id: "operator", role: "agent", permissions: [{ code: "production.create", scope: "scheme" }] })).not.toContain("/intelligence")
+  })
   it("hides Recon Exceptions when the user can only view recon", () => {
     const links = hrefs(officer)
     expect(links).toContain("/dashboard/reconciliation/stats")

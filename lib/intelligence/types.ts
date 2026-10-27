@@ -80,7 +80,7 @@ export interface PeriodChangeItem {
   currentValue: number
   previousValue: number
   deltaValue: number
-  deltaPercent: number
+  deltaPercent: number | null
   unit: string
   direction: "increased" | "decreased" | "stable"
   significance: "positive" | "negative" | "neutral"

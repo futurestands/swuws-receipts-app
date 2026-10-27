@@ -7,7 +7,13 @@ import {
   jsonb,
   index,
   uniqueIndex,
+  date,
+  integer,
+  smallint,
+  foreignKey,
+  check,
 } from "drizzle-orm/pg-core"
+import { sql } from "drizzle-orm"
 import { user } from "./auth"
 import { organization, cluster, branch, waterScheme } from "./hierarchy"
 import { billingPeriod } from "./billing"
@@ -24,19 +30,37 @@ export const waterSchemeSource = pgTable(
       .references(() => waterScheme.id, { onDelete: "cascade" }),
     sourceName: text("sourceName").notNull(),
     technology: text("technology").notNull().default("gravity"), // 'gravity' | 'pumped_grid' | 'pumped_solar' | 'pumped_generator' | 'hybrid'
-    installedPumpCapacityM3Hr: numeric("installedPumpCapacityM3Hr", { precision: 12, scale: 2 }).default("0"),
-    regimeHoursPerDay: numeric("regimeHoursPerDay", { precision: 5, scale: 2 }).default("24"),
-    containerVolumeLitres: numeric("containerVolumeLitres", { precision: 12, scale: 2 }).default("0"),
-    averageFillTimeSeconds: numeric("averageFillTimeSeconds", { precision: 12, scale: 2 }).default("0"),
+    installedPumpCapacityM3Hr: numeric("installedPumpCapacityM3Hr", { precision: 12, scale: 2 }),
+    regimeHoursPerDay: numeric("regimeHoursPerDay", { precision: 5, scale: 2 }),
+    containerVolumeLitres: numeric("containerVolumeLitres", { precision: 12, scale: 2 }),
+    averageFillTimeSeconds: numeric("averageFillTimeSeconds", { precision: 12, scale: 2 }),
     productionCapacityLSec: numeric("productionCapacityLSec", { precision: 12, scale: 4 }).default("0"),
-    currentCapacityM3Day: numeric("currentCapacityM3Day", { precision: 12, scale: 2 }).default("0"),
-    practicalCapacityM3Month: numeric("practicalCapacityM3Month", { precision: 12, scale: 2 }).default("0"),
+    currentCapacityM3Day: numeric("currentCapacityM3Day", { precision: 12, scale: 2 }),
+    practicalCapacityM3Month: numeric("practicalCapacityM3Month", { precision: 12, scale: 2 }),
     active: boolean("active").notNull().default(true),
+    capacityMethod: text("capacityMethod").notNull().default("unknown"),
+    capacityConfirmedAt: timestamp("capacityConfirmedAt"),
+    capacityConfirmedById: text("capacityConfirmedById").references(() => user.id, { onDelete: "restrict" }),
+    version: integer("version").notNull().default(1),
     createdAt: timestamp("createdAt").notNull().defaultNow(),
     updatedAt: timestamp("updatedAt").notNull().defaultNow(),
   },
   (table) => ({
     schemeIdx: index("water_scheme_source_scheme_idx").on(table.schemeId),
+    idSchemeUnq: uniqueIndex("production_source_id_scheme_unq").on(table.id, table.schemeId),
+    sourceValues: check("production_source_values", sql`
+      ${table.version} > 0 AND ${table.technology} IN ('gravity','pumped_grid','pumped_solar','pumped_generator','hybrid')
+      AND ${table.capacityMethod} IN ('unknown','measured_hourly','bucket_test')
+      AND (${table.installedPumpCapacityM3Hr} IS NULL OR (${table.installedPumpCapacityM3Hr} >= 0 AND ${table.installedPumpCapacityM3Hr}::text NOT IN ('NaN','Infinity','-Infinity')))
+      AND (${table.regimeHoursPerDay} IS NULL OR (${table.regimeHoursPerDay} BETWEEN 0 AND 24 AND ${table.regimeHoursPerDay}::text NOT IN ('NaN','Infinity','-Infinity')))
+      AND (${table.containerVolumeLitres} IS NULL OR (${table.containerVolumeLitres} >= 0 AND ${table.containerVolumeLitres}::text NOT IN ('NaN','Infinity','-Infinity')))
+      AND (${table.averageFillTimeSeconds} IS NULL OR (${table.averageFillTimeSeconds} >= 0 AND ${table.averageFillTimeSeconds}::text NOT IN ('NaN','Infinity','-Infinity')))
+      AND (${table.currentCapacityM3Day} IS NULL OR (${table.currentCapacityM3Day} >= 0 AND ${table.currentCapacityM3Day}::text NOT IN ('NaN','Infinity','-Infinity')))
+      AND (${table.productionCapacityLSec} IS NULL OR (${table.productionCapacityLSec} >= 0 AND ${table.productionCapacityLSec}::text NOT IN ('NaN','Infinity','-Infinity')))
+      AND (${table.practicalCapacityM3Month} IS NULL OR (${table.practicalCapacityM3Month} >= 0 AND ${table.practicalCapacityM3Month}::text NOT IN ('NaN','Infinity','-Infinity')))
+      AND (${table.capacityConfirmedAt} IS NULL OR (${table.capacityConfirmedById} IS NOT NULL AND
+        (${table.capacityMethod} = 'unknown' OR (${table.capacityMethod} = 'measured_hourly' AND ${table.installedPumpCapacityM3Hr} IS NOT NULL)
+          OR (${table.capacityMethod} = 'bucket_test' AND ${table.containerVolumeLitres} IS NOT NULL AND ${table.averageFillTimeSeconds} IS NOT NULL AND ${table.containerVolumeLitres} > 0 AND ${table.averageFillTimeSeconds} > 0))))`),
   })
 )
 
@@ -49,14 +73,21 @@ export const waterProductionLog = pgTable(
     id: text("id").primaryKey(),
     schemeId: text("schemeId")
       .notNull()
-      .references(() => waterScheme.id, { onDelete: "cascade" }),
-    sourceId: text("sourceId").references(() => waterSchemeSource.id, { onDelete: "set null" }),
-    billingPeriodId: text("billingPeriodId").references(() => billingPeriod.id, { onDelete: "set null" }),
+      .references(() => waterScheme.id, { onDelete: "restrict" }),
+    sourceId: text("sourceId"),
+    billingPeriodId: text("billingPeriodId").references(() => billingPeriod.id, { onDelete: "restrict" }),
+    productionDate: date("productionDate"),
+    workflowVersion: smallint("workflowVersion").notNull().default(0),
+    version: integer("version").notNull().default(1),
+    requestKey: text("requestKey"),
+    requestFingerprint: text("requestFingerprint"),
+    verifiedAt: timestamp("verifiedAt"),
+    verifiedById: text("verifiedById").references(() => user.id, { onDelete: "restrict" }),
     logDate: timestamp("logDate").notNull(),
     waterProducedM3: numeric("waterProducedM3", { precision: 12, scale: 2 }).notNull().default("0"),
-    waterSuppliedM3: numeric("waterSuppliedM3", { precision: 12, scale: 2 }).default("0"),
+    waterSuppliedM3: numeric("waterSuppliedM3", { precision: 12, scale: 2 }),
     operatingHours: numeric("operatingHours", { precision: 5, scale: 2 }),
-    status: text("status").notNull().default("entered"), // 'entered' | 'verified' | 'flagged'
+    status: text("status").notNull().default("entered"), // entered | verified | flagged | void
     recordedById: text("recordedById").references(() => user.id, { onDelete: "set null" }),
     notes: text("notes"),
     createdAt: timestamp("createdAt").notNull().defaultNow(),
@@ -65,6 +96,13 @@ export const waterProductionLog = pgTable(
   (table) => ({
     schemePeriodIdx: index("water_production_log_scheme_period_idx").on(table.schemeId, table.billingPeriodId),
     logDateIdx: index("water_production_log_date_idx").on(table.logDate),
+    monthIdx: index("production_scheme_date_status_idx").on(table.schemeId, table.productionDate, table.status),
+    sourceDayUnq: uniqueIndex("production_source_day_unq").on(table.sourceId, table.productionDate).where(sql`${table.workflowVersion} = 1 AND ${table.status} <> 'void'`),
+    requestUnq: uniqueIndex("production_request_unq").on(table.recordedById, table.requestKey).where(sql`${table.requestKey} IS NOT NULL`),
+    sourceSchemeFk: foreignKey({ name: "production_source_scheme_fk", columns: [table.sourceId, table.schemeId], foreignColumns: [waterSchemeSource.id, waterSchemeSource.schemeId] }).onDelete("restrict"),
+    workflowCheck: check("production_workflow_shape", sql`${table.workflowVersion} IN (0,1) AND ${table.version} > 0 AND (${table.workflowVersion} = 0 OR (${table.productionDate} IS NOT NULL AND ${table.sourceId} IS NOT NULL AND ${table.recordedById} IS NOT NULL AND ${table.requestKey} IS NOT NULL AND ${table.requestKey} ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' AND ${table.requestFingerprint} IS NOT NULL AND ${table.requestFingerprint} ~ '^[0-9a-f]{64}$'))`),
+    valuesCheck: check("production_values", sql`${table.waterProducedM3} >= 0 AND ${table.waterProducedM3}::text NOT IN ('NaN','Infinity','-Infinity') AND (${table.waterSuppliedM3} IS NULL OR (${table.waterSuppliedM3} >= 0 AND ${table.waterSuppliedM3}::text NOT IN ('NaN','Infinity','-Infinity'))) AND (${table.operatingHours} IS NULL OR (${table.operatingHours} BETWEEN 0 AND 24 AND ${table.operatingHours}::text NOT IN ('NaN','Infinity','-Infinity')))`),
+    stateCheck: check("production_state", sql`${table.status} IN ('entered','flagged','verified','void') AND (${table.workflowVersion} = 0 OR ((${table.status} = 'verified' AND ${table.verifiedById} IS NOT NULL AND ${table.verifiedAt} IS NOT NULL AND ${table.verifiedById} <> ${table.recordedById}) OR (${table.status} <> 'verified' AND ${table.verifiedById} IS NULL AND ${table.verifiedAt} IS NULL)))`),
   })
 )
 

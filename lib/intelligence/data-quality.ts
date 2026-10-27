@@ -60,8 +60,8 @@ export function evaluateDataQuality(input: SchemeDataQualityInput): StructuredFi
       clusterId: input.clusterId,
       category: "data_quality",
       severity,
-      title: `Incomplete Production Logging (${completeness}% Complete)`,
-      description: `${missingDays} day(s) of water production data are missing for this period.`,
+      title: `Verified Production Day Coverage (${completeness}%)`,
+      description: `${missingDays} elapsed day(s) have no verified production entry. Day coverage does not establish completeness for every source.`,
       observation: "Production trends and Non-Revenue Water estimates are unconfirmed due to missing daily logs.",
       evidence: {
         metric: "logged_days",

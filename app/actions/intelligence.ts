@@ -12,7 +12,12 @@ import { writeAudit } from "@/lib/audit"
 import { runIntelligenceEngine } from "@/lib/intelligence/engine"
 import { IntelligenceFilters, FindingStatus } from "@/lib/intelligence/types"
 import { eq, and, desc } from "drizzle-orm"
-import { randomUUID } from "crypto"
+import { productionService } from "@/lib/production/service"
+import { ProductionError, type ProductionResult } from "@/lib/production/schemas"
+import { applyIntelligenceSchemeFilter } from "@/lib/intelligence/scope"
+import { revalidatePath } from "next/cache"
+import { ZodError } from "zod"
+import { recordSystemError } from "@/lib/system-errors"
 
 /**
  * Fetch Main Executive Intelligence Dashboard Data
@@ -116,7 +121,7 @@ export async function getSchemeIntelligence(schemeId: string) {
       branchId: waterScheme.branchId,
     })
     .from(waterScheme)
-    .where(eq(waterScheme.id, schemeId))
+    .where(and(eq(waterScheme.id, schemeId), applyIntelligenceSchemeFilter(current, schemeId)))
     .limit(1)
 
   if (!sch) throw new Error("Scheme not found")
@@ -148,112 +153,47 @@ export async function getSchemeIntelligence(schemeId: string) {
   }
 }
 
-/**
- * Upsert Water Scheme Source
- */
-export async function upsertWaterSchemeSource(data: {
-  id?: string
-  schemeId: string
-  sourceName: string
-  technology: string
-  installedPumpCapacityM3Hr?: number
-  regimeHoursPerDay?: number
-  containerVolumeLitres?: number
-  averageFillTimeSeconds?: number
-}) {
+
+/** All public production actions validate again on the server, including direct invocations. */
+async function productionAction<T>(work: (service: ReturnType<typeof productionService>, current: Awaited<ReturnType<typeof requireUser>>) => Promise<T>, mutate = false): Promise<ProductionResult<T>> {
   const current = await requireUser()
-  if (!canInvestigateIntelligence(current)) {
-    throw new Error("Access Denied: You do not have permission to configure scheme sources.")
+  try {
+    const data = await work(productionService(), current)
+    if (mutate) { revalidatePath("/intelligence", "layout"); revalidatePath("/decision-support", "layout") }
+    return { ok: true, data }
+  } catch (error) {
+    if (error instanceof ZodError) return { ok: false, code: "VALIDATION", message: "Check the entered values", fieldErrors: error.flatten().fieldErrors }
+    if (error instanceof ProductionError) return { ok: false, code: error.code, message: error.message }
+    const cause = error && typeof error === "object" && "cause" in error ? error.cause : error
+    const code = cause && typeof cause === "object" && "code" in cause ? cause.code : null
+    if (code === "23505") return { ok: false, code: "DUPLICATE", message: "An entry already exists for this source/day or retry key. Reload before continuing." }
+    if (code === "23514" || code === "22003" || code === "23503") return { ok: false, code: "VALIDATION", message: "The record violates production integrity rules. Check its values and references." }
+    if (code === "40P01" || code === "40001") return { ok: false, code: "CONFLICT", message: "Another update is in progress. Reload and retry." }
+    await recordSystemError({ message: "Production operation failed", source: "server", path: "/intelligence", user: current })
+    return { ok: false, code: "CONFIGURATION", message: "Production operation could not be completed. Contact an administrator." }
   }
-
-  const sourceId = data.id || `src-${randomUUID()}`
-
-  // Calculate Practical Monthly Capacity (m3/month)
-  const hours = data.regimeHoursPerDay || 24
-  const pumpCapacity = data.installedPumpCapacityM3Hr || 0
-  const m3Day = pumpCapacity > 0 ? pumpCapacity * hours : 100
-  const m3Month = m3Day * 30
-
-  await db
-    .insert(waterSchemeSource)
-    .values({
-      id: sourceId,
-      schemeId: data.schemeId,
-      sourceName: data.sourceName,
-      technology: data.technology,
-      installedPumpCapacityM3Hr: String(data.installedPumpCapacityM3Hr || 0),
-      regimeHoursPerDay: String(data.regimeHoursPerDay || 24),
-      containerVolumeLitres: String(data.containerVolumeLitres || 0),
-      averageFillTimeSeconds: String(data.averageFillTimeSeconds || 0),
-      currentCapacityM3Day: String(m3Day),
-      practicalCapacityM3Month: String(m3Month),
-      active: true,
-    })
-    .onConflictDoUpdate({
-      target: [waterSchemeSource.id],
-      set: {
-        sourceName: data.sourceName,
-        technology: data.technology,
-        installedPumpCapacityM3Hr: String(data.installedPumpCapacityM3Hr || 0),
-        regimeHoursPerDay: String(data.regimeHoursPerDay || 24),
-        currentCapacityM3Day: String(m3Day),
-        practicalCapacityM3Month: String(m3Month),
-        updatedAt: new Date(),
-      },
-    })
-
-  await writeAudit({
-    user: { id: current.id, name: current.name || "User", email: current.email || "" },
-    action: "intelligence.source.upsert",
-    entityType: "water_scheme_source",
-    entityId: sourceId,
-    details: { schemeId: data.schemeId, sourceName: data.sourceName },
-  })
-
-  return { success: true, id: sourceId }
 }
-
-/**
- * Log Daily Water Production
- */
-export async function logWaterProduction(data: {
-  schemeId: string
-  sourceId?: string
-  billingPeriodId?: string
-  logDate: string
-  waterProducedM3: number
-  waterSuppliedM3?: number
-  operatingHours?: number
-  notes?: string
-}) {
-  const current = await requireUser()
-  if (!canViewIntelligence(current)) {
-    throw new Error("Access Denied: You do not have permission to log water production.")
-  }
-
-  const logId = `prod-${randomUUID()}`
-
-  await db.insert(waterProductionLog).values({
-    id: logId,
-    schemeId: data.schemeId,
-    sourceId: data.sourceId || null,
-    billingPeriodId: data.billingPeriodId || null,
-    logDate: new Date(data.logDate),
-    waterProducedM3: String(data.waterProducedM3),
-    waterSuppliedM3: String(data.waterSuppliedM3 || data.waterProducedM3),
-    operatingHours: data.operatingHours ? String(data.operatingHours) : null,
-    status: "entered",
-    recordedById: current.id,
-    notes: data.notes || null,
-  })
-
-  await writeAudit({
-    user: { id: current.id, name: current.name || "User", email: current.email || "" },
-    action: "intelligence.production.log",
-    entityType: "water_production_log",
-    entityId: logId,
-    details: { schemeId: data.schemeId, waterProducedM3: data.waterProducedM3 },
-  })
-
-  return { success: true, id: logId }
+export async function getProductionWorkspace(schemeId?: string, month?: string, cursor?: string) {
+  return productionAction((service, user) => service.workspace(user, schemeId, month, cursor))
+}
+export async function getProductionHistory(id: string) {
+  return productionAction((service, user) => service.history(user, id))
+}
+export async function logWaterProduction(data: unknown) {
+  return productionAction((service, user) => service.create(user, data), true)
+}
+export async function editWaterProduction(data: unknown) {
+  return productionAction((service, user) => service.edit(user, data), true)
+}
+export async function transitionWaterProduction(data: unknown) {
+  return productionAction((service, user) => service.transition(user, data), true)
+}
+export async function reviewLegacyProduction(data: unknown) {
+  return productionAction((service, user) => service.reviewLegacy(user, data), true)
+}
+export async function upsertWaterSchemeSource(data: unknown) {
+  return productionAction((service, user) => service.saveSource(user, data), true)
+}
+export async function archiveWaterSchemeSource(data: unknown) {
+  return productionAction((service, user) => service.archiveSource(user, data), true)
 }

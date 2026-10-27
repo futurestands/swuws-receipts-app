@@ -40,6 +40,20 @@ export function hasPerm(user: UserPermissionsContext, code: string): boolean {
   return false
 }
 
+/** Production writes never inherit intelligence/reporting view authority. */
+export function canViewProduction(user: UserPermissionsContext) {
+  return user.role === ROLES.SYSTEM_ADMIN || hasPerm(user, "production.view")
+}
+export function canCreateProduction(user: UserPermissionsContext) {
+  return canViewProduction(user) && (user.role === ROLES.SYSTEM_ADMIN || hasPerm(user, "production.create"))
+}
+export function canVerifyProduction(user: UserPermissionsContext) {
+  return canViewProduction(user) && (user.role === ROLES.SYSTEM_ADMIN || hasPerm(user, "production.verify"))
+}
+export function canManageProductionSources(user: UserPermissionsContext) {
+  return canViewProduction(user) && (user.role === ROLES.SYSTEM_ADMIN || hasPerm(user, "production.sources.manage"))
+}
+
 // Helper to cast string role to Role type safely
 export function getRole(user: UserPermissionsContext): Role | null {
   const r = user.role as Role
