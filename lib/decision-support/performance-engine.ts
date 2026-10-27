@@ -12,12 +12,7 @@ import { eq, and, sql, sum, count, desc, inArray } from "drizzle-orm"
 import { UserPermissionsContext } from "@/lib/permissions"
 import { applyIntelligenceSchemeFilter } from "@/lib/intelligence/scope"
 import { validateWaterBalanceAndCapacity } from "./data-validation"
-import {
-  TrustedPerformanceDataset,
-  SchemePerformanceMatrixItem,
-  DecisionSupportDeltaItem,
-  TraceableMetric,
-} from "./types"
+import { TrustedPerformanceDataset, SchemePerformanceMatrixItem, TraceableMetric } from "./types"
 
 export async function getTrustedPerformanceDataset(
   user: UserPermissionsContext,
@@ -107,7 +102,7 @@ export async function getTrustedPerformanceDataset(
   }
 
   // 3. Fetch Operational & Commercial Data in Parallel
-  const [sourcesRows, prodLogRows, meterReadingsRows, billingRows, targetRows] = await Promise.all([
+  const [sourcesRows, prodLogRows, meterReadingsRows, billingRows] = await Promise.all([
     // A. Scheme Sources (Capacity)
     db
       .select({

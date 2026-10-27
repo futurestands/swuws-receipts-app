@@ -18,18 +18,18 @@ import { writeAudit } from "@/lib/audit"
 import { getSettings } from "@/app/actions/settings"
 import { and, desc, eq, gte, lte, sql, sum, inArray, getTableColumns, count, ne } from "drizzle-orm"
 import { randomUUID } from "crypto"
-import { revalidatePath, revalidateTag } from "next/cache"
+import { revalidatePath } from "next/cache"
 import { put } from "@vercel/blob"
 import { checkRateLimit } from "@/lib/rate-limit"
-import { ROLES } from "@/lib/permissions/roles"
+
 import { canViewAllData, canIssueReceipt, canPrintReceipt, canReprintReceipt } from "@/lib/permissions"
 import { applyReceiptScope, validateWriteScope } from "@/lib/scopes"
 import { closeExpiredActivePeriods } from "@/lib/billing/close-expired"
 import { effectiveBillTakenDate, kampalaCalendarDate, resolveBillForPayment } from "@/lib/billing/period-dates"
 import { hasPermission } from "@/lib/iam"
-import { receiptPrintHistory, user as userTable } from "@/lib/db/schema"
+import { receiptPrintHistory } from "@/lib/db/schema"
 import { headers } from "next/headers"
-import { logEvent, logFinancial, logSecurity } from "@/lib/logger"
+import { logEvent, logFinancial } from "@/lib/logger"
 import { createReceiptSchema, type CreateReceiptInput } from "@/lib/finance-schemas"
 
 function generatePaymentReference(): string {
@@ -38,14 +38,7 @@ function generatePaymentReference(): string {
   )}`
 }
 
-async function assertPaymentMethodAllowed(code: string) {
-  const [row] = await db
-    .select({ id: paymentMethodTable.id })
-    .from(paymentMethodTable)
-    .where(and(eq(paymentMethodTable.code, code), eq(paymentMethodTable.active, true)))
-    .limit(1)
-  return Boolean(row)
-}
+
 
 export async function createReceipt(input: CreateReceiptInput & { idempotencyKey?: string }) {
   const current = await requireUser()
@@ -90,6 +83,7 @@ export async function createReceipt(input: CreateReceiptInput & { idempotencyKey
   }
 
   const amount = data.amount
+  const retryScope = applyReceiptScope(current, "receipts.create")
 
   try {
     const row = await db.transaction(async (tx) => {
@@ -102,6 +96,9 @@ export async function createReceipt(input: CreateReceiptInput & { idempotencyKey
           .limit(1)
 
         if (existing) {
+          const [accessible] = await tx.select({ id: receipt.id }).from(receipt)
+            .where(and(eq(receipt.id, existing.id), retryScope)).limit(1)
+          if (!accessible) throw new Error("Receipt not found or access denied")
           return existing
         }
       }
@@ -178,9 +175,7 @@ export async function createReceipt(input: CreateReceiptInput & { idempotencyKey
             : sql`SELECT id FROM receipt WHERE "customerId" = ${data.customerId} AND "agentId" = ${current.id} AND amount = ${amount} AND "billingRecordId" IS NULL AND "createdAt" > NOW() - INTERVAL '15 seconds' ORDER BY "createdAt" DESC LIMIT 1`
         )
         if (dup.rows[0]) {
-          const err = new Error("DUPLICATE_RECEIPT")
-          // @ts-expect-error - Custom property for error handling
-          err.duplicateReceiptId = dup.rows[0].id
+          const err = Object.assign(new Error("DUPLICATE_RECEIPT"), { duplicateReceiptId: dup.rows[0].id })
           throw err
         }
       }
@@ -392,14 +387,15 @@ export async function createReceipt(input: CreateReceiptInput & { idempotencyKey
     revalidatePath("/admin")
     return { ok: true as const, receipt: row }
   } catch (e: unknown) {
-    if (typeof e === 'object' && e !== null && 'duplicateReceiptId' in e) {
-      const duplicateReceiptId = (e as { duplicateReceiptId: string }).duplicateReceiptId
+    if (typeof e === 'object' && e !== null && 'duplicateReceiptId' in e && typeof e.duplicateReceiptId === "string") {
+      const duplicateReceiptId = e.duplicateReceiptId
       // Not a real failure — a near-identical receipt was already created
       // moments ago (double-click, retry after a dropped response, etc).
       // Return the existing receipt so the UI shows the same success
       // state instead of a confusing error, without creating a second
       // real financial record.
-      const [existing] = await db.select().from(receipt).where(eq(receipt.id, duplicateReceiptId)).limit(1)
+      const [existing] = await db.select().from(receipt)
+        .where(and(eq(receipt.id, duplicateReceiptId), retryScope)).limit(1)
       if (existing) {
         return { ok: true as const, receipt: existing, duplicate: true as const }
       }
@@ -625,7 +621,15 @@ export async function uploadReceiptAttachment(receiptId: string, formData: FormD
   revalidatePath(`/dashboard/receipts/${receiptId}`)
   // SECURITY: Use authenticated proxy for downloads.
   // Downloads happen only through the authenticated proxy route, keyed by id.
-  const { url: _url, ...attachmentWithoutUrl } = row
+  const attachmentWithoutUrl = {
+    id: row.id,
+    receiptId: row.receiptId,
+    fileName: row.fileName,
+    fileSize: row.fileSize,
+    uploadedById: row.uploadedById,
+    uploadedByName: row.uploadedByName,
+    createdAt: row.createdAt,
+  }
   return { ok: true as const, attachment: attachmentWithoutUrl }
 }
 

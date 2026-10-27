@@ -19,8 +19,8 @@ export function OfflineMeterReadingForm({
   onSuccess: () => void;
   onCancel: () => void;
 }) {
-  const [data, setData] = useState<any>(null)
-  const [syncMeta, setSyncMeta] = useState<any>(null)
+  const [data, setData] = useState<Awaited<ReturnType<typeof sqliteService.getCustomerWithBill>>>(null)
+  const [syncMeta, setSyncMeta] = useState<Awaited<ReturnType<typeof sqliteService.getSyncMeta>>>(null)
   const [currentReading, setCurrentReading] = useState("")
   const [notes, setNotes] = useState("")
   const [pending, setPending] = useState(false)

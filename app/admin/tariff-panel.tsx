@@ -295,8 +295,6 @@ export function TariffPanel({
 
 function EditTariffDialog({
   tariff,
-  branches,
-  schemes,
 }: {
   tariff: TariffWithMetadata
   branches: Branch[]

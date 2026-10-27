@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useTransition, use } from "react"
+import { useState, useEffect, useTransition, useCallback, use } from "react"
 import Link from "next/link"
 import { getSchemeIntelligence, upsertWaterSchemeSource, logWaterProduction } from "@/app/actions/intelligence"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
@@ -10,21 +10,14 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog"
-import {
-  Activity,
-  ArrowLeft,
-  CheckCircle2,
-  Droplets,
-  Plus,
-  ExternalLink,
-} from "lucide-react"
+import { Activity, ArrowLeft, CheckCircle2, Droplets, Plus } from "lucide-react"
 
 export default function SchemeDecisionSupportPage({ params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = use(params)
   const schemeId = resolvedParams.id
 
-  const [data, setData] = useState<any>(null)
-  const [isLoading, startTransition] = useTransition()
+  const [data, setData] = useState<Awaited<ReturnType<typeof getSchemeIntelligence>> | null>(null)
+  const [, startTransition] = useTransition()
   const [showSourceModal, setShowSourceModal] = useState(false)
   const [showLogModal, setShowLogModal] = useState(false)
 
@@ -37,7 +30,7 @@ export default function SchemeDecisionSupportPage({ params }: { params: Promise<
   const [logDate, setLogDate] = useState(new Date().toISOString().split("T")[0])
   const [waterProduced, setWaterProduced] = useState("")
 
-  const loadData = () => {
+  const loadData = useCallback(() => {
     startTransition(async () => {
       try {
         const res = await getSchemeIntelligence(schemeId)
@@ -46,11 +39,11 @@ export default function SchemeDecisionSupportPage({ params }: { params: Promise<
         console.error("Failed to load scheme decision support:", err)
       }
     })
-  }
+  }, [schemeId])
 
   useEffect(() => {
     loadData()
-  }, [schemeId])
+  }, [loadData])
 
   const handleSaveSource = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -116,7 +109,7 @@ export default function SchemeDecisionSupportPage({ params }: { params: Promise<
         <CardContent>
           {data.sources && data.sources.length > 0 ? (
             <div className="grid gap-4 md:grid-cols-3">
-              {data.sources.map((src: any) => (
+              {data.sources.map((src) => (
                 <div key={src.id} className="p-4 rounded-lg border bg-muted/20 space-y-2 text-xs">
                   <div className="flex justify-between items-center">
                     <span className="font-bold text-sm">{src.sourceName}</span>
@@ -130,7 +123,7 @@ export default function SchemeDecisionSupportPage({ params }: { params: Promise<
             </div>
           ) : (
             <p className="text-xs text-muted-foreground text-center py-6">
-              No water sources registered for this scheme yet. Click "Add Water Source" to configure yield capacity.
+              No water sources registered for this scheme yet. Click &quot;Add Water Source&quot; to configure yield capacity.
             </p>
           )}
         </CardContent>
@@ -145,7 +138,7 @@ export default function SchemeDecisionSupportPage({ params }: { params: Promise<
         <CardContent>
           {data.findings && data.findings.length > 0 ? (
             <div className="space-y-3">
-              {data.findings.map((f: any) => (
+              {data.findings.map((f) => (
                 <div key={f.id} className="p-3 rounded-lg border bg-amber-50/20 border-amber-200 text-xs space-y-1">
                   <div className="flex justify-between items-center">
                     <span className="font-bold text-sm text-foreground">{f.title}</span>
@@ -183,7 +176,7 @@ export default function SchemeDecisionSupportPage({ params }: { params: Promise<
                   </tr>
                 </thead>
                 <tbody className="divide-y">
-                  {data.productionLogs.map((log: any) => (
+                  {data.productionLogs.map((log) => (
                     <tr key={log.id}>
                       <td className="p-3">{new Date(log.logDate).toLocaleDateString()}</td>
                       <td className="p-3 font-bold">{log.waterProducedM3} m³</td>
@@ -196,7 +189,7 @@ export default function SchemeDecisionSupportPage({ params }: { params: Promise<
             </div>
           ) : (
             <p className="text-xs text-muted-foreground text-center py-6">
-              No production logs recorded yet. Use "Log Daily Production" to start recording bulk water yield.
+              No production logs recorded yet. Use &quot;Log Daily Production&quot; to start recording bulk water yield.
             </p>
           )}
         </CardContent>

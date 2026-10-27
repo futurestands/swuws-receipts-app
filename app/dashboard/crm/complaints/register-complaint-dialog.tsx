@@ -52,7 +52,6 @@ const complaintSchema = z.object({
 type ComplaintFormValues = z.infer<typeof complaintSchema>
 
 export function RegisterComplaintDialog({
-  departments,
   categories,
 }: {
   departments: CrmDepartment[]
@@ -89,7 +88,7 @@ export function RegisterComplaintDialog({
         } else {
           toast.error("Failed to register complaint")
         }
-      } catch (err) {
+      } catch {
         toast.error("An unexpected error occurred")
       }
     })

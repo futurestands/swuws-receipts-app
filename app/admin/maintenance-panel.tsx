@@ -1,8 +1,8 @@
 "use client"
 
 import { useState, useTransition } from "react"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+
 import { Switch } from "@/components/ui/switch"
 import { Label } from "@/components/ui/label"
 import { ShieldAlert, AlertTriangle, Hammer, Loader2 } from "lucide-react"

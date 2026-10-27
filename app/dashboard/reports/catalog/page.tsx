@@ -1,17 +1,8 @@
 import { requireUser } from "@/lib/session"
 import { canViewReports } from "@/lib/permissions"
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import {
-  FileText,
-  BarChart3,
-  ShieldAlert,
-  CheckSquare,
-  History,
-  Activity,
-  FileDown,
-  Printer
-} from "lucide-react"
+import { ShieldAlert, CheckSquare, History, Activity, FileDown, Printer } from "lucide-react"
 import Link from "next/link"
 
 const REPORT_CATEGORIES = [

@@ -2,12 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet"
+import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { formatDateTime } from "@/lib/format"
@@ -45,11 +40,11 @@ import Link from "next/link"
 
 interface ComplaintDetailsSheetProps {
   complaint: CrmComplaint & {
-    categoryName?: string;
-    assignedToName?: string;
-    customerAccount?: string;
-    areaName?: string;
-    schemeName?: string;
+    categoryName?: string | null;
+    assignedToName?: string | null;
+    customerAccount?: string | null;
+    areaName?: string | null;
+    schemeName?: string | null;
   }
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -57,7 +52,13 @@ interface ComplaintDetailsSheetProps {
 
 type PanelMode = "none" | "resolve" | "assign" | "reopen"
 
-export function ComplaintDetailsSheet({ complaint, open, onOpenChange }: ComplaintDetailsSheetProps) {
+export function ComplaintDetailsSheet(props: ComplaintDetailsSheetProps) {
+  const { complaint, open } = props
+  const key = JSON.stringify([open, complaint.id, complaint.assignedToId, complaint.assignedDepartmentId, complaint.priority])
+  return <ComplaintDetailsSheetContent key={key} {...props} />
+}
+
+function ComplaintDetailsSheetContent({ complaint, open, onOpenChange }: ComplaintDetailsSheetProps) {
   const router = useRouter()
   const [loading, setLoading] = useState(false)
   const [panel, setPanel] = useState<PanelMode>("none")
@@ -70,26 +71,22 @@ export function ComplaintDetailsSheet({ complaint, open, onOpenChange }: Complai
   // sheet for every row.
   const [staff, setStaff] = useState<{ id: string; name: string }[]>([])
   const [departments, setDepartments] = useState<{ id: string; name: string }[]>([])
-  const [assignee, setAssignee] = useState("")
-  const [department, setDepartment] = useState("")
-  const [priority, setPriority] = useState("")
+  const [assignee, setAssignee] = useState(complaint.assignedToId || "unassigned")
+  const [department, setDepartment] = useState(complaint.assignedDepartmentId || "none")
+  const [priority, setPriority] = useState(complaint.priority)
 
   useEffect(() => {
     if (!open) return
-    setPanel("none")
-    setNotes("")
-    setReopenReason("")
-    setAssignee(complaint.assignedToId || "unassigned")
-    setDepartment(complaint.assignedDepartmentId || "none")
-    setPriority(complaint.priority)
-
+    let active = true
     Promise.all([
       listCrmStaff().catch(() => []),
       listCrmDepartments().catch(() => []),
     ]).then(([staffRows, deptRows]) => {
+      if (!active) return
       setStaff(staffRows as { id: string; name: string }[])
       setDepartments(deptRows as { id: string; name: string }[])
     })
+    return () => { active = false }
   }, [open, complaint.id, complaint.assignedToId, complaint.assignedDepartmentId, complaint.priority])
 
   if (!complaint) return null

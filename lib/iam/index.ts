@@ -1,7 +1,7 @@
 import "server-only"
 import { db } from "@/lib/db"
 import { iamRole, iamPermission, iamRolePermission } from "@/lib/db/schema"
-import { eq, and, inArray, sql } from "drizzle-orm"
+import { eq, sql } from "drizzle-orm"
 import { cache } from "react"
 import { SessionUser } from "@/lib/session"
 

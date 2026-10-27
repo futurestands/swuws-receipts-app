@@ -9,19 +9,7 @@ import { Label } from "@/components/ui/label"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
 import { toast } from "sonner"
-import {
-  Download,
-  Upload,
-  CheckCircle2,
-  AlertCircle,
-  AlertTriangle,
-  FileSpreadsheet,
-  Loader2,
-  ChevronRight,
-  ChevronLeft,
-  XCircle,
-  RefreshCw,
-} from "lucide-react"
+import { Download, Upload, CheckCircle2, AlertCircle, Loader2, ChevronRight, ChevronLeft, XCircle, RefreshCw } from "lucide-react"
 import {
   validateCustomerImport,
   importCustomers,
@@ -264,7 +252,9 @@ export function CustomerBulkImportClient() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {summary.rows.slice(0, 100).map((row, i) => (
+                  {summary.rows.slice(0, 100).map((row, i) => {
+                    const rowData = Object.fromEntries(Object.entries(row.valid ? row.data : row.raw).map(([key, value]) => [key, String(value ?? "")]))
+                    return (
                     <TableRow key={i} className={cn(!row.valid ? "bg-destructive/5" : "hover:bg-muted/50")}>
                       <TableCell className="text-xs text-muted-foreground">{i + 1}</TableCell>
                       <TableCell>
@@ -276,9 +266,9 @@ export function CustomerBulkImportClient() {
                           <Badge variant="destructive">Error</Badge>
                         )}
                       </TableCell>
-                      <TableCell className="font-medium text-xs">{row.data.name}</TableCell>
-                      <TableCell className="text-xs">{row.data.customerAccount}</TableCell>
-                      <TableCell className="text-xs">{row.data.schemeName}</TableCell>
+                      <TableCell className="font-medium text-xs">{rowData.name}</TableCell>
+                      <TableCell className="text-xs">{rowData.customerAccount}</TableCell>
+                      <TableCell className="text-xs">{rowData.schemeName}</TableCell>
                       <TableCell>
                         <div className="space-y-1">
                           {row.errors.map((err, j) => (
@@ -289,7 +279,7 @@ export function CustomerBulkImportClient() {
                         </div>
                       </TableCell>
                     </TableRow>
-                  ))}
+                  )})}
                 </TableBody>
               </Table>
             </div>

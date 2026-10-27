@@ -1,9 +1,9 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { getDashboardStats, getCollectionTrends } from "@/app/actions/reports"
+import { getDashboardStats } from "@/app/actions/reports"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select"
 import { SearchableSelect } from "@/components/ui/searchable-select"
 import { formatUGX } from "@/lib/format"
 import type { Cluster, Branch, WaterScheme, BillingPeriod } from "@/lib/db/schema"

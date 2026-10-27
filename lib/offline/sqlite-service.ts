@@ -240,11 +240,14 @@ class SQLiteService {
     await this.db!.execute(`DELETE FROM local_customers;`);
   }
 
-  async insertPullPage(customers: any[], billingRecords: any[]): Promise<void> {
+  async insertPullPage(
+    customers: Parameters<typeof customerInsertValues>[0][],
+    billingRecords: Parameters<typeof billingInsertValues>[0][]
+  ): Promise<void> {
     await this.ensureReady();
     if (customers.length === 0 && billingRecords.length === 0) return;
 
-    const set: any[] = [];
+    const set: Array<{ statement: string; values?: (string | number | boolean | null)[] }> = [];
     for (const c of customers) {
       set.push({
         statement: `INSERT INTO local_customers (id, customerAccount, name, phone, address, accountBalance, category, active, updatedAt, lastReading)
@@ -289,8 +292,8 @@ class SQLiteService {
   }
 
   async pullSync(data: {
-    customers: any[];
-    billingRecords: any[];
+    customers: Parameters<typeof customerInsertValues>[0][];
+    billingRecords: Parameters<typeof billingInsertValues>[0][];
     activePeriodId: string | null;
     timestamp: string;
     agentId: string;
@@ -317,7 +320,7 @@ class SQLiteService {
   }
 
   async searchCustomers(query: string, page = 1, pageSize = 50) {
-    const empty = { customers: [] as any[], total: 0, page: 1, pageSize, totalPages: 1 }
+    const empty = { customers: [] as Record<string, unknown>[], total: 0, page: 1, pageSize, totalPages: 1 }
     if (!this.db) return empty
 
     const safePageSize = Math.min(100, Math.max(1, pageSize))
@@ -523,7 +526,7 @@ class SQLiteService {
     return res.values || [];
   }
 
-  async logSync(data: { action: 'pull' | 'push', status: 'success' | 'failed' | 'partial', details?: any, error?: string }) {
+  async logSync(data: { action: 'pull' | 'push', status: 'success' | 'failed' | 'partial', details?: unknown, error?: string }) {
     if (!this.db) return;
     const id = safeId();
     await this.db.run(

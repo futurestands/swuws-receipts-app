@@ -6,7 +6,6 @@ import {
   user,
   receipt,
   auditLog,
-  organization,
   receiptPrintHistory,
   waterScheme,
   receiptAttachment,
@@ -23,6 +22,7 @@ import {
 } from "@/lib/db/schema"
 import { requireUser } from "@/lib/session"
 import { writeAudit } from "@/lib/audit"
+import { resolveCreatorOrganizationId } from "@/lib/scopes/org-resolver"
 import { and, desc, eq, gte, lte, sql, ne, count, ilike, or, type SQL } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { headers } from "next/headers"
@@ -165,9 +165,17 @@ export async function createAgent(input: {
 
     if (!created?.user?.id) throw new Error("Failed to create account")
 
-    // Automatically assign organizationId if possible
-    const [org] = await db.select({ id: organization.id }).from(organization).limit(1)
-    const organizationId = org?.id || null
+    // Automatically assign organizationId using multi-tenant resolver
+    let organizationId: string | null = null
+    try {
+      organizationId = await resolveCreatorOrganizationId(current, {
+        clusterId: input.clusterId,
+        branchId: input.branchId,
+        schemeId: input.schemeId,
+      })
+    } catch (err: unknown) {
+      return { ok: false as const, error: err instanceof Error ? err.message : "Organization scoping error" }
+    }
 
     // Assign role and metadata (signUp defaults everyone to PLUMBER/agent).
     await db

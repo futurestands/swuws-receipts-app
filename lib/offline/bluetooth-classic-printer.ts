@@ -1,5 +1,4 @@
 import { isNative } from '../mobile-hardware';
-import { generateReceiptCommands, encodeESC, ReceiptData } from './esc-pos-helper';
 
 /**
  * NATIVE BLUETOOTH CLASSIC PRINTER SERVICE (SPP)
@@ -13,7 +12,7 @@ class BluetoothClassicPrinterService {
     return false;
   }
 
-  async printReceipt(data: ReceiptData, paperWidth: '58mm' | '80mm' = '58mm') {
+  async printReceipt() {
     if (!isNative()) return false;
 
     console.warn('Bluetooth Classic driver is currently disabled due to dependency conflicts.');

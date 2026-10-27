@@ -1,6 +1,6 @@
-import { eq, and, or, sql, inArray } from "drizzle-orm"
+import { eq, and, sql, inArray } from "drizzle-orm"
 import { UserPermissionsContext, canViewAllData } from "@/lib/permissions"
-import { waterScheme, branch, cluster } from "@/lib/db/schema/hierarchy"
+import { waterScheme } from "@/lib/db/schema/hierarchy"
 
 export function applyIntelligenceSchemeFilter(user: UserPermissionsContext, targetSchemeId?: string | null) {
   // If targetSchemeId provided, verify user has access to it

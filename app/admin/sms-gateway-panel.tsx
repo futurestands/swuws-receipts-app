@@ -94,7 +94,7 @@ export function SmsGatewayPanel({ settings }: { settings: SmsGatewaySettings }) 
           <CardTitle>SMS Gateway</CardTitle>
         </div>
         <CardDescription>
-          Manage your SMS provider here. Africa's Talking, Twilio, and Infobip all send for real once the gateway is active and credentials are saved.
+          Manage your SMS provider here. Africa&apos;s Talking, Twilio, and Infobip all send for real once the gateway is active and credentials are saved.
         </CardDescription>
       </CardHeader>
       <form onSubmit={handleSave}>

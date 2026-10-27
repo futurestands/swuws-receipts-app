@@ -2,21 +2,13 @@
 
 import { useState, useTransition } from "react"
 import { Button } from "@/components/ui/button"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog"
-import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
+
 import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
+
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
-import { FileUp, Download, CheckCircle2, AlertTriangle, Loader2, XCircle } from "lucide-react"
+import { FileUp, Download, CheckCircle2, Loader2, XCircle } from "lucide-react"
 import { toast } from "sonner"
 import { validateTariffImport, executeTariffImport, downloadTariffTemplate, type TariffImportSummary } from "@/app/actions/tariff-import"
 
@@ -155,15 +147,16 @@ export function TariffImportWizard() {
                   <TableBody>
                     {summary.rows.map((row, i) => {
                       const isUpdate = row.warnings.some(w => w.startsWith("Update:"))
+                      const rowData = Object.fromEntries(Object.entries(row.valid ? row.data : row.raw).map(([key, value]) => [key, String(value ?? "")]))
                       return (
                         <TableRow key={i} className={!row.valid ? "bg-destructive/5" : undefined}>
                           <TableCell>
                             <Badge variant="outline" className="uppercase text-[10px]">
-                              {row.data.targetType}
+                              {rowData.targetType}
                             </Badge>
                           </TableCell>
                           <TableCell>
-                            <div className="font-medium">{row.data.targetName}</div>
+                            <div className="font-medium">{rowData.targetName}</div>
                             {row.errors.map((err, ei) => (
                               <p key={ei} className="text-[10px] text-destructive flex items-center gap-1">
                                 <XCircle className="size-3" /> {err}
@@ -172,14 +165,14 @@ export function TariffImportWizard() {
                           </TableCell>
                           <TableCell>
                             <Badge variant="secondary" className="capitalize text-[10px]">
-                              {row.data.customerCategory}
+                              {rowData.customerCategory}
                             </Badge>
                           </TableCell>
                           <TableCell className="text-right font-mono text-xs">
-                            {row.data.unitPrice.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 2 })}
+                            {Number(rowData.unitPrice || 0).toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 2 })}
                           </TableCell>
                           <TableCell className="text-right font-mono text-xs">
-                            {row.data.serviceFee.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 2 })}
+                            {Number(rowData.serviceFee || 0).toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 2 })}
                           </TableCell>
                           <TableCell>
                             {row.valid && (

@@ -33,8 +33,8 @@ export class PrinterManager {
         await printOfficeHtml(officeReceiptHtml(data), `Receipt ${data.receiptNumber}`);
         await sqliteService.logPrint({ receiptId: data.receiptNumber, printerType: 'office', status: 'success' });
         return true;
-      } catch (err: any) {
-        const message = err?.message || OFFICE_DRIVER_HINT;
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err || OFFICE_DRIVER_HINT);
         await sqliteService.logPrint({
           receiptId: data.receiptNumber,
           printerType: 'office',
@@ -81,13 +81,14 @@ export class PrinterManager {
 
       await sqliteService.logPrint({ receiptId: data.receiptNumber, printerType: usedType, status: 'success' });
       return true;
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const errMessage = err instanceof Error ? err.message : 'Unknown error';
       console.error('Unified Printing failed', err);
       await sqliteService.logPrint({
         receiptId: data.receiptNumber,
         printerType: usedType,
         status: 'failed',
-        error: err.message || 'Unknown error'
+        error: errMessage
       });
       throw err;
     }
@@ -102,8 +103,8 @@ export class PrinterManager {
         status: 'success',
       });
       return true;
-    } catch (err: any) {
-      const message = err?.message || OFFICE_DRIVER_HINT;
+    } catch (err: unknown) {
+      const message = (err instanceof Error ? err.message : String(err)) || OFFICE_DRIVER_HINT;
       await sqliteService.logPrint({
         receiptId: `INV-${data.customerAccount || data.customerName}`,
         printerType: 'office',

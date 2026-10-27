@@ -3,7 +3,7 @@
 import { isNative } from "@/lib/mobile-hardware"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { WifiOff, Calculator, Banknote, Search, ArrowRight } from "lucide-react"
+import { WifiOff, Search, ArrowRight } from "lucide-react"
 import Link from "next/link"
 
 export function FieldOperationsCard() {

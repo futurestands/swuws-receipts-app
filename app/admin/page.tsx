@@ -113,7 +113,7 @@ export default async function AdminPage() {
       : Promise.resolve(EMPTY_PRINTING),
   ])
 
-  let tariffs = canConfigureSystemVal ? await loadOrFallback("tariffs", () => loadTariffRows(), []) : []
+  const tariffs = canConfigureSystemVal ? await loadOrFallback("tariffs", () => loadTariffRows(), []) : []
 
   let templates = [] as Awaited<ReturnType<typeof loadTemplateRows>>
   if (canConfigureSystemVal) {

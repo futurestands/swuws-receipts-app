@@ -1,15 +1,13 @@
 "use server"
 
-import { db } from "@/lib/db"
-import { notification, user as userTable } from "@/lib/db/schema"
+import { db, type DatabaseTransaction } from "@/lib/db"
+import { notification } from "@/lib/db/schema"
 import { requireUser } from "@/lib/session"
 import { hasPermission } from "@/lib/iam"
 import { ROLES } from "@/lib/permissions/roles"
-import { eq, and, desc, sql, count } from "drizzle-orm"
+import { eq, and, desc, count } from "drizzle-orm"
 import { randomUUID } from "crypto"
 import { revalidatePath } from "next/cache"
-import type { PgTransaction } from "drizzle-orm/pg-core"
-import type { PostgresJsQueryResultHKT } from "drizzle-orm/postgres-js"
 
 /**
  * OPERATIONAL NOTIFICATIONS (Phase 5B)
@@ -28,7 +26,7 @@ export async function getNotifications(limit = 20) {
       ))
       .orderBy(desc(notification.createdAt))
       .limit(limit)
-  } catch (e) {
+  } catch {
     return []
   }
 }
@@ -44,7 +42,7 @@ export async function getUnreadCount() {
         eq(notification.status, 'unread')
       ))
     return Number(result?.count || 0)
-  } catch (e) {
+  } catch {
     // Gracefully handle unauthenticated state (common during session expiry or DB switch)
     return 0
   }
@@ -97,7 +95,7 @@ export async function createNotification(data: {
   priority?: "critical" | "high" | "normal" | "low"
   relatedEntityType?: string
   relatedEntityId?: string
-}, tx: any = db) {
+}, tx: DatabaseTransaction | typeof db = db) {
   const current = await requireUser()
   const authorized =
     current.role === ROLES.SYSTEM_ADMIN ||

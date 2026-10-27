@@ -14,8 +14,8 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
-import { AlertCircle, CheckCircle2, ShieldAlert, FileText, UserCheck, Clock } from "lucide-react"
-import { formatUGX } from "@/lib/format"
+
+
 
 interface InvestigationDrawerProps {
   finding: StructuredFinding | null
@@ -49,8 +49,8 @@ export function InvestigationDrawer({
       setStatus(newStatus)
       setMessage(`Investigation updated to ${newStatus}`)
       if (onUpdated) onUpdated()
-    } catch (err: any) {
-      setMessage(`Error: ${err.message || "Failed to update"}`)
+    } catch (err: unknown) {
+      setMessage(`Error: ${err instanceof Error ? err.message : "Failed to update"}`)
     } finally {
       setIsSubmitting(false)
     }

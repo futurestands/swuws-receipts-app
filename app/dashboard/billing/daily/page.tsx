@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
 import { formatUGX, formatDate, formatDateTime, formatCount } from "@/lib/format"
-import { Info, History } from "lucide-react"
+import { History } from "lucide-react"
 import { DailyImportWizard } from "./daily-import-wizard"
 import { DeleteImportButton } from "./delete-import-button"
 import Link from "next/link"

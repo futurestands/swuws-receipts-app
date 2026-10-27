@@ -2,7 +2,7 @@
 
 import { db } from "@/lib/db"
 import { customer, tariffConfiguration, meterReading, waterScheme, billingPeriod, managedTemplate, templateVersion, branch, billingRecord, billingRun, billingDiscrepancy, user as userTable } from "@/lib/db/schema"
-import { eq, and, desc, or, ilike, inArray, gt, sql } from "drizzle-orm"
+import { eq, and, desc, or, ilike, inArray } from "drizzle-orm"
 import { randomUUID } from "crypto"
 import { requireUser } from "@/lib/session"
 import { calculateBill } from "@/lib/billing/math"

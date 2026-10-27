@@ -1,13 +1,13 @@
 "use client"
 
-import { useState, useEffect, useTransition, useRef } from "react"
+import { useState, useEffect, useRef } from "react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { toast } from "sonner"
-import { formatUGX, formatDate, formatDateTime } from "@/lib/format"
-import { FileText, Printer, Search, User, XCircle, Loader2 } from "lucide-react"
+import { formatUGX, formatDateTime } from "@/lib/format"
+import { FileText, Printer, Search, XCircle, Loader2 } from "lucide-react"
 import { searchCustomersForReading, getCustomerInvoiceData } from "@/app/actions/billing-engine"
 import type { Customer } from "@/lib/db/schema"
 import { cn } from "@/lib/utils"
@@ -18,54 +18,53 @@ export function InvoicingPanel() {
   const [searchQuery, setSearchQuery] = useState("")
   const [searchResults, setSearchResults] = useState<Customer[]>([])
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null)
-  const [invoiceData, setInvoiceData] = useState<any>(null)
+  const [invoiceData, setInvoiceData] = useState<Awaited<ReturnType<typeof getCustomerInvoiceData>> | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [isPrinting, setIsPrinting] = useState(false)
-  const [isPending, startTransition] = useTransition()
   const [printedAt, setPrintedAt] = useState("")
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-
-  useEffect(() => {
-    setPrintedAt(formatDateTime(new Date()))
-  }, [])
 
   // Quick Search Logic
   useEffect(() => {
     if (searchTimer.current) clearTimeout(searchTimer.current)
-    if (!searchQuery.trim() || selectedCustomer) {
-      setSearchResults([])
-      return
-    }
+    if (!searchQuery.trim() || selectedCustomer) return
 
+    let cancelled = false
     searchTimer.current = setTimeout(async () => {
       try {
         const results = await searchCustomersForReading(searchQuery)
-        setSearchResults(results)
+        if (!cancelled) setSearchResults(results)
       } catch (err) {
         console.error("Search failed", err)
       }
     }, 300)
 
     return () => {
+      cancelled = true
       if (searchTimer.current) clearTimeout(searchTimer.current)
     }
   }, [searchQuery, selectedCustomer])
 
-  // Fetch invoice data when customer is selected
-  useEffect(() => {
-    if (selectedCustomer) {
-      setIsLoading(true)
-      getCustomerInvoiceData(selectedCustomer.id).then(data => {
-        setInvoiceData(data)
-        setIsLoading(false)
-      }).catch(err => {
-        toast.error("Failed to load invoice data")
-        setIsLoading(false)
-      })
-    } else {
-      setInvoiceData(null)
+  const invoiceRequest = useRef(0)
+
+  async function selectCustomer(customer: Customer | null) {
+    const request = ++invoiceRequest.current
+    setSelectedCustomer(customer)
+    setInvoiceData(null)
+    setSearchResults([])
+    setIsLoading(!!customer)
+    if (!customer) return
+    try {
+      const data = await getCustomerInvoiceData(customer.id)
+      if (request !== invoiceRequest.current) return
+      setInvoiceData(data)
+      setPrintedAt(formatDateTime(new Date()))
+    } catch {
+      if (request === invoiceRequest.current) toast.error("Failed to load invoice data")
+    } finally {
+      if (request === invoiceRequest.current) setIsLoading(false)
     }
-  }, [selectedCustomer])
+  }
 
   const handlePrint = async () => {
     if (!invoiceData) return
@@ -79,7 +78,7 @@ export function InvoicingPanel() {
       const pastArrears = invoiceData.customer.accountBalance - monthlyBill
       await printerManager.printInvoice({
         customerName: invoiceData.customer.name,
-        customerAccount: invoiceData.customer.customerAccount,
+        customerAccount: invoiceData.customer.customerAccount ?? undefined,
         areaName: invoiceData.areaName,
         schemeName: invoiceData.schemeName,
         periodName: invoiceData.reading?.periodName || invoiceData.importBill?.periodName || "Current",
@@ -119,7 +118,7 @@ export function InvoicingPanel() {
                   className="pl-9 h-11"
                   value={selectedCustomer ? selectedCustomer.name : searchQuery}
                   onChange={(e) => {
-                    if (selectedCustomer) setSelectedCustomer(null)
+                    if (selectedCustomer) void selectCustomer(null)
                     setSearchQuery(e.target.value)
                   }}
                 />
@@ -130,7 +129,7 @@ export function InvoicingPanel() {
                     size="sm"
                     className="absolute right-1 top-1 h-9"
                     onClick={() => {
-                      setSelectedCustomer(null)
+                      void selectCustomer(null)
                       setSearchQuery("")
                     }}
                   >
@@ -140,7 +139,7 @@ export function InvoicingPanel() {
               </div>
 
               {/* Search Results Dropdown */}
-              {searchResults.length > 0 && !selectedCustomer && (
+              {searchQuery.trim() && searchResults.length > 0 && !selectedCustomer && (
                 <div className="absolute z-10 w-full mt-1 bg-card border rounded-lg shadow-2xl max-h-60 overflow-y-auto">
                   {searchResults.map(c => (
                     <button
@@ -148,7 +147,7 @@ export function InvoicingPanel() {
                       type="button"
                       className="w-full text-left p-3 hover:bg-muted/50 border-b last:border-0 flex flex-col transition-colors"
                       onClick={() => {
-                        setSelectedCustomer(c)
+                        void selectCustomer(c)
                         setSearchResults([])
                       }}
                     >

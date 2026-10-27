@@ -11,19 +11,26 @@ import { eq } from "drizzle-orm"
  * validation across all system modules.
  */
 
-export type ValidationResult<T> = {
-  valid: boolean
+export type ValidationResult<Output> = {
+  valid: true
+  sourceRow: number
   errors: string[]
   warnings: string[]
-  data: T
+  data: Output
+} | {
+  valid: false
+  sourceRow: number
+  errors: string[]
+  warnings: string[]
+  raw: Record<string, unknown>
 }
 
-export type ImportSummary<T> = {
+export type ImportSummary<Output> = {
   totalRows: number
   validRows: number
   errorRows: number
   warningRows: number
-  rows: ValidationResult<T>[]
+  rows: ValidationResult<Output>[]
 }
 
 /**
@@ -37,8 +44,12 @@ export async function getImportMapping(code: string): Promise<Record<string, str
   if (!versionRow) return null
 
   try {
-    return JSON.parse(versionRow.content)
-  } catch (err) {
+    const parsed = JSON.parse(versionRow.content)
+    if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) {
+      return parsed as Record<string, string>
+    }
+    return null
+  } catch (err: unknown) {
     console.error(`Failed to parse import mapping for ${code}:`, err)
     return null
   }
@@ -48,15 +59,17 @@ export async function getImportMapping(code: string): Promise<Record<string, str
  * Core engine to process an Excel file into validated typed objects.
  * Supports both Header-based mapping (with aliases) and Positional mapping.
  */
-export async function processExcelImport<T extends Record<string, unknown>>(params: {
+export type ImportColumnMapping = Record<string, string | (string | number)[] | number>
+
+export async function processExcelImport<Output, Input = unknown>(params: {
   file: File
-  schema: z.ZodSchema<T>
-  mapping: Record<keyof T, string | string[] | number>
+  schema: z.ZodType<Output, z.ZodTypeDef, Input>
+  mapping: ImportColumnMapping
   headerMode?: "headers" | "none"
   onValidateRow?: (
-    row: T,
+    row: Output,
   ) => { errors: string[]; warnings: string[] } | Promise<{ errors: string[]; warnings: string[] }>
-}): Promise<ImportSummary<T>> {
+}): Promise<ImportSummary<Output>> {
   const buffer = await params.file.arrayBuffer()
   const workbook = XLSX.read(buffer)
   const firstSheet = workbook.Sheets[workbook.SheetNames[0]]
@@ -105,12 +118,15 @@ export async function processExcelImport<T extends Record<string, unknown>>(para
     }
   }
 
-  const results: ValidationResult<T>[] = []
+  const results: ValidationResult<Output>[] = []
   let validCount = 0
   let errorCount = 0
   let warningCount = 0
 
+  let rowIndex = isNoHeaders ? 0 : 1
+
   for (const rawRow of rawData as Array<Record<string, unknown>>) {
+    rowIndex++
     const errors: string[] = []
     const warnings: string[] = []
 
@@ -136,13 +152,21 @@ export async function processExcelImport<T extends Record<string, unknown>>(para
     if (!hasData) continue
 
     // 2. Schema Validation
-    const parsed = params.schema.safeParse(mappedRow)
+    const parsed = await params.schema.safeParseAsync(mappedRow)
     if (!parsed.success) {
       parsed.error.issues.forEach((issue) => errors.push(issue.message))
+      errorCount++
+      results.push({
+        valid: false,
+        sourceRow: rowIndex,
+        errors,
+        warnings,
+        raw: mappedRow
+      })
+      continue
     }
 
-    // Use parsed data if successful, otherwise fallback to mapped raw row
-    const data = (parsed.success ? parsed.data : mappedRow) as T
+    const data = parsed.data
 
     // 3. Custom Domain Validation (e.g. checking duplicates in DB)
     if (params.onValidateRow) {
@@ -151,20 +175,27 @@ export async function processExcelImport<T extends Record<string, unknown>>(para
       warnings.push(...custom.warnings)
     }
 
-    const isValid = errors.length === 0
-    if (isValid) {
-      validCount++
-    } else {
+    if (errors.length > 0) {
       errorCount++
+      if (warnings.length > 0) warningCount++
+      results.push({
+        valid: false,
+        sourceRow: rowIndex,
+        errors,
+        warnings,
+        raw: mappedRow
+      })
+    } else {
+      validCount++
+      if (warnings.length > 0) warningCount++
+      results.push({
+        valid: true,
+        sourceRow: rowIndex,
+        errors,
+        warnings,
+        data
+      })
     }
-    if (warnings.length > 0) warningCount++
-
-    results.push({
-      valid: isValid,
-      errors,
-      warnings,
-      data,
-    })
   }
 
   return {

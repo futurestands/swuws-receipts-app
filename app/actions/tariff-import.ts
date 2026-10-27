@@ -6,9 +6,9 @@ import { requireUser } from "@/lib/session"
 import { writeAudit } from "@/lib/audit"
 import { canConfigureSystem } from "@/lib/permissions"
 import { validateWriteScope } from "@/lib/scopes"
-import { eq, and, sql } from "drizzle-orm"
+import { eq, and } from "drizzle-orm"
 import * as XLSX from "xlsx"
-import { z } from "zod"
+
 import { randomUUID } from "crypto"
 import { revalidatePath } from "next/cache"
 import { processExcelImport, getImportMapping, type ImportSummary } from "@/lib/import-engine"
@@ -41,7 +41,7 @@ export async function validateTariffImport(formData: FormData): Promise<{ ok: tr
   ))
 
   const dbMapping = await getImportMapping('import.tariffs.bulk')
-  const mapping = { ...DEFAULT_TARIFF_IMPORT_MAPPING, ...(dbMapping as any) } as Record<string, string>
+  const mapping = { ...DEFAULT_TARIFF_IMPORT_MAPPING, ...dbMapping } as Record<string, string>
 
   const summary = await processExcelImport({
     file,
@@ -204,7 +204,7 @@ export async function downloadTariffTemplate() {
 
   // 2. Generate Sample Data strictly based on the mapping keys
   const headers = Object.values(mapping).map(v => Array.isArray(v) ? v[0] : v) as string[]
-  const sampleRow: Record<string, any> = {}
+  const sampleRow: Record<string, string | number> = {}
 
   // Fill sample values ONLY for keys that the user defined in their JSON
   if (mapping.targetType) sampleRow[Array.isArray(mapping.targetType) ? mapping.targetType[0] : mapping.targetType] = "scheme"

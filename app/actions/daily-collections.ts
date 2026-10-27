@@ -213,7 +213,7 @@ export async function commitDailyCollectionImport(formData: FormData) {
     let totalAmount = 0
     let validCount = 0
     let businessDate: string | null = null
-    const validRecords: any[] = []
+    const validRecords: (typeof dailyCollectionRecord.$inferInsert)[] = []
 
     // Process rows into memory first
     for (const rawRow of rawData) {
@@ -289,7 +289,7 @@ export async function commitDailyCollectionImport(formData: FormData) {
     console.log(`[DailyImport] Successfully committed ${validCount} records in ${Date.now() - startTime}ms`)
     revalidatePath("/dashboard/billing/daily")
     return { ok: true, id: importId }
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error("Daily Collection Import Failed:", err)
     return {
       ok: false,
@@ -303,7 +303,7 @@ const dailySyncSchema = z.object({
   totalDue: z.coerce.number().default(0),
   paymentDate: z.preprocess((val) => {
     if (!val) return null
-    const d = new Date(val as any)
+    const d = new Date(val as string | number | Date)
     return isNaN(d.getTime()) ? null : d
   }, z.date().nullable().optional()),
 })
@@ -317,7 +317,10 @@ export interface DailySyncSummary {
   validRecords: number
   failedRecords: number
   totalCollection: number
-  previewRows: { valid: boolean; errors: string[]; data: DailySyncRow; collection: number }[]
+  previewRows: Array<
+    ({ valid: true; data: DailySyncRow } | { valid: false; data: Record<string, unknown> })
+    & { errors: string[]; collection: number }
+  >
 }
 
 /**
@@ -337,25 +340,26 @@ export async function validateDailyBalanceSync(formData: FormData): Promise<{ ok
     const buffer = await file.arrayBuffer()
     const workbook = XLSX.read(buffer)
     const firstSheet = workbook.Sheets[workbook.SheetNames[0]]
-    const rawData = XLSX.utils.sheet_to_json(firstSheet) as Record<string, any>[]
+    const rawData = XLSX.utils.sheet_to_json(firstSheet) as Record<string, unknown>[]
 
     if (rawData.length === 0) return { ok: false, error: "The file is empty" }
 
     // Resolve custom mapping to find the account number column
     const dbMappingRaw = await getImportMapping("import.daily.collections")
-    const mapping = { ...DEFAULT_DAILY_SYNC_MAPPING } as Record<string, any>
+    const mapping = { ...DEFAULT_DAILY_SYNC_MAPPING } as Record<string, string | string[] | number>
     if (dbMappingRaw) {
       for (const [k, v] of Object.entries(dbMappingRaw)) {
         const lowerK = k.toLowerCase()
         if (lowerK === "accountnumber" || lowerK === "customeraccount") {
-          mapping.accountNumber = [v, ...(Array.isArray(mapping.accountNumber) ? mapping.accountNumber : [mapping.accountNumber])]
+          const existing = Array.isArray(mapping.accountNumber) ? mapping.accountNumber : [String(mapping.accountNumber)]
+          mapping.accountNumber = [v, ...existing]
         }
       }
     }
 
     // Identify account number column in file
-    const accountAliases = Array.isArray(mapping.accountNumber) ? mapping.accountNumber : [mapping.accountNumber]
-    const firstRow = rawData[0]
+    const accountAliases = Array.isArray(mapping.accountNumber) ? mapping.accountNumber : [String(mapping.accountNumber)]
+    const firstRow = rawData[0] || {}
     const accountCol = Object.keys(firstRow).find(h =>
       accountAliases.some(a => String(h).toLowerCase().replace(/[^a-z0-9]/g, "") === String(a).toLowerCase().replace(/[^a-z0-9]/g, ""))
     ) || accountAliases[0]
@@ -381,19 +385,21 @@ export async function validateDailyBalanceSync(formData: FormData): Promise<{ ok
       for (const [k, v] of Object.entries(dbMappingRaw)) {
         const lowerK = k.toLowerCase()
         if (lowerK === "totaldue" || lowerK === "totalamountdue") {
-          mapping.totalDue = [v, ...(Array.isArray(mapping.totalDue) ? mapping.totalDue : [mapping.totalDue])]
+          const existing = Array.isArray(mapping.totalDue) ? mapping.totalDue : [String(mapping.totalDue)]
+          mapping.totalDue = [v, ...existing]
         } else if (lowerK === "paymentdate" || lowerK === "lastpaymentdate") {
-          mapping.paymentDate = [v, ...(Array.isArray(mapping.paymentDate) ? mapping.paymentDate : [mapping.paymentDate])]
+          const existing = Array.isArray(mapping.paymentDate) ? mapping.paymentDate : [String(mapping.paymentDate)]
+          mapping.paymentDate = [v, ...existing]
         } else if (lowerK !== "accountnumber" && lowerK !== "customeraccount") {
           mapping[k] = v
         }
       }
     }
 
-    const engineSummary = await processExcelImport({
+    const engineSummary = await processExcelImport<DailySyncRow>({
       file,
-      schema: dailySyncSchema as any,
-      mapping: mapping as any,
+      schema: dailySyncSchema,
+      mapping: mapping as Record<string, string | string[] | number>,
       onValidateRow: (data: DailySyncRow) => {
         const errors: string[] = []
         if (!customerMap.has(data.accountNumber.toLowerCase().trim())) {
@@ -404,14 +410,16 @@ export async function validateDailyBalanceSync(formData: FormData): Promise<{ ok
     })
 
     let totalCollection = 0
-    const rows = engineSummary.rows.map(r => {
+    const rows: DailySyncSummary["previewRows"] = engineSummary.rows.map(r => {
       let collection = 0
       if (r.valid) {
         const cust = customerMap.get(r.data.accountNumber.toLowerCase().trim())!
         collection = Math.max(0, Number(cust.balance) - r.data.totalDue)
         totalCollection += collection
       }
-      return { ...r, collection }
+      return r.valid
+        ? { valid: true, errors: r.errors, data: r.data, collection }
+        : { valid: false, errors: r.errors, data: r.raw, collection }
     })
 
     return {
@@ -426,7 +434,7 @@ export async function validateDailyBalanceSync(formData: FormData): Promise<{ ok
         previewRows: rows.slice(0, 100)
       }
     }
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error("Daily Balance Sync Validation Failed:", err)
     return { ok: false, error: err instanceof Error ? err.message : "Failed to validate balance sync" }
   }
@@ -451,7 +459,7 @@ export async function commitDailyBalanceSync(formData: FormData) {
     const buffer = await file.arrayBuffer()
     const workbook = XLSX.read(buffer)
     const firstSheet = workbook.Sheets[workbook.SheetNames[0]]
-    const rawData = XLSX.utils.sheet_to_json(firstSheet) as Record<string, any>[]
+    const rawData = XLSX.utils.sheet_to_json(firstSheet) as Record<string, unknown>[]
 
     if (rawData.length === 0) return { ok: false, error: "The file is empty" }
     console.log(`[BalanceSync] Starting commit for ${file.name} (${rawData.length} rows)`)
@@ -459,7 +467,7 @@ export async function commitDailyBalanceSync(formData: FormData) {
 
     // Identify account number and total due columns
     const dbMappingRaw = await getImportMapping("import.daily.collections")
-    const mapping = { ...DEFAULT_DAILY_SYNC_MAPPING } as Record<string, any>
+    const mapping = { ...DEFAULT_DAILY_SYNC_MAPPING } as Record<string, string | string[]>
     if (dbMappingRaw) {
        for (const [k, v] of Object.entries(dbMappingRaw)) {
          const lowerK = k.toLowerCase()
@@ -493,7 +501,8 @@ export async function commitDailyBalanceSync(formData: FormData) {
 
       let pDate: Date | null = null
       if (dateCol && row[dateCol as string]) {
-        const d = new Date(row[dateCol as string])
+        const val = row[dateCol as string] as string | number | Date
+        const d = new Date(val)
         if (!isNaN(d.getTime())) pDate = d
       }
 
@@ -520,13 +529,19 @@ export async function commitDailyBalanceSync(formData: FormData) {
         .where(and(inArray(customer.customerAccount, chunk), customerScope))
 
       fetched.forEach(c => {
-        if (c.account) custMap.set(c.account.toLowerCase().trim(), c as any)
+        if (c.account) {
+          custMap.set(c.account.toLowerCase().trim(), {
+            ...c,
+            account: c.account,
+            balance: Number(c.balance)
+          })
+        }
       })
     }
 
     // 3. Load this customer's bills across live periods, then apply the Pegasus taken-date cutoff.
     const billingScope = applyBillingRecordScope(current)
-    const billMap = new Map<string, any>()
+    const billMap = new Map<string, typeof billingRecord.$inferSelect>()
     const billsByCustomer = new Map<string, { id: string; billingPeriodId: string; takenAt: Date | null }[]>()
     const customerIds = Array.from(custMap.values()).map(c => c.id)
     const livePeriodIds = periods.map((p) => p.id)
@@ -670,8 +685,8 @@ export async function commitDailyBalanceSync(formData: FormData) {
         }
 
         // C. Collections and Recoveries
-        const collectionsToInsert: any[] = []
-        const billUpdateValues: any[] = []
+        const collectionsToInsert: (typeof dailyCollectionRecord.$inferInsert)[] = []
+        const billUpdateValues: import("drizzle-orm").SQL[] = []
         const crossPeriodFlags: Array<{
           id: string
           customerId: string
@@ -771,7 +786,7 @@ export async function commitDailyBalanceSync(formData: FormData) {
         }
 
         if (billUpdateValues.length > 0) {
-          const billValuesList = billUpdateValues.reduce((acc, curr) => sql`${acc}, ${curr}`)
+          const billValuesList = sql.join(billUpdateValues, sql`, `)
           await tx.execute(sql`
             UPDATE billing_record
             SET "recoveryAmount" = v.rec_amt, "arrearsRecovery" = v.arr_rec, "status" = v.status, "updatedAt" = now()
@@ -828,7 +843,7 @@ export async function commitDailyBalanceSync(formData: FormData) {
     console.log(`[BalanceSync] Completed in ${Date.now() - startTime}ms. Total collection: ${totalCollection}`)
     revalidatePath("/dashboard/billing/daily")
     return { ok: true, id: importId }
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error("Daily Balance Sync Failed:", err)
     return {
       ok: false,
@@ -842,7 +857,7 @@ export async function downloadDailyCollectionTemplate(format: "xlsx" | "csv") {
 
   const mapping = { ...DEFAULT_DAILY_IMPORT_MAPPING } as Record<string, string | string[] | number>
   const headers: string[] = []
-  const sampleRow: Record<string, any> = {}
+  const sampleRow: Record<string, string | number> = {}
   const keysToProcess = ["accountNumber", "customerName", "amountPaid", "paymentDate", "externalReference", "paymentChannel"]
 
   for (const key of keysToProcess) {
@@ -1052,7 +1067,7 @@ export async function deleteDailyImport(id: string) {
 
     revalidatePath("/dashboard/billing/daily")
     return { ok: true }
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error("Failed to delete import with rollback:", err)
     return {
       ok: false,

@@ -51,13 +51,28 @@ const DOCUMENTED_AREA_BRANCH_ALIASES: Record<string, string[]> = {
   "ankole": ["bushenyi", "ibanda", "rubirizi", "ankole"],
 }
 
-export async function performSchemeReconciliation(mockDbRows?: any[]): Promise<FullReconciliationReport> {
+export interface SchemeReconciliationRow {
+  schemeId: string
+  schemeName: string
+  schemeCode: string
+  branchId: string | null
+  branchName: string | null
+  clusterId: string | null
+  clusterName: string | null
+  orgId: string | null
+  orgName: string | null
+}
+
+export async function performSchemeReconciliation(mockDbRows?: (Pick<SchemeReconciliationRow, "schemeId" | "schemeName"> & Partial<SchemeReconciliationRow>)[]): Promise<FullReconciliationReport> {
   const ref = parseExcelReferenceDataset()
   const opSchemes = ref.schemes.filter((s) => s.isOperationalScheme)
 
-  let dbRows: any[] = []
+  let dbRows: SchemeReconciliationRow[] = []
   if (mockDbRows && mockDbRows.length > 0) {
-    dbRows = mockDbRows
+    dbRows = mockDbRows.map(row => ({
+      schemeCode: "", branchId: null, branchName: null, clusterId: null,
+      clusterName: null, orgId: null, orgName: null, ...row,
+    }))
   } else {
     try {
       dbRows = await db
@@ -82,7 +97,7 @@ export async function performSchemeReconciliation(mockDbRows?: any[]): Promise<F
     }
   }
 
-  const dbByName = new Map<string, any>()
+  const dbByName = new Map<string, SchemeReconciliationRow>()
   dbRows.forEach((r) => {
     if (r.schemeName) dbByName.set(r.schemeName.toLowerCase().trim(), r)
   })
@@ -90,7 +105,7 @@ export async function performSchemeReconciliation(mockDbRows?: any[]): Promise<F
   let approvedExactMatchesCount = 0
   let approvedNormalizedMatchesCount = 0
   let hierarchyMismatchesCount = 0
-  let manualReviewCount = 0
+  const manualReviewCount = 0
   let unmatchedCount = 0
 
   const reconciledSchemes: ReconciledSchemeItem[] = opSchemes.map((es) => {

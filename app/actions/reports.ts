@@ -11,14 +11,12 @@ import {
   auditLog,
   dailyCollectionRecord,
   dailyCollectionImport,
-  reconciliationMatch,
   meterReading,
 } from "@/lib/db/schema"
 import { requireUser } from "@/lib/session"
 import { applyReceiptScope, applyCustomerScope } from "@/lib/scopes"
-import { and, eq, ne, sql, desc, sum, count, gte, inArray, or, ilike } from "drizzle-orm"
-import { canViewReports, canUploadBilling, canViewAllData } from "@/lib/permissions"
-import { ROLES } from "@/lib/permissions/roles"
+import { and, eq, ne, sql, desc, sum, count, gte, inArray, or, ilike, type SQL } from "drizzle-orm"
+import { canViewReports, canViewAllData } from "@/lib/permissions"
 import { getCategoryEquivalents } from "@/lib/utils/category"
 
 /**
@@ -213,7 +211,7 @@ export async function getDashboardStats(params: {
 
   // HIERARCHY FORCING (Universal): Every regional user is strictly trapped in their assignment.
   // We apply this to the condition arrays before they are summed or counted.
-  const forceHierarchy = (conds: any[]) => {
+  const forceHierarchy = (conds: (SQL | undefined)[]) => {
     // If they can view all data (e.g. System Admin or Head Office with permission), do not force.
     if (canViewAllData(current)) return;
 

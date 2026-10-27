@@ -1,16 +1,7 @@
 "use server"
 
 import { db } from "@/lib/db"
-import {
-  waterSchemeSource,
-  waterProductionLog,
-  intelligenceFinding,
-  waterScheme,
-  branch,
-  cluster,
-  billingPeriod,
-  meterReading,
-} from "@/lib/db/schema"
+import { waterSchemeSource, waterProductionLog, intelligenceFinding, waterScheme } from "@/lib/db/schema"
 import { requireUser } from "@/lib/session"
 import {
   canViewIntelligence,
@@ -20,7 +11,7 @@ import {
 import { writeAudit } from "@/lib/audit"
 import { runIntelligenceEngine } from "@/lib/intelligence/engine"
 import { IntelligenceFilters, FindingStatus } from "@/lib/intelligence/types"
-import { eq, and, desc, sql } from "drizzle-orm"
+import { eq, and, desc } from "drizzle-orm"
 import { randomUUID } from "crypto"
 
 /**

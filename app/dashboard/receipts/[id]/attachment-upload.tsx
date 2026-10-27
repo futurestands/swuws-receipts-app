@@ -2,7 +2,7 @@
 
 import { useRef, useState, useTransition } from "react"
 import { uploadReceiptAttachment } from "@/app/actions/receipts"
-import { Button } from "@/components/ui/button"
+
 import { toast } from "sonner"
 import type { ReceiptAttachment } from "@/lib/db/schema"
 

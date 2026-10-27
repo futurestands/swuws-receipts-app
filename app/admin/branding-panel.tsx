@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useTransition } from "react"
+import Image from "next/image"
 import { updateBranding, uploadLogo, updateLatestAppVersion } from "@/app/actions/settings"
 import type { OrgSettings } from "@/lib/db/schema"
 import { Button } from "@/components/ui/button"
@@ -123,9 +124,8 @@ export function BrandingPanel({ settings }: { settings: OrgSettings }) {
               <Label htmlFor="logo">System Logo & Icon</Label>
               <div className="flex items-center gap-3 p-3 border rounded-lg bg-muted/20">
                 {logoUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element
                   <div className="size-12 rounded bg-white p-1.5 flex items-center justify-center border shadow-sm">
-                    <img src={logoUrl} alt="Logo" className="max-w-full max-h-full object-contain" />
+                    <Image src={logoUrl} alt="Logo" width={48} height={48} unoptimized className="max-w-full max-h-full object-contain" />
                   </div>
                 ) : (
                   <div className="size-12 border-2 border-dashed rounded flex items-center justify-center text-muted-foreground text-[10px]">

@@ -1,9 +1,16 @@
 import { describe, it, expect, vi } from "vitest"
 
+interface SchemeLookup {
+  from(): SchemeLookup
+  where(): SchemeLookup
+  limit(): Promise<{ branchId: string }[]>
+}
+const mocks = vi.hoisted(() => ({ select: vi.fn<() => SchemeLookup>() }))
+
 vi.mock('server-only', () => ({}))
 vi.mock('../db', () => ({
   db: {
-    select: vi.fn(),
+    select: mocks.select,
     execute: vi.fn(),
   }
 }))
@@ -90,12 +97,12 @@ describe("Destination Hierarchy Authorization (P0 Hardening)", () => {
 
   it("denies inconsistent hierarchy (Scheme S2 is not in Branch B1)", async () => {
     // Mock the DB lookup for waterScheme
-    const { db } = await import("../db")
-    vi.mocked(db.select).mockReturnValue({
-        from: vi.fn().mockReturnThis(),
-        where: vi.fn().mockReturnThis(),
-        limit: vi.fn().mockResolvedValue([{ branchId: "branch-b" }]), // S2 belongs to Branch B
-    } as any)
+    const lookup: SchemeLookup = {
+      from: () => lookup,
+      where: () => lookup,
+      limit: async () => [{ branchId: "branch-b" }], // S2 belongs to Branch B
+    }
+    mocks.select.mockReturnValue(lookup)
 
     expect(await validateWriteScope(branchA_Admin, "users.view", { branchId: "branch-a", schemeId: "scheme-s2" })).toBe(false)
   })

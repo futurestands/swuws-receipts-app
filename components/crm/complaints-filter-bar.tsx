@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState, useTransition } from "react"
+import { useState, useTransition } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -24,7 +24,12 @@ interface ComplaintsFilterBarProps {
  * following the same useTransition + router.push pattern already used in
  * app/dashboard/customers/customer-search-bar.tsx.
  */
-export function ComplaintsFilterBar({ areas, staff, categories }: ComplaintsFilterBarProps) {
+export function ComplaintsFilterBar(props: ComplaintsFilterBarProps) {
+  const searchParams = useSearchParams()
+  return <ComplaintsFilterForm key={searchParams.toString()} {...props} />
+}
+
+function ComplaintsFilterForm({ areas, staff, categories }: ComplaintsFilterBarProps) {
   const router = useRouter()
   const searchParams = useSearchParams()
   const [pending, startTransition] = useTransition()
@@ -38,18 +43,6 @@ export function ComplaintsFilterBar({ areas, staff, categories }: ComplaintsFilt
   const [staffId, setStaffId] = useState(searchParams.get("staff") ?? "all")
   const [category, setCategory] = useState(searchParams.get("category") ?? "all")
   const [priority, setPriority] = useState(searchParams.get("priority") ?? "all")
-
-  useEffect(() => {
-    setQ(searchParams.get("q") ?? "")
-    setNo(searchParams.get("no") ?? "")
-    setFrom(searchParams.get("from") ?? "")
-    setTill(searchParams.get("till") ?? "")
-    setStatus(searchParams.get("status") ?? "all")
-    setArea(searchParams.get("area") ?? "all")
-    setStaffId(searchParams.get("staff") ?? "all")
-    setCategory(searchParams.get("category") ?? "all")
-    setPriority(searchParams.get("priority") ?? "all")
-  }, [searchParams])
 
   function applyFilters() {
     const params = new URLSearchParams()

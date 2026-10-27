@@ -28,7 +28,7 @@ export function OfflineReceiptForm({
   onSuccess: () => void;
   onCancel: () => void;
 }) {
-  const [data, setData] = useState<any>(null)
+  const [data, setData] = useState<Awaited<ReturnType<typeof sqliteService.getCustomerWithBill>>>(null)
   const [amount, setAmount] = useState("")
   const [method, setPaymentMethod] = useState("cash")
   const [ref, setReference] = useState("")
@@ -72,8 +72,8 @@ export function OfflineReceiptForm({
             isProvisional: true,
           })
           toast.success("Receipt queued and sent to printer")
-        } catch (printErr: any) {
-          toast.success("Receipt saved offline. Print failed: " + (printErr?.message || "no printer"))
+        } catch (printErr: unknown) {
+          toast.success("Receipt saved offline. Print failed: " + (printErr instanceof Error ? printErr.message : "no printer"))
         }
       } else {
         toast.success("Receipt queued for sync")

@@ -9,14 +9,14 @@ import {
 import { requireUser } from "@/lib/session"
 import { writeAudit } from "@/lib/audit"
 import { canManageAreas, canManageSchemes, canManageClusters } from "@/lib/permissions"
-import { eq, sql } from "drizzle-orm"
+
 import * as XLSX from "xlsx"
-import { z } from "zod"
+
 import { randomUUID } from "crypto"
 import { revalidatePath } from "next/cache"
-import { processExcelImport, getImportMapping, type ImportSummary, type ValidationResult } from "@/lib/import-engine"
+import { processExcelImport, getImportMapping } from "@/lib/import-engine"
 import { DEFAULT_HIERARCHY_IMPORT_MAPPING } from "@/lib/import-mappings"
-import { hierarchyImportSchema, type HierarchyImportRow, type HierarchyImportSummary } from "@/lib/import-schemas"
+import { hierarchyImportSchema, type HierarchyImportSummary } from "@/lib/import-schemas"
 
 async function getExistenceMaps() {
   const [clusters, areas, schemes] = await Promise.all([
@@ -48,7 +48,7 @@ export async function validateHierarchy(formData: FormData): Promise<{ ok: true;
   const dbMapping = await getImportMapping('import.hierarchy.master')
   const mapping = {
     ...DEFAULT_HIERARCHY_IMPORT_MAPPING,
-    ...(dbMapping as any)
+    ...dbMapping
   } as Record<string, string | string[]>
 
   const summary = await processExcelImport({
@@ -160,7 +160,8 @@ export async function importHierarchy(summary: HierarchyImportSummary): Promise<
 
   // Include invalid rows in the report
   summary.rows.filter(r => !r.valid).forEach(r => {
-    reportRows.push({ ...r.data, Result: "Validation Failed", Details: r.errors.join("; ") })
+    const data = r.raw
+    reportRows.push({ ...data, Result: "Validation Failed", Details: r.errors.join("; ") })
   })
 
   await writeAudit({

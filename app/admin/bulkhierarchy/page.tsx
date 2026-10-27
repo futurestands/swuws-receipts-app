@@ -1,6 +1,6 @@
 import Link from "next/link"
 import { HierarchyImportClient } from "./hierarchy-import-client"
-import { Button } from "@/components/ui/button"
+
 import { ChevronLeft } from "lucide-react"
 
 export default function BulkImportHierarchyPage() {

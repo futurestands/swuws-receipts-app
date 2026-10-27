@@ -27,7 +27,6 @@ export function getExcelReferencePerformanceDataset(
   let totalCapacityM3 = 0
   let totalArrearsUgx = 0
   let totalCurrentBilledUgx = 0
-  let hasCommercialData = false
 
   const periodDeltas: DecisionSupportDeltaItem[] = []
 
@@ -56,11 +55,9 @@ export function getExcelReferencePerformanceDataset(
     totalCapacityM3 += practicalCap
     if (sch.arrearsUgx) {
       totalArrearsUgx += sch.arrearsUgx
-      hasCommercialData = true
     }
 
     const billedUgx = sch.tariffUgx ? sold * sch.tariffUgx : 0
-    if (billedUgx > 0) hasCommercialData = true
     totalCurrentBilledUgx += billedUgx
 
     const validation = validateWaterBalanceAndCapacity({

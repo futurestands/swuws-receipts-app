@@ -2,34 +2,23 @@
 
 import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
-import { user, cluster, branch, waterScheme, organization } from "@/lib/db/schema"
+import { user, cluster, branch, waterScheme } from "@/lib/db/schema"
 import { requireUser } from "@/lib/session"
 import { writeAudit } from "@/lib/audit"
+import { resolveCreatorOrganizationId } from "@/lib/scopes/org-resolver"
 import { ROLE_LABELS, type Role } from "@/lib/permissions/roles"
 import { canViewUsers, canCreateUser } from "@/lib/permissions"
 import { canCreateRole } from "@/lib/permissions/server"
 import { eq } from "drizzle-orm"
 import { headers } from "next/headers"
 import * as XLSX from "xlsx"
-import { getImportMapping } from "@/lib/import-engine"
+import { getImportMapping, type ImportSummary, type ValidationResult } from "@/lib/import-engine"
 import { DEFAULT_USER_IMPORT_MAPPING } from "@/lib/import-mappings"
 import { userImportSchema, type UserImportRow } from "@/lib/import-schemas"
 import { logEvent } from "@/lib/logger"
 
-export type ValidationResult = {
-  valid: boolean
-  errors: string[]
-  warnings: string[]
-  data: UserImportRow
-}
-
-export type ImportSummary = {
-  totalRows: number
-  validRows: number
-  warningRows: number
-  errorRows: number
-  rows: ValidationResult[]
-}
+export type UserImportValidationResult = ValidationResult<UserImportRow>
+export type UserImportSummary = ImportSummary<UserImportRow>
 
 async function getHierarchyMaps() {
   const [clusters, areas, schemes] = await Promise.all([
@@ -46,7 +35,7 @@ async function getHierarchyMaps() {
   }
 }
 
-export async function validateBulkUsers(formData: FormData): Promise<{ ok: true; summary: ImportSummary } | { ok: false; error: string }> {
+export async function validateBulkUsers(formData: FormData): Promise<{ ok: true; summary: UserImportSummary } | { ok: false; error: string }> {
   const current = await requireUser()
   if (!canViewUsers(current)) throw new Error("Forbidden")
 
@@ -73,12 +62,13 @@ export async function validateBulkUsers(formData: FormData): Promise<{ ok: true;
   const dbMapping = (await getImportMapping("import.users.bulk")) as Record<string, string> | null
   const mapping = { ...DEFAULT_USER_IMPORT_MAPPING, ...dbMapping } as Record<string, string>
 
-  const results: ValidationResult[] = []
+  const results: UserImportValidationResult[] = []
   let validCount = 0
   let errorCount = 0
   let warningCount = 0
 
-  for (const rawRow of rawData as Array<Record<string, unknown>>) {
+  for (let index = 0; index < rawData.length; index++) {
+    const rawRow = rawData[index] as Record<string, unknown>
     const errors: string[] = []
     const warnings: string[] = []
 
@@ -160,16 +150,23 @@ export async function validateBulkUsers(formData: FormData): Promise<{ ok: true;
     if (isValid) {
       validCount++
       if (warnings.length > 0) warningCount++
+      results.push({
+        valid: true,
+        sourceRow: index + 2,
+        errors,
+        warnings,
+        data: mappedRow,
+      })
     } else {
       errorCount++
+      results.push({
+        valid: false,
+        sourceRow: index + 2,
+        errors,
+        warnings,
+        raw: rawRow,
+      })
     }
-
-    results.push({
-      valid: isValid,
-      errors,
-      warnings,
-      data: mappedRow,
-    })
   }
 
   return {
@@ -184,7 +181,7 @@ export async function validateBulkUsers(formData: FormData): Promise<{ ok: true;
   }
 }
 
-export async function importBulkUsers(summary: ImportSummary): Promise<{ ok: true; imported: number; failed: number; report: string } | { ok: false; error: string }> {
+export async function importBulkUsers(summary: UserImportSummary): Promise<{ ok: true; imported: number; failed: number; report: string } | { ok: false; error: string }> {
   const current = await requireUser()
   if (!canCreateUser(current)) throw new Error("Forbidden")
 
@@ -224,9 +221,12 @@ export async function importBulkUsers(summary: ImportSummary): Promise<{ ok: tru
       if (!created?.user?.id) throw new Error("Better Auth creation failed")
       createdUserId = created.user.id
 
-      // Automatically assign organizationId if possible
-      const [org] = await db.select({ id: organization.id }).from(organization).limit(1)
-      const organizationId = org?.id || null
+      // Automatically assign organizationId using multi-tenant resolver
+      const organizationId = await resolveCreatorOrganizationId(current, {
+        clusterId: clusterRecord?.id,
+        branchId: areaRecord?.id,
+        schemeId: schemeRecord?.id,
+      })
 
       // 2. Update user record with role, hierarchy and phone
       await db
@@ -309,12 +309,15 @@ export async function importBulkUsers(summary: ImportSummary): Promise<{ ok: tru
     }
   }
 
-  // Include invalid rows in the report
+  // Include invalid rows in the report without exposing passwords
   summary.rows
     .filter((r) => !r.valid)
     .forEach((r) => {
+      const raw = { ...r.raw }
+      delete raw.password
+      delete raw.Password
       reportRows.push({
-        ...r.data,
+        ...raw,
         Password: "",
         Result: "Validation Failed",
         Details: r.errors.join("; "),

@@ -16,7 +16,7 @@ import { formatUGX, formatDateTime } from "@/lib/format"
 import { DeleteRunButton } from "./delete-run-button"
 import { ScrollableTableContainer } from "@/components/ui/responsive-table"
 import { Trash2, Loader2, AlertTriangle } from "lucide-react"
-import { bulkDeleteBillingRuns } from "@/app/actions/billing"
+import { bulkDeleteBillingRuns, type getCollectionSummary } from "@/app/actions/billing"
 import { toast } from "sonner"
 import {
   AlertDialog,
@@ -33,7 +33,7 @@ import {
 import { SendRemindersButton } from "@/components/crm/send-reminders-button"
 
 interface RecentImportsTableProps {
-  uploads: any[]
+  uploads: NonNullable<Awaited<ReturnType<typeof getCollectionSummary>>>["recentUploads"]
   canDelete?: boolean
   canSendSms?: boolean
 }
@@ -68,7 +68,7 @@ export function RecentImportsTable({ uploads, canDelete = false, canSendSms = fa
       } else {
         toast.error(res.error || "Failed to delete billing runs")
       }
-    } catch (err) {
+    } catch {
       toast.error("A connection error occurred")
     } finally {
       setIsDeleting(false)

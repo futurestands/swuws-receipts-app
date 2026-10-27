@@ -9,26 +9,14 @@ import { Label } from "@/components/ui/label"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
 import { toast } from "sonner"
-import {
-  Download,
-  Upload,
-  CheckCircle2,
-  AlertCircle,
-  AlertTriangle,
-  FileSpreadsheet,
-  Loader2,
-  ChevronRight,
-  ChevronLeft,
-  XCircle,
-  RefreshCw,
-} from "lucide-react"
+import { Download, Upload, CheckCircle2, AlertCircle, AlertTriangle, Loader2, ChevronRight, ChevronLeft, XCircle, RefreshCw } from "lucide-react"
 import {
   validateBulkUsers,
   importBulkUsers,
   downloadBulkImportTemplate,
+  type UserImportSummary,
 } from "@/app/actions/bulk-import"
-import { type UserImportRow } from "@/lib/import-schemas"
-import { type ImportSummary } from "@/lib/import-engine"
+import type { UserImportRow } from "@/lib/import-schemas"
 import { cn } from "@/lib/utils"
 
 type Step = "setup" | "preview" | "confirm" | "complete"
@@ -36,7 +24,7 @@ type Step = "setup" | "preview" | "confirm" | "complete"
 export function BulkImportClient() {
   const [step, setStep] = useState<Step>("setup")
   const [file, setFile] = useState<File | null>(null)
-  const [summary, setSummary] = useState<ImportSummary<UserImportRow> | null>(null)
+  const [summary, setSummary] = useState<UserImportSummary | null>(null)
   const [isValidating, startValidating] = useTransition()
   const [isImporting, startImporting] = useTransition()
   const [result, setResult] = useState<{ imported: number; failed: number; report: string } | null>(null)
@@ -253,7 +241,9 @@ export function BulkImportClient() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {summary.rows.map((row, i) => (
+                  {summary.rows.map((row, i) => {
+                    const rowData = row.valid ? row.data : (row.raw as unknown as UserImportRow)
+                    return (
                     <TableRow key={i} className={cn(!row.valid ? "bg-destructive/5" : "hover:bg-muted/50")}>
                       <TableCell className="text-xs text-muted-foreground">{i + 1}</TableCell>
                       <TableCell>
@@ -265,21 +255,21 @@ export function BulkImportClient() {
                           <Badge variant="destructive">Error</Badge>
                         )}
                       </TableCell>
-                      <TableCell className="font-medium text-xs">{row.data.name}</TableCell>
-                      <TableCell className="text-xs">{row.data.email}</TableCell>
+                      <TableCell className="font-medium text-xs">{rowData.name}</TableCell>
+                      <TableCell className="text-xs">{rowData.email}</TableCell>
                       <TableCell className="text-xs">
-                        {row.data.password ? (
-                          <span className="font-mono text-[10px]">{row.data.password}</span>
+                        {rowData.password ? (
+                          <span className="font-mono text-[10px]">{rowData.password}</span>
                         ) : (
                           <span className="text-muted-foreground italic text-[10px]">Auto-generated</span>
                         )}
                       </TableCell>
-                      <TableCell className="text-xs">{row.data.role}</TableCell>
+                      <TableCell className="text-xs">{rowData.role}</TableCell>
                       <TableCell className="text-xs">
                         <div className="flex flex-col">
-                          <span className="text-muted-foreground">{row.data.cluster}</span>
-                          <span>{row.data.area}</span>
-                          <span className="text-muted-foreground italic text-[10px]">{row.data.scheme}</span>
+                          <span className="text-muted-foreground">{rowData.cluster}</span>
+                          <span>{rowData.area}</span>
+                          <span className="text-muted-foreground italic text-[10px]">{rowData.scheme}</span>
                         </div>
                       </TableCell>
                       <TableCell>
@@ -297,7 +287,7 @@ export function BulkImportClient() {
                         </div>
                       </TableCell>
                     </TableRow>
-                  ))}
+                  )})}
                 </TableBody>
               </Table>
             </div>

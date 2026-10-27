@@ -19,7 +19,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { requestReceiptVoid } from "@/app/actions/receipts"
 import { toast } from "sonner"
 import { Trash2 } from "lucide-react"
-import { cn } from "@/lib/utils"
+
 
 export function VoidReceiptButton({
   receiptId,
