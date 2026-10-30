@@ -1,4 +1,5 @@
 /** Original TARGETS GOLBAL model. Analytical results only; never posts bills or production. */
+export const MPS_TPS_FORMULA_VERSION = "swuws-original-targets-v1" as const
 export type MetricState = "AVAILABLE" | "MISSING" | "SOURCE_ERROR" | "UNRESOLVED_EXTERNAL" | "UNRESOLVED_DEPENDENCY"
 export interface EngineeringMetric {
   value: number | null
@@ -36,6 +37,7 @@ export interface MpsTpsInputs {
   collectionEfficiency: EngineeringMetric
 }
 export interface MpsTpsResult {
+  formulaVersion: typeof MPS_TPS_FORMULA_VERSION
   inputs: MpsTpsInputs
   production: EngineeringMetric
   supplied: EngineeringMetric
@@ -61,7 +63,7 @@ export function calculateMpsTps(inputs: MpsTpsInputs, row: number): MpsTpsResult
   if (inputs.tpsNrw.value !== null && productionToSalesLoss.value !== null && Math.abs(inputs.tpsNrw.value - productionToSalesLoss.value) > 1e-10) diagnostics.push("Declared TPS NRW differs from the 5% then 25% target-sales chain; original dependencies retained")
   if ([inputs.mpsNrw, inputs.tpsNrw].some(x => x.value !== null && (x.value < 0 || x.value > 1))) diagnostics.push("Original NRW ratio is outside 0–100%; retained for investigation")
   if (inputs.arrears.state !== "AVAILABLE") diagnostics.push("Total demand unresolved: external arrears evidence is not verified")
-  return { inputs, production, supplied, sold, billing, demand, productionToSupplyLoss, productionToSalesLoss, diagnostics, basis: "Original fixed-month workbook targets; reporting year and approval unresolved" }
+  return { formulaVersion: MPS_TPS_FORMULA_VERSION, inputs, production, supplied, sold, billing, demand, productionToSupplyLoss, productionToSalesLoss, diagnostics, basis: "Original fixed-month workbook targets; reporting year and approval unresolved" }
 }
 /** Complete-population sums only. Callers may present observed subtotals separately. */
 export function sumEngineeringMetrics(metrics: EngineeringMetric[], unit: string, source: string): EngineeringMetric {

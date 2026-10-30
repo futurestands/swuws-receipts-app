@@ -10,7 +10,7 @@ import {
 import { eq, and, sql, sum, count, desc, inArray } from "drizzle-orm"
 import { UserPermissionsContext } from "@/lib/permissions"
 import { applyIntelligenceSchemeFilter } from "@/lib/intelligence/scope"
-import { validateWaterBalanceAndCapacity } from "./data-validation"
+import { nonNegativeNumber, validateWaterBalanceAndCapacity } from "./data-validation"
 import { classifyUtilisation } from "./mps-tps"
 import { TrustedPerformanceDataset, SchemePerformanceMatrixItem, TraceableMetric } from "./types"
 
@@ -262,6 +262,7 @@ export async function getTrustedPerformanceDataset(
       branchId: sch.branchId,
       producedM3: pData.prod,
       productionAvailable: prodLogRows.find(p => p.schemeId === sch.id)?.available ?? false,
+      productionDayCoveragePercent: validation.completenessPercent,
       capacityAvailable: prodLogRows.find(p => p.schemeId === sch.id)?.currentCapacityM3Month != null,
       practicalCapacityM3: cap,
       utilizationPercent: validation.capacityUtilizationPercent,
@@ -299,7 +300,15 @@ export async function getTrustedPerformanceDataset(
   if (!capacityComplete) globalValidation.dataQualityIssues.push("Capacity benchmark unavailable for some schemes")
   globalValidation.dataQualityIssues.push("Official totals use verified records only. Day coverage is not all-source completeness. Capacity uses confirmed current configuration, not historical installed capacity.")
   globalValidation.dataQualityIssues.push("Cash is a balance-derived estimate, not independently verified receipts; outstanding demand includes current unpaid bills. Historical capacity versioning remains unimplemented.")
-  const availableTargets = targetRows.filter(t => t.targetProductionM3 !== null)
+  const targetsByScheme = new Map<string, number | null>()
+  for (const t of targetRows) {
+    // A duplicate is ambiguous even if the two stored numbers happen to agree.
+    targetsByScheme.set(t.schemeId, targetsByScheme.has(t.schemeId) ? null : nonNegativeNumber(t.targetProductionM3))
+  }
+  const targetValues = activeSchemes.map(s => targetsByScheme.get(s.id) ?? null)
+  const targetSum = targetValues.every(v => v !== null) ? targetValues.reduce<number>((n, v) => n + v!, 0) : null
+  const targetProductionM3 = nonNegativeNumber(targetSum)
+  if (targetProductionM3 === null) globalValidation.dataQualityIssues.push("Production target unresolved: missing, invalid or ambiguous scoped period targets")
   // 7. Build Traceability Records
   const traceability: TraceableMetric[] = [
     {
@@ -358,7 +367,7 @@ export async function getTrustedPerformanceDataset(
       totalArrearsUgx: aggTotalArrearsUgx,
       collectionEfficiencyPercent: globalCollectionEff,
       arrearsRecoveryPercent: globalArrearsRecovery,
-      targetProductionM3: availableTargets.length === activeSchemes.length ? availableTargets.reduce((n,t) => n + Number(t.targetProductionM3), 0) : null,
+      targetProductionM3,
     },
     dataQuality: {
       completenessPercent: globalValidation.completenessPercent,

@@ -13,20 +13,22 @@ export interface SchemeCommercialInput {
   cashToArrearsUgx: number
   totalArrearsUgx: number
   dataCompletenessPercent: number
-  collectionBasis?: "balance_inference"
+  collectionBasis?: "balance_inference" | "verified_receipts" | "unavailable"
 }
 
 export function evaluateCommercialPerformance(input: SchemeCommercialInput): StructuredFinding[] {
   const findings: StructuredFinding[] = []
 
-  if (input.currentBilledUgx <= 0) return findings
+  if (!Number.isFinite(input.currentBilledUgx) || input.currentBilledUgx <= 0) return findings
 
-  const collectionRate = Math.round((input.totalCashCollectedUgx / input.currentBilledUgx) * 1000) / 10
+  const estimated = input.collectionBasis === "balance_inference"
+  const usableCash = (estimated || input.collectionBasis === "verified_receipts") && Number.isFinite(input.totalCashCollectedUgx) && input.totalCashCollectedUgx >= 0
+  const collectionRate = usableCash ? Math.round((input.totalCashCollectedUgx / input.currentBilledUgx) * 1000) / 10 : null
 
   // 1. Weak Collection Rate (< 60%)
-  if (collectionRate < 60) {
+  if (collectionRate !== null && collectionRate < 60) {
     const uncollectedUgx = Math.max(0, input.currentBilledUgx - input.totalCashCollectedUgx)
-    const severity = collectionRate < 40 ? "critical" : "high"
+    const severity = estimated ? "watch" : collectionRate < 40 ? "critical" : "high"
 
     findings.push({
       id: `comm-weakcollection-${input.schemeId}`,
@@ -36,14 +38,12 @@ export function evaluateCommercialPerformance(input: SchemeCommercialInput): Str
       clusterId: input.clusterId,
       category: "commercial",
       severity,
-      title: `${input.collectionBasis ? "Estimated" : "Low Cash"} Collection Rate (${collectionRate}%)`,
-      description: `${input.collectionBasis ? "Balance-derived cash estimate (unverified)" : "Recorded cash"}: UGX ${input.totalCashCollectedUgx.toLocaleString()} against UGX ${input.currentBilledUgx.toLocaleString()} current billed demand (${collectionRate}%).`,
-      observation: "Low collection efficiency severely constrains operational cash flow and increases customer arrears.",
+      title: `${estimated ? "Estimated" : "Low Cash"} Collection Rate (${collectionRate}%)`,
+      description: `${estimated ? "Balance-derived cash estimate (unverified)" : "Verified receipt allocations"}: UGX ${input.totalCashCollectedUgx.toLocaleString()} against UGX ${input.currentBilledUgx.toLocaleString()} current billed demand (${collectionRate}%).`,
+      observation: estimated ? "Reconcile receipts and allocations before interpreting collection performance." : "Recorded collection performance triggers the existing commercial review rule.",
       evidence: {
         metric: "collection_efficiency_percent",
         actual: collectionRate,
-        baseline: 85,
-        variance: Math.round((collectionRate - 85) * 10) / 10,
         unit: "%",
         period: input.periodName || undefined,
         dataCompletenessPercent: input.dataCompletenessPercent,
@@ -51,10 +51,17 @@ export function evaluateCommercialPerformance(input: SchemeCommercialInput): Str
           currentBilledUgx: input.currentBilledUgx,
           totalCashCollectedUgx: input.totalCashCollectedUgx,
           uncollectedUgx,
+          collectionBasis: input.collectionBasis,
+          ruleSource: "Existing commercial heuristic; not an approved scheme MPS/TPS target",
+          ruleApproval: "UNRESOLVED",
+          lowRateThresholdPercent: 60,
+          criticalRateThresholdPercent: 40,
+          legacyReferencePercent: 85,
+          legacyReferenceVariance: Math.round((collectionRate - 85) * 10) / 10,
         },
       },
-      recommendation: "Issue SMS payment reminders to defaulted accounts, enforce disconnection policy on delinquent customers, and audit bank deposits.",
-      confidence: input.collectionBasis ? "MEDIUM" : "HIGH",
+      recommendation: "Verify receipt allocations, bank reconciliation and the commercial rule's approval before selecting collection actions.",
+      confidence: estimated ? "MEDIUM" : "HIGH",
       reportingPeriod: input.periodName || undefined,
       detectedAt: new Date(),
       status: "OPEN",
@@ -62,7 +69,7 @@ export function evaluateCommercialPerformance(input: SchemeCommercialInput): Str
   }
 
   // 2. High Scheme Arrears (> UGX 50M)
-  if (input.totalArrearsUgx >= 50_000_000) {
+  if (Number.isFinite(input.totalArrearsUgx) && input.totalArrearsUgx >= 50_000_000) {
     findings.push({
       id: `comm-higharrears-${input.schemeId}`,
       schemeId: input.schemeId,
@@ -77,8 +84,7 @@ export function evaluateCommercialPerformance(input: SchemeCommercialInput): Str
       evidence: {
         metric: "total_arrears_ugx",
         actual: input.totalArrearsUgx,
-        baseline: 10_000_000,
-        variance: input.totalArrearsUgx - 10_000_000,
+        additionalDetails: { ruleSource: "Existing outstanding-demand heuristic; not an approved scheme target", ruleApproval: "UNRESOLVED", thresholdUgx: 50_000_000, legacyReferenceUgx: 10_000_000, legacyReferenceVariance: input.totalArrearsUgx - 10_000_000 },
         unit: "UGX",
         period: input.periodName || undefined,
       },

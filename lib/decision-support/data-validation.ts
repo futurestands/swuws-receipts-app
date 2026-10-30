@@ -1,3 +1,10 @@
+/** Database numeric inputs remain unknown unless explicitly finite and nonnegative. */
+export function nonNegativeNumber(value: unknown): number | null {
+  if (typeof value !== "number" && (typeof value !== "string" || !/^\d+(?:\.\d+)?$/.test(value.trim()))) return null
+  const parsed = Number(value)
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null
+}
+
 export interface WaterBalanceValidationInput {
   waterProducedM3: number
   waterBilledSoldM3: number

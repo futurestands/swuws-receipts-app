@@ -8,7 +8,7 @@ export function generateManagementAttentionItems(
   const findings: StructuredFinding[] = []
 
   // 1. Data Quality / Inconsistency Flags
-  if (dataset.kpis.lossValidationStatus === "DATA_INCONSISTENCY") {
+  if (dataset.production?.available === true && dataset.availability?.sales === true && dataset.kpis.lossValidationStatus === "DATA_INCONSISTENCY") {
     findings.push({
       id: `att-loss-inconsistent-global`,
       category: "data_quality",
@@ -33,7 +33,7 @@ export function generateManagementAttentionItems(
 
   // 2. High Loss Indicator across Schemes
   for (const sch of dataset.schemesMatrix) {
-    if (sch.rawLossPercent > 40 && sch.producedM3 > 0 && sch.availability?.sales !== false && sch.dataQualityStatus === "VALID") {
+    if (sch.rawLossPercent > 40 && sch.producedM3 > 0 && sch.productionAvailable === true && sch.availability?.sales === true && sch.dataQualityStatus === "VALID") {
       findings.push({
         id: `att-highloss-${sch.schemeId}`,
         schemeId: sch.schemeId,
@@ -58,9 +58,10 @@ export function generateManagementAttentionItems(
       })
     }
 
-    // 3. Stressed Scheme Capacity (>95%)
+    // Capacity uses its own recorded-day coverage, independently of sales/NRW quality.
     const band = classifyUtilisation(sch.practicalCapacityM3 > 0 ? sch.producedM3 / sch.practicalCapacityM3 * 100 : null).band
-    if (sch.productionAvailable !== false && sch.capacityAvailable !== false && sch.dataQualityStatus === "VALID" && (band === "stressed" || band === "critical")) {
+    const coverage = sch.productionDayCoveragePercent
+    if (sch.productionAvailable === true && sch.capacityAvailable === true && typeof coverage === "number" && Number.isFinite(coverage) && coverage >= 50 && (band === "stressed" || band === "critical")) {
       findings.push({
         id: `att-capacity-${sch.schemeId}`,
         schemeId: sch.schemeId,
@@ -76,9 +77,10 @@ export function generateManagementAttentionItems(
           actual: sch.utilizationPercent,
           unit: "%",
           period: dataset.period.periodName,
+          dataCompletenessPercent: coverage,
         },
         recommendation: "Review source pumping hours and evaluate infrastructure augmentation.",
-        confidence: "HIGH",
+        confidence: coverage >= 90 ? "HIGH" : "MEDIUM",
         reportingPeriod: dataset.period.periodName,
         detectedAt: new Date(),
         status: "OPEN",

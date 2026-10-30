@@ -19,7 +19,7 @@ export function evaluateCapacityUtilization(input: SchemeCapacityInput): Structu
   if (input.practicalCapacityM3Month <= 0) return findings
 
   // Rule: Must have sufficient data before declaring operational conclusions
-  if (input.dataCompletenessPercent < 50) return findings
+  if (!Number.isFinite(input.dataCompletenessPercent) || input.dataCompletenessPercent < 50) return findings
 
   const utilizationPercent = Math.round((input.actualProductionM3Month / input.practicalCapacityM3Month) * 1000) / 10
   const band = classifyUtilisation(input.actualProductionM3Month / input.practicalCapacityM3Month * 100).band
@@ -55,7 +55,7 @@ export function evaluateCapacityUtilization(input: SchemeCapacityInput): Structu
   }
 
   // 2. Under-utilized System (< 50%)
-  if (utilizationPercent < 50 && input.actualProductionM3Month > 0) {
+  if (band === "underused" && input.actualProductionM3Month > 0) {
     findings.push({
       id: `cap-underutilized-${input.schemeId}`,
       schemeId: input.schemeId,

@@ -1,9 +1,5 @@
 import { TrustedPerformanceDataset } from "./types"
-import { displayMeasurement } from "./display"
-
-const productionValue = (d: TrustedPerformanceDataset) => d.production?.available === false ? "Unavailable: no verified observations" : d.kpis.waterProducedM3.toLocaleString()
-const capacityValue = (d: TrustedPerformanceDataset) => d.production?.capacityComplete === false ? "Unavailable: unconfirmed configuration" : d.kpis.practicalCapacityM3Month.toLocaleString()
-const utilizationValue = (d: TrustedPerformanceDataset) => d.production?.capacityComplete === false || d.production?.available === false || d.kpis.practicalCapacityM3Month <= 0 ? "Unavailable" : `${d.kpis.capacityUtilizationPercent}%`
+import { displayMeasurement, verifiedCollections, hasMeasurement, productionDisplay as productionValue, capacityDisplay as capacityValue, utilisationDisplay as utilizationValue } from "./display"
 
 export interface ManagementReportOutput {
   title: string
@@ -27,8 +23,8 @@ export function generateManagementReport(
   const periodName = dataset.period.periodName
   const sales = displayMeasurement(dataset.kpis.waterSoldM3, dataset.availability?.sales)
   const billed = displayMeasurement(dataset.kpis.currentBilledUgx, dataset.availability?.billing, "currency")
-  const cash = displayMeasurement(dataset.kpis.totalCashCollectedUgx, dataset.availability?.collections, "currency")
-  const collection = displayMeasurement(dataset.kpis.collectionEfficiencyPercent, dataset.availability?.collections, "percent")
+  const cash = displayMeasurement(dataset.kpis.totalCashCollectedUgx, verifiedCollections(dataset), "currency")
+  const collection = displayMeasurement(dataset.kpis.collectionEfficiencyPercent, verifiedCollections(dataset), "percent")
   const debt = displayMeasurement(dataset.kpis.totalArrearsUgx, dataset.availability?.arrears, "currency")
   const productionMethod = dataset.basis === "historical_workbook" ? "Original workbook historical observations and fixed-month benchmarks. Reporting year, daily coverage and live approvals unresolved. Targets are planning figures, not verified actuals."
     : "Official production uses verified daily source records by production calendar month; legacy/unverified entries are excluded. Day coverage is not all-source completeness. Capacity is a confirmed current-configuration benchmark, not historical installed capacity. Historical baseline pinning remains unimplemented."
@@ -47,14 +43,14 @@ export function generateManagementReport(
           metricsTable: {
             headers: ["Metric", "Actual Value", "Validation Status"],
             rows: [
-              ["Water Produced", `${productionValue(dataset)} m³`, dataset.production?.available === false ? "INCOMPLETE_DATA" : "VALID"],
-              ["Capacity Utilisation", `${utilizationValue(dataset)}`, dataset.production?.available === false ? "INCOMPLETE_DATA" : dataset.production?.capacityComplete === false || dataset.kpis.practicalCapacityM3Month <= 0 ? "TARGET_UNAVAILABLE" : "VALID"],
-              ["Water Sold (Billed)", `${sales} m³`, dataset.availability?.sales === false ? "INCOMPLETE_DATA" : "VALID"],
+              ["Water Produced", `${productionValue(dataset)} m³`, !hasMeasurement(dataset.kpis.waterProducedM3, dataset.production?.available) || dataset.kpis.waterProducedM3 < 0 ? "INCOMPLETE_DATA" : "VALID"],
+              ["Capacity Utilisation", `${utilizationValue(dataset)}`, !hasMeasurement(dataset.kpis.waterProducedM3, dataset.production?.available) ? "INCOMPLETE_DATA" : utilizationValue(dataset) === "Unavailable" ? "TARGET_UNAVAILABLE" : "VALID"],
+              ["Water Sold (Billed)", `${sales} m³`, !hasMeasurement(dataset.kpis.waterSoldM3, dataset.availability?.sales) ? "INCOMPLETE_DATA" : "VALID"],
               ["Loss Indicator", dataset.kpis.displayLossIndicator, dataset.kpis.lossValidationStatus],
-              ["Current Billed Demand", billed, dataset.availability?.billing === false ? "INCOMPLETE_DATA" : "VALID"],
-              ["Cash Collected", cash, dataset.availability?.collections === false ? "UNRESOLVED" : "VALID"],
-              ["Collection Efficiency", collection, dataset.availability?.collections === false ? "UNRESOLVED" : "VALID"],
-              ["Outstanding Demand", debt, dataset.availability?.arrears === false ? "INCOMPLETE_DATA" : "VALID"],
+              ["Current Billed Demand", billed, !hasMeasurement(dataset.kpis.currentBilledUgx, dataset.availability?.billing) ? "INCOMPLETE_DATA" : "VALID"],
+              ["Cash Collected", cash, !hasMeasurement(dataset.kpis.totalCashCollectedUgx, verifiedCollections(dataset)) ? "UNRESOLVED" : "VALID"],
+              ["Collection Efficiency", collection, !hasMeasurement(dataset.kpis.collectionEfficiencyPercent, verifiedCollections(dataset)) ? "UNRESOLVED" : "VALID"],
+              ["Outstanding Demand", debt, !hasMeasurement(dataset.kpis.totalArrearsUgx, dataset.availability?.arrears) ? "INCOMPLETE_DATA" : "VALID"],
             ],
           },
         },
@@ -65,13 +61,13 @@ export function generateManagementReport(
             headers: ["Scheme", "Produced (m³)", "Utilisation %", "Sold (m³)", "Loss %", "Billed (UGX)", "Collections (UGX)", "Coll %"],
             rows: dataset.schemesMatrix.map((s) => [
               s.schemeName,
-              s.productionAvailable === false ? "Unavailable" : s.producedM3.toLocaleString(),
-              s.capacityAvailable === false || s.productionAvailable === false || s.practicalCapacityM3 <= 0 ? "Unavailable" : `${s.utilizationPercent}%`,
+              s.productionAvailable !== true ? "Unavailable" : displayMeasurement(s.producedM3, s.productionAvailable),
+              s.capacityAvailable !== true || s.productionAvailable !== true || s.practicalCapacityM3 <= 0 ? "Unavailable" : `${s.utilizationPercent}%`,
               displayMeasurement(s.soldM3, s.availability?.sales),
               s.displayLoss,
               displayMeasurement(s.currentBilledUgx, s.availability?.billing, "currency"),
-              displayMeasurement(s.cashCollectedUgx, s.availability?.collections, "currency"),
-              displayMeasurement(s.collectionEfficiencyPercent, s.availability?.collections, "percent"),
+              displayMeasurement(s.cashCollectedUgx, s.availability?.collections === true && dataset.collectionBasis === "verified_receipts", "currency"),
+              displayMeasurement(s.collectionEfficiencyPercent, s.availability?.collections === true && dataset.collectionBasis === "verified_receipts", "percent"),
             ]),
           },
         },

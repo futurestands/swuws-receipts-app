@@ -16,7 +16,7 @@ export interface TraceableMetric {
 export interface TrustedPerformanceDataset {
   basis?: "verified_operational" | "historical_workbook"
   availability?: MeasurementAvailability
-  collectionBasis?: "balance_inference" | "unavailable"
+  collectionBasis?: "balance_inference" | "verified_receipts" | "unavailable"
   referenceTargets?: { schemeName: string; areaName: string; result: MpsTpsResult }[]
   production?: { available: boolean; suppliedComplete: boolean; capacityComplete: boolean; provisionalProducedM3: number; legacyCount: number; label: string }
   period: { id: string; periodName: string; year: number | null; month: number }
@@ -55,6 +55,8 @@ export interface TrustedPerformanceDataset {
 }
 
 export interface SchemePerformanceMatrixItem {
+  /** Verified recorded scheme-day coverage; undefined for undated workbook observations. */
+  productionDayCoveragePercent?: number
   availability?: MeasurementAvailability
   productionAvailable?: boolean
   capacityAvailable?: boolean

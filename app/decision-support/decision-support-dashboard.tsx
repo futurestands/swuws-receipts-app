@@ -1,5 +1,5 @@
 "use client"
-import { displayMeasurement } from "@/lib/decision-support/display"
+import { displayMeasurement, verifiedCollections, hasMeasurement, productionDisplay, utilisationDisplay } from "@/lib/decision-support/display"
 
 import { useState, useEffect, useTransition } from "react"
 import Link from "next/link"
@@ -220,9 +220,9 @@ export default function DecisionSupportPage() {
                 <CardTitle className="text-xs font-medium text-muted-foreground uppercase">Water Produced</CardTitle>
               </CardHeader>
               <CardContent className="p-4 pt-1">
-                <div className="text-2xl font-black text-brand-blue">{dataset.production?.available === false ? "Unavailable: no verified observations" : `${dataset.kpis.waterProducedM3.toLocaleString()} m³ (verified)`}</div>
+                <div className="text-2xl font-black text-brand-blue">{productionDisplay(dataset)}{hasMeasurement(dataset.kpis.waterProducedM3, dataset.production?.available) && dataset.kpis.waterProducedM3 >= 0 ? " m³ (recorded)" : ""}</div>
                 <p className="text-[10px] text-muted-foreground mt-1">
-                  Capacity Utilisation: <strong className="text-foreground">{dataset.production?.capacityComplete === false || dataset.production?.available === false || dataset.kpis.practicalCapacityM3Month <= 0 ? "Benchmark unavailable" : `${dataset.kpis.capacityUtilizationPercent}% (current configuration)`}</strong>
+                  Capacity Utilisation: <strong className="text-foreground">{utilisationDisplay(dataset)}{utilisationDisplay(dataset) !== "Unavailable" ? " (current configuration)" : ""}</strong>
                 </p>
               </CardContent>
             </Card>
@@ -246,7 +246,7 @@ export default function DecisionSupportPage() {
               <CardContent className="p-4 pt-1">
                 <div className="text-2xl font-bold">{displayMeasurement(dataset.kpis.currentBilledUgx, dataset.availability?.billing, "currency")}</div>
                 <p className="text-[10px] text-muted-foreground mt-1">
-                  Collections: <strong className="text-emerald-600">{displayMeasurement(dataset.kpis.totalCashCollectedUgx, dataset.availability?.collections, "currency")}</strong> ({displayMeasurement(dataset.kpis.collectionEfficiencyPercent, dataset.availability?.collections, "percent")})
+                  Collections: <strong className="text-emerald-600">{displayMeasurement(dataset.kpis.totalCashCollectedUgx, verifiedCollections(dataset), "currency")}</strong> ({displayMeasurement(dataset.kpis.collectionEfficiencyPercent, verifiedCollections(dataset), "percent")})
                 </p>
               </CardContent>
             </Card>
@@ -294,13 +294,13 @@ export default function DecisionSupportPage() {
                             {s.schemeName} <ExternalLink className="h-3 w-3 text-muted-foreground" />
                           </Link>
                         </td>
-                        <td className="p-3 text-right font-mono">{s.productionAvailable === false ? "Unavailable" : s.producedM3.toLocaleString()}</td>
-                        <td className="p-3 text-right font-mono font-bold">{s.capacityAvailable === false || s.productionAvailable === false || s.practicalCapacityM3 <= 0 ? "Unavailable" : `${s.utilizationPercent}%`}</td>
+                        <td className="p-3 text-right font-mono">{s.productionAvailable !== true ? "Unavailable" : displayMeasurement(s.producedM3, s.productionAvailable)}</td>
+                        <td className="p-3 text-right font-mono font-bold">{s.capacityAvailable !== true || s.productionAvailable !== true || s.practicalCapacityM3 <= 0 ? "Unavailable" : `${s.utilizationPercent}%`}</td>
                         <td className="p-3 text-right font-mono">{displayMeasurement(s.soldM3, s.availability?.sales)}</td>
                         <td className="p-3 text-right font-mono font-bold text-amber-600">{s.displayLoss}</td>
                         <td className="p-3 text-right font-mono">{displayMeasurement(s.currentBilledUgx, s.availability?.billing, "currency")}</td>
-                        <td className="p-3 text-right font-mono text-emerald-600 font-bold">{displayMeasurement(s.cashCollectedUgx, s.availability?.collections, "currency")}</td>
-                        <td className="p-3 text-right font-mono">{displayMeasurement(s.collectionEfficiencyPercent, s.availability?.collections, "percent")}</td>
+                        <td className="p-3 text-right font-mono text-emerald-600 font-bold">{displayMeasurement(s.cashCollectedUgx, s.availability?.collections === true && dataset.collectionBasis === "verified_receipts", "currency")}</td>
+                        <td className="p-3 text-right font-mono">{displayMeasurement(s.collectionEfficiencyPercent, s.availability?.collections === true && dataset.collectionBasis === "verified_receipts", "percent")}</td>
                         <td className="p-3">
                           <Badge variant="outline" className="text-[10px]">
                             {s.statusLabel}

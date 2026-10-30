@@ -1,4 +1,5 @@
 import { loadProductionSummary, productionMonth } from "@/lib/production/reporting"
+import { nonNegativeNumber } from "@/lib/decision-support/data-validation"
 import { kampalaCalendarDate } from "@/lib/billing/period-dates"
 import { db } from "@/lib/db"
 import { waterScheme, billingPeriod, billingRecord, meterReading, schemeTarget, intelligenceFinding } from "@/lib/db/schema"
@@ -192,8 +193,8 @@ export async function runIntelligenceEngine(
   const targetByScheme = new Map<string, { targetProd?: number; targetColl?: number }>()
   for (const t of targetRows) {
     targetByScheme.set(t.schemeId, {
-      targetProd: t.targetProductionM3 ? Number(t.targetProductionM3) : undefined,
-      targetColl: t.targetCollectionEfficiencyPercent ? Number(t.targetCollectionEfficiencyPercent) : undefined,
+      targetProd: nonNegativeNumber(t.targetProductionM3) ?? undefined,
+      targetColl: nonNegativeNumber(t.targetCollectionEfficiencyPercent) ?? undefined,
     })
   }
 
