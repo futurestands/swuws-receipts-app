@@ -1,0 +1,26 @@
+{
+  "KIGEZI": {
+    "totalRowsParsed": 31,
+    "validSourcesExtracted": 30,
+    "excludedRows": 0,
+    "notes": "Header row 1 parsed from row 2 (Ryakarimira Nyamabare)"
+  },
+  "RUJUMBURA": {
+    "totalRowsParsed": 27,
+    "validSourcesExtracted": 25,
+    "excludedRows": 0,
+    "notes": "Subtotal rows excluded"
+  },
+  "ISINGIRO": {
+    "totalRowsParsed": 36,
+    "validSourcesExtracted": 15,
+    "excludedRows": 20,
+    "notes": "Table headers, blank padding, and subtotal rows excluded"
+  },
+  "ANKOLE": {
+    "totalRowsParsed": 25,
+    "validSourcesExtracted": 20,
+    "excludedRows": 3,
+    "notes": "Subtotal and average rows excluded"
+  }
+}

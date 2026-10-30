@@ -48,6 +48,22 @@ export interface ExtractedSourceRecord {
   notes: string | null
 }
 
+export interface DbSchemeInput {
+  id: string
+  name: string
+  code: string
+  branchName: string
+  clusterName: string
+}
+
+export interface WbSchemeSummary {
+  areaName: string
+  clusterName: string
+  schemeName: string
+  savedDailyCapacityM3: number | null
+  savedMonthlyCapacityM3: number | null
+}
+
 export interface SchemeSourceReconciliationRecord {
   dbSchemeId: string
   dbSchemeName: string
@@ -81,6 +97,12 @@ export interface SourceReconciliationExport {
 
 const DEFAULT_WORKBOOK_PATH = "C:/Users/MJ/Downloads/global target (1).xlsx"
 
+export const DEFAULT_APPROVED_ALIASES = new Map<string, string>([
+  ["rugaga", "Rugaaga"],
+  ["mbaare", "Mbaale"],
+  ["isingiro t/c", "Isingiro T/C & Kyakabindi"],
+])
+
 const numberOrNull = (val: unknown): number | null => {
   if (typeof val === "number" && Number.isFinite(val)) return val
   if (typeof val === "string") {
@@ -96,6 +118,8 @@ const textOrNull = (val: unknown): string | null => {
   if (typeof val === "number") return String(val)
   return null
 }
+
+const norm = (s: string) => s.toLowerCase().trim().replace(/[^a-z0-9]/g, "")
 
 /**
  * STRICT ENGINEERING FORMULA CALCULATOR & VALIDATOR (Step 1 & Step 2)
@@ -402,4 +426,109 @@ export function parseWorkbookSources(filePath = DEFAULT_WORKBOOK_PATH): Extracte
   }
 
   return extractedSources
+}
+
+/**
+ * PURE SCHEME RECONCILIATION MATCHING ENGINE (Step 1)
+ */
+export function reconcileScheme(
+  dbScheme: DbSchemeInput,
+  wbSummaries: WbSchemeSummary[],
+  extractedSources: ExtractedSourceRecord[],
+  approvedAliases: Map<string, string> = DEFAULT_APPROVED_ALIASES
+): SchemeSourceReconciliationRecord {
+  const normDb = norm(dbScheme.name)
+
+  // 1. Check Approved Alias
+  const aliasMatchName = approvedAliases.get(normDb)
+  let matchedSummary: WbSchemeSummary | undefined
+  let matchState: ReconciliationState = "UNMATCHED"
+  let confidenceScore = 0
+
+  if (aliasMatchName) {
+    matchedSummary = wbSummaries.find((w) => norm(w.schemeName) === norm(aliasMatchName))
+    if (matchedSummary) {
+      matchState = "APPROVED_ALIAS"
+      confidenceScore = 95
+    }
+  }
+
+  // 2. Exact Name Match with Geography Check
+  if (!matchedSummary) {
+    const exactMatches = wbSummaries.filter((w) => norm(w.schemeName) === normDb)
+    if (exactMatches.length === 1) {
+      matchedSummary = exactMatches[0]
+      matchState = "EXACT_MATCH"
+      confidenceScore = 100
+    } else if (exactMatches.length > 1) {
+      matchState = "AMBIGUOUS"
+      confidenceScore = 50
+    }
+  }
+
+  // 3. Ambiguous Case Check (Kabingo vs Nyakabingo, Matsyoro vs Mastyoro)
+  if (!matchedSummary && matchState === "UNMATCHED") {
+    const partialMatches = wbSummaries.filter((w) => {
+      const normWb = norm(w.schemeName)
+      return normWb.includes(normDb) || normDb.includes(normWb)
+    })
+
+    if (partialMatches.length > 0) {
+      matchState = "AMBIGUOUS"
+      confidenceScore = 40
+    }
+  }
+
+  // Find linked sources for this scheme
+  const matchedSources = extractedSources.filter((s) => {
+    const targetName = matchedSummary ? matchedSummary.schemeName : dbScheme.name
+    return norm(s.schemeName) === norm(targetName)
+  })
+
+  // Calculate aggregated source daily capacity
+  let aggregatedDailyCapacityM3: number | null = null
+  const validSourceCapacities = matchedSources
+    .map((s) => s.sourceDailyAssessmentM3Day)
+    .filter((v): v is number => v !== null && Number.isFinite(v))
+
+  if (validSourceCapacities.length > 0) {
+    aggregatedDailyCapacityM3 = validSourceCapacities.reduce((a, b) => a + b, 0)
+  }
+
+  const wbDaily = matchedSummary?.savedDailyCapacityM3 ?? null
+  const wbMonthly = matchedSummary?.savedMonthlyCapacityM3 ?? null
+
+  let schemeCapacityDiscrepancy = false
+  let schemeCapacityDiscrepancyNotes: string | null = null
+
+  if (aggregatedDailyCapacityM3 !== null && wbDaily !== null) {
+    if (Math.abs(aggregatedDailyCapacityM3 - wbDaily) > 0.5) {
+      schemeCapacityDiscrepancy = true
+      schemeCapacityDiscrepancyNotes = `Aggregated source daily capacity (${aggregatedDailyCapacityM3.toFixed(2)} m3/day) differs from workbook saved scheme capacity (${wbDaily.toFixed(2)} m3/day)`
+    }
+  }
+
+  return {
+    dbSchemeId: dbScheme.id,
+    dbSchemeName: dbScheme.name,
+    dbClusterName: dbScheme.clusterName,
+    dbBranchName: dbScheme.branchName,
+    wbSchemeName: matchedSummary ? matchedSummary.schemeName : null,
+    wbAreaName: matchedSummary ? matchedSummary.areaName : null,
+    matchState,
+    confidenceScore,
+    sources: matchedSources,
+    aggregatedDailyCapacityM3,
+    wbSavedDailyCapacityM3: wbDaily,
+    wbSavedMonthlyCapacityM3: wbMonthly,
+    schemeCapacityDiscrepancy,
+    schemeCapacityDiscrepancyNotes,
+    reviewNotes: matchState === "EXACT_MATCH"
+      ? "Exact name and cluster match"
+      : matchState === "APPROVED_ALIAS"
+      ? `Matched via authorized alias '${aliasMatchName}'`
+      : matchState === "AMBIGUOUS"
+      ? "Name variation requires explicit governance review"
+      : "Portal scheme not present in workbook 64 operational schemes",
+  }
 }
