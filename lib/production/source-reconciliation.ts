@@ -13,26 +13,35 @@ export type ReconciliationState =
 export type CalculationBasis =
   | "bucket_test"
   | "installed_rating"
-  | "measured_pumped"
+  | "workbook_reported_flow"
   | "unresolved_missing_input"
+  | "invalid_measurement"
 
 export interface ExtractedSourceRecord {
+  id: string
   clusterName: string
   areaName: string
   schemeName: string
   sourceName: string
   technology: string
   regimeHoursPerDay: number | null
-  installedCapacityM3Hr: number | null
+
+  // 6 Separate Capacity Concepts (Step 1)
   containerVolumeLitres: number | null
   fillTimeSeconds: number | null
-  measuredGravityFlowM3Hr: number | null
-  measuredPumpedDischargeM3Hr: number | null
+  measuredVolumetricDischargeM3Hr: number | null // Only from bucket/tank test
+  installedPumpRatingM3Hr: number | null // Nameplate rating
+  workbookReportedFlowM3Hr: number | null // Saved Excel cell value
   calculatedFlowLps: number | null
   calculatedFlowM3Hr: number | null
-  sourceDailyCapacityM3Day: number | null
-  schemeMonthlyCapacityM3Month: number | null
+  sourceDailyAssessmentM3Day: number | null
+  schemeMonthlyReferenceM3Month: number | null
+
   calculationBasis: CalculationBasis
+  flowDiscrepancy: boolean
+  discrepancyReason: string | null
+  validationError: string | null
+
   workbookSheet: string
   cellCoordinates: string
   formula: string | null
@@ -45,11 +54,15 @@ export interface SchemeSourceReconciliationRecord {
   dbClusterName: string
   dbBranchName: string
   wbSchemeName: string | null
+  wbAreaName: string | null
   matchState: ReconciliationState
   confidenceScore: number // 0 to 100
   sources: ExtractedSourceRecord[]
-  totalDailyCapacityM3: number | null
-  totalMonthlyCapacityM3: number | null
+  aggregatedDailyCapacityM3: number | null
+  wbSavedDailyCapacityM3: number | null
+  wbSavedMonthlyCapacityM3: number | null
+  schemeCapacityDiscrepancy: boolean
+  schemeCapacityDiscrepancyNotes: string | null
   reviewNotes: string
 }
 
@@ -60,7 +73,9 @@ export interface SourceReconciliationExport {
   matchedSchemesCount: number
   ambiguousSchemesCount: number
   unmatchedSchemesCount: number
+  invalidInputSchemesCount: number
   totalSourcesExtracted: number
+  worksheetCounts: Record<string, { totalRowsParsed: number; validSourcesExtracted: number; excludedRows: number; notes: string }>
   records: SchemeSourceReconciliationRecord[]
 }
 
@@ -78,47 +93,103 @@ const numberOrNull = (val: unknown): number | null => {
 
 const textOrNull = (val: unknown): string | null => {
   if (typeof val === "string" && val.trim().length > 0) return val.trim()
+  if (typeof val === "number") return String(val)
   return null
 }
 
 /**
- * STRICT FORMULA CALCULATOR & BASIS TAGGER (Step 2 & Step 3)
- * No invented regimes (24h/12h defaults) or technology assumptions.
+ * STRICT ENGINEERING FORMULA CALCULATOR & VALIDATOR (Step 1 & Step 2)
+ *
+ * Never populates measuredVolumetricDischargeM3Hr from installed pump rating alone.
+ * Validates containerLitres > 0, fillTimeSeconds > 0, regimeHours in 0..24.
  */
 export function calculateSourceCapacities(
   litres: number | null,
   seconds: number | null,
   installedM3Hr: number | null,
+  wbReportedM3Hr: number | null,
   regimeHours: number | null,
   technologyStr: string | null
 ): {
-  flowLps: number | null
-  flowM3Hr: number | null
-  capacityM3Day: number | null
+  measuredVolumetricM3Hr: number | null
+  calculatedLps: number | null
+  calculatedM3Hr: number | null
+  dailyCapacityM3: number | null
   basis: CalculationBasis
+  flowDiscrepancy: boolean
+  discrepancyReason: string | null
+  validationError: string | null
   notes: string | null
 } {
-  let flowLps: number | null = null
-  let flowM3Hr: number | null = null
+  let measuredVolumetricM3Hr: number | null = null
+  let calculatedLps: number | null = null
+  let calculatedM3Hr: number | null = null
   let basis: CalculationBasis = "unresolved_missing_input"
+  let flowDiscrepancy = false
+  let discrepancyReason: string | null = null
+  let validationError: string | null = null
   let notes: string | null = null
 
-  if (litres !== null && seconds !== null && seconds > 0) {
-    flowLps = litres / seconds
-    flowM3Hr = flowLps * 3.6
-    basis = "bucket_test"
-  } else if (installedM3Hr !== null && installedM3Hr > 0) {
-    flowM3Hr = installedM3Hr
-    flowLps = flowM3Hr / 3.6
-    basis = "installed_rating"
+  // Validate container/time inputs
+  if (litres !== null || seconds !== null) {
+    if (litres !== null && litres <= 0) {
+      validationError = "Container volume must be a positive number"
+    } else if (seconds !== null && seconds <= 0) {
+      validationError = "Container fill time must be a positive number of seconds"
+    }
   }
 
-  let capacityM3Day: number | null = null
-  if (flowM3Hr !== null && regimeHours !== null && regimeHours >= 0 && regimeHours <= 24) {
-    capacityM3Day = flowM3Hr * regimeHours
-  } else if (flowM3Hr !== null && regimeHours === null) {
+  // Validate regime hours
+  if (regimeHours !== null && (regimeHours < 0 || regimeHours > 24)) {
+    validationError = validationError ? `${validationError}; Operating regime hours must be between 0 and 24` : "Operating regime hours must be between 0 and 24"
+  }
+
+  if (validationError) {
+    return {
+      measuredVolumetricM3Hr: null,
+      calculatedLps: null,
+      calculatedM3Hr: null,
+      dailyCapacityM3: null,
+      basis: "invalid_measurement",
+      flowDiscrepancy: false,
+      discrepancyReason: null,
+      validationError,
+      notes: validationError,
+    }
+  }
+
+  // Volumetric Discharge Calculation (ONLY when litres and seconds are provided)
+  if (litres !== null && seconds !== null && seconds > 0) {
+    calculatedLps = litres / seconds
+    measuredVolumetricM3Hr = calculatedLps * 3.6
+    calculatedM3Hr = measuredVolumetricM3Hr
+    basis = "bucket_test"
+  } else if (installedM3Hr !== null && installedM3Hr > 0) {
+    calculatedM3Hr = installedM3Hr
+    calculatedLps = installedM3Hr / 3.6
+    basis = "installed_rating"
+    // measuredVolumetricM3Hr REMAINS NULL because no bucket test was conducted!
+  } else if (wbReportedM3Hr !== null && wbReportedM3Hr > 0) {
+    calculatedM3Hr = wbReportedM3Hr
+    calculatedLps = wbReportedM3Hr / 3.6
+    basis = "workbook_reported_flow"
+  }
+
+  // Check Discrepancy against Workbook Saved Cell Value
+  if (wbReportedM3Hr !== null && calculatedM3Hr !== null) {
+    if (Math.abs(wbReportedM3Hr - calculatedM3Hr) > 0.05) {
+      flowDiscrepancy = true
+      discrepancyReason = `Workbook saved flow (${wbReportedM3Hr} m3/hr) differs from computed flow (${calculatedM3Hr.toFixed(2)} m3/hr)`
+    }
+  }
+
+  // Daily Assessment Capacity Calculation
+  let dailyCapacityM3: number | null = null
+  if (calculatedM3Hr !== null && regimeHours !== null && regimeHours >= 0 && regimeHours <= 24) {
+    dailyCapacityM3 = calculatedM3Hr * regimeHours
+  } else if (calculatedM3Hr !== null && regimeHours === null) {
     notes = "Regime hours per day unrecorded in workbook; daily assessment capacity unresolved"
-  } else if (flowM3Hr === null) {
+  } else if (calculatedM3Hr === null) {
     notes = "Source flow measurement inputs missing or nonfinite"
   }
 
@@ -126,11 +197,21 @@ export function calculateSourceCapacities(
     notes = notes ? `${notes}; Technology unrecorded` : "Technology unrecorded in workbook"
   }
 
-  return { flowLps, flowM3Hr, capacityM3Day, basis, notes }
+  return {
+    measuredVolumetricM3Hr,
+    calculatedLps,
+    calculatedM3Hr,
+    dailyCapacityM3,
+    basis,
+    flowDiscrepancy,
+    discrepancyReason,
+    validationError,
+    notes,
+  }
 }
 
 /**
- * Explicit sheet-specific column index mappers (Step 1)
+ * Sheet Column Index Mappings
  */
 interface SheetColumnMapping {
   startRow: number
@@ -152,73 +233,72 @@ interface SheetColumnMapping {
 const SHEET_MAPPINGS: Record<string, SheetColumnMapping> = {
   KIGEZI: {
     startRow: 1, // Row 2 in 1-indexed Excel (includes Ryakarimira Nyamabare)
-    areaCol: 1, // Col B
-    noCol: 2, // Col C
-    schemeCol: 3, // Col D
-    sourceCol: 4, // Col E
-    techCol: 5, // Col F
-    regimeCol: 6, // Col G
-    installedCapCol: 7, // Col H ('n/a' or number)
-    containerCol: 8, // Col I (15 Litres)
-    secondsCol: 9, // Col J (22.94 Seconds)
-    yieldLpsCol: 10, // Col K
-    flowM3HrCol: 11, // Col L
-    dailyCapCol: 12, // Col M
-    monthlyCapCol: 13, // Col N
+    areaCol: 1,
+    noCol: 2,
+    schemeCol: 3,
+    sourceCol: 4,
+    techCol: 5,
+    regimeCol: 6,
+    installedCapCol: 7,
+    containerCol: 8,
+    secondsCol: 9,
+    yieldLpsCol: 10,
+    flowM3HrCol: 11,
+    dailyCapCol: 12,
+    monthlyCapCol: 13,
   },
   ANKOLE: {
-    startRow: 2, // Row 3 in 1-indexed Excel
-    areaCol: 0, // Col A
-    noCol: 1, // Col B
-    schemeCol: 2, // Col C
-    sourceCol: 3, // Col D
-    techCol: 4, // Col E
-    regimeCol: 5, // Col F
-    containerCol: 6, // Col G
-    installedCapCol: 7, // Col H
-    secondsCol: 8, // Col I
-    yieldLpsCol: 9, // Col J
-    flowM3HrCol: 10, // Col K
-    dailyCapCol: 11, // Col L
-    monthlyCapCol: 12, // Col M
+    startRow: 2,
+    areaCol: 0,
+    noCol: 1,
+    schemeCol: 2,
+    sourceCol: 3,
+    techCol: 4,
+    regimeCol: 5,
+    containerCol: 6,
+    installedCapCol: 7,
+    secondsCol: 8,
+    yieldLpsCol: 9,
+    flowM3HrCol: 10,
+    dailyCapCol: 11,
+    monthlyCapCol: 12,
   },
   RUJUMBURA: {
-    startRow: 2, // Row 3 in 1-indexed Excel
-    areaCol: 0, // Col A
-    noCol: 1, // Col B
-    schemeCol: 2, // Col C
-    sourceCol: 3, // Col D
-    techCol: 4, // Col E
-    regimeCol: 5, // Col F
-    containerCol: 6, // Col G
-    installedCapCol: 7, // Col H
-    secondsCol: 8, // Col I
-    yieldLpsCol: 9, // Col J
-    flowM3HrCol: 10, // Col K
-    dailyCapCol: 11, // Col L
-    monthlyCapCol: 12, // Col M
+    startRow: 2,
+    areaCol: 0,
+    noCol: 1,
+    schemeCol: 2,
+    sourceCol: 3,
+    techCol: 4,
+    regimeCol: 5,
+    containerCol: 6,
+    installedCapCol: 7,
+    secondsCol: 8,
+    yieldLpsCol: 9,
+    flowM3HrCol: 10,
+    dailyCapCol: 11,
+    monthlyCapCol: 12,
   },
   ISINGIRO: {
-    startRow: 1, // Row 2 in 1-indexed Excel
-    areaCol: 0, // Col A
-    noCol: 1, // Col B
-    schemeCol: 2, // Col C
-    sourceCol: 3, // Col D
-    techCol: 4, // Col E
-    regimeCol: 5, // Col F
-    containerCol: 6, // Col G
-    installedCapCol: 7, // Col H
-    secondsCol: 8, // Col I
-    yieldLpsCol: 9, // Col J
-    flowM3HrCol: 10, // Col K
-    dailyCapCol: 11, // Col L
-    monthlyCapCol: 12, // Col M
+    startRow: 1,
+    areaCol: 0,
+    noCol: 1,
+    schemeCol: 2,
+    sourceCol: 3,
+    techCol: 4,
+    regimeCol: 5,
+    containerCol: 6,
+    installedCapCol: 7,
+    secondsCol: 8,
+    yieldLpsCol: 9,
+    flowM3HrCol: 10,
+    dailyCapCol: 11,
+    monthlyCapCol: 12,
   },
 }
 
 /**
- * Parses all genuine source rows from cluster worksheets in global target (1).xlsx
- * using explicit sheet column maps without default assumptions.
+ * Extracts source-level engineering records across all 4 cluster sheets.
  */
 export function parseWorkbookSources(filePath = DEFAULT_WORKBOOK_PATH): ExtractedSourceRecord[] {
   let resolvedPath = filePath
@@ -248,13 +328,11 @@ export function parseWorkbookSources(filePath = DEFAULT_WORKBOOK_PATH): Extracte
       const row = rows[r]
       if (!row || row.length === 0) continue
 
-      // Detect Area Header
       const areaVal = textOrNull(row[mapping.areaCol])
       if (areaVal && !areaVal.match(/^\d+/) && areaVal.toUpperCase() !== "AREA") {
         currentArea = areaVal
       }
 
-      // Detect Scheme Header
       const schemeVal = textOrNull(row[mapping.schemeCol])
       if (schemeVal && !schemeVal.match(/^\d+/) && schemeVal !== "Scheme Name") {
         currentScheme = schemeVal
@@ -272,36 +350,49 @@ export function parseWorkbookSources(filePath = DEFAULT_WORKBOOK_PATH): Extracte
       const installedM3Hr = numberOrNull(row[mapping.installedCapCol])
       const containerLitres = numberOrNull(row[mapping.containerCol])
       const fillSeconds = numberOrNull(row[mapping.secondsCol])
+      const wbReportedM3Hr = numberOrNull(row[mapping.flowM3HrCol])
+      const schemeMonthlyCap = numberOrNull(row[mapping.monthlyCapCol])
 
-      const { flowLps, flowM3Hr, capacityM3Day, basis, notes } = calculateSourceCapacities(
+      const {
+        measuredVolumetricM3Hr,
+        calculatedLps,
+        calculatedM3Hr,
+        dailyCapacityM3,
+        basis,
+        flowDiscrepancy,
+        discrepancyReason,
+        validationError,
+        notes,
+      } = calculateSourceCapacities(
         containerLitres,
         fillSeconds,
         installedM3Hr,
+        wbReportedM3Hr,
         regimeHours,
         techRaw
       )
 
-      const schemeMonthlyCap = numberOrNull(row[mapping.monthlyCapCol])
-      const isGravity = technology.toLowerCase().includes("gravity")
-      const isPumped = technology.toLowerCase().includes("pump") || technology.toLowerCase().includes("grid") || technology.toLowerCase().includes("solar") || technology.toLowerCase().includes("generator")
-
       extractedSources.push({
+        id: `${sheetName.toLowerCase()}-r${r + 1}`,
         clusterName: sheetName,
         areaName: currentArea || sheetName,
         schemeName: currentScheme || "Unassigned",
         sourceName,
         technology,
         regimeHoursPerDay: regimeHours,
-        installedCapacityM3Hr: installedM3Hr,
         containerVolumeLitres: containerLitres,
         fillTimeSeconds: fillSeconds,
-        measuredGravityFlowM3Hr: isGravity ? flowM3Hr : null,
-        measuredPumpedDischargeM3Hr: isPumped ? flowM3Hr : null,
-        calculatedFlowLps: flowLps,
-        calculatedFlowM3Hr: flowM3Hr,
-        sourceDailyCapacityM3Day: capacityM3Day,
-        schemeMonthlyCapacityM3Month: schemeMonthlyCap,
+        measuredVolumetricDischargeM3Hr: measuredVolumetricM3Hr,
+        installedPumpRatingM3Hr: installedM3Hr,
+        workbookReportedFlowM3Hr: wbReportedM3Hr,
+        calculatedFlowLps: calculatedLps,
+        calculatedFlowM3Hr: calculatedM3Hr,
+        sourceDailyAssessmentM3Day: dailyCapacityM3,
+        schemeMonthlyReferenceM3Month: schemeMonthlyCap,
         calculationBasis: basis,
+        flowDiscrepancy,
+        discrepancyReason,
+        validationError,
         workbookSheet: sheetName,
         cellCoordinates: `E${r + 1}`,
         formula: containerLitres && fillSeconds && regimeHours ? `=(${containerLitres}/${fillSeconds})*3.6*${regimeHours}` : installedM3Hr && regimeHours ? `=${installedM3Hr}*${regimeHours}` : null,
