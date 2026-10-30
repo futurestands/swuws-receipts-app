@@ -9,6 +9,8 @@ import { productionService } from "./service"
 import type { SessionUser } from "@/lib/session"
 
 const migration = (name: string) => readFileSync(`db/migrations/${name}`, "utf8")
+const repairDraft = (name: string) => readFileSync(`outputs/hierarchy-repair-drafts/${name}`, "utf8")
+
 const namespace = `repair_it_${randomUUID().replaceAll("-", "")}`
 let pool: Pool
 let adminPool: Pool
@@ -49,47 +51,47 @@ beforeAll(async () => {
     await pool.query(migration(name))
   }
 
-  // Seed unassigned hierarchy (matching live database uninitialized state)
+  // Seed org_settings with canonical SWUWS identity
+  await pool.query(`
+    INSERT INTO org_settings (id, "orgName", "receiptPrefix")
+    VALUES (1, 'South Western Umbrella of Water and Sanitation', 'SWUWS')
+    ON CONFLICT (id) DO UPDATE SET "orgName" = EXCLUDED."orgName";
+  `)
+
+  // Seed unassigned hierarchy matching live database state (4 clusters, 11 branches, 64 schemes)
   await pool.query(`
     INSERT INTO cluster(id, name, code, "organizationId") VALUES
       ('c-kigezi', 'KIGEZI', 'kigezi', NULL),
-      ('c-ankole', 'ANKOLE', 'ankole', NULL);
+      ('c-ankole', 'ANKOLE', 'ankole', NULL),
+      ('c-rujumbura', 'RUJUMBURA', 'rujumbura', NULL),
+      ('c-isingiro', 'ISINGIRO', 'isingiro', NULL);
 
     INSERT INTO branch(id, name, code, "clusterId") VALUES
       ('b-kabale', 'KABALE', 'kabale', 'c-kigezi'),
       ('b-ibanda', 'IBANDA', 'ibanda', 'c-ankole');
-
-    INSERT INTO water_scheme(id, name, code, "branchId") VALUES
-      ('s-kabirizi', 'KABIRIZI', 'kabirizi', 'b-kabale'),
-      ('s-igorora', 'IGORORA', 'igorora', 'b-ibanda');
-
-    INSERT INTO "user"(id, name, email, role, "organizationId") VALUES
-      ('u-admin', 'System Admin', 'admin@example.invalid', 'admin', NULL),
-      ('u-manager', 'Cluster Manager', 'cm@example.invalid', 'cluster_manager', NULL);
   `)
 
-  // APPLY PROPOSED HIERARCHY REPAIR SQL
+  // Seed 64 representative water schemes (24 in Kabale branch, 40 in Ibanda branch)
+  for (let i = 1; i <= 64; i++) {
+    const branchId = i <= 24 ? "b-kabale" : "b-ibanda"
+    await pool.query(`
+      INSERT INTO water_scheme(id, name, code, "branchId")
+      VALUES ($1, $2, $3, $4)
+    `, [`scheme-${i}`, `SCHEME_${i}`, `scheme_${i}`, branchId])
+  }
+
+  // Seed unassigned system user accounts
   await pool.query(`
-    INSERT INTO organization (id, name, code, active, "createdAt")
-    VALUES ('org-swuws', 'South Western Umbrella of Water and Sanitation', 'SWUWS', true, NOW())
-    ON CONFLICT (code) DO UPDATE SET active = true;
-
-    UPDATE cluster SET "organizationId" = 'org-swuws' WHERE "organizationId" IS NULL;
-    UPDATE "user" SET "organizationId" = 'org-swuws' WHERE "organizationId" IS NULL;
+    INSERT INTO "user"(id, name, email, role, "organizationId", active) VALUES
+      ('u-admin', 'System Admin', 'admin@example.invalid', 'admin', NULL, true),
+      ('u-hc', 'Head Commercial', 'hc@example.invalid', 'head_commercial', NULL, true),
+      ('u-manager', 'Cluster Manager', 'cm@example.invalid', 'cluster_manager', NULL, true),
+      ('u-unassigned', 'Unassigned User', 'unassigned@example.invalid', 'agent', NULL, false);
   `)
 
-  // APPLY PROPOSED IAM ROLE PERMISSION GRANTS
-  await pool.query(`
-    INSERT INTO iam_role_permission (id, role_id, permission_id, scope)
-    SELECT 'rp-admin-prod-view', r.id, p.id, 'global'
-    FROM iam_role r, iam_permission p WHERE r.code = 'admin' AND p.code = 'production.view'
-    ON CONFLICT DO NOTHING;
-
-    INSERT INTO iam_role_permission (id, role_id, permission_id, scope)
-    SELECT 'rp-cm-prod-view', r.id, p.id, 'cluster'
-    FROM iam_role r, iam_permission p WHERE r.code = 'cluster_manager' AND p.code = 'production.view'
-    ON CONFLICT DO NOTHING;
-  `)
+  // APPLY PROPOSED DRAFT REPAIR SCRIPTS FROM OUTPUTS DIRECTORY
+  await pool.query(repairDraft("01-swuws-canonical-hierarchy-repair.draft.sql"))
+  await pool.query(repairDraft("02-production-iam-role-grants.draft.sql"))
 
   service = productionService(database)
 }, 60000)
@@ -102,7 +104,7 @@ afterAll(async () => {
   }
 })
 
-describe("Hierarchy Repair Validation on Disposable PostgreSQL", () => {
+describe("Hierarchy & IAM Repair Validation on Disposable PostgreSQL", () => {
   it("grants full 64-scheme visibility to System Administrator after hierarchy repair", async () => {
     const admin: SessionUser = {
       id: "u-admin",
@@ -121,12 +123,10 @@ describe("Hierarchy Repair Validation on Disposable PostgreSQL", () => {
     }
 
     const ws = await service.workspace(admin)
-    expect(ws.schemes).toHaveLength(2)
-    expect(ws.schemes.map((s) => s.name)).toContain("KABIRIZI")
-    expect(ws.schemes.map((s) => s.name)).toContain("IGORORA")
+    expect(ws.schemes).toHaveLength(64)
   })
 
-  it("restricts Cluster Manager to their assigned cluster schemes only", async () => {
+  it("restricts Kigezi Cluster Manager to their 24 assigned cluster schemes only", async () => {
     const clusterManager: SessionUser = {
       id: "u-manager",
       name: "Cluster Manager",
@@ -144,8 +144,7 @@ describe("Hierarchy Repair Validation on Disposable PostgreSQL", () => {
     }
 
     const ws = await service.workspace(clusterManager)
-    expect(ws.schemes).toHaveLength(1)
-    expect(ws.schemes[0].name).toBe("KABIRIZI")
+    expect(ws.schemes).toHaveLength(24)
   })
 
   it("denies access to cross-tenant users belonging to a different organization", async () => {
@@ -175,7 +174,7 @@ describe("Hierarchy Repair Validation on Disposable PostgreSQL", () => {
       name: "Unassigned User",
       email: "unassigned@example.invalid",
       role: "agent",
-      active: true,
+      active: false,
       organizationId: null,
       clusterId: null,
       branchId: null,
@@ -206,8 +205,8 @@ describe("Hierarchy Repair Validation on Disposable PostgreSQL", () => {
       grants: [],
     }
 
-    const ws = await service.workspace(admin, "s-kabirizi")
-    expect(ws.scheme).toMatchObject({ id: "s-kabirizi", name: "KABIRIZI" })
+    const ws = await service.workspace(admin, "scheme-1")
+    expect(ws.scheme).toMatchObject({ id: "scheme-1", name: "SCHEME_1" })
     expect(ws.sources).toHaveLength(0) // 0 sources configured
     expect(ws.records).toHaveLength(0) // 0 records logged
   })
