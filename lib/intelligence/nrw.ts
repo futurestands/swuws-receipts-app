@@ -10,6 +10,7 @@ export interface SchemeNrwInput {
   waterProducedM3: number
   waterBilledSoldM3: number
   dataCompletenessPercent: number
+  salesAvailable?: boolean
 }
 
 export function evaluateNrwLoss(input: SchemeNrwInput): StructuredFinding[] {
@@ -17,9 +18,16 @@ export function evaluateNrwLoss(input: SchemeNrwInput): StructuredFinding[] {
 
   if (input.dataCompletenessPercent < 70) return findings
   if (input.waterProducedM3 <= 0) return findings
+  if (input.salesAvailable === false) return findings
 
-  const unbilledLossM3 = Math.max(0, input.waterProducedM3 - input.waterBilledSoldM3)
+  const unbilledLossM3 = input.waterProducedM3 - input.waterBilledSoldM3
   const lossPercentage = Math.round((unbilledLossM3 / input.waterProducedM3) * 1000) / 10
+  if (unbilledLossM3 < 0) {
+    return [{ id: `nrw-inconsistent-${input.schemeId}`, schemeId: input.schemeId, schemeName: input.schemeName, branchId: input.branchId, category: "data_quality", severity: "high",
+      title: "Billed sales exceed recorded production", description: `Raw production-to-sales indicator is ${lossPercentage}%; reconcile measurement periods and source coverage.`,
+      evidence: { metric: "loss_indicator_percent", actual: lossPercentage, unit: "%", period: input.periodName ?? undefined, dataCompletenessPercent: input.dataCompletenessPercent },
+      recommendation: "Verify source logs, meter periods and storage movements before drawing loss conclusions.", confidence: "MEDIUM", reportingPeriod: input.periodName, detectedAt: new Date(), status: "OPEN" }]
+  }
 
   // 1. Critical Loss (> 40%)
   if (lossPercentage > 40) {

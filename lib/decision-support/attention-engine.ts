@@ -1,5 +1,6 @@
 import { TrustedPerformanceDataset } from "./types"
 import { StructuredFinding } from "@/lib/intelligence/types"
+import { classifyUtilisation } from "./mps-tps"
 
 export function generateManagementAttentionItems(
   dataset: TrustedPerformanceDataset
@@ -32,7 +33,7 @@ export function generateManagementAttentionItems(
 
   // 2. High Loss Indicator across Schemes
   for (const sch of dataset.schemesMatrix) {
-    if (sch.rawLossPercent > 40 && sch.producedM3 > 0) {
+    if (sch.rawLossPercent > 40 && sch.producedM3 > 0 && sch.availability?.sales !== false && sch.dataQualityStatus === "VALID") {
       findings.push({
         id: `att-highloss-${sch.schemeId}`,
         schemeId: sch.schemeId,
@@ -58,15 +59,16 @@ export function generateManagementAttentionItems(
     }
 
     // 3. Stressed Scheme Capacity (>95%)
-    if (sch.utilizationPercent > 95) {
+    const band = classifyUtilisation(sch.practicalCapacityM3 > 0 ? sch.producedM3 / sch.practicalCapacityM3 * 100 : null).band
+    if (sch.productionAvailable !== false && sch.capacityAvailable !== false && sch.dataQualityStatus === "VALID" && (band === "stressed" || band === "critical")) {
       findings.push({
         id: `att-capacity-${sch.schemeId}`,
         schemeId: sch.schemeId,
         schemeName: sch.schemeName,
         branchId: sch.branchId,
         category: "capacity",
-        severity: "high",
-        title: `Scheme Operating at Stressed Capacity at ${sch.schemeName} (${sch.utilizationPercent}%)`,
+        severity: band === "critical" ? "critical" : "high",
+        title: `${band === "critical" ? "Critical" : "Stressed"} Capacity at ${sch.schemeName} (${sch.utilizationPercent}%)`,
         description: `Production (${sch.producedM3.toLocaleString()} m³) is near practical monthly capacity (${sch.practicalCapacityM3.toLocaleString()} m³).`,
         observation: "System is operating with minimal buffer for breakdown or peak demand.",
         evidence: {

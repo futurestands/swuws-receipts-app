@@ -1,0 +1,98 @@
+{
+  "capturedAt": "2026-10-30T12:38:04.704Z",
+  "transactionReadOnly": "on",
+  "configuredConnectionFingerprint": "3156a35823be9ba014763aab0e1ff2a123e99538e77d7255a0ff9d0e83a92237",
+  "rowSecurityVisibility": {
+    "rolsuper": false,
+    "rolbypassrls": true
+  },
+  "tableCounts": {
+    "schema_migrations": 13,
+    "water_scheme": 64,
+    "branch": 11,
+    "cluster": 4,
+    "water_scheme_source": 0,
+    "billing_period": 8,
+    "water_production_log": 0,
+    "decision_support_scheme_mapping": 0,
+    "report_generation_history": 0,
+    "source_capacity_audit": 0
+  },
+  "productionWorkflowMigrationLedger": [
+    {
+      "filename": "0069_production_integrity.sql",
+      "applied_at": "2026-10-30T07:36:00.432Z"
+    },
+    {
+      "filename": "0070_production_permissions.sql",
+      "applied_at": "2026-10-30T07:36:01.952Z"
+    },
+    {
+      "filename": "0071_production_review_independence.sql",
+      "applied_at": "2026-10-30T07:36:03.261Z"
+    },
+    {
+      "filename": "0072_production_universal_self_approval_guard.sql",
+      "applied_at": "2026-10-30T07:36:04.543Z"
+    }
+  ],
+  "billingPeriods": [
+    {
+      "id": "4da961ac-2328-4750-842e-eba6cbe6b353",
+      "label": "July 2026",
+      "year": 2026,
+      "month": 7,
+      "status": "closed"
+    },
+    {
+      "id": "195533ad-90bc-4842-9376-912c29d3c5e8",
+      "label": "August 2026",
+      "year": 2026,
+      "month": 8,
+      "status": "archived"
+    },
+    {
+      "id": "7f50d059-b251-46b4-b10d-65775b73fd34",
+      "label": "August 2026",
+      "year": 2026,
+      "month": 8,
+      "status": "archived"
+    },
+    {
+      "id": "a737fc81-4955-42c6-afc8-8ed65662ee8d",
+      "label": "August 2026",
+      "year": 2026,
+      "month": 8,
+      "status": "archived"
+    },
+    {
+      "id": "b6884aeb-6584-46f9-bfe1-27076e78ae9c",
+      "label": "August 2026",
+      "year": 2026,
+      "month": 8,
+      "status": "archived"
+    },
+    {
+      "id": "dd8112f3-808f-46f8-856a-5b8d20c67d93",
+      "label": "August 2026",
+      "year": 2026,
+      "month": 8,
+      "status": "closed"
+    },
+    {
+      "id": "ef944f69-df96-4430-8ad8-27f613e0ff51",
+      "label": "August 2026",
+      "year": 2026,
+      "month": 8,
+      "status": "archived"
+    },
+    {
+      "id": "954e798e-5f58-4ce4-9e39-1782f8ea0bce",
+      "label": "September 2026",
+      "year": 2026,
+      "month": 9,
+      "status": "active"
+    }
+  ],
+  "limitations": "Engineering inventory only; configured connection at capture time; no business mutation. No customer or financial record values exported."
+}

@@ -1,0 +1,243 @@
+﻿{
+    "recommendation":  "NO-GO for Phase B persistence; GO for local verified reference arithmetic only",
+    "featureImplementationPerformed":  false,
+    "sqlExecuted":  false,
+    "databaseAccessPerformed":  false,
+    "historicalBackfillPerformed":  false,
+    "commitPushMergeDeployPerformed":  false,
+    "headBefore":  "51d75cc1e1be87e02a7773a52a631751f30c9a53",
+    "headAfter":  "51d75cc1e1be87e02a7773a52a631751f30c9a53",
+    "protectedFileCount":  48,
+    "protectedFilesChanged":  [
+
+                              ],
+    "originalGitUntrackedFileCount":  30,
+    "originalTrackedModifications":  17,
+    "originalNewSourceAndTestFiles":  4,
+    "workbook":  {
+                     "workbookSha256":  "4965cef7c3c02428c8cf6a3af465c68ff2f3ccd56978182af2cbb44eccf6e622",
+                     "sheetsRead":  18,
+                     "formulasRead":  1555,
+                     "externalFormulas":  106,
+                     "savedErrorCells":  19,
+                     "normalizedOriginalEvidenceDifferences":  0,
+                     "encodingNote":  "All 19 raw comparison differences are identical saved #DIV/0! errors: SheetJS raw error code 7 versus prior decoded error text. Formula text agrees and complete workbook SHA-256 matches.",
+                     "replayedTargetFormulaCount":  255,
+                     "lmpqComparisons":  252,
+                     "demandComparisons":  [
+                                               {
+                                                   "area":  "KISORO \u0026 KANUNGU",
+                                                   "scheme":  "Habutobere",
+                                                   "source":  "TARGETS GOLBAL!S26",
+                                                   "excelFormula":  "R26+Q26",
+                                                   "savedValue":  1405703.3624999998,
+                                                   "localValue":  1405703.3624999998,
+                                                   "state":  "AVAILABLE",
+                                                   "unit":  "UGX",
+                                                   "dependencies":  [
+                                                                        "TARGETS GOLBAL!R26",
+                                                                        "TARGETS GOLBAL!Q26"
+                                                                    ],
+                                                   "absoluteDifference":  0
+                                               },
+                                               {
+                                                   "area":  "RUBIRIZI",
+                                                   "scheme":  "Kazinga",
+                                                   "source":  "TARGETS GOLBAL!S68",
+                                                   "excelFormula":  "R68+Q68",
+                                                   "savedValue":  2895179.6249999995,
+                                                   "localValue":  2895179.6249999995,
+                                                   "state":  "AVAILABLE",
+                                                   "unit":  "UGX",
+                                                   "dependencies":  [
+                                                                        "TARGETS GOLBAL!R68",
+                                                                        "TARGETS GOLBAL!Q68"
+                                                                    ],
+                                                   "absoluteDifference":  0
+                                               },
+                                               {
+                                                   "area":  "RUBIRIZI",
+                                                   "scheme":  "Kisenyi",
+                                                   "source":  "TARGETS GOLBAL!S69",
+                                                   "excelFormula":  "R69+Q69",
+                                                   "savedValue":  1252099.8750000002,
+                                                   "localValue":  1252099.8750000002,
+                                                   "state":  "AVAILABLE",
+                                                   "unit":  "UGX",
+                                                   "dependencies":  [
+                                                                        "TARGETS GOLBAL!R69",
+                                                                        "TARGETS GOLBAL!Q69"
+                                                                    ],
+                                                   "absoluteDifference":  0
+                                               }
+                                           ],
+                     "maximumAbsoluteDifference":  0,
+                     "unresolvedResults":  65,
+                     "noSqlExecuted":  true,
+                     "noBusinessConnections":  true
+                 },
+    "persistenceDraft":  {
+                             "tables":  3,
+                             "columns":  45,
+                             "checkConstraints":  25,
+                             "foreignKeys":  9,
+                             "primaryKeys":  3,
+                             "uniqueConstraints":  6,
+                             "explicitIndexes":  2,
+                             "implicitUniqueIndexes":  9,
+                             "functions":  4,
+                             "triggers":  11,
+                             "registered":  false,
+                             "targetVersionSchemaProvided":  false,
+                             "reportBaselineFkProvided":  false
+                         },
+    "priorFullApplicationRegression":  {
+                                           "command":  "npm test -- --maxWorkers=1",
+                                           "suitesPassed":  54,
+                                           "testsPassed":  412,
+                                           "testsSkipped":  1,
+                                           "testsFailed":  0,
+                                           "exitCode":  0,
+                                           "durationSeconds":  156.67,
+                                           "testTimeoutModified":  false,
+                                           "skipReason":  "Optional private SMS workbook fixture",
+                                           "databaseIntegrationExecuted":  false
+                                       },
+    "priorFinalCheckLogs":  [
+                                {
+                                    "check":  "tests-final",
+                                    "exitCode":  0,
+                                    "logPath":  ".artifacts\\phase-b-local-verification\\tests-final.log",
+                                    "sha256":  "60618da1a115824cbbd08217ce27027f8d5a1944e1e1d827a89da8c5cc2e5937",
+                                    "executedThisReview":  false
+                                },
+                                {
+                                    "check":  "lint-final",
+                                    "exitCode":  0,
+                                    "logPath":  ".artifacts\\phase-b-local-verification\\lint-final.log",
+                                    "sha256":  "4bd29f83b095979399a428f2ca1a32f51e1a78bf4f7586e8216aafeeabd2bf13",
+                                    "executedThisReview":  false
+                                },
+                                {
+                                    "check":  "typecheck-final",
+                                    "exitCode":  0,
+                                    "logPath":  ".artifacts\\phase-b-local-verification\\typecheck-final.log",
+                                    "sha256":  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                                    "executedThisReview":  false
+                                },
+                                {
+                                    "check":  "build-final",
+                                    "exitCode":  0,
+                                    "logPath":  ".artifacts\\phase-b-local-verification\\build-final.log",
+                                    "sha256":  "28ce1eb28e15f014085364f7b8c405bf898173a91377812a8badb6eaf878325d",
+                                    "executedThisReview":  false
+                                }
+                            ],
+    "freshExistingTargetedRegression":  {
+                                            "suitesPassed":  19,
+                                            "testsPassed":  185,
+                                            "testsFailed":  0,
+                                            "testsSkipped":  0,
+                                            "durationSeconds":  84.7,
+                                            "exitCode":  0
+                                        },
+    "freshAcceptanceProbes":  {
+                                  "testsTotal":  11,
+                                  "testsPassed":  4,
+                                  "testsFailed":  7,
+                                  "testsSkipped":  0,
+                                  "exitCode":  1,
+                                  "results":  [
+                                                  {
+                                                      "fullName":  "acceptance controls already satisfied withholds absent sales, billing and production targets",
+                                                      "status":  "passed"
+                                                  },
+                                                  {
+                                                      "fullName":  "acceptance controls already satisfied does not substitute the balance-derived cash estimate for verified collections",
+                                                      "status":  "passed"
+                                                  },
+                                                  {
+                                                      "fullName":  "acceptance controls already satisfied preserves explicitly recorded zero sales and zero targets",
+                                                      "status":  "passed"
+                                                  },
+                                                  {
+                                                      "fullName":  "acceptance controls already satisfied does not invent an effective reporting year for original workbook observations",
+                                                      "status":  "passed"
+                                                  },
+                                                  {
+                                                      "fullName":  "required acceptance guarantees not yet established pins a past month capacity when current source configuration changes",
+                                                      "status":  "failed"
+                                                  },
+                                                  {
+                                                      "fullName":  "required acceptance guarantees not yet established rejects a nonfinite persisted target instead of exposing NaN as a target",
+                                                      "status":  "failed"
+                                                  },
+                                                  {
+                                                      "fullName":  "required acceptance guarantees not yet established requires affirmative measurement provenance rather than failing open when flags are omitted",
+                                                      "status":  "failed"
+                                                  },
+                                                  {
+                                                      "fullName":  "required acceptance guarantees not yet established keeps a verified capacity exception independent from absent sales",
+                                                      "status":  "failed"
+                                                  },
+                                                  {
+                                                      "fullName":  "required acceptance guarantees not yet established does not round a below-50 utilisation out of the underused finding band",
+                                                      "status":  "failed"
+                                                  },
+                                                  {
+                                                      "fullName":  "required acceptance guarantees not yet established does not label undated, unapproved workbook targets as approved TPS targets",
+                                                      "status":  "failed"
+                                                  },
+                                                  {
+                                                      "fullName":  "required acceptance guarantees not yet established does not assert that no open management actions exist without action-register evidence",
+                                                      "status":  "failed"
+                                                  }
+                                              ]
+                              },
+    "freshReviewHarnessLint":  {
+                                   "exitCode":  0,
+                                   "warnings":  0,
+                                   "errors":  0
+                               },
+    "priorPostgresIntegrity":  {
+                                   "passed":  27,
+                                   "failed":  2,
+                                   "total":  29,
+                                   "exitCode":  1,
+                                   "executedThisReview":  false
+                               },
+    "priorDdlProof":  {
+                          "passed":  35,
+                          "total":  35,
+                          "executedThisReview":  false
+                      },
+    "priorOutputInvariance":  {
+                                  "equalities":  29,
+                                  "executedThisReview":  false,
+                                  "scope":  "unused additive schema and assessments, not future integrated report selection"
+                              },
+    "gitStatus":  [
+                      " M app/actions/decision-support.ts",
+                      " M app/decision-support/decision-support-dashboard.tsx",
+                      " M lib/decision-support/attention-engine.ts",
+                      " M lib/decision-support/board-pack.ts",
+                      " M lib/decision-support/data-validation.ts",
+                      " M lib/decision-support/excel-benchmark.test.ts",
+                      " M lib/decision-support/excel-fixture.ts",
+                      " M lib/decision-support/excel-reference.ts",
+                      " M lib/decision-support/performance-engine.ts",
+                      " M lib/decision-support/reports.ts",
+                      " M lib/decision-support/types.ts",
+                      " M lib/intelligence/capacity.ts",
+                      " M lib/intelligence/commercial.ts",
+                      " M lib/intelligence/engine.ts",
+                      " M lib/intelligence/nrw.ts",
+                      " M lib/intelligence/targets.ts",
+                      " M vitest.config.ts",
+                      "?? lib/decision-support/display.ts",
+                      "?? lib/decision-support/mps-tps.test.ts",
+                      "?? lib/decision-support/mps-tps.ts",
+                      "?? lib/decision-support/performance-engine.test.ts",
+                      "?? outputs/"
+                  ]
+}

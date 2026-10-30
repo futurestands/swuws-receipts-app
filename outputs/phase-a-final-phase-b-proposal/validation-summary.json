@@ -1,0 +1,138 @@
+{
+  "head": "51d75cc1e1be87e02a7773a52a631751f30c9a53",
+  "trackedDiff": "",
+  "previousArtifactsAndSelectedSourcesUnchanged": true,
+  "phaseAApplicationComplete": false,
+  "phaseBImplemented": false,
+  "databaseMigrationsExecutedThisContinuation": false,
+  "databaseMutationsExecutedThisContinuation": false,
+  "regression": {
+    "suites": 18,
+    "testsPassed": 163,
+    "testsFailed": 0,
+    "exitCode": 0
+  },
+  "lint": {
+    "exitCode": 0,
+    "errors": 0,
+    "warnings": 0
+  },
+  "typecheck": {
+    "exitCode": 0,
+    "errors": 0
+  },
+  "databaseSuites": "Not run: current instruction prohibits database migration application; previous results referenced separately",
+  "workbookHash": "4965cef7c3c02428c8cf6a3af465c68ff2f3ccd56978182af2cbb44eccf6e622",
+  "targetSchemes": 64,
+  "externalReferences": 106,
+  "savedErrorCells": 19,
+  "independentExampleArithmeticComparisons": [
+    {
+      "scheme": "Ryakarimira",
+      "metric": "L",
+      "withinTolerance": true
+    },
+    {
+      "scheme": "Ryakarimira",
+      "metric": "M",
+      "withinTolerance": true
+    },
+    {
+      "scheme": "Ryakarimira",
+      "metric": "P",
+      "withinTolerance": true
+    },
+    {
+      "scheme": "Ryakarimira",
+      "metric": "Q",
+      "withinTolerance": true
+    },
+    {
+      "scheme": "Katuna",
+      "metric": "L",
+      "withinTolerance": true
+    },
+    {
+      "scheme": "Katuna",
+      "metric": "M",
+      "withinTolerance": true
+    },
+    {
+      "scheme": "Katuna",
+      "metric": "P",
+      "withinTolerance": true
+    },
+    {
+      "scheme": "Katuna",
+      "metric": "Q",
+      "withinTolerance": true
+    },
+    {
+      "scheme": "Migyera",
+      "metric": "L",
+      "withinTolerance": true
+    },
+    {
+      "scheme": "Migyera",
+      "metric": "M",
+      "withinTolerance": true
+    },
+    {
+      "scheme": "Migyera",
+      "metric": "P",
+      "withinTolerance": true
+    },
+    {
+      "scheme": "Migyera",
+      "metric": "Q",
+      "withinTolerance": true
+    },
+    {
+      "scheme": "Banyara",
+      "metric": "L",
+      "withinTolerance": true
+    },
+    {
+      "scheme": "Banyara",
+      "metric": "M",
+      "withinTolerance": true
+    },
+    {
+      "scheme": "Banyara",
+      "metric": "P",
+      "withinTolerance": true
+    },
+    {
+      "scheme": "Banyara",
+      "metric": "Q",
+      "withinTolerance": true
+    },
+    {
+      "scheme": "Endiizi",
+      "metric": "L",
+      "withinTolerance": true
+    },
+    {
+      "scheme": "Endiizi",
+      "metric": "M",
+      "withinTolerance": true
+    },
+    {
+      "scheme": "Endiizi",
+      "metric": "P",
+      "withinTolerance": true
+    },
+    {
+      "scheme": "Endiizi",
+      "metric": "Q",
+      "withinTolerance": true
+    }
+  ],
+  "missingInputCase": "Rushaga H27 missing; validated target unavailable; raw cached zero preserved",
+  "files": [
+    "mps-tps-dependency-register.json",
+    "mps-tps-dependency-register.md",
+    "phase-a-completion-report.md",
+    "phase-b-decision-support-proposal.md"
+  ]
+}

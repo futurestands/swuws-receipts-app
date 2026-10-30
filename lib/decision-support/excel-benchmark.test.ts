@@ -71,8 +71,9 @@ describe("SWUWS Decision Support Hardened Scheme Linkage & Benchmark Pipeline", 
     const dataset = parseExcelReferenceDataset()
     expect(dataset.fileFound).toBe(true)
     expect(dataset.operationalSchemeCount).toBe(64)
-    expect(dataset.referenceSourceRowCount).toBe(6)
-    expect(dataset.totalSchemes).toBe(70)
+    expect(dataset.referenceSourceRowCount).toBe(92)
+    expect(dataset.legendRowCount).toBe(6)
+    expect(dataset.totalSchemes).toBe(64)
 
     const recon = await performSchemeReconciliation(MOCK_PORTAL_SCHEMES)
     expect(recon.totalExcelOperationalSchemes).toBe(64)
@@ -225,9 +226,9 @@ describe("SWUWS Decision Support Hardened Scheme Linkage & Benchmark Pipeline", 
     expect(slide10Text).toContain("What Changed? Period-over-Period Deltas")
 
     const slide11Text = await zip.file("ppt/slides/slide11.xml")?.async("string")
-    expect(slide11Text).toContain("Management Attention Items & Anomalies")
+    expect(slide11Text).toContain("Management Attention Items &amp; Anomalies")
 
     const slide13Text = await zip.file("ppt/slides/slide13.xml")?.async("string")
-    expect(slide13Text).toContain("Data Quality & Reporting Limitations")
+    expect(slide13Text).toContain("Data Quality &amp; Reporting Limitations")
   })
 })

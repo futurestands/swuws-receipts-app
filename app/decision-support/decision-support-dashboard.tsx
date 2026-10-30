@@ -1,4 +1,5 @@
 "use client"
+import { displayMeasurement } from "@/lib/decision-support/display"
 
 import { useState, useEffect, useTransition } from "react"
 import Link from "next/link"
@@ -24,7 +25,6 @@ import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/compone
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { formatUGX } from "@/lib/format"
 import { Activity, AlertTriangle, Presentation, CheckCircle2, Download, ListTodo, ExternalLink, Printer, ShieldCheck, Search, Eye, XCircle, Info } from "lucide-react"
 
 export default function DecisionSupportPage() {
@@ -232,7 +232,7 @@ export default function DecisionSupportPage() {
                 <CardTitle className="text-xs font-medium text-muted-foreground uppercase">Water Sold (Billed)</CardTitle>
               </CardHeader>
               <CardContent className="p-4 pt-1">
-                <div className="text-2xl font-black text-emerald-600">{dataset.kpis.waterSoldM3.toLocaleString()} m³</div>
+                <div className="text-2xl font-black text-emerald-600">{displayMeasurement(dataset.kpis.waterSoldM3, dataset.availability?.sales)} m³</div>
                 <p className="text-[10px] text-muted-foreground mt-1">
                   Loss Indicator: <strong className="text-foreground">{dataset.kpis.displayLossIndicator}</strong>
                 </p>
@@ -244,20 +244,20 @@ export default function DecisionSupportPage() {
                 <CardTitle className="text-xs font-medium text-muted-foreground uppercase">Current Billed Demand</CardTitle>
               </CardHeader>
               <CardContent className="p-4 pt-1">
-                <div className="text-2xl font-bold">{formatUGX(dataset.kpis.currentBilledUgx)}</div>
+                <div className="text-2xl font-bold">{displayMeasurement(dataset.kpis.currentBilledUgx, dataset.availability?.billing, "currency")}</div>
                 <p className="text-[10px] text-muted-foreground mt-1">
-                  Collections: <strong className="text-emerald-600">{formatUGX(dataset.kpis.totalCashCollectedUgx)}</strong> ({dataset.kpis.collectionEfficiencyPercent}%)
+                  Collections: <strong className="text-emerald-600">{displayMeasurement(dataset.kpis.totalCashCollectedUgx, dataset.availability?.collections, "currency")}</strong> ({displayMeasurement(dataset.kpis.collectionEfficiencyPercent, dataset.availability?.collections, "percent")})
                 </p>
               </CardContent>
             </Card>
 
             <Card className="card-accent-red">
               <CardHeader className="p-4 pb-1">
-                <CardTitle className="text-xs font-medium text-muted-foreground uppercase">Total Live Arrears</CardTitle>
+                <CardTitle className="text-xs font-medium text-muted-foreground uppercase">Outstanding Demand</CardTitle>
               </CardHeader>
               <CardContent className="p-4 pt-1">
-                <div className="text-2xl font-black text-destructive">{formatUGX(dataset.kpis.totalArrearsUgx)}</div>
-                <p className="text-[10px] text-muted-foreground mt-1">Live customer EBS database debt</p>
+                <div className="text-2xl font-black text-destructive">{displayMeasurement(dataset.kpis.totalArrearsUgx, dataset.availability?.arrears, "currency")}</div>
+                <p className="text-[10px] text-muted-foreground mt-1">Includes unpaid current bills; collection estimates require receipt reconciliation</p>
               </CardContent>
             </Card>
           </div>
@@ -296,11 +296,11 @@ export default function DecisionSupportPage() {
                         </td>
                         <td className="p-3 text-right font-mono">{s.productionAvailable === false ? "Unavailable" : s.producedM3.toLocaleString()}</td>
                         <td className="p-3 text-right font-mono font-bold">{s.capacityAvailable === false || s.productionAvailable === false || s.practicalCapacityM3 <= 0 ? "Unavailable" : `${s.utilizationPercent}%`}</td>
-                        <td className="p-3 text-right font-mono">{s.soldM3.toLocaleString()}</td>
+                        <td className="p-3 text-right font-mono">{displayMeasurement(s.soldM3, s.availability?.sales)}</td>
                         <td className="p-3 text-right font-mono font-bold text-amber-600">{s.displayLoss}</td>
-                        <td className="p-3 text-right font-mono">{formatUGX(s.currentBilledUgx)}</td>
-                        <td className="p-3 text-right font-mono text-emerald-600 font-bold">{formatUGX(s.cashCollectedUgx)}</td>
-                        <td className="p-3 text-right font-mono">{s.collectionEfficiencyPercent}%</td>
+                        <td className="p-3 text-right font-mono">{displayMeasurement(s.currentBilledUgx, s.availability?.billing, "currency")}</td>
+                        <td className="p-3 text-right font-mono text-emerald-600 font-bold">{displayMeasurement(s.cashCollectedUgx, s.availability?.collections, "currency")}</td>
+                        <td className="p-3 text-right font-mono">{displayMeasurement(s.collectionEfficiencyPercent, s.availability?.collections, "percent")}</td>
                         <td className="p-3">
                           <Badge variant="outline" className="text-[10px]">
                             {s.statusLabel}

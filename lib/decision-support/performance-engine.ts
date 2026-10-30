@@ -11,6 +11,7 @@ import { eq, and, sql, sum, count, desc, inArray } from "drizzle-orm"
 import { UserPermissionsContext } from "@/lib/permissions"
 import { applyIntelligenceSchemeFilter } from "@/lib/intelligence/scope"
 import { validateWaterBalanceAndCapacity } from "./data-validation"
+import { classifyUtilisation } from "./mps-tps"
 import { TrustedPerformanceDataset, SchemePerformanceMatrixItem, TraceableMetric } from "./types"
 
 export async function getTrustedPerformanceDataset(
@@ -73,6 +74,9 @@ export async function getTrustedPerformanceDataset(
 
   if (schemeIds.length === 0 || !selectedPeriod) {
     return {
+      basis: "verified_operational",
+      availability: { sales: false, billing: false, collections: false, arrears: false },
+      collectionBasis: "unavailable",
       period,
       scope: { level: "organization" },
       kpis: {
@@ -104,7 +108,7 @@ export async function getTrustedPerformanceDataset(
   const monthKey = `${period.year}-${String(period.month).padStart(2, "0")}`
   const productionBounds = productionMonth(monthKey)
   // 3. Fetch Operational & Commercial Data in Parallel
-  const [prodLogRows, meterReadingsRows, billingRows] = await Promise.all([
+  const [prodLogRows, meterReadingsRows, billingRows, targetRows] = await Promise.all([
     loadProductionSummary(db, schemeIds, monthKey),
 
     // C. Billed Meter Readings ($M^3$ Sales)
@@ -243,20 +247,17 @@ export async function getTrustedPerformanceDataset(
       loggedDaysCount: pData.logs,
       daysInPeriod: productionBounds.expectedDays,
       practicalCapacityM3Period: cap,
+      salesAvailable: salesMap.has(sch.id),
     })
 
     const totalCash = cData.cashArrears + cData.cashCurrent
     const collEff = cData.currentBilled > 0 ? Math.round((totalCash / cData.currentBilled) * 1000) / 10 : 0
 
-    let statusLabel = "Benchmark unavailable"
-    if (cap > 0 && pData.prod > 0) {
-      if (validation.capacityUtilizationPercent > 95) statusLabel = "Stressed (>95%)"
-      else if (validation.capacityUtilizationPercent >= 75) statusLabel = "Healthy (75-95%)"
-      else statusLabel = "Watch (<75%)"
-    }
+    const statusLabel = classifyUtilisation(cap > 0 && pData.logs > 0 ? pData.prod / cap * 100 : null).label
 
     return {
       schemeId: sch.id,
+      availability: { sales: salesMap.has(sch.id), billing: commMap.has(sch.id), collections: false, arrears: commMap.has(sch.id) },
       schemeName: sch.name,
       branchId: sch.branchId,
       producedM3: pData.prod,
@@ -283,6 +284,7 @@ export async function getTrustedPerformanceDataset(
     loggedDaysCount: totalLogsCount,
     daysInPeriod: productionBounds.expectedDays * Math.max(1, activeSchemes.length),
     practicalCapacityM3Period: aggPracticalCapacityM3,
+    salesAvailable: activeSchemes.every(s => salesMap.has(s.id)),
   })
 
   const totalCollectedUgx = aggCashToArrearsUgx + aggCashToCurrentUgx
@@ -296,6 +298,8 @@ export async function getTrustedPerformanceDataset(
   if (!suppliedComplete) globalValidation.dataQualityIssues.push("Incomplete supplied data")
   if (!capacityComplete) globalValidation.dataQualityIssues.push("Capacity benchmark unavailable for some schemes")
   globalValidation.dataQualityIssues.push("Official totals use verified records only. Day coverage is not all-source completeness. Capacity uses confirmed current configuration, not historical installed capacity.")
+  globalValidation.dataQualityIssues.push("Cash is a balance-derived estimate, not independently verified receipts; outstanding demand includes current unpaid bills. Historical capacity versioning remains unimplemented.")
+  const availableTargets = targetRows.filter(t => t.targetProductionM3 !== null)
   // 7. Build Traceability Records
   const traceability: TraceableMetric[] = [
     {
@@ -331,6 +335,9 @@ export async function getTrustedPerformanceDataset(
   ]
 
   return {
+    basis: "verified_operational",
+    availability: { sales: activeSchemes.every(s => salesMap.has(s.id)), billing: activeSchemes.every(s => commMap.has(s.id)), collections: false, arrears: activeSchemes.every(s => commMap.has(s.id)) },
+    collectionBasis: "balance_inference",
     period,
     production: { available, suppliedComplete, capacityComplete, provisionalProducedM3: prodLogRows.reduce((n,p) => n + Number(p.provisionalProducedM3), 0), legacyCount: prodLogRows.reduce((n,p) => n + p.legacyCount, 0), label: "Verified records only; current-configuration capacity benchmark" },
     scope: { level: "organization" },
@@ -351,6 +358,7 @@ export async function getTrustedPerformanceDataset(
       totalArrearsUgx: aggTotalArrearsUgx,
       collectionEfficiencyPercent: globalCollectionEff,
       arrearsRecoveryPercent: globalArrearsRecovery,
+      targetProductionM3: availableTargets.length === activeSchemes.length ? availableTargets.reduce((n,t) => n + Number(t.targetProductionM3), 0) : null,
     },
     dataQuality: {
       completenessPercent: globalValidation.completenessPercent,

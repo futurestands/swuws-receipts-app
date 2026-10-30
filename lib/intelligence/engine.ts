@@ -265,6 +265,7 @@ export async function runIntelligenceEngine(
       periodName,
       waterProducedM3: prodData.producedM3,
       waterBilledSoldM3: salesData.soldM3,
+      salesAvailable: salesByScheme.has(sch.id),
       dataCompletenessPercent: dataCompleteness,
     })
     generatedFindings.push(...nrwFindings)
@@ -278,6 +279,7 @@ export async function runIntelligenceEngine(
       totalBilledUgx: salesData.billedUgx,
       currentBilledUgx: commData.currentBilled,
       totalCashCollectedUgx: commData.cashCollected,
+      collectionBasis: "balance_inference",
       cashToArrearsUgx: commData.cashCollected,
       totalArrearsUgx: commData.totalArrears,
       dataCompletenessPercent: dataCompleteness,
@@ -285,7 +287,6 @@ export async function runIntelligenceEngine(
     generatedFindings.push(...commFindings)
 
     // Domain F: Targets
-    const collRate = commData.currentBilled > 0 ? Math.round((commData.cashCollected / commData.currentBilled) * 100) : 0
     const tgtFindings = evaluateTargetsVariance({
       schemeId: sch.id,
       schemeName: sch.name,
@@ -294,7 +295,7 @@ export async function runIntelligenceEngine(
       targetProductionM3: tgtData.targetProd,
       actualProductionM3: prodData.producedM3,
       targetCollectionEfficiencyPercent: tgtData.targetColl,
-      actualCollectionEfficiencyPercent: collRate,
+      actualCollectionEfficiencyPercent: undefined, // Balance estimates do not verify collection target achievement.
       dataCompletenessPercent: dataCompleteness,
     })
     generatedFindings.push(...tgtFindings)

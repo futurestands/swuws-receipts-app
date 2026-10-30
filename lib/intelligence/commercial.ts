@@ -13,6 +13,7 @@ export interface SchemeCommercialInput {
   cashToArrearsUgx: number
   totalArrearsUgx: number
   dataCompletenessPercent: number
+  collectionBasis?: "balance_inference"
 }
 
 export function evaluateCommercialPerformance(input: SchemeCommercialInput): StructuredFinding[] {
@@ -35,8 +36,8 @@ export function evaluateCommercialPerformance(input: SchemeCommercialInput): Str
       clusterId: input.clusterId,
       category: "commercial",
       severity,
-      title: `Low Cash Collection Rate (${collectionRate}%)`,
-      description: `Scheme collected UGX ${input.totalCashCollectedUgx.toLocaleString()} against UGX ${input.currentBilledUgx.toLocaleString()} current bill demand (${collectionRate}% collection efficiency).`,
+      title: `${input.collectionBasis ? "Estimated" : "Low Cash"} Collection Rate (${collectionRate}%)`,
+      description: `${input.collectionBasis ? "Balance-derived cash estimate (unverified)" : "Recorded cash"}: UGX ${input.totalCashCollectedUgx.toLocaleString()} against UGX ${input.currentBilledUgx.toLocaleString()} current billed demand (${collectionRate}%).`,
       observation: "Low collection efficiency severely constrains operational cash flow and increases customer arrears.",
       evidence: {
         metric: "collection_efficiency_percent",
@@ -53,7 +54,7 @@ export function evaluateCommercialPerformance(input: SchemeCommercialInput): Str
         },
       },
       recommendation: "Issue SMS payment reminders to defaulted accounts, enforce disconnection policy on delinquent customers, and audit bank deposits.",
-      confidence: "HIGH",
+      confidence: input.collectionBasis ? "MEDIUM" : "HIGH",
       reportingPeriod: input.periodName || undefined,
       detectedAt: new Date(),
       status: "OPEN",
@@ -70,8 +71,8 @@ export function evaluateCommercialPerformance(input: SchemeCommercialInput): Str
       clusterId: input.clusterId,
       category: "commercial",
       severity: "high",
-      title: `Substantial Scheme Debt Arrears (UGX ${(input.totalArrearsUgx / 1_000_000).toFixed(1)}M)`,
-      description: `Cumulative outstanding customer arrears for this scheme stand at UGX ${input.totalArrearsUgx.toLocaleString()}.`,
+      title: `Substantial Outstanding Demand (UGX ${(input.totalArrearsUgx / 1_000_000).toFixed(1)}M)`,
+      description: `Outstanding demand including unpaid current bills is UGX ${input.totalArrearsUgx.toLocaleString()}.`,
       observation: "Persistent uncollected arrears represent significant tied-up revenue.",
       evidence: {
         metric: "total_arrears_ugx",

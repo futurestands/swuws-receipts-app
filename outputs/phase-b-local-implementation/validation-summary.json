@@ -1,0 +1,74 @@
+{
+  "head": "51d75cc1e1be87e02a7773a52a631751f30c9a53",
+  "phaseAApplicationComplete": false,
+  "phaseBStatus": "Local calculation and presentation implementation; persisted assessments, original target approval and historical report activation blocked pending database design approval",
+  "workbookPath": "C:/Users/MJ/Downloads/global target (1).xlsx",
+  "workbookSha256": "4965cef7c3c02428c8cf6a3af465c68ff2f3ccd56978182af2cbb44eccf6e622",
+  "workbookUnmodified": true,
+  "databaseMigrationsExecuted": false,
+  "databaseMutationsExecuted": false,
+  "historicalBackfillsExecuted": false,
+  "newPhaseBDatabaseStructuresOrMigrations": false,
+  "supabaseAccessThisContinuation": false,
+  "committed": false,
+  "pushed": false,
+  "merged": false,
+  "deployed": false,
+  "targetReplay": {
+    "schemeRows": 64,
+    "fullySpecifiedChains": 63,
+    "savedValueComparisons": 252,
+    "columns": ["L", "M", "P", "Q"],
+    "unresolvedScheme": "Rushaga",
+    "sourceTechnologyRows": 92,
+    "legendRowsExcluded": 6,
+    "externalFormulasUnresolved": 106,
+    "savedErrorCellsUnresolved": 19,
+    "boardPackSlides": 14
+  },
+  "targetedInitial": {
+    "suitesPassed": 19,
+    "testsPassed": 185,
+    "exitCode": 0
+  },
+  "fullRegressionFinal": {
+    "command": "npm test -- --maxWorkers=1",
+    "suitesPassed": 54,
+    "testsPassed": 412,
+    "testsSkipped": 1,
+    "testsFailed": 0,
+    "exitCode": 0,
+    "durationSeconds": 156.67,
+    "testTimeoutModified": false,
+    "skipReason": "Optional private SMS workbook fixture",
+    "databaseIntegrationExecuted": false
+  },
+  "intermediateFailures": [
+    { "run": "parallel full", "exitCode": 1, "passed": 408, "failed": 4, "skipped": 1, "reason": "Existing CRM and SMS five-second test timeouts" },
+    { "run": "overlapping single-worker full", "exitCode": 1, "passed": 409, "failed": 3, "skipped": 1, "reason": "Two existing CRM timeouts and new assertion pointing to slide 12 instead of slide 13" },
+    { "run": "interim targeted", "exitCode": 1, "passed": 184, "failed": 1, "reason": "Same slide assertion; corrected and passed in final full run" }
+  ],
+  "finalLint": { "command": "npm run lint -- --no-cache", "exitCode": 0, "errors": 0, "warnings": 0 },
+  "finalTypecheck": { "command": "npx tsc --noEmit --incremental false", "exitCode": 0, "errors": 0 },
+  "finalBuild": {
+    "command": "npm run build",
+    "exitCode": 0,
+    "databaseUrl": "Dummy loopback endpoint, not Supabase",
+    "staticPages": 12,
+    "warnings": ["Deprecated middleware convention", "Unset metadataBase", "Turbopack project-wide file tracing", "Maintenance route dynamic-headers diagnostic"]
+  },
+  "gitDiffCheckExitCode": 0,
+  "gitStatus": { "trackedFilesModified": 17, "newSourceAndTestFiles": 4, "outputsDirectoryUntrackedBeforeAndAfter": true, "unrelatedTrackedChanges": false },
+  "preservation": {
+    "previousReviewArtifacts": "Preserved; no earlier output file edited",
+    "originalProductionWorkspace": "Retained; application source unchanged",
+    "crmBillingReceiptsReconciliationIamSource": "Unchanged; final regression passed",
+    "gitHistory": "Unchanged",
+    "nextEnvGeneratedChange": "Restored exact saved pre-build bytes; SHA-256 083e23c4c5e7761db151134ea1ef7896120c86c5888cdc8a861f534f7e86d6fd"
+  },
+  "remainingApprovalGates": [
+    "Phase A immutable source assessment and scheme/report baseline persistence",
+    "Persisted original target versions, approval and verified historical period assignment",
+    "Supabase changes or deployment require separate approval; neither performed"
+  ]
+}

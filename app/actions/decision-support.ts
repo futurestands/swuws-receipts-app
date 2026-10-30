@@ -63,6 +63,10 @@ export async function generateBoardPackPptxAction(periodId?: string, schemeId?: 
       periodName: dataset.period.periodName,
       waterProducedM3: dataset.kpis.waterProducedM3,
       currentBilledUgx: dataset.kpis.currentBilledUgx,
+      measurementAvailability: dataset.availability,
+      productionAvailability: dataset.production,
+      collectionBasis: dataset.collectionBasis,
+      capacityBasis: "Current configuration only; historical baseline pinning unresolved",
     },
   })
 

@@ -4,6 +4,7 @@ export interface WaterBalanceValidationInput {
   loggedDaysCount: number
   daysInPeriod: number
   practicalCapacityM3Period: number
+  salesAvailable?: boolean
 }
 
 export interface WaterBalanceValidationResult {
@@ -35,6 +36,10 @@ export function validateWaterBalanceAndCapacity(
 
   let lossValidationStatus: "VALID" | "DATA_INCONSISTENCY" | "INCOMPLETE_DATA" = "VALID"
   let displayLossIndicator = input.waterProducedM3 > 0 ? `${rawCalculatedLossIndicator}%` : "Unavailable: zero or missing verified production"
+  if (input.waterProducedM3 <= 0) {
+    lossValidationStatus = "INCOMPLETE_DATA"
+    issues.push("Production-to-sales ratio unavailable: recorded zero or missing production gives a zero denominator")
+  }
 
   if (input.waterBilledSoldM3 > input.waterProducedM3 && input.waterProducedM3 > 0) {
     lossValidationStatus = "DATA_INCONSISTENCY"
@@ -49,6 +54,12 @@ export function validateWaterBalanceAndCapacity(
     issues.push(
       `Incomplete Logging: Only ${input.loggedDaysCount} of ${input.daysInPeriod} days recorded (${completenessPercent}% complete); insufficient data for reliable assessment.`
     )
+  }
+
+  if (input.salesAvailable === false) {
+    lossValidationStatus = "INCOMPLETE_DATA"
+    displayLossIndicator = "Unresolved: water sales observations missing"
+    issues.push("Sales data unavailable; missing readings are not observed zero sales")
   }
 
   // 2. Normalized Capacity Utilization

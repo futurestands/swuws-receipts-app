@@ -10,7 +10,7 @@ export interface SchemeTargetEvaluationInput {
   targetProductionM3?: number | null
   actualProductionM3: number
   targetCollectionEfficiencyPercent?: number | null
-  actualCollectionEfficiencyPercent: number
+  actualCollectionEfficiencyPercent?: number
   dataCompletenessPercent: number
 }
 
@@ -51,7 +51,7 @@ export function evaluateTargetsVariance(input: SchemeTargetEvaluationInput): Str
   }
 
   // Collection Target Shortfall
-  if (input.targetCollectionEfficiencyPercent && input.targetCollectionEfficiencyPercent > 0) {
+  if (input.targetCollectionEfficiencyPercent && input.targetCollectionEfficiencyPercent > 0 && input.actualCollectionEfficiencyPercent !== undefined) {
     const gap = input.targetCollectionEfficiencyPercent - input.actualCollectionEfficiencyPercent
     if (gap >= 15) {
       findings.push({

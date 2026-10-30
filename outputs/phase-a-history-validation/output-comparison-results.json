@@ -1,0 +1,305 @@
+{
+  "syntheticOnly": true,
+  "namespace": "history_proof_969f9b72593b43c99045db7df30e6de0",
+  "applicationImplementationChanged": false,
+  "normalization": "Clock fixed to 2026-10-30T12:00:00Z for volatile generation timestamps. Board Pack comparison covers every package part; ZIP container timestamps excluded.",
+  "emptyCaptureCount": 0,
+  "checks": [
+    {
+      "name": "empty state",
+      "equal": true,
+      "beforeSha256": "17be2871a5e19f224965a98246fed591fe12354668123ea6e3a3572242171e73",
+      "afterSha256": "17be2871a5e19f224965a98246fed591fe12354668123ea6e3a3572242171e73"
+    },
+    {
+      "name": "existing business-shaped fixture rows",
+      "equal": true,
+      "beforeSha256": "00d3efe13911405e4117c33814cce4b5c84e28634b1d47bb1839f5fa2f46f385",
+      "afterSha256": "00d3efe13911405e4117c33814cce4b5c84e28634b1d47bb1839f5fa2f46f385"
+    },
+    {
+      "name": "summary after schema",
+      "equal": true,
+      "beforeSha256": "1674538358a4ca55a16bc788dd97ef64b7fc55de429f5181a20b4c358844ca2c",
+      "afterSha256": "1674538358a4ca55a16bc788dd97ef64b7fc55de429f5181a20b4c358844ca2c"
+    },
+    {
+      "name": "summary after capture",
+      "equal": true,
+      "beforeSha256": "1674538358a4ca55a16bc788dd97ef64b7fc55de429f5181a20b4c358844ca2c",
+      "afterSha256": "1674538358a4ca55a16bc788dd97ef64b7fc55de429f5181a20b4c358844ca2c"
+    },
+    {
+      "name": "summary after unused assessment",
+      "equal": true,
+      "beforeSha256": "1674538358a4ca55a16bc788dd97ef64b7fc55de429f5181a20b4c358844ca2c",
+      "afterSha256": "1674538358a4ca55a16bc788dd97ef64b7fc55de429f5181a20b4c358844ca2c"
+    },
+    {
+      "name": "workspace after schema",
+      "equal": true,
+      "beforeSha256": "b138982f56d9165286cf4d6202ce12dfe83327e02a44207c4aabf3c6e0f3b026",
+      "afterSha256": "b138982f56d9165286cf4d6202ce12dfe83327e02a44207c4aabf3c6e0f3b026"
+    },
+    {
+      "name": "workspace after capture",
+      "equal": true,
+      "beforeSha256": "b138982f56d9165286cf4d6202ce12dfe83327e02a44207c4aabf3c6e0f3b026",
+      "afterSha256": "b138982f56d9165286cf4d6202ce12dfe83327e02a44207c4aabf3c6e0f3b026"
+    },
+    {
+      "name": "workspace after unused assessment",
+      "equal": true,
+      "beforeSha256": "b138982f56d9165286cf4d6202ce12dfe83327e02a44207c4aabf3c6e0f3b026",
+      "afterSha256": "b138982f56d9165286cf4d6202ce12dfe83327e02a44207c4aabf3c6e0f3b026"
+    },
+    {
+      "name": "intelligence after schema",
+      "equal": true,
+      "beforeSha256": "93e5d26784f6835ccdec17327377512de9dada74a357edee55f7ef2fc94bfb21",
+      "afterSha256": "93e5d26784f6835ccdec17327377512de9dada74a357edee55f7ef2fc94bfb21"
+    },
+    {
+      "name": "intelligence after capture",
+      "equal": true,
+      "beforeSha256": "93e5d26784f6835ccdec17327377512de9dada74a357edee55f7ef2fc94bfb21",
+      "afterSha256": "93e5d26784f6835ccdec17327377512de9dada74a357edee55f7ef2fc94bfb21"
+    },
+    {
+      "name": "intelligence after unused assessment",
+      "equal": true,
+      "beforeSha256": "93e5d26784f6835ccdec17327377512de9dada74a357edee55f7ef2fc94bfb21",
+      "afterSha256": "93e5d26784f6835ccdec17327377512de9dada74a357edee55f7ef2fc94bfb21"
+    },
+    {
+      "name": "dataset after schema",
+      "equal": true,
+      "beforeSha256": "49638d40131eba476028dc2170e25d5b6b95cf6d1965af841b52c57b8968c144",
+      "afterSha256": "49638d40131eba476028dc2170e25d5b6b95cf6d1965af841b52c57b8968c144"
+    },
+    {
+      "name": "dataset after capture",
+      "equal": true,
+      "beforeSha256": "49638d40131eba476028dc2170e25d5b6b95cf6d1965af841b52c57b8968c144",
+      "afterSha256": "49638d40131eba476028dc2170e25d5b6b95cf6d1965af841b52c57b8968c144"
+    },
+    {
+      "name": "dataset after unused assessment",
+      "equal": true,
+      "beforeSha256": "49638d40131eba476028dc2170e25d5b6b95cf6d1965af841b52c57b8968c144",
+      "afterSha256": "49638d40131eba476028dc2170e25d5b6b95cf6d1965af841b52c57b8968c144"
+    },
+    {
+      "name": "reports after schema",
+      "equal": true,
+      "beforeSha256": "fe1970baf3d06a5f563c531b9a4e5467165480f5f0140e4b97a09898799b8855",
+      "afterSha256": "fe1970baf3d06a5f563c531b9a4e5467165480f5f0140e4b97a09898799b8855"
+    },
+    {
+      "name": "reports after capture",
+      "equal": true,
+      "beforeSha256": "fe1970baf3d06a5f563c531b9a4e5467165480f5f0140e4b97a09898799b8855",
+      "afterSha256": "fe1970baf3d06a5f563c531b9a4e5467165480f5f0140e4b97a09898799b8855"
+    },
+    {
+      "name": "reports after unused assessment",
+      "equal": true,
+      "beforeSha256": "fe1970baf3d06a5f563c531b9a4e5467165480f5f0140e4b97a09898799b8855",
+      "afterSha256": "fe1970baf3d06a5f563c531b9a4e5467165480f5f0140e4b97a09898799b8855"
+    },
+    {
+      "name": "boardParts after schema",
+      "equal": true,
+      "beforeSha256": "e4faee8e48211e319830257f9faddbdd613bbb59a45bedbb4479d35af1ca9942",
+      "afterSha256": "e4faee8e48211e319830257f9faddbdd613bbb59a45bedbb4479d35af1ca9942"
+    },
+    {
+      "name": "boardParts after capture",
+      "equal": true,
+      "beforeSha256": "e4faee8e48211e319830257f9faddbdd613bbb59a45bedbb4479d35af1ca9942",
+      "afterSha256": "e4faee8e48211e319830257f9faddbdd613bbb59a45bedbb4479d35af1ca9942"
+    },
+    {
+      "name": "boardParts after unused assessment",
+      "equal": true,
+      "beforeSha256": "e4faee8e48211e319830257f9faddbdd613bbb59a45bedbb4479d35af1ca9942",
+      "afterSha256": "e4faee8e48211e319830257f9faddbdd613bbb59a45bedbb4479d35af1ca9942"
+    },
+    {
+      "name": "panel after schema",
+      "equal": true,
+      "beforeSha256": "ed19d8065dcff5bdba563d8a57a65a6010a91f3329b07875759f4a92e272c324",
+      "afterSha256": "ed19d8065dcff5bdba563d8a57a65a6010a91f3329b07875759f4a92e272c324"
+    },
+    {
+      "name": "panel after capture",
+      "equal": true,
+      "beforeSha256": "ed19d8065dcff5bdba563d8a57a65a6010a91f3329b07875759f4a92e272c324",
+      "afterSha256": "ed19d8065dcff5bdba563d8a57a65a6010a91f3329b07875759f4a92e272c324"
+    },
+    {
+      "name": "panel after unused assessment",
+      "equal": true,
+      "beforeSha256": "ed19d8065dcff5bdba563d8a57a65a6010a91f3329b07875759f4a92e272c324",
+      "afterSha256": "ed19d8065dcff5bdba563d8a57a65a6010a91f3329b07875759f4a92e272c324"
+    },
+    {
+      "name": "nrw after schema",
+      "equal": true,
+      "beforeSha256": "5a11b670573d2c7d35452ebede3854a6ef0ff119fb7dd7b2bb9e8846b4317704",
+      "afterSha256": "5a11b670573d2c7d35452ebede3854a6ef0ff119fb7dd7b2bb9e8846b4317704"
+    },
+    {
+      "name": "nrw after capture",
+      "equal": true,
+      "beforeSha256": "5a11b670573d2c7d35452ebede3854a6ef0ff119fb7dd7b2bb9e8846b4317704",
+      "afterSha256": "5a11b670573d2c7d35452ebede3854a6ef0ff119fb7dd7b2bb9e8846b4317704"
+    },
+    {
+      "name": "nrw after unused assessment",
+      "equal": true,
+      "beforeSha256": "5a11b670573d2c7d35452ebede3854a6ef0ff119fb7dd7b2bb9e8846b4317704",
+      "afterSha256": "5a11b670573d2c7d35452ebede3854a6ef0ff119fb7dd7b2bb9e8846b4317704"
+    },
+    {
+      "name": "referenceFixture after schema",
+      "equal": true,
+      "beforeSha256": "f717381f35eb60da028c7d6c830653f312605552213c45e41b4f77912ed93169",
+      "afterSha256": "f717381f35eb60da028c7d6c830653f312605552213c45e41b4f77912ed93169"
+    },
+    {
+      "name": "referenceFixture after capture",
+      "equal": true,
+      "beforeSha256": "f717381f35eb60da028c7d6c830653f312605552213c45e41b4f77912ed93169",
+      "afterSha256": "f717381f35eb60da028c7d6c830653f312605552213c45e41b4f77912ed93169"
+    },
+    {
+      "name": "referenceFixture after unused assessment",
+      "equal": true,
+      "beforeSha256": "f717381f35eb60da028c7d6c830653f312605552213c45e41b4f77912ed93169",
+      "afterSha256": "f717381f35eb60da028c7d6c830653f312605552213c45e41b4f77912ed93169"
+    }
+  ],
+  "originalRowHashes": {
+    "before": "00d3efe13911405e4117c33814cce4b5c84e28634b1d47bb1839f5fa2f46f385",
+    "after": "00d3efe13911405e4117c33814cce4b5c84e28634b1d47bb1839f5fa2f46f385"
+  },
+  "beforeKpis": {
+    "waterProducedM3": 5803,
+    "waterSuppliedM3": 0,
+    "waterSoldM3": 3297,
+    "unbilledLossM3": 2506,
+    "rawCalculatedLossIndicator": 43.2,
+    "displayLossIndicator": "43.2%",
+    "lossValidationStatus": "VALID",
+    "practicalCapacityM3Month": 7108.92,
+    "capacityUtilizationPercent": 81.6,
+    "currentBilledUgx": 9207518,
+    "totalCashCollectedUgx": 4337518,
+    "cashToArrearsUgx": 30000,
+    "cashToCurrentUgx": 4307518,
+    "totalArrearsUgx": 4900000,
+    "collectionEfficiencyPercent": 47.1,
+    "arrearsRecoveryPercent": 100
+  },
+  "afterKpis": {
+    "waterProducedM3": 5803,
+    "waterSuppliedM3": 0,
+    "waterSoldM3": 3297,
+    "unbilledLossM3": 2506,
+    "rawCalculatedLossIndicator": 43.2,
+    "displayLossIndicator": "43.2%",
+    "lossValidationStatus": "VALID",
+    "practicalCapacityM3Month": 7108.92,
+    "capacityUtilizationPercent": 81.6,
+    "currentBilledUgx": 9207518,
+    "totalCashCollectedUgx": 4337518,
+    "cashToArrearsUgx": 30000,
+    "cashToCurrentUgx": 4307518,
+    "totalArrearsUgx": 4900000,
+    "collectionEfficiencyPercent": 47.1,
+    "arrearsRecoveryPercent": 100
+  },
+  "beforeProduction": [
+    {
+      "schemeId": "spring-scheme",
+      "month": "2024-07",
+      "totalWaterProducedM3": "810.00",
+      "totalWaterSuppliedM3": "0",
+      "provisionalProducedM3": "0",
+      "provisionalCount": 0,
+      "legacyCount": 1,
+      "logsCount": 31,
+      "loggedDaysCount": 31,
+      "unknownSuppliedCount": 31,
+      "available": true,
+      "suppliedComplete": false,
+      "expectedDays": 31,
+      "coveragePercent": 100,
+      "sourceCount": 1,
+      "currentCapacityM3Month": 1751.5,
+      "benchmarkLabel": "Confirmed current configuration; not historical installed capacity"
+    },
+    {
+      "schemeId": "mixed-scheme",
+      "month": "2024-07",
+      "totalWaterProducedM3": "4993.00",
+      "totalWaterSuppliedM3": "0",
+      "provisionalProducedM3": "0",
+      "provisionalCount": 0,
+      "legacyCount": 0,
+      "logsCount": 62,
+      "loggedDaysCount": 31,
+      "unknownSuppliedCount": 62,
+      "available": true,
+      "suppliedComplete": false,
+      "expectedDays": 31,
+      "coveragePercent": 100,
+      "sourceCount": 2,
+      "currentCapacityM3Month": 5357.42,
+      "benchmarkLabel": "Confirmed current configuration; not historical installed capacity"
+    }
+  ],
+  "afterProduction": [
+    {
+      "schemeId": "spring-scheme",
+      "month": "2024-07",
+      "totalWaterProducedM3": "810.00",
+      "totalWaterSuppliedM3": "0",
+      "provisionalProducedM3": "0",
+      "provisionalCount": 0,
+      "legacyCount": 1,
+      "logsCount": 31,
+      "loggedDaysCount": 31,
+      "unknownSuppliedCount": 31,
+      "available": true,
+      "suppliedComplete": false,
+      "expectedDays": 31,
+      "coveragePercent": 100,
+      "sourceCount": 1,
+      "currentCapacityM3Month": 1751.5,
+      "benchmarkLabel": "Confirmed current configuration; not historical installed capacity"
+    },
+    {
+      "schemeId": "mixed-scheme",
+      "month": "2024-07",
+      "totalWaterProducedM3": "4993.00",
+      "totalWaterSuppliedM3": "0",
+      "provisionalProducedM3": "0",
+      "provisionalCount": 0,
+      "legacyCount": 0,
+      "logsCount": 62,
+      "loggedDaysCount": 31,
+      "unknownSuppliedCount": 62,
+      "available": true,
+      "suppliedComplete": false,
+      "expectedDays": 31,
+      "coveragePercent": 100,
+      "sourceCount": 2,
+      "currentCapacityM3Month": 5357.42,
+      "benchmarkLabel": "Confirmed current configuration; not historical installed capacity"
+    }
+  ],
+  "boardPackPartCount": 35,
+  "limitations": "Demonstrates existing code invariance when proposal tables are added/populated but not connected to application consumers. Does not prove future baseline-aware integration."
+}

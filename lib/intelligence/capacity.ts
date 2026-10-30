@@ -1,4 +1,5 @@
 import { StructuredFinding } from "./types"
+import { classifyUtilisation } from "@/lib/decision-support/mps-tps"
 
 export interface SchemeCapacityInput {
   schemeId: string
@@ -21,9 +22,10 @@ export function evaluateCapacityUtilization(input: SchemeCapacityInput): Structu
   if (input.dataCompletenessPercent < 50) return findings
 
   const utilizationPercent = Math.round((input.actualProductionM3Month / input.practicalCapacityM3Month) * 1000) / 10
+  const band = classifyUtilisation(input.actualProductionM3Month / input.practicalCapacityM3Month * 100).band
 
   // 1. Over-utilized / Stressed System (> 95%)
-  if (utilizationPercent > 95) {
+  if (band === "stressed" || band === "critical") {
     findings.push({
       id: `cap-stressed-${input.schemeId}`,
       schemeId: input.schemeId,
@@ -31,8 +33,8 @@ export function evaluateCapacityUtilization(input: SchemeCapacityInput): Structu
       branchId: input.branchId,
       clusterId: input.clusterId,
       category: "capacity",
-      severity: "high",
-      title: "Scheme Operating at Stressed Capacity (>95%)",
+      severity: band === "critical" ? "critical" : "high",
+      title: band === "critical" ? "Critical Capacity (>95%)" : "Stressed Capacity (85–95%)",
       description: `Production is at ${utilizationPercent}% of practical scheme capacity (${input.actualProductionM3Month.toLocaleString()} m³ / ${input.practicalCapacityM3Month.toLocaleString()} m³).`,
       observation: "System is operating near maximum limits with little buffer for breakdown or peak demand.",
       evidence: {

@@ -1,26 +1,28 @@
 import * as XLSX from "xlsx"
 import fs from "fs"
 import path from "path"
+import { createHash } from "node:crypto"
+import { calculateMpsTps, inputMetric, type EngineeringMetric, type MpsTpsResult } from "./mps-tps"
 
 export interface ExcelReferenceSchemeRecord {
   areaName: string
   schemeNumber: number | string
   schemeName: string
   isOperationalScheme: boolean
-  capacityCurrentM3Day: number
-  practicalCapacityM3Month: number
+  capacityCurrentM3Day: number | null
+  practicalCapacityM3Month: number | null
 
   // Production Data
-  julyProducedM3: number
-  augustProducedM3: number
-  septemberProducedM3: number
-  totalProducedM3: number
+  julyProducedM3: number | null
+  augustProducedM3: number | null
+  septemberProducedM3: number | null
+  totalProducedM3: number | null
 
   // Sales Data (Billed Consumption Benchmark)
-  julySoldM3: number
-  augustSoldM3: number
-  septemberSoldM3: number
-  totalSoldM3: number
+  julySoldM3: number | null
+  augustSoldM3: number | null
+  septemberSoldM3: number | null
+  totalSoldM3: number | null
 
   // Target Benchmarks from TARGETS GOLBAL
   targetUtilizationPercent?: number | null
@@ -30,13 +32,17 @@ export interface ExcelReferenceSchemeRecord {
   arrearsUgx?: number | null
 
   // Metadata
-  isReferenceSample: true
-  dataSource: "SWUWS Excel Reference Dataset (global target.xlsx)"
+  targetModel?: MpsTpsResult
+  cachedArrearsUgx?: number | null
+  isReferenceSample: false
+  dataSource: "Original SWUWS engineering workbook; undated benchmarks"
 }
 
 export interface ExcelReferenceDataset {
   fileFound: boolean
   filePath: string
+  workbookSha256?: string
+  legendRowCount: number
   totalAreas: number
   operationalSchemeCount: number
   referenceSourceRowCount: number
@@ -46,18 +52,30 @@ export interface ExcelReferenceDataset {
   schemes: ExcelReferenceSchemeRecord[]
 }
 
-const DEFAULT_FILE_PATH = "C:\\Users\\MJ\\Downloads\\global target.xlsx"
+const DEFAULT_FILE_PATH = "C:/Users/MJ/Downloads/global target (1).xlsx"
 
-export function parseExcelReferenceDataset(filePath = DEFAULT_FILE_PATH): ExcelReferenceDataset {
+const numberOrNull = (value: unknown): number | null => typeof value === "number" && Number.isFinite(value) ? value : null
+
+/** Saved Excel errors and external-link caches must not become usable measurements. */
+export function workbookMetric(sheet: XLSX.WorkSheet, address: string, unit: string): EngineeringMetric {
+  const cell = sheet[address]
+  const source = `TARGETS GOLBAL!${address}`
+  if (cell?.t === "e") return { ...inputMetric(null, unit, source), state: "SOURCE_ERROR", reason: cell.w ?? "Saved Excel error", savedValue: cell.w ?? null }
+  if (cell?.f?.includes("[")) return { ...inputMetric(null, unit, source), state: "UNRESOLVED_EXTERNAL", reason: "External workbook lookup has not been verified", savedValue: numberOrNull(cell.v) }
+  return inputMetric(numberOrNull(cell?.v), unit, source)
+}
+
+export function parseExcelReferenceDataset(filePath = process.env.SWUWS_ENGINEERING_WORKBOOK ?? DEFAULT_FILE_PATH): ExcelReferenceDataset {
   let resolvedPath = filePath
   if (!fs.existsSync(resolvedPath)) {
-    const altPath = path.join(process.cwd(), "global target.xlsx")
+    const altPath = path.join(/* turbopackIgnore: true */ process.cwd(), "global target (1).xlsx")
     if (fs.existsSync(altPath)) {
       resolvedPath = altPath
     } else {
       return {
         fileFound: false,
         filePath: resolvedPath,
+        legendRowCount: 0,
         totalAreas: 0,
         operationalSchemeCount: 0,
         referenceSourceRowCount: 0,
@@ -99,9 +117,10 @@ export function parseExcelReferenceDataset(filePath = DEFAULT_FILE_PATH): ExcelR
 
   const schemes: ExcelReferenceSchemeRecord[] = []
   const areaSet = new Set<string>()
-  let currentArea = "KABALE"
+  let currentArea = ""
   let operationalSchemeCount = 0
   let referenceSourceRowCount = 0
+  let legendRowCount = 0
 
   for (let r = 2; r < summeryRows.length; r++) {
     const row = summeryRows[r]
@@ -121,40 +140,57 @@ export function parseExcelReferenceDataset(filePath = DEFAULT_FILE_PATH): ExcelR
       if (isOp) {
         operationalSchemeCount++
       } else {
-        referenceSourceRowCount++
+        legendRowCount++
+        continue // Utilisation interpretation rows are not schemes or source assessments.
       }
 
       const targetData = targetMap.get(colScheme.toLowerCase()) || {}
+      const targetRow = targetRows.findIndex((t) => t && String(t[2] ?? "").trim().toLowerCase() === colScheme.toLowerCase()) + 1
+      let targetModel: MpsTpsResult | undefined
+      if (targetSheet && targetRow > 0) {
+        const m = (col: string, unit: string) => workbookMetric(targetSheet, `${col}${targetRow}`, unit)
+        targetModel = calculateMpsTps({ monthlyCapacity: m("F", "m3/benchmark-month"), mpsUtilisation: m("G", "fraction"), tpsUtilisation: m("H", "fraction"), mpsNrw: m("I", "fraction"), tpsNrw: m("J", "fraction"), mpsProduction: m("K", "m3/month-label"), mpsSales: m("O", "m3/month-label"), tariff: m("U", "UGX/m3"), arrears: m("R", "UGX"), collectionEfficiency: m("T", "fraction") }, targetRow)
+        for (const [key, col] of [["production", "L"], ["supplied", "M"], ["sold", "P"], ["billing", "Q"], ["demand", "S"]] as const) targetModel[key].savedValue = numberOrNull(targetSheet[`${col}${targetRow}`]?.v)
+      }
 
       schemes.push({
         areaName: currentArea,
         schemeNumber: (typeof colNum === "number" || typeof colNum === "string") && colNum ? colNum : schemes.length + 1,
         schemeName: colScheme,
         isOperationalScheme: isOp,
-        capacityCurrentM3Day: Number(row[3] || 0),
-        practicalCapacityM3Month: Number(row[4] || 0),
-        julyProducedM3: Number(row[5] || 0),
-        augustProducedM3: Number(row[6] || 0),
-        septemberProducedM3: Number(row[7] || 0), // Row[7] = Sept Produced
-        totalProducedM3: Number(row[8] || 0),     // Row[8] = Total Produced
-        julySoldM3: Number(row[11] || 0),
-        augustSoldM3: Number(row[12] || 0),
-        septemberSoldM3: Number(row[13] || 0),    // Row[13] = Sept Sold
-        totalSoldM3: Number(row[14] || 0),       // Row[14] = Total Sold
-        targetUtilizationPercent: targetData.targetUtil,
-        targetNrwPercent: targetData.targetNrw,
-        targetCollectionEfficiencyPercent: targetData.targetColl,
-        tariffUgx: targetData.tariff,
-        arrearsUgx: targetData.arrears,
-        isReferenceSample: true,
-        dataSource: "SWUWS Excel Reference Dataset (global target.xlsx)",
+        capacityCurrentM3Day: numberOrNull(row[3]),
+        practicalCapacityM3Month: numberOrNull(row[4]),
+        julyProducedM3: numberOrNull(row[5]),
+        augustProducedM3: numberOrNull(row[6]),
+        septemberProducedM3: numberOrNull(row[7]), // Row[7] = Sept Produced
+        totalProducedM3: numberOrNull(row[8]),     // Row[8] = Total Produced
+        julySoldM3: numberOrNull(row[11]),
+        augustSoldM3: numberOrNull(row[12]),
+        septemberSoldM3: numberOrNull(row[13]),    // Row[13] = Sept Sold
+        totalSoldM3: numberOrNull(row[14]),       // Row[14] = Total Sold
+        targetUtilizationPercent: targetModel?.inputs.tpsUtilisation.value == null ? null : targetModel.inputs.tpsUtilisation.value * 100,
+        targetNrwPercent: targetModel?.inputs.tpsNrw.value == null ? null : targetModel.inputs.tpsNrw.value * 100,
+        targetCollectionEfficiencyPercent: targetModel?.inputs.collectionEfficiency.value == null ? null : targetModel.inputs.collectionEfficiency.value * 100,
+        tariffUgx: targetModel?.inputs.tariff.value,
+        arrearsUgx: targetModel?.inputs.arrears.value,
+        cachedArrearsUgx: targetData.arrears ?? null,
+        targetModel,
+        isReferenceSample: false,
+        dataSource: "Original SWUWS engineering workbook; undated benchmarks",
       })
     }
   }
 
+  for (const name of ["KIGEZI", "RUJUMBURA", "ISINGIRO", "ANKOLE"]) {
+    const sheet = wb.Sheets[name]
+    if (!sheet?.["!ref"]) continue
+    for (let row = 1; row <= XLSX.utils.decode_range(sheet["!ref"]).e.r + 1; row++) if (typeof sheet[`F${row}`]?.v === "string" && sheet[`F${row}`].v !== "Technology") referenceSourceRowCount++
+  }
   return {
     fileFound: true,
     filePath: resolvedPath,
+    workbookSha256: createHash("sha256").update(fs.readFileSync(resolvedPath)).digest("hex"),
+    legendRowCount,
     totalAreas: areaSet.size,
     operationalSchemeCount,
     referenceSourceRowCount,

@@ -1,0 +1,26 @@
+{
+  "head": "51d75cc1e1be87e02a7773a52a631751f30c9a53",
+  "trackedChanges": "",
+  "trackedFileCount": 608,
+  "trackedFilesSha256": "3b130cd18e6b0acb8b076f0fa7ce5aa038d1812cb6b5c92084c7b672348f1acb",
+  "files": {
+    "lib/production/service.ts": "25f5720e10caedb0edd05c33c2493d70d88e341ece9f7321178bfed1d13c7c1f",
+    "lib/production/reporting.ts": "ae3e34746b39dcfccd559b41f35cb88db0edea39e09bfe7f3e820fdd36ae665a",
+    "lib/intelligence/engine.ts": "2775ae8a8db8b322f2cb0ee624ad587db16fe57dc57aa6795a8070d60c5aa983",
+    "lib/intelligence/nrw.ts": "a63762d3f1e34226a5de3cb0ddd9a1ff066a430c10554e5b04736bcc9098986a",
+    "lib/decision-support/performance-engine.ts": "fd001698900c87dd927a55c156489957a77b9fd17db5f8e8d8b6625d73b44882",
+    "lib/decision-support/reports.ts": "0a7efc81951292e36be259aa4e095b3b3c0f6459f7cc80c9eb43cfc7d9e4757f",
+    "lib/decision-support/board-pack.ts": "ec67c7848438d71099899979051de3d3f5da7e36f6ba3339003b1f3e24e0d7e7",
+    "lib/decision-support/excel-fixture.ts": "fe3f76bd0c0bd5916e00028c9ee0ef67349df22202b4be35723c879e8bd3293f",
+    "components/production/production-panel.tsx": "92ab71a5923158bb7c4ae7154d5b0b00e4007f13e58fd1d16eec7504665d22ba",
+    "components/production/production-workspace.tsx": "a4b969edd74e5ba30de4bd94d88907088db5e96c4f1286e200c2998b358d3489",
+    "app/intelligence/intelligence-dashboard.tsx": "216179afe468a8886b21e9efc436838eca3ceaae5fbc5dc1094541ce99a313ba",
+    "app/decision-support/decision-support-dashboard.tsx": "9096571b6e3fe37a4188b81e77c987576fbb17dd909ee78a35fdaafa2ba3d021",
+    "outputs/phase-a-baseline-proposal/isolated-proof-results.json": "5452baedf2cb7498db05463c3873b4742d27296ecd8caa117cf6a31e8e806f4b",
+    "outputs/phase-a-baseline-proposal/legacy-capture-draft.sql": "c878bfcab87b52da6fc9e4c7eb07a7bad9851e120b5fe81e79134315c9dbd023",
+    "outputs/phase-a-baseline-proposal/phase-a-proposal-and-safety-proof.md": "e93e770ad941e4baf187dbceb1926759f39b324000bd26db7316535326b71e78",
+    "outputs/phase-a-baseline-proposal/schema-draft.sql": "54ba1a20b9ef3874d0257bc2c0dfb9ab9e3e3908032cdeb12d3e52ffb60136a6",
+    "outputs/phase-a-baseline-proposal/validate-draft.mjs": "0059a77ea859fdd9b025c562d974251e2d523eb0b0c151566755bc18bd719753"
+  },
+  "priorProposalNote": "Previous proposal and proof artifacts were retained, not edited or rerun."
+}

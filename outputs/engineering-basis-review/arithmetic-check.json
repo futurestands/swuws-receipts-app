@@ -1,0 +1,6 @@
+{
+  "notice": "Independent arithmetic replay of simple local formulas, using saved caches for external VLOOKUP results. Not native Excel recalculation or external-link validation.",
+  "disagreements": [],
+  "unsupported": [],
+  "cycles": []
+}

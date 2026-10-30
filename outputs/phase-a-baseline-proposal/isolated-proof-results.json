@@ -1,0 +1,191 @@
+{
+  "target": {
+    "host": "127.0.0.1",
+    "port": 55473,
+    "database": "swuws_phase_a_production_test"
+  },
+  "namespace": "phase_a_827f43c0edd14b1cae4fccec180a1f27",
+  "checks": [
+    {
+      "name": "schema-only migration is transactional and rolls back cleanly",
+      "passed": true
+    },
+    {
+      "name": "additive schema changes no existing values or workflow states",
+      "passed": true
+    },
+    {
+      "name": "new tables begin empty; schema does not initialize historical values",
+      "passed": true
+    },
+    {
+      "name": "initialization with missing capture actor fails atomically",
+      "passed": true
+    },
+    {
+      "name": "legacy capture copies every source including archived and null values exactly",
+      "passed": true
+    },
+    {
+      "name": "legacy capture leaves assessment dates, measured yields and month-day assumptions unknown",
+      "passed": true
+    },
+    {
+      "name": "unknown original responsible officer remains null; capture actor is distinct provenance",
+      "passed": true
+    },
+    {
+      "name": "repeated identical capture is idempotent",
+      "passed": true
+    },
+    {
+      "name": "immutable baseline pins explicit original source contributions",
+      "passed": true
+    },
+    {
+      "name": "source_capacity_assessment: UPDATE rejected",
+      "passed": true
+    },
+    {
+      "name": "source_capacity_assessment: DELETE rejected",
+      "passed": true
+    },
+    {
+      "name": "source_capacity_assessment: TRUNCATE rejected",
+      "passed": true
+    },
+    {
+      "name": "scheme_capacity_baseline: UPDATE rejected",
+      "passed": true
+    },
+    {
+      "name": "scheme_capacity_baseline: DELETE rejected",
+      "passed": true
+    },
+    {
+      "name": "scheme_capacity_baseline: TRUNCATE rejected",
+      "passed": true
+    },
+    {
+      "name": "scheme_capacity_baseline_source: UPDATE rejected",
+      "passed": true
+    },
+    {
+      "name": "scheme_capacity_baseline_source: DELETE rejected",
+      "passed": true
+    },
+    {
+      "name": "scheme_capacity_baseline_source: TRUNCATE rejected",
+      "passed": true
+    },
+    {
+      "name": "baseline members cannot be appended after the creation transaction",
+      "passed": true
+    },
+    {
+      "name": "missing source membership rejects baseline at commit",
+      "passed": true
+    },
+    {
+      "name": "mismatched complete scheme total rolls back baseline and all members",
+      "passed": true
+    },
+    {
+      "name": "baseline cannot link an assessment from another scheme",
+      "passed": true
+    },
+    {
+      "name": "incomplete baseline retains null capacity rather than inventing zero",
+      "passed": true
+    },
+    {
+      "name": "new revision cannot fork or replace a pinned historical baseline",
+      "passed": true
+    },
+    {
+      "name": "current source edits and archive do not alter pinned baseline or actual production",
+      "passed": true
+    },
+    {
+      "name": "same-version drift fails legacy capture instead of overwriting preserved history",
+      "passed": true
+    },
+    {
+      "name": "source FK prevents removing preserved assessment identity",
+      "passed": true
+    },
+    {
+      "name": "nonfinite new capacity is rejected",
+      "passed": true
+    },
+    {
+      "name": "new assessment requires responsible officer and rejects historical effective date",
+      "passed": true
+    },
+    {
+      "name": "new measured assessment retains installed rating separately and leaves pinned history unchanged",
+      "passed": true
+    },
+    {
+      "name": "existing universal self-approval trigger rejects a version-correct legacy update",
+      "passed": true
+    },
+    {
+      "name": "workbook KIGEZI K2:L2:M2:N2 source chain retains original 30-day basis",
+      "passed": true
+    },
+    {
+      "name": "workbook RUJUMBURA L4 and L8 bulk-meter methods keep explicit dial assumptions",
+      "passed": true
+    },
+    {
+      "name": "workbook KIGEZI M3:N3 mixed-source scheme uses each source regime once",
+      "passed": true
+    },
+    {
+      "name": "workbook ISINGIRO M10 as-written capacity is preserved without correcting its reference",
+      "passed": true
+    }
+  ],
+  "syntheticOnly": true,
+  "postgresqlVersion": "17.10",
+  "beforeOriginalRowsSha256": "63bc5b04bd166e40753ee14bf0f8af938209065c019ba5bc6f339e249122f7e5",
+  "afterCaptureOriginalRowsSha256": "63bc5b04bd166e40753ee14bf0f8af938209065c019ba5bc6f339e249122f7e5",
+  "workbookExamples": [
+    {
+      "cells": "KIGEZI!K2:N2",
+      "result": {
+        "lps": "0.65387968613775065388",
+        "hourly": "2.353966870095902353968",
+        "daily": "56.495204882301656495232",
+        "monthly": "1694.856146469049694856960"
+      }
+    },
+    {
+      "cells": "RUJUMBURA!L4,L8",
+      "result": {
+        "dial_small": "9.6000000000000000",
+        "dial_large": "11.6504854368932039"
+      }
+    },
+    {
+      "cells": "KIGEZI!M3:N3",
+      "result": {
+        "daily": "172.817896389324960753600",
+        "monthly": "5184.536891679748822608000"
+      }
+    },
+    {
+      "cells": "ISINGIRO!M10",
+      "result": {
+        "as_written": "799.0857142857142856",
+        "diagnostic_only": "888.22857142857142816"
+      },
+      "notice": "Diagnostic result is not an approved baseline replacement"
+    }
+  ],
+  "status": "passed",
+  "passed": 35,
+  "scope": "Draft database constraints and exact-copy initialization tested on synthetic rows only; no application integration implemented, no live data validation",
+  "createdAt": "2026-10-30T11:38:11.159Z"
+}

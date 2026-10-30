@@ -1,5 +1,7 @@
 
 
+import type { MpsTpsResult } from "./mps-tps"
+
 export interface TraceableMetric {
   metricName: string
   period: string
@@ -12,8 +14,12 @@ export interface TraceableMetric {
 }
 
 export interface TrustedPerformanceDataset {
+  basis?: "verified_operational" | "historical_workbook"
+  availability?: MeasurementAvailability
+  collectionBasis?: "balance_inference" | "unavailable"
+  referenceTargets?: { schemeName: string; areaName: string; result: MpsTpsResult }[]
   production?: { available: boolean; suppliedComplete: boolean; capacityComplete: boolean; provisionalProducedM3: number; legacyCount: number; label: string }
-  period: { id: string; periodName: string; year: number; month: number }
+  period: { id: string; periodName: string; year: number | null; month: number }
   scope: { level: "organization" | "cluster" | "branch" | "scheme"; id?: string; name?: string }
   kpis: {
     waterProducedM3: number
@@ -38,6 +44,7 @@ export interface TrustedPerformanceDataset {
     collectionTargetAchievementPercent?: number | null
   }
   dataQuality: {
+    coverageKnown?: boolean
     completenessPercent: number
     flagsCount: number
     issues: string[]
@@ -48,6 +55,7 @@ export interface TrustedPerformanceDataset {
 }
 
 export interface SchemePerformanceMatrixItem {
+  availability?: MeasurementAvailability
   productionAvailable?: boolean
   capacityAvailable?: boolean
   schemeId: string
@@ -95,4 +103,10 @@ export interface ManagementActionItem {
   closureEvidenceUrl?: string | null
   closedAt?: Date | string | null
   createdAt: Date | string
+}
+export interface MeasurementAvailability {
+  sales: boolean
+  billing: boolean
+  collections: boolean
+  arrears: boolean
 }
