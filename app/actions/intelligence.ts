@@ -1,7 +1,7 @@
 "use server"
 
 import { db } from "@/lib/db"
-import { waterSchemeSource, waterProductionLog, intelligenceFinding, waterScheme } from "@/lib/db/schema"
+import { waterSchemeSource, waterProductionLog, intelligenceFinding, waterScheme, user, branch, cluster } from "@/lib/db/schema"
 import { requireUser } from "@/lib/session"
 import {
   canViewIntelligence,
@@ -11,12 +11,13 @@ import {
 import { writeAudit } from "@/lib/audit"
 import { runIntelligenceEngine } from "@/lib/intelligence/engine"
 import { IntelligenceFilters, FindingStatus } from "@/lib/intelligence/types"
-import { eq, and, desc } from "drizzle-orm"
+import { eq, and, desc, inArray, sql } from "drizzle-orm"
+import { intelligenceMutationFilter } from "@/lib/production/scope"
 import { productionService } from "@/lib/production/service"
 import { ProductionError, type ProductionResult } from "@/lib/production/schemas"
 import { applyIntelligenceSchemeFilter } from "@/lib/intelligence/scope"
 import { revalidatePath } from "next/cache"
-import { ZodError } from "zod"
+import { z, ZodError } from "zod"
 import { recordSystemError } from "@/lib/system-errors"
 
 /**
@@ -47,17 +48,15 @@ export async function updateFindingStatus({
   assignedToUserId?: string
 }) {
   const current = await requireUser()
-  if (!canInvestigateIntelligence(current) && !canDismissIntelligence(current)) {
+  z.object({ findingId: z.string().min(1).max(200), status: z.enum(["OPEN", "UNDER_INVESTIGATION", "RESOLVED", "DISMISSED"]), resolutionNotes: z.string().max(4000).optional(), assignedToUserId: z.string().min(1).max(200).optional() }).parse({ findingId, status, resolutionNotes, assignedToUserId })
+  const closing = status === "RESOLVED" || status === "DISMISSED"
+  if (!canViewIntelligence(current) || !(closing ? canDismissIntelligence(current) : canInvestigateIntelligence(current))) {
     throw new Error("Access Denied: You do not have permission to update intelligence findings.")
   }
-
-  // Check if finding exists in DB or insert it if it was dynamically generated
-  const [existing] = await db
-    .select()
-    .from(intelligenceFinding)
-    .where(eq(intelligenceFinding.id, findingId))
-    .limit(1)
-
+  const scope = intelligenceMutationFilter(current, closing ? "intelligence.dismiss" : "intelligence.investigate")
+  const scopedSchemes = sql`(select ${waterScheme.id} from ${waterScheme} where ${scope})`
+  // Resolve dynamic findings from the authorised engine; never trust an arbitrary client ID.
+  const generated = (await runIntelligenceEngine(current)).findings.find(f => f.id === findingId)
   const updatedRecord = {
     status,
     resolutionNotes: resolutionNotes || null,
@@ -66,40 +65,41 @@ export async function updateFindingStatus({
     updatedAt: new Date(),
   }
 
-  if (existing) {
-    await db
-      .update(intelligenceFinding)
-      .set(updatedRecord)
-      .where(eq(intelligenceFinding.id, findingId))
-  } else {
-    await db.insert(intelligenceFinding).values({
-      id: findingId,
-      category: "anomaly",
-      severity: "high",
-      title: "Intelligence Finding Investigation",
-      description: "Dynamically flagged intelligence item updated by officer.",
-      evidence: {},
-      confidence: "HIGH",
-      status,
-      resolutionNotes: resolutionNotes || null,
-      assignedToUserId: assignedToUserId || null,
-      resolvedAt: status === "RESOLVED" || status === "DISMISSED" ? new Date() : null,
-    })
-  }
-
-  // Audit Logging
-  await writeAudit({
-    user: { id: current.id, name: current.name || "User", email: current.email || "" },
-    action: "intelligence.finding.update",
-    entityType: "intelligence_finding",
-    entityId: findingId,
-    details: {
-      status,
-      resolutionNotes,
-      assignedToUserId,
-    },
+  await db.transaction(async tx => {
+    // Lock the ID, including the not-yet-persisted case, for safe concurrent workflows.
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`intelligence:${findingId}`}, 0))`)
+    const [existing] = await tx.select().from(intelligenceFinding).where(and(eq(intelligenceFinding.id, findingId), inArray(intelligenceFinding.schemeId, scopedSchemes))).limit(1).for("update")
+    const schemeId = existing?.schemeId ?? generated?.schemeId
+    const [scheme] = schemeId ? await tx.select({ id: waterScheme.id, branchId: branch.id, clusterId: cluster.id, organizationId: cluster.organizationId }).from(waterScheme)
+      .innerJoin(branch, eq(branch.id, waterScheme.branchId)).innerJoin(cluster, eq(cluster.id, branch.clusterId))
+      .where(and(eq(waterScheme.id, schemeId), scope)).limit(1).for("share") : []
+    if (!scheme?.organizationId || (!existing && !generated)) throw new Error("Finding is unavailable or outside your access")
+    if (assignedToUserId) {
+      const [assignee] = await tx.select().from(user).where(and(eq(user.id, assignedToUserId), eq(user.active, true), eq(user.organizationId, scheme.organizationId))).limit(1).for("share")
+      if (!assignee || (assignee.schemeId && assignee.schemeId !== scheme.id) || (assignee.branchId && assignee.branchId !== scheme.branchId) || (assignee.clusterId && assignee.clusterId !== scheme.clusterId)) throw new Error("Assignee is unavailable or outside this scheme's organisation")
+    }
+    const generatedEvidence = generated ? {
+      schemeId: scheme.id, organizationId: scheme.organizationId, branchId: scheme.branchId, clusterId: scheme.clusterId,
+      category: generated.category, severity: generated.severity, title: generated.title, description: generated.description,
+      evidence: { ...generated.evidence }, confidence: generated.confidence, reportingPeriod: generated.reportingPeriod,
+      observation: generated.observation, recommendation: generated.recommendation,
+    } : null
+    if (existing) {
+      // Scheme-based rule IDs may recur next month. Refresh evidence for this authorised
+      // observation and retain the previous snapshot in the same immutable audit event.
+      await tx.update(intelligenceFinding).set({ ...generatedEvidence, ...updatedRecord }).where(and(eq(intelligenceFinding.id, findingId), inArray(intelligenceFinding.schemeId, scopedSchemes)))
+    } else {
+      await tx.insert(intelligenceFinding).values({ id: findingId, ...generatedEvidence!, ...updatedRecord })
+    }
+    await writeAudit({
+      user: { id: current.id, name: current.name || "User", email: current.email || "" },
+      action: "intelligence.finding.update",
+      entityType: "intelligence_finding",
+      entityId: findingId,
+      details: { before: existing ?? null, after: { ...generatedEvidence, ...updatedRecord } },
+    }, tx)
   })
-
+  revalidatePath("/intelligence", "layout")
   return { success: true }
 }
 

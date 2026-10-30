@@ -222,7 +222,7 @@ export default function DecisionSupportPage() {
               <CardContent className="p-4 pt-1">
                 <div className="text-2xl font-black text-brand-blue">{dataset.production?.available === false ? "Unavailable: no verified observations" : `${dataset.kpis.waterProducedM3.toLocaleString()} m³ (verified)`}</div>
                 <p className="text-[10px] text-muted-foreground mt-1">
-                  Capacity Utilisation: <strong className="text-foreground">{dataset.production?.capacityComplete === false || dataset.production?.available === false ? "Benchmark unavailable" : `${dataset.kpis.capacityUtilizationPercent}% (current configuration)`}</strong>
+                  Capacity Utilisation: <strong className="text-foreground">{dataset.production?.capacityComplete === false || dataset.production?.available === false || dataset.kpis.practicalCapacityM3Month <= 0 ? "Benchmark unavailable" : `${dataset.kpis.capacityUtilizationPercent}% (current configuration)`}</strong>
                 </p>
               </CardContent>
             </Card>
@@ -295,7 +295,7 @@ export default function DecisionSupportPage() {
                           </Link>
                         </td>
                         <td className="p-3 text-right font-mono">{s.productionAvailable === false ? "Unavailable" : s.producedM3.toLocaleString()}</td>
-                        <td className="p-3 text-right font-mono font-bold">{s.capacityAvailable === false || s.productionAvailable === false ? "Unavailable" : `${s.utilizationPercent}%`}</td>
+                        <td className="p-3 text-right font-mono font-bold">{s.capacityAvailable === false || s.productionAvailable === false || s.practicalCapacityM3 <= 0 ? "Unavailable" : `${s.utilizationPercent}%`}</td>
                         <td className="p-3 text-right font-mono">{s.soldM3.toLocaleString()}</td>
                         <td className="p-3 text-right font-mono font-bold text-amber-600">{s.displayLoss}</td>
                         <td className="p-3 text-right font-mono">{formatUGX(s.currentBilledUgx)}</td>

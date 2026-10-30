@@ -26,6 +26,7 @@ export interface IntelligenceEvidence {
 }
 
 export interface StructuredFinding {
+  capabilities?: { investigate: boolean; dismiss: boolean }
   id: string
   organizationId?: string | null
   clusterId?: string | null

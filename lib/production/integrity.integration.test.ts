@@ -5,8 +5,10 @@ import { readFileSync } from "node:fs"
 import { randomUUID } from "node:crypto"
 import { sql } from "drizzle-orm"
 // No application pool/credentials are used, even accidentally through a service default.
-const runtime=vi.hoisted(()=>({database:undefined as unknown}))
+const runtime=vi.hoisted(()=>({database:undefined as unknown,currentUser:undefined as unknown}))
 vi.mock("@/lib/db", () => ({ get db() { return runtime.database } }))
+vi.mock("@/lib/session",()=>({requireUser:async()=>runtime.currentUser}))
+vi.mock("next/cache",()=>({revalidatePath:vi.fn()}))
 import * as schema from "@/lib/db/schema"
 import { productionService } from "./service"
 import { loadProductionSummary } from "./reporting"
@@ -14,6 +16,8 @@ import { productionTestDatabaseUrl } from "./test-database"
 import type { SessionUser } from "@/lib/session"
 import { getTrustedPerformanceDataset } from "@/lib/decision-support/performance-engine"
 import { runIntelligenceEngine } from "@/lib/intelligence/engine"
+import { updateFindingStatus } from "@/app/actions/intelligence"
+import { generateManagementReport } from "@/lib/decision-support/reports"
 
 const migration = (name: string) => readFileSync(`db/migrations/${name}`, "utf8")
 const namespace = `production_it_${randomUUID().replaceAll("-", "")}`
@@ -29,7 +33,7 @@ const all = actor("operator", ["production.view", "production.create", "producti
 let sourceId: string
 let serial = 0
 function entry(extra: Record<string, unknown> = {}) {
-  return { schemeId:"scheme-a",sourceId,productionDate:`2024-02-${String(++serial).padStart(2,"0")}`,waterProducedM3:"12.30",waterSuppliedM3:"0",operatingHours:"0",notes:"",requestKey:randomUUID(),...extra }
+  return { schemeId:"scheme-a",sourceId,productionDate:extra.productionDate ?? `2024-02-${String(++serial).padStart(2,"0")}`,waterProducedM3:"12.30",waterSuppliedM3:"0",operatingHours:"0",notes:"",requestKey:randomUUID(),...extra }
 }
 async function summary() { return (await loadProductionSummary(database,["scheme-a"],"2024-02"))[0] }
 
@@ -47,6 +51,7 @@ beforeAll(async () => {
     insert into branch(id,name,code,"clusterId") values ('branch-a','Test branch A','A','cluster-a'),('branch-b','Test branch B','B','cluster-b');
     insert into water_scheme(id,name,code,"branchId") values ('scheme-a','Test scheme A','A','branch-a'),('scheme-b','Test scheme B','B','branch-b');
     insert into "user"(id,name,email) values ('operator','Test operator','operator@example.invalid'),('verifier','Test verifier','verifier@example.invalid'),('manager','Test manager','manager@example.invalid');
+    insert into "user"(id,name,email,"organizationId","schemeId") values ('assignee-a','Test assignee A','assignee-a@example.invalid','org-a','scheme-a'),('assignee-b','Test assignee B','assignee-b@example.invalid','org-b','scheme-b');
     insert into billing_period(id,month,year,"periodName","startDate","endDate",status) values ('feb',2,2024,'February 2024','2024-03-01','2024-03-31','closed');
     insert into water_production_log(id,"schemeId","logDate","waterProducedM3","waterSuppliedM3","recordedById") values ('legacy','scheme-a','2024-02-01',42,0,'operator');`)
   // Verify invalid legacy data fails migration instead of being silently repaired.
@@ -55,6 +60,8 @@ beforeAll(async () => {
   try { await client.query("begin"); await expect(client.query(migration("0069_production_integrity.sql"))).rejects.toThrow(); await client.query("rollback") } finally { client.release() }
   await pool.query(`delete from water_scheme_source where id='invalid-preflight'`)
   for(const name of ["0069_production_integrity.sql","0070_production_permissions.sql"]){const c=await pool.connect();try{await c.query("begin");await c.query(migration(name));await c.query("commit")}catch(e){await c.query("rollback");throw e}finally{c.release()}}
+  await pool.query(migration("0071_production_review_independence.sql"))
+  await pool.query(migration("0072_production_universal_self_approval_guard.sql"))
   service=productionService(database)
   const source=await service.saveSource(manager,{schemeId:"scheme-a",sourceName:"Test spring",technology:"gravity",capacityMethod:"bucket_test",containerVolumeLitres:"20",averageFillTimeSeconds:"10",regimeHoursPerDay:"0"})
   sourceId=source.id
@@ -66,6 +73,87 @@ afterAll(async()=>{
 })
 
 describe("production integrity on disposable PostgreSQL",()=>{
+  it("requires explicit scoped production grants for admin operations",async()=>{
+    const admin={...operator,role:"admin",permissions:[],grants:[]}
+    const workspace=await service.workspace(admin,"scheme-a","2024-02")
+    expect(workspace.capabilities).toEqual({create:false,verify:false,sources:false})
+    await expect(service.create(admin,entry({productionDate:"2024-06-01"}))).rejects.toMatchObject({code:"FORBIDDEN"})
+    await expect(service.saveSource(admin,{schemeId:"scheme-a",sourceName:"Unauthorised",technology:"gravity",capacityMethod:"unknown"})).rejects.toMatchObject({code:"FORBIDDEN"})
+    await expect(service.archiveSource(admin,{id:sourceId,expectedVersion:1})).rejects.toMatchObject({code:"FORBIDDEN"})
+    await expect(service.reviewLegacy(admin,{...entry({productionDate:"2024-06-07"}),id:"legacy",expectedVersion:1,reason:"Synthetic permission check"})).rejects.toMatchObject({code:"FORBIDDEN"})
+    const row=await service.create({...operator,role:"admin"},entry({productionDate:"2024-06-01"}))
+    await expect(service.transition({...verifier,role:"admin",permissions:[]},{id:row.id,expectedVersion:1,operation:"verify"})).rejects.toMatchObject({code:"FORBIDDEN"})
+    const {requestKey:_key,...data}=entry({productionDate:"2024-06-01"});void _key
+    await expect(service.edit(admin,{...data,id:row.id,expectedVersion:1})).rejects.toMatchObject({code:"FORBIDDEN"})
+    expect((await service.transition({...verifier,role:"admin"},{id:row.id,expectedVersion:1,operation:"verify"})).status).toBe("verified")
+  })
+  it("blocks legacy reviewer self-approval in service, UI DTO and PostgreSQL",async()=>{
+    await pool.query(`insert into water_production_log(id,"schemeId","logDate","waterProducedM3","recordedById") values ('legacy-independence','scheme-a','2024-06-02',1,'operator')`)
+    const row=await service.reviewLegacy(verifier,{...entry({productionDate:"2024-06-02",waterProducedM3:"999"}),id:"legacy-independence",expectedVersion:1,reason:"Synthetic legacy measurement review"})
+    await expect(service.transition(verifier,{id:row.id,expectedVersion:2,operation:"verify"})).rejects.toMatchObject({code:"FORBIDDEN"})
+    const workspace=await service.workspace(verifier,"scheme-a","2024-06")
+    expect(workspace.records.find(r=>r.id===row.id)?.legacyReviewerIds).toContain("verifier")
+    await expect(pool.query(`update water_production_log set status='verified',"verifiedById"='verifier',"verifiedAt"=now(),version=version+1 where id=$1`,[row.id])).rejects.toThrow("independent verifier")
+    expect((await service.transition({...verifier,id:"manager"},{id:row.id,expectedVersion:2,operation:"verify"})).status).toBe("verified")
+    await pool.query(migration("0071_production_review_independence.sql"))
+  })
+  it("returns history actor identity for review actions",async()=>{
+    const row=await service.create(operator,entry({productionDate:"2024-06-03"}))
+    await service.transition(verifier,{id:row.id,expectedVersion:1,operation:"flag",reason:"Synthetic review reason"})
+    expect((await service.history(verifier,row.id)).find(h=>h.action==="production.log.flag")).toMatchObject({userId:"verifier",userName:"verifier"})
+  })
+  it("marks absent periods incomplete rather than validated zero loss",async()=>{
+    const dataset=await getTrustedPerformanceDataset({...verifier,role:"head_commercial"},"missing-period","scheme-a")
+    expect(dataset.production?.available).toBe(false)
+    expect(dataset.kpis.lossValidationStatus).toBe("INCOMPLETE_DATA")
+    expect(dataset.kpis.displayLossIndicator).toBe("Unavailable")
+  })
+  it("refuses migration when historic legacy review was approved by its reviewer, without altering data",async()=>{
+    const client=await pool.connect()
+    try {
+      await client.query("begin")
+      await client.query(`insert into water_production_log(id,"schemeId","sourceId","logDate","productionDate","workflowVersion",version,"requestKey","requestFingerprint","recordedById",status,"verifiedById","verifiedAt") values ('unsafe-approval','scheme-a',$1,'2024-06-06','2024-06-06',1,1,$2,$3,'operator','verified','verifier',now())`,[sourceId,randomUUID(),"a".repeat(64)])
+      await client.query(`insert into audit_log(id,"userId",action,"entityType","entityId") values ('unsafe-review','verifier','production.log.legacy_review','water_production_log','unsafe-approval')`)
+      await expect(client.query(migration("0071_production_review_independence.sql"))).rejects.toThrow("authorised reconciliation")
+    } finally { await client.query("rollback");client.release() }
+    expect((await pool.query(`select id from water_production_log where id='unsafe-approval'`)).rows).toHaveLength(0)
+  })
+  it("scopes finding updates, validates transition grants and persists real dynamic evidence",async()=>{
+    await pool.query(`insert into intelligence_finding(id,"schemeId",category,severity,title,description,evidence,status) values ('foreign-finding','scheme-b','production','high','Synthetic','Synthetic','{}','OPEN'),('local-finding','scheme-a','production','high','Synthetic','Synthetic','{}','OPEN')`)
+    runtime.currentUser={...verifier,permissions:[{code:"intelligence.view",scope:"scheme"},{code:"intelligence.investigate",scope:"scheme"}]}
+    await expect(updateFindingStatus({findingId:"foreign-finding",status:"UNDER_INVESTIGATION"})).rejects.toThrow()
+    runtime.currentUser={...verifier,schemeId:null,permissions:[{code:"intelligence.view",scope:"global"},{code:"intelligence.investigate",scope:"global"}]}
+    await expect(updateFindingStatus({findingId:"foreign-finding",status:"UNDER_INVESTIGATION"})).rejects.toThrow()
+    runtime.currentUser={...verifier,permissions:[{code:"intelligence.view",scope:"scheme"},{code:"intelligence.investigate",scope:"scheme"}]}
+    await expect(updateFindingStatus({findingId:"local-finding",status:"DISMISSED"})).rejects.toThrow()
+    await expect(updateFindingStatus({findingId:"invented-finding",status:"UNDER_INVESTIGATION"})).rejects.toThrow()
+    await expect(updateFindingStatus({findingId:"local-finding",status:"INVALID" as "OPEN"})).rejects.toThrow()
+    await expect(updateFindingStatus({findingId:"local-finding",status:"UNDER_INVESTIGATION",assignedToUserId:"manager"})).rejects.toThrow()
+    await expect(updateFindingStatus({findingId:"local-finding",status:"UNDER_INVESTIGATION",assignedToUserId:"assignee-b"})).rejects.toThrow()
+    await updateFindingStatus({findingId:"local-finding",status:"UNDER_INVESTIGATION",assignedToUserId:"assignee-a"})
+    expect((await pool.query(`select status from intelligence_finding where id='local-finding'`)).rows[0].status).toBe("UNDER_INVESTIGATION")
+    runtime.currentUser={...verifier,permissions:[{code:"intelligence.view",scope:"scheme"},{code:"intelligence.dismiss",scope:"scheme"}]}
+    await updateFindingStatus({findingId:"local-finding",status:"DISMISSED"})
+    expect((await pool.query(`select status from intelligence_finding where id='foreign-finding'`)).rows[0].status).toBe("OPEN")
+    runtime.currentUser={...verifier,role:"admin",permissions:[]}
+    await expect(updateFindingStatus({findingId:"local-finding",status:"OPEN"})).rejects.toThrow()
+    runtime.currentUser={...verifier,permissions:[{code:"intelligence.view",scope:"scheme"},{code:"intelligence.investigate",scope:"scheme"}]}
+    const generated=(await runIntelligenceEngine(runtime.currentUser as SessionUser)).findings[0]
+    expect(generated).toBeTruthy()
+    await updateFindingStatus({findingId:generated.id,status:"UNDER_INVESTIGATION",resolutionNotes:"Investigate real generated evidence"})
+    expect((await pool.query(`select "schemeId",category,title from intelligence_finding where id=$1`,[generated.id])).rows[0]).toMatchObject({schemeId:"scheme-a",category:generated.category,title:generated.title})
+    expect((await runIntelligenceEngine(runtime.currentUser as SessionUser)).findings.find(f=>f.id===generated.id)?.status).toBe("UNDER_INVESTIGATION")
+  })
+  it("rolls back finding status changes when their audit insert fails",async()=>{
+    await pool.query(`insert into intelligence_finding(id,"schemeId",category,severity,title,description,evidence,status) values ('audit-failure-finding','scheme-a','production','high','Synthetic','Synthetic','{}','OPEN');
+      create function reject_test_finding_audit() returns trigger language plpgsql as $$ begin if NEW."entityId"='audit-failure-finding' then raise exception 'Synthetic finding audit failure'; end if; return NEW; end $$;
+      create trigger reject_test_finding_audit before insert on audit_log for each row execute function reject_test_finding_audit();`)
+    try {
+      runtime.currentUser={...verifier,permissions:[{code:"intelligence.view",scope:"scheme"},{code:"intelligence.investigate",scope:"scheme"}]}
+      await expect(updateFindingStatus({findingId:"audit-failure-finding",status:"UNDER_INVESTIGATION"})).rejects.toThrow()
+      expect((await pool.query(`select status from intelligence_finding where id='audit-failure-finding'`)).rows[0].status).toBe("OPEN")
+    } finally { await pool.query(`drop trigger reject_test_finding_audit on audit_log; drop function reject_test_finding_audit();`) }
+  })
   it("preserves legacy measurements and installs definitions without broad grants",async()=>{
     const r=await pool.query(`select "waterProducedM3","waterSuppliedM3","workflowVersion" from water_production_log where id='legacy'`)
     expect(r.rows[0]).toEqual({waterProducedM3:"42.00",waterSuppliedM3:"0.00",workflowVersion:0})
@@ -180,6 +268,14 @@ describe("production integrity on disposable PostgreSQL",()=>{
     expect(row).toMatchObject({workflowVersion:1,status:"entered",recordedById:"operator",productionDate:"2024-01-30"})
     expect((await loadProductionSummary(database,["scheme-a"],"2024-01"))[0].logsCount).toBe(1)
   })
+  it("enforces universal database-level self-approval prevention on new and direct updates",async()=>{
+    const row=await service.create(operator,entry({productionDate:"2024-06-20"}))
+    await expect(service.transition(operator,{id:row.id,expectedVersion:1,operation:"verify"})).rejects.toMatchObject({code:"FORBIDDEN"})
+    await expect(pool.query(`update water_production_log set status='verified',"verifiedById"='operator',"verifiedAt"=now() where id=$1`,[row.id])).rejects.toThrow("Self-approval is forbidden")
+    await expect(pool.query(`update water_production_log set status='verified',"verifiedById"=null where id=$1`,[row.id])).rejects.toThrow("explicit verifiedById")
+    const verified=await service.transition(verifier,{id:row.id,expectedVersion:1,operation:"verify"})
+    expect(verified.status).toBe("verified")
+  })
   it("counts distinct verified dates across sources, not rows",async()=>{
     const source=await service.saveSource(manager,{schemeId:"scheme-a",sourceName:"Second spring",technology:"gravity",capacityMethod:"unknown"})
     const data=entry();const a=await service.create(operator,data);const b=await service.create(operator,{...data,sourceId:source.id,requestKey:randomUUID()})
@@ -202,6 +298,13 @@ describe("production integrity on disposable PostgreSQL",()=>{
     const dataset=await getTrustedPerformanceDataset(analyst,"feb","scheme-a")
     expect(dataset.kpis.waterProducedM3).toBe(Number(expected.totalWaterProducedM3))
     expect(dataset.production).toMatchObject({available:true,provisionalProducedM3:Number(expected.provisionalProducedM3)})
+    for(const type of ["monthly_management","production_capacity","nrw_loss","commercial_performance"] as const){
+      const report=generateManagementReport(type,dataset)
+      expect(report.sections.length).toBeGreaterThan(0)
+      expect(JSON.stringify(report)).not.toContain("Unavailable%")
+    }
+    expect(dataset.schemesMatrix[0].capacityAvailable).toBe(false)
+    expect(generateManagementReport("monthly_management",dataset).sections[1].metricsTable!.rows[0][2]).toBe("Unavailable")
     const intelligence=await runIntelligenceEngine(analyst,{periodId:"feb",schemeId:"scheme-a"})
     // The prior month's coverage is insufficient; no manufactured trend is allowed.
     expect(intelligence.periodChanges).toHaveLength(0)
@@ -226,6 +329,7 @@ describe("production integrity on disposable PostgreSQL",()=>{
   it("reruns new migrations without changing rows or dropping existing protection triggers",async()=>{
     const before=await pool.query(`select count(*)::int n from water_production_log`)
     await pool.query(migration("0069_production_integrity.sql"));await pool.query(migration("0070_production_permissions.sql"))
+    await pool.query(migration("0071_production_review_independence.sql"))
     expect((await pool.query(`select count(*)::int n from water_production_log`)).rows).toEqual(before.rows)
     const triggers=(await pool.query(`select trigger_name from information_schema.triggers where trigger_schema=$1`,[namespace])).rows.map(r=>r.trigger_name)
     for(const name of ["receipt_no_update","receipt_no_delete","receipt_attachment_no_update","audit_log_no_update","pegasus_event_security_guard_trg","production_log_guard"])expect(triggers).toContain(name)

@@ -160,7 +160,7 @@ export function InvestigationDrawer({
               <Button
                 variant={status === "UNDER_INVESTIGATION" ? "default" : "outline"}
                 size="sm"
-                disabled={isSubmitting}
+                disabled={isSubmitting || !finding.capabilities?.investigate}
                 onClick={() => handleUpdate("UNDER_INVESTIGATION")}
               >
                 Mark Under Investigation
@@ -169,7 +169,7 @@ export function InvestigationDrawer({
                 variant={status === "RESOLVED" ? "default" : "outline"}
                 size="sm"
                 className="bg-emerald-600 hover:bg-emerald-700 text-white"
-                disabled={isSubmitting}
+                disabled={isSubmitting || !finding.capabilities?.dismiss}
                 onClick={() => handleUpdate("RESOLVED")}
               >
                 Mark Resolved
@@ -178,7 +178,7 @@ export function InvestigationDrawer({
                 variant="ghost"
                 size="sm"
                 className="text-muted-foreground"
-                disabled={isSubmitting}
+                disabled={isSubmitting || !finding.capabilities?.dismiss}
                 onClick={() => handleUpdate("DISMISSED")}
               >
                 Dismiss Finding

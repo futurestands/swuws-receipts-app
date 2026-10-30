@@ -1,5 +1,11 @@
 # Phase 1: complete the existing water production workflow
 
+Remediation amendment (2026-10-27): the approved remediation removes the administrator
+operational bypass described in the historical plan below. All production mutations and
+finding investigations/dismissals now require explicit scoped grants. A legacy reviewer
+cannot approve that record. See [remediation report](phase-1-water-production-remediation.md)
+and [staging checklist](phase-1-remediation-staging-checklist.md) for the current candidate.
+
 Date: 2026-10-27. Status: implementation scope approved by the user in the project conversation; implemented locally and validated using a disposable database. Production migrations, actual IAM grant assignments, commits, pushes, merges and deployment still require separate approval. See [implementation report](phase-1-water-production-implementation.md) for results and remaining release checks.
 
 Evidence and limitations: [sanitised audit](swuws-watops-audit.md). Requirements below record the approved SWUWS design. WATOPS exposed day-sheet and approval screens, but its transaction implementation was not tested or copied. The original planning text is retained below; the implementation report records the final file inventory and justified implementation details.

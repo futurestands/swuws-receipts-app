@@ -3,7 +3,6 @@ import { waterScheme } from "@/lib/db/schema/hierarchy"
 import { canViewIntelligence, canViewProduction, type UserPermissionsContext } from "@/lib/permissions"
 
 export function productionGrantScope(user: UserPermissionsContext, code: string): string | null {
-  if (user.role === "admin") return "global"
   const grant = user.permissions?.find(p => typeof p === "object" && p.code === code)
   const scope = typeof grant === "object" ? grant.scope : user.grants?.find(g => g.code === code)?.scope
   return scope && ["own", "scheme", "area", "cluster", "global"].includes(scope) ? scope : null
@@ -42,4 +41,15 @@ export function intelligenceHierarchyFilter(user: UserPermissionsContext, target
   const globalRead = user.role === "admin" || (user.roleLevel ?? 0) >= 8 || user.permissions?.some(p => typeof p === "object" && p.scope === "global" && ["intelligence.view", "reports.view", "dashboard.view"].includes(p.code))
   if (!hasBoundary && !globalRead) return sql`false`
   return and(hierarchyBoundary(user), target && target !== "all" ? eq(waterScheme.id, target) : undefined)!
+}
+
+/** Intelligence mutations need an explicit scoped grant as well as read access. */
+export function intelligenceMutationFilter(user: UserPermissionsContext, code: string): SQL {
+  const scope = productionGrantScope(user, code)
+  if (!scope || scope === "own") return sql`false`
+  const boundary = scope === "scheme" ? (user.schemeId ? eq(waterScheme.id, user.schemeId) : sql`false`)
+    : scope === "area" ? (user.branchId ? eq(waterScheme.branchId, user.branchId) : sql`false`)
+    : scope === "cluster" ? (user.clusterId ? sql`exists (select 1 from branch ib where ib.id = ${waterScheme.branchId} and ib."clusterId" = ${user.clusterId})` : sql`false`)
+    : undefined
+  return and(intelligenceHierarchyFilter(user), boundary)!
 }

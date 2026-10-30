@@ -102,7 +102,7 @@ export function ProductionPanel({ data, reload, nextPage }: { data: Workspace; r
         <div className="flex flex-wrap gap-2">
           {row.workflowVersion === 1 && data.capabilities.create && row.recordedById === data.userId && ["entered","flagged"].includes(row.status) && <Button variant="outline" size="sm" disabled={busy} onClick={() => beginEdit(row)}>Correct entry</Button>}
           {row.workflowVersion === 0 && data.capabilities.verify && ["entered","flagged"].includes(row.status) && <Button variant="outline" size="sm" disabled={busy} onClick={() => beginEdit(row, true)}>Review legacy entry</Button>}
-          {data.capabilities.verify && row.recordedById !== data.userId && row.status !== "void" && ([...(row.workflowVersion === 1 && row.status === "entered" ? ["verify","flag"] : []), ...(row.status === "verified" ? ["revoke"] : []), "void"] as const).map(op => <Button key={op} variant="outline" size="sm" disabled={busy} onClick={() => { setReview({ row, operation: op as "verify" | "flag" | "revoke" | "void" }); setReason("") }}>{op === "revoke" ? "Revoke verification" : op.charAt(0).toUpperCase()+op.slice(1)}</Button>)}
+          {data.capabilities.verify && row.recordedById !== data.userId && row.status !== "void" && ([...(row.workflowVersion === 1 && row.status === "entered" ? [...(!row.legacyReviewerIds?.includes(data.userId) ? ["verify"] : []), "flag"] : []), ...(row.status === "verified" ? ["revoke"] : []), "void"] as const).map(op => <Button key={op} variant="outline" size="sm" disabled={busy} onClick={() => { setReview({ row, operation: op as "verify" | "flag" | "revoke" | "void" }); setReason("") }}>{op === "revoke" ? "Revoke verification" : op.charAt(0).toUpperCase()+op.slice(1)}</Button>)}
           <Button variant="outline" size="sm" disabled={busy} onClick={async () => { const result = await getProductionHistory(row.id); if (result.ok) setHistory(result.data); else setMessage(result.message) }}>View audit history</Button>
         </div>
       </article>)}
@@ -112,7 +112,7 @@ export function ProductionPanel({ data, reload, nextPage }: { data: Workspace; r
         <label>Review reason<Input value={reason} onChange={e => setReason(e.target.value)} required={review.operation !== "verify"} minLength={review.operation !== "verify" ? 10 : undefined} maxLength={1000} /></label>
         <Button type="submit" disabled={busy}>Confirm {review.operation}</Button><Button type="button" variant="outline" onClick={() => setReview(null)}>Cancel review</Button>
       </form>}
-      {history && <section aria-label="Production audit history"><h4 className="font-semibold">Audit history (latest 100 events)</h4>{history.map(h => <details key={h.id}><summary>{h.action} — {new Date(h.createdAt).toLocaleString()}</summary><pre className="overflow-auto whitespace-pre-wrap text-xs">{JSON.stringify(h.details, null, 2)}</pre></details>)}<Button variant="outline" onClick={() => setHistory(null)}>Close audit history</Button></section>}
+      {history && <section aria-label="Production audit history"><h4 className="font-semibold">Audit history (latest 100 events)</h4>{history.map(h => <details key={h.id}><summary>{h.action} — {h.userName || h.userId || "Unknown historical actor"} — {new Date(h.createdAt).toLocaleString()}</summary><pre className="overflow-auto whitespace-pre-wrap text-xs">{JSON.stringify(h.details, null, 2)}</pre></details>)}<Button variant="outline" onClick={() => setHistory(null)}>Close audit history</Button></section>}
     </section>
   </div>
 }

@@ -75,19 +75,23 @@ export function productionService(database = applicationDb, audit = writeAudit) 
         // Legacy dates are not inferred. They remain visible for explicit review.
         or(sql`to_char(${logs.productionDate}, 'YYYY-MM') = ${selectedMonth}`, eq(logs.workflowVersion, 0)), cursor ? lt(logs.id, cursor) : undefined,
       )).orderBy(desc(logs.id)).limit(31)
+      // Immutable review actors remain disqualified even after later corrections.
+      const legacyReviews = records.length ? await database.select({ entityId: auditLog.entityId, userId: auditLog.userId }).from(auditLog)
+        .where(and(eq(auditLog.entityType, "water_production_log"), eq(auditLog.action, "production.log.legacy_review"), inArray(auditLog.entityId, records.map(r => r.id)))) : []
+      const visibleRecords = records.slice(0, 30).map(row => ({ ...row, legacyReviewerIds: legacyReviews.filter(a => a.entityId === row.id).map(a => a.userId) }))
       const permitted = async (code: string) => {
         const [row] = await database.select({ id: waterScheme.id }).from(waterScheme).where(and(productionSchemeFilter(user, "production.view", selectedId), productionSchemeFilter(user, code, selectedId))).limit(1)
         return !!row
       }
       const [create, verify, manage] = await Promise.all([permitted("production.create"), permitted("production.verify"), permitted("production.sources.manage")])
       const summary = await loadProductionSummary(database, [selectedId], selectedMonth, ownReadFilter(user))
-      return { schemes, scheme, sources: sourceRows, records: records.slice(0, 30), nextCursor: records.length > 30 ? records[29].id : null, summary: summary[0] ?? null, month: selectedMonth, userId: user.id, capabilities: { create, verify, sources: manage } }
+      return { schemes, scheme, sources: sourceRows, records: visibleRecords, nextCursor: records.length > 30 ? records[29].id : null, summary: summary[0] ?? null, month: selectedMonth, userId: user.id, capabilities: { create, verify, sources: manage } }
     },
     async history(user: SessionUser, id: unknown) {
       const parsedId = opaqueId.parse(id)
       const [row] = await database.select().from(logs).where(and(eq(logs.id, parsedId), ownReadFilter(user), inArray(logs.schemeId, sql`(select ${waterScheme.id} from ${waterScheme} where ${readFilter(user)})`))).limit(1)
       if (!row) fail("FORBIDDEN", "Record is unavailable or outside your access")
-      return database.select({ id: auditLog.id, action: auditLog.action, createdAt: auditLog.createdAt, details: auditLog.details }).from(auditLog).where(and(eq(auditLog.entityType, "water_production_log"), eq(auditLog.entityId, row.id))).orderBy(desc(auditLog.createdAt)).limit(100)
+      return database.select({ id: auditLog.id, action: auditLog.action, createdAt: auditLog.createdAt, userId: auditLog.userId, userName: auditLog.userName, details: auditLog.details }).from(auditLog).where(and(eq(auditLog.entityType, "water_production_log"), eq(auditLog.entityId, row.id))).orderBy(desc(auditLog.createdAt), desc(auditLog.id)).limit(100)
     },
     async create(user: SessionUser, input: unknown) {
       const data = createLogSchema.parse(input)
@@ -135,6 +139,11 @@ export function productionService(database = applicationDb, audit = writeAudit) 
         const next = { verify: "verified", flag: "flagged", revoke: "flagged", void: "void" }[data.operation]
         if (before.status === "void" || (data.operation === "verify" && before.status !== "entered") || (data.operation === "flag" && before.status !== "entered") || (data.operation === "revoke" && before.status !== "verified")) fail("CONFLICT", "This transition is not valid for the current state")
         if (data.operation === "verify") {
+          const [ownReview] = await tx.select({ id: auditLog.id }).from(auditLog).where(and(
+            eq(auditLog.entityType, "water_production_log"), eq(auditLog.entityId, before.id),
+            eq(auditLog.action, "production.log.legacy_review"), eq(auditLog.userId, user.id),
+          )).limit(1)
+          if (ownReview) fail("FORBIDDEN", "A different verifier must approve a record you reviewed as legacy")
           createLogSchema.parse({ schemeId: before.schemeId, sourceId: before.sourceId, productionDate: before.productionDate, waterProducedM3: before.waterProducedM3, waterSuppliedM3: before.waterSuppliedM3, operatingHours: before.operatingHours, notes: before.notes ?? "", requestKey: before.requestKey })
           await assertSource(tx, { schemeId: before.schemeId, sourceId: before.sourceId! }, false)
           const periodId = await resolvePeriod(tx, { schemeId: before.schemeId, sourceId: before.sourceId!, productionDate: before.productionDate!, waterProducedM3: before.waterProducedM3, waterSuppliedM3: before.waterSuppliedM3, operatingHours: before.operatingHours, notes: before.notes ?? "", billingPeriodId: before.billingPeriodId })

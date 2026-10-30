@@ -9,6 +9,16 @@ afterEach(cleanup)
 beforeEach(()=>{vi.clearAllMocks()})
 function fill(){fireEvent.change(screen.getByLabelText("Production source"),{target:{value:"src"}});fireEvent.change(screen.getByLabelText("Production date"),{target:{value:"2024-02-01"}});fireEvent.change(screen.getByLabelText("Water produced (m³)"),{target:{value:"12.3"}});fireEvent.change(screen.getByLabelText("Water supplied (m³)"),{target:{value:"0"}});fireEvent.change(screen.getByLabelText("Operating hours"),{target:{value:"0"}})}
 describe("shared production panel",()=>{
+  it("hides verification from the legacy reviewer while retaining history and flag controls",async()=>{
+    const f=fixture();f.capabilities={create:false,verify:true,sources:false};f.userId="reviewer"
+    f.records=[{id:"log",sourceId:"src",productionDate:"2024-02-01",status:"entered",version:2,workflowVersion:1,recordedById:"operator",legacyReviewerIds:["reviewer"],waterProducedM3:"12",waterSuppliedM3:"0",operatingHours:"0",notes:null,billingPeriodId:null} as Workspace["records"][number]]
+    mocks.history.mockResolvedValue({ok:true,data:[{id:"audit",action:"production.log.legacy_review",userId:"reviewer",userName:"Review Officer",createdAt:"2024-02-02",details:{reason:"Confirm historical measurements"}}]})
+    render(<ProductionPanel data={f} reload={vi.fn()} nextPage={vi.fn()}/>);
+    expect(screen.queryByRole("button",{name:"Verify"})).toBeNull()
+    expect(screen.getByRole("button",{name:"Flag"})).toBeTruthy()
+    fireEvent.click(screen.getByText("View audit history"))
+    expect(await screen.findByText(/Review Officer/)).toBeTruthy()
+  })
   it("retains retry identity and explicit zero after a rejected/uncertain submission",async()=>{
     mocks.create.mockResolvedValue({ok:false,code:"CONFLICT",message:"Reload required"})
     render(<ProductionPanel data={fixture()} reload={vi.fn()} nextPage={vi.fn()}/>);fill()

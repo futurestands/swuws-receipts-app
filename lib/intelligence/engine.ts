@@ -5,6 +5,7 @@ import { waterScheme, billingPeriod, billingRecord, meterReading, schemeTarget, 
 import { eq, and, sql, sum, count, desc, inArray } from "drizzle-orm"
 import { UserPermissionsContext } from "@/lib/permissions"
 import { applyIntelligenceSchemeFilter } from "./scope"
+import { intelligenceMutationFilter } from "@/lib/production/scope"
 import { evaluateDataQuality } from "./data-quality"
 import { evaluateCapacityUtilization } from "./capacity"
 import { evaluateProductionTrends } from "./production"
@@ -86,7 +87,7 @@ export async function runIntelligenceEngine(
   const productionMonthKey = selectedPeriod ? `${selectedPeriod.year}-${String(selectedPeriod.month).padStart(2, "0")}` : kampalaCalendarDate(new Date()).slice(0, 7)
   const productionBounds = productionMonth(productionMonthKey)
   // 4. Gather DB Data Across Schemes in Parallel
-  const [prodLogRows, previousRows, meterReadingsRows, billingRows, targetRows] = await Promise.all([
+  const [prodLogRows, previousRows, meterReadingsRows, billingRows, targetRows, persistedFindings] = await Promise.all([
     loadProductionSummary(db, schemeIds, productionMonthKey),
     loadProductionSummary(db, schemeIds, productionBounds.previousMonth),
 
@@ -156,7 +157,7 @@ export async function runIntelligenceEngine(
     db
       .select()
       .from(intelligenceFinding)
-      .where(and(inArray(intelligenceFinding.schemeId, schemeIds), eq(intelligenceFinding.status, "OPEN"))),
+      .where(inArray(intelligenceFinding.schemeId, schemeIds)),
   ])
 
   // 5. Build Lookups
@@ -314,7 +315,19 @@ export async function runIntelligenceEngine(
   }
 
   // Combine generated findings with DB persisted findings
-  const allFindings = [...generatedFindings]
+  const [investigationSchemes, dismissalSchemes] = await Promise.all([
+    db.select({ id: waterScheme.id }).from(waterScheme).where(intelligenceMutationFilter(user, "intelligence.investigate")),
+    db.select({ id: waterScheme.id }).from(waterScheme).where(intelligenceMutationFilter(user, "intelligence.dismiss")),
+  ])
+  const mayInvestigate = new Set(investigationSchemes.map(s => s.id))
+  const mayDismiss = new Set(dismissalSchemes.map(s => s.id))
+  const persistedById = new Map(persistedFindings.map(f => [f.id, f]))
+  const allFindings = generatedFindings.map(f => {
+    const candidate = persistedById.get(f.id)
+    // Rule IDs are scheme-based; never carry an old month's disposition into a new one.
+    const saved = candidate?.reportingPeriod === f.reportingPeriod ? candidate : undefined
+    return { ...f, ...(saved ? { status: saved.status as StructuredFinding["status"], assignedToUserId: saved.assignedToUserId, resolutionNotes: saved.resolutionNotes, resolvedAt: saved.resolvedAt } : {}), capabilities: { investigate: mayInvestigate.has(f.schemeId ?? ""), dismiss: mayDismiss.has(f.schemeId ?? "") } }
+  })
 
   // Filter Findings by UI Filters
   let filteredFindings = allFindings

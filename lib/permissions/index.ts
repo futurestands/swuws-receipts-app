@@ -42,16 +42,16 @@ export function hasPerm(user: UserPermissionsContext, code: string): boolean {
 
 /** Production writes never inherit intelligence/reporting view authority. */
 export function canViewProduction(user: UserPermissionsContext) {
-  return user.role === ROLES.SYSTEM_ADMIN || hasPerm(user, "production.view")
+  return hasPerm(user, "production.view")
 }
 export function canCreateProduction(user: UserPermissionsContext) {
-  return canViewProduction(user) && (user.role === ROLES.SYSTEM_ADMIN || hasPerm(user, "production.create"))
+  return canViewProduction(user) && hasPerm(user, "production.create")
 }
 export function canVerifyProduction(user: UserPermissionsContext) {
-  return canViewProduction(user) && (user.role === ROLES.SYSTEM_ADMIN || hasPerm(user, "production.verify"))
+  return canViewProduction(user) && hasPerm(user, "production.verify")
 }
 export function canManageProductionSources(user: UserPermissionsContext) {
-  return canViewProduction(user) && (user.role === ROLES.SYSTEM_ADMIN || hasPerm(user, "production.sources.manage"))
+  return canViewProduction(user) && hasPerm(user, "production.sources.manage")
 }
 
 // Helper to cast string role to Role type safely
@@ -499,13 +499,7 @@ export function canViewIntelligence(user: UserPermissionsContext) {
  * Intelligence: Who can investigate and assign intelligence findings.
  */
 export function canInvestigateIntelligence(user: UserPermissionsContext) {
-  return (
-    user.role === ROLES.SYSTEM_ADMIN ||
-    user.role === ROLES.HEAD_COMMERCIAL ||
-    user.role === ROLES.CLUSTER_MANAGER ||
-    (user.roleLevel ?? 0) >= 10 ||
-    hasPerm(user, "intelligence.investigate")
-  ) ?? false
+  return hasPerm(user, "intelligence.investigate")
 }
 
 /**
@@ -523,13 +517,7 @@ export function canManageIntelligenceRules(user: UserPermissionsContext) {
  * Intelligence: Who can dismiss or resolve intelligence findings.
  */
 export function canDismissIntelligence(user: UserPermissionsContext) {
-  return (
-    user.role === ROLES.SYSTEM_ADMIN ||
-    user.role === ROLES.HEAD_COMMERCIAL ||
-    user.role === ROLES.CLUSTER_MANAGER ||
-    (user.roleLevel ?? 0) >= 10 ||
-    hasPerm(user, "intelligence.dismiss")
-  ) ?? false
+  return hasPerm(user, "intelligence.dismiss")
 }
 
 /**

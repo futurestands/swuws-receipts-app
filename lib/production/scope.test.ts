@@ -1,11 +1,22 @@
 import { describe, expect, it } from "vitest"
 import { PgDialect } from "drizzle-orm/pg-core"
 import { productionGrantScope, productionSchemeFilter, intelligenceHierarchyFilter } from "./scope"
-import { canCreateProduction, canManageProductionSources, canVerifyProduction } from "@/lib/permissions"
+import { canCreateProduction, canManageProductionSources, canVerifyProduction, canInvestigateIntelligence, canDismissIntelligence } from "@/lib/permissions"
 
 const user = { id:"u", role:"agent", organizationId:"org-a", schemeId:"scheme-a", permissions:[{code:"production.view",scope:"scheme"},{code:"production.create",scope:"scheme"}] }
 const query=(filter: ReturnType<typeof productionSchemeFilter>)=>new PgDialect().sqlToQuery(filter)
 describe("production authorisation",()=>{
+  it("requires explicit operational grants for administrators",()=>{
+    const admin={...user,role:"admin",roleLevel:100,permissions:[],grants:[]}
+    expect(canCreateProduction(admin)).toBe(false)
+    expect(canVerifyProduction(admin)).toBe(false)
+    expect(canManageProductionSources(admin)).toBe(false)
+    expect(canInvestigateIntelligence(admin)).toBe(false)
+    expect(canDismissIntelligence(admin)).toBe(false)
+    expect(query(productionSchemeFilter(admin,"production.create")).sql).toBe("false")
+    expect(productionGrantScope(admin,"production.verify")).toBeNull()
+    expect(canCreateProduction({...admin,permissions:user.permissions})).toBe(true)
+  })
   it("read/report/investigation authority never grants mutation authority",()=>{
     const reader={...user,role:"head_commercial",roleLevel:100,permissions:[{code:"intelligence.view",scope:"global"},{code:"reports.view",scope:"global"}]}
     expect(canCreateProduction(reader)).toBe(false);expect(canVerifyProduction(reader)).toBe(false);expect(canManageProductionSources(reader)).toBe(false)

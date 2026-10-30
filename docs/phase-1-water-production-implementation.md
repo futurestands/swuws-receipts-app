@@ -1,5 +1,11 @@
 # Phase 1 water production implementation report
 
+Historical report for the initial implementation. The current remediation candidate
+supersedes its administrator exception and fixes the independently reviewed approval,
+finding-scope, history and reporting defects. See the
+[remediation report](phase-1-water-production-remediation.md) and
+[staging checklist](phase-1-remediation-staging-checklist.md).
+
 Date: 2026-10-27. Local implementation under the user's approved Phase 1 scope.
 No business/production database was accessed during development. No commit, push,
 merge or deployment was performed. No additional WATOPS evidence was needed;
