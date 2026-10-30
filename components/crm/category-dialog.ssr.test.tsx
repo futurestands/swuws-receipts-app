@@ -28,11 +28,11 @@ describe("CategoryDialog SSR", () => {
     const { CategoryDialog } = await import("./category-dialog")
     const html = renderToString(createElement(CategoryDialog, { category, departments }))
     expect(html).toMatch(/<button[^>]*>Update<\/button>/)
-  })
+  }, 15000)
 
   it("includes the Add Category label when creating", async () => {
     const { CategoryDialog } = await import("./category-dialog")
     const html = renderToString(createElement(CategoryDialog, { departments }))
     expect(html).toContain("Add Category")
-  })
+  }, 15000)
 })

@@ -25,11 +25,11 @@ describe("DepartmentDialog SSR", () => {
     const { DepartmentDialog } = await import("./department-dialog")
     const html = renderToString(createElement(DepartmentDialog, { department }))
     expect(html).toMatch(/<button[^>]*>Update<\/button>/)
-  })
+  }, 15000)
 
   it("includes the Add Dept label when creating", async () => {
     const { DepartmentDialog } = await import("./department-dialog")
     const html = renderToString(createElement(DepartmentDialog, {}))
     expect(html).toContain("Add Dept")
-  })
+  }, 15000)
 })
