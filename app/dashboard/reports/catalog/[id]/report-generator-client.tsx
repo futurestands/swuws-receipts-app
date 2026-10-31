@@ -149,7 +149,7 @@ export function ReportGeneratorClient({ reportId, title }: { reportId: string, t
 
   return (
     <div className="space-y-6">
-      <Card>
+      <Card className="print:hidden">
         <CardHeader>
            <CardTitle>Report Parameters</CardTitle>
            <CardDescription>

@@ -24,7 +24,7 @@ export default async function ReportConfigPage({ params }: { params: Promise<{ i
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-4 print:hidden">
         <Link href="/dashboard/reports/catalog" className="hover:bg-muted p-2 rounded-full transition-colors">
           <ArrowLeft className="h-5 w-5" />
         </Link>
