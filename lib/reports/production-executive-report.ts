@@ -28,6 +28,13 @@ export interface MonthlyProductionReportItem {
   capacityUtilizationPercent: number | null
   billedConsumptionM3: number | null
   physicalNrwPercent: number | null
+  energy?: {
+    totalKwh: number
+    totalFuelLitres: number
+    totalEnergyCostUgx: number
+    kwhPerM3: number | null
+    fuelPerM3: number | null
+  }
 }
 
 export interface MonthlyProductionReportOutput {
@@ -170,6 +177,7 @@ export async function generateMonthlyWaterProductionReport(
       capacityUtilizationPercent: capUtilPct,
       billedConsumptionM3: billedM3,
       physicalNrwPercent: nrwPct,
+      energy: sum?.energy,
     }
   })
 
