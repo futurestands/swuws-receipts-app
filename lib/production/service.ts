@@ -2,12 +2,12 @@ import "server-only"
 import { createHash, randomUUID } from "node:crypto"
 import { and, asc, desc, eq, inArray, lt, or, sql, type SQL } from "drizzle-orm"
 import { db as applicationDb, type DatabaseTransaction } from "@/lib/db"
-import { auditLog, billingPeriod, waterProductionLog as logs, waterProductionInterval, waterScheme, waterSchemeSource as sources } from "@/lib/db/schema"
+import { auditLog, billingPeriod, waterProductionLog as logs, waterProductionInterval, waterProductionElectricity, waterProductionFuel, waterScheme, waterSchemeSource as sources } from "@/lib/db/schema"
 import { writeAudit } from "@/lib/audit"
 import { canViewIntelligence, canViewProduction } from "@/lib/permissions"
 import type { SessionUser } from "@/lib/session"
 import { intelligenceHierarchyFilter, productionGrantScope, productionSchemeFilter } from "./scope"
-import { archiveSourceSchema, batchMeasurementSchema, createLogSchema, editLogSchema, intervalMeasurementSchema, legacyReviewSchema, monthSchema, opaqueId, ProductionError, sourceSchema, transitionSchema, type Measurement, type IntervalMeasurement } from "./schemas"
+import { archiveSourceSchema, batchMeasurementSchema, createLogSchema, editLogSchema, intervalMeasurementSchema, electricityMeasurementSchema, fuelMeasurementSchema, legacyReviewSchema, monthSchema, opaqueId, ProductionError, sourceSchema, transitionSchema, type Measurement, type IntervalMeasurement, type ElectricityMeasurement, type FuelMeasurement } from "./schemas"
 import { loadProductionSummary } from "./reporting"
 
 type Client = typeof applicationDb | DatabaseTransaction
@@ -313,10 +313,6 @@ export function productionService(database = applicationDb, audit = writeAudit) 
       })
     },
 
-        await audit({ user, action: "production.interval.create", entityType: "water_production_interval", entityId: row.id, details: { after: row } }, tx)
-        return row
-      })
-    },
     async edit(user: SessionUser, input: unknown) {
       const data = editLogSchema.parse(input)
       return database.transaction(async tx => {

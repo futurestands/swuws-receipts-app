@@ -57,6 +57,8 @@ export async function getReportData(id: string, filters: ReportFilters) {
       return getDailyCollectionSummary(filters)
     case "recon-report":
       return getReconciliationReport(filters)
+    case "monthly-water-production":
+      return getMonthlyWaterProduction(filters)
     case "exception-register":
       return getExceptionRegister(filters)
     case "approval-register":
@@ -212,6 +214,47 @@ async function getImportHistory(filters: ReportFilters) {
     .from(dailyCollectionImport)
     .where(and(...conditions))
     .orderBy(desc(dailyCollectionImport.businessDate))
+}
+
+import { generateMonthlyWaterProductionReport } from "@/lib/reports/production-executive-report"
+
+async function getMonthlyWaterProduction(filters: ReportFilters) {
+  if (!filters.startDate) {
+    throw new Error("A reporting month (startDate) is required to generate the production report")
+  }
+
+  const month = filters.startDate.slice(0, 7) // "YYYY-MM"
+
+  const report = await generateMonthlyWaterProductionReport({
+    month,
+    clusterId: filters.clusterId,
+    branchId: filters.branchId,
+    schemeId: filters.schemeId
+  })
+
+  // Flatten the report items into tabular rows for Excel/Preview
+  return report.items.map(item => ({
+    "Cluster": item.clusterName,
+    "Branch": item.branchName,
+    "Scheme": item.schemeName,
+    "Quality Status": item.dataQualityStatus,
+    "Required Source-Days": item.requiredSourceDays,
+    "Verified Source-Days": item.verifiedSourceDays,
+    "Missing Source-Days": item.missingSourceDays,
+    "Completeness %": `${item.completenessPercent}%`,
+    "Verified Prod m3": item.verifiedProducedM3,
+    "Provisional Prod m3": item.provisionalProducedM3,
+    "Avg Daily Prod m3": item.averageDailyProducedM3 !== null ? Number(item.averageDailyProducedM3.toFixed(2)) : "N/A",
+    "Monthly Capacity m3": item.monthlyCapacityM3 !== null ? item.monthlyCapacityM3 : "N/A",
+    "Capacity Util %": item.capacityUtilizationPercent !== null ? `${item.capacityUtilizationPercent}%` : "N/A",
+    "Billed Consump m3": item.billedConsumptionM3 !== null ? item.billedConsumptionM3 : "N/A",
+    "Physical NRW %": item.physicalNrwPercent !== null ? `${item.physicalNrwPercent}%` : "N/A",
+    "Elec Consumed kWh": item.energy?.totalKwh ?? 0,
+    "Fuel Consumed Litres": item.energy?.totalFuelLitres ?? 0,
+    "Energy Cost UGX": item.energy?.totalEnergyCostUgx ?? 0,
+    "Specific Power kWh/m3": item.energy?.kwhPerM3 ?? "N/A",
+    "Specific Fuel L/m3": item.energy?.fuelPerM3 ?? "N/A"
+  }))
 }
 
 async function getAuditActivity(filters: ReportFilters) {

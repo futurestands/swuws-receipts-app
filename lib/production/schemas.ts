@@ -117,8 +117,6 @@ export const fuelMeasurementSchema = z.object({
   }
 })
 
-export const archiveSourceSchema = z.object({ id: opaqueId, expectedVersion: z.number().int().positive() }).strict()
-export const legacyReviewSchema = editLogSchema.extend({ reason: reasonSchema, requestKey: z.string().uuid() })
 
 export type Measurement = z.infer<typeof measurementSchema>
 export type BatchMeasurement = z.infer<typeof batchMeasurementSchema>
