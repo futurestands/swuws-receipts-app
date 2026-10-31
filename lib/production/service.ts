@@ -1,35 +1,80 @@
 import "server-only"
 import { createHash, randomUUID } from "node:crypto"
-import { and, asc, desc, eq, inArray, lt, or, sql, type SQL } from "drizzle-orm"
+import { and, asc, desc, eq, inArray, lt, or, sql } from "drizzle-orm"
 import { db as applicationDb, type DatabaseTransaction } from "@/lib/db"
-import { auditLog, billingPeriod, waterProductionLog as logs, waterProductionInterval, waterProductionElectricity, waterProductionFuel, waterScheme, waterSchemeSource as sources } from "@/lib/db/schema"
+import {
+  auditLog,
+  billingPeriod,
+  energyAssetAssignment,
+  waterProductionElectricity,
+  waterProductionFuel,
+  waterProductionInterval,
+  waterProductionLog as logs,
+  waterScheme,
+  waterSchemeEnergyAsset as energyAssets,
+  waterSchemeSource as sources,
+} from "@/lib/db/schema"
 import { writeAudit } from "@/lib/audit"
 import { canViewIntelligence, canViewProduction } from "@/lib/permissions"
 import type { SessionUser } from "@/lib/session"
-import { intelligenceHierarchyFilter, productionGrantScope, productionSchemeFilter } from "./scope"
-import { archiveSourceSchema, batchMeasurementSchema, createLogSchema, editLogSchema, intervalMeasurementSchema, electricityMeasurementSchema, fuelMeasurementSchema, legacyReviewSchema, monthSchema, opaqueId, ProductionError, sourceSchema, transitionSchema, type Measurement, type IntervalMeasurement, type ElectricityMeasurement, type FuelMeasurement } from "./schemas"
+import { coverageDates } from "./allocation"
+import {
+  divideRoundHalfUp,
+  electricityKwhCents,
+  fromCents,
+  fuelConsumedCents,
+  intervalVolumeCents,
+  meterDeltaCents,
+  MeterReadingError,
+  toCents,
+} from "./decimal"
+import { ownLogFilter, ownMeasurementFilter, productionReadableSchemeFilter, productionSchemeFilter } from "./scope"
+import {
+  archiveSourceSchema,
+  batchMeasurementSchema,
+  createLogSchema,
+  editLogSchema,
+  electricityMeasurementSchema,
+  fuelMeasurementSchema,
+  intervalMeasurementSchema,
+  legacyReviewSchema,
+  monthSchema,
+  opaqueId,
+  ProductionError,
+  sourceSchema,
+  transitionSchema,
+  type ElectricityMeasurement,
+  type FuelMeasurement,
+  type IntervalMeasurement,
+  type Measurement,
+} from "./schemas"
 import { loadProductionSummary } from "./reporting"
 
 type Client = typeof applicationDb | DatabaseTransaction
+const ZERO = BigInt(0)
+const ONE = BigInt(1)
+const HUNDREDTH_HOUR_MS = BigInt(36_000)
 const fail = (code: ConstructorParameters<typeof ProductionError>[0], message: string): never => { throw new ProductionError(code, message) }
 function fingerprint(data: Measurement) {
   return createHash("sha256").update(JSON.stringify([data.schemeId, data.sourceId, data.productionDate, data.waterProducedM3, data.waterSuppliedM3, data.operatingHours, data.notes])).digest("hex")
 }
 function intervalFingerprint(data: IntervalMeasurement) {
   return createHash("sha256").update(JSON.stringify([
-    data.schemeId, data.sourceId, data.meterRef, data.openingReading, data.openingTimestamp, data.closingReading, data.closingTimestamp, data.meterUnit, data.multiplier, data.rolloverValue, data.isReset
+    data.schemeId, data.sourceId, data.meterRef, data.openingReading, data.openingTimestamp, data.closingReading, data.closingTimestamp, data.meterUnit, data.multiplier, data.rolloverValue, data.isReset, data.notes,
   ])).digest("hex")
 }
-function readFilter(user: SessionUser, target?: string): SQL {
-  return or(productionSchemeFilter(user, "production.view", target), intelligenceHierarchyFilter(user, target))!
+function electricityFingerprint(data: ElectricityMeasurement) {
+  return createHash("sha256").update(JSON.stringify([
+    data.schemeId, data.assetId, data.openingReadingKwh, data.openingTimestamp, data.closingReadingKwh, data.closingTimestamp, data.multiplier, data.rolloverValueKwh, data.isReset, data.pumpOperatingHours, data.electricityCostUgx, data.notes,
+  ])).digest("hex")
 }
-function ownReadFilter(user: SessionUser): SQL | undefined {
-  // Legacy intelligence viewing remains read-only, but only inside its own authorised scheme set.
-  if (productionGrantScope(user, "production.view") !== "own") return undefined
-  return or(eq(logs.recordedById, user.id), inArray(logs.schemeId, sql`(select ${waterScheme.id} from ${waterScheme} where ${intelligenceHierarchyFilter(user)})`))
+function fuelFingerprint(data: FuelMeasurement) {
+  return createHash("sha256").update(JSON.stringify([
+    data.schemeId, data.assetId, data.fuelType, data.openingStockLitres, data.fuelPurchasedLitres, data.fuelTransfersInLitres, data.fuelTransfersOutLitres, data.fuelAdjustmentsLitres, data.closingStockLitres, data.generatorOperatingHours, data.fuelExpenditureUgx, data.coverageStartDate, data.coverageEndDate, data.notes,
+  ])).digest("hex")
 }
 async function assertScheme(client: Client, user: SessionUser, schemeId: string, permission?: string, active = false) {
-  const filter = permission ? and(productionSchemeFilter(user, "production.view", schemeId), productionSchemeFilter(user, permission, schemeId)) : readFilter(user, schemeId)
+  const filter = permission ? and(productionSchemeFilter(user, "production.view", schemeId), productionSchemeFilter(user, permission, schemeId)) : productionReadableSchemeFilter(user, schemeId)
   const [scheme] = await client.select().from(waterScheme).where(and(filter, active ? eq(waterScheme.active, true) : undefined)).limit(1).for("share")
   if (!scheme) fail("FORBIDDEN", "Scheme is unavailable or outside your access")
   return scheme
@@ -47,8 +92,24 @@ async function assertSource(client: Client, data: Pick<Measurement, "sourceId" |
   if (!source) fail("FORBIDDEN", "Source is unavailable or outside this scheme")
   return source
 }
+async function assertAsset(client: Client, schemeId: string, assetId: string, expectedType: "electricity_meter" | "generator") {
+  const [asset] = await client.select().from(energyAssets).where(and(eq(energyAssets.id, assetId), eq(energyAssets.schemeId, schemeId), eq(energyAssets.active, true))).limit(1).for("share")
+  if (!asset) fail("FORBIDDEN", "Energy asset is unavailable or outside this scheme")
+  if (asset.assetType !== expectedType) fail("VALIDATION", `This measurement requires an active ${expectedType} asset`)
+  return asset
+}
+async function countSupportedUnits(client: Client, schemeId: string, assetId: string): Promise<number> {
+  const [row] = await client.select({ count: sql<number>`count(*)::int` }).from(energyAssetAssignment).where(and(eq(energyAssetAssignment.assetId, assetId), eq(energyAssetAssignment.schemeId, schemeId)))
+  return Math.max(1, Number(row?.count ?? 0))
+}
 function checkVersion(row: { version: number }, expected: number) {
   if (row.version !== expected) fail("CONFLICT", "This record changed. Reload before continuing")
+}
+function runExact<T>(compute: () => T): T {
+  try { return compute() } catch (error) {
+    if (error instanceof MeterReadingError) fail("VALIDATION", error.message)
+    throw error
+  }
 }
 const measurementValues = (data: Measurement) => ({ waterProducedM3: data.waterProducedM3, waterSuppliedM3: data.waterSuppliedM3, operatingHours: data.operatingHours, notes: data.notes || null })
 
@@ -71,12 +132,12 @@ export function productionService(database = applicationDb, audit = writeAudit) 
       if (schemeId) opaqueId.parse(schemeId)
       if (cursor) opaqueId.parse(cursor)
       const selectedMonth = monthSchema.parse(month ?? new Intl.DateTimeFormat("en-CA", { timeZone: "Africa/Kampala", year: "numeric", month: "2-digit" }).format(new Date()).slice(0, 7))
-      const schemes = await database.select({ id: waterScheme.id, name: waterScheme.name }).from(waterScheme).where(readFilter(user)).orderBy(asc(waterScheme.name))
+      const schemes = await database.select({ id: waterScheme.id, name: waterScheme.name }).from(waterScheme).where(productionReadableSchemeFilter(user)).orderBy(asc(waterScheme.name))
       const selectedId = schemeId ?? schemes[0]?.id
       if (!selectedId) return { schemes, scheme: null, sources: [], records: [], nextCursor: null, summary: null, month: selectedMonth, userId: user.id, capabilities: { create: false, verify: false, sources: false } }
       const scheme = await assertScheme(database, user, selectedId)
       const sourceRows = await database.select().from(sources).where(eq(sources.schemeId, selectedId)).orderBy(asc(sources.sourceName))
-      const records = await database.select().from(logs).where(and(eq(logs.schemeId, selectedId), ownReadFilter(user),
+      const records = await database.select().from(logs).where(and(eq(logs.schemeId, selectedId), ownLogFilter(user),
         // Legacy dates are not inferred. They remain visible for explicit review.
         or(sql`to_char(${logs.productionDate}, 'YYYY-MM') = ${selectedMonth}`, eq(logs.workflowVersion, 0)), cursor ? lt(logs.id, cursor) : undefined,
       )).orderBy(desc(logs.id)).limit(31)
@@ -89,12 +150,12 @@ export function productionService(database = applicationDb, audit = writeAudit) 
         return !!row
       }
       const [create, verify, manage] = await Promise.all([permitted("production.create"), permitted("production.verify"), permitted("production.sources.manage")])
-      const summary = await loadProductionSummary(database, [selectedId], selectedMonth, ownReadFilter(user))
+      const summary = await loadProductionSummary(database, [selectedId], selectedMonth, ownLogFilter(user), ownMeasurementFilter(user))
       return { schemes, scheme, sources: sourceRows, records: visibleRecords, nextCursor: records.length > 30 ? records[29].id : null, summary: summary[0] ?? null, month: selectedMonth, userId: user.id, capabilities: { create, verify, sources: manage } }
     },
     async history(user: SessionUser, id: unknown) {
       const parsedId = opaqueId.parse(id)
-      const [row] = await database.select().from(logs).where(and(eq(logs.id, parsedId), ownReadFilter(user), inArray(logs.schemeId, sql`(select ${waterScheme.id} from ${waterScheme} where ${readFilter(user)})`))).limit(1)
+      const [row] = await database.select().from(logs).where(and(eq(logs.id, parsedId), ownLogFilter(user), inArray(logs.schemeId, sql`(select ${waterScheme.id} from ${waterScheme} where ${productionReadableSchemeFilter(user)})`))).limit(1)
       if (!row) fail("FORBIDDEN", "Record is unavailable or outside your access")
       return database.select({ id: auditLog.id, action: auditLog.action, createdAt: auditLog.createdAt, userId: auditLog.userId, userName: auditLog.userName, details: auditLog.details }).from(auditLog).where(and(eq(auditLog.entityType, "water_production_log"), eq(auditLog.entityId, row.id))).orderBy(desc(auditLog.createdAt), desc(auditLog.id)).limit(100)
     },
@@ -130,6 +191,7 @@ export function productionService(database = applicationDb, audit = writeAudit) 
           await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`${user.id}:${entryKey}`}, 0))`)
           const [existing] = await tx.select().from(logs).where(and(eq(logs.recordedById, user.id), eq(logs.requestKey, entryKey))).limit(1)
           if (existing) {
+            if (existing.requestFingerprint !== fingerprint(entry)) fail("CONFLICT", "Retry key already belongs to a different batch entry")
             results.push(existing)
             continue
           }
@@ -158,40 +220,51 @@ export function productionService(database = applicationDb, audit = writeAudit) 
     },
     async createInterval(user: SessionUser, input: unknown) {
       const data = intervalMeasurementSchema.parse(input)
+      const fp = intervalFingerprint(data)
       return database.transaction(async tx => {
         await assertScheme(tx, user, data.schemeId, "production.create", true)
-        const openTime = new Date(data.openingTimestamp).getTime()
-        const closeTime = new Date(data.closingTimestamp).getTime()
-        const elapsedHours = (closeTime - openTime) / 3600000
-
-        let rawDelta = Number(data.closingReading) - Number(data.openingReading)
-        if (rawDelta < 0 && data.rolloverValue) {
-          rawDelta = (Number(data.rolloverValue) - Number(data.openingReading)) + Number(data.closingReading)
+        await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`${user.id}:${data.requestKey}`}, 0))`)
+        const [existing] = await tx.select().from(waterProductionInterval).where(and(eq(waterProductionInterval.recordedById, user.id), eq(waterProductionInterval.requestKey, data.requestKey))).limit(1)
+        if (existing) {
+          await assertScheme(tx, user, existing.schemeId, "production.create")
+          if (existing.requestFingerprint !== fp) fail("CONFLICT", "Retry key already belongs to a different submission")
+          return existing
         }
-        if (rawDelta < 0) {
-          fail("VALIDATION", "Closing reading cannot be less than opening reading without a rollover value")
-        }
+        await assertSource(tx, { schemeId: data.schemeId, sourceId: data.sourceId }, true)
 
-        let unitFactor = 1.0
-        if (data.meterUnit === "litres") unitFactor = 0.001
-        if (data.meterUnit === "gallons") unitFactor = 0.00378541
+        const opening = new Date(data.openingTimestamp)
+        const closing = new Date(data.closingTimestamp)
+        const elapsedMs = closing.getTime() - opening.getTime()
+        const coverageHoursCents = runExact(() => divideRoundHalfUp(BigInt(elapsedMs), HUNDREDTH_HOUR_MS))
+        if (coverageHoursCents <= ZERO) fail("VALIDATION", "Interval duration must be at least 0.01 hours")
 
-        const calculatedVolumeM3 = (rawDelta * Number(data.multiplier) * unitFactor).toFixed(2)
-        const coverageStartDate = data.openingTimestamp.slice(0, 10)
-        const coverageEndDate = data.closingTimestamp.slice(0, 10)
+        const calculatedVolumeM3 = runExact(() => {
+          const delta = meterDeltaCents(data.openingReading, data.closingReading, data.rolloverValue, data.isReset)
+          return fromCents(intervalVolumeCents(delta, data.multiplier, data.meterUnit))
+        })
+        const { start: coverageStartDate, end: coverageEndDate } = coverageDates(opening, closing)
         const isCrossMonth = coverageStartDate.slice(0, 7) !== coverageEndDate.slice(0, 7)
 
-        // Check Overlap with Daily Observations
+        // Serialise per source (same lock key as trigger 0075) to reject overlapping meter intervals deterministically.
+        await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`water_production_interval:${data.sourceId}`}, 0))`)
+        const [intervalOverlap] = await tx.select({ id: waterProductionInterval.id }).from(waterProductionInterval).where(and(
+          eq(waterProductionInterval.sourceId, data.sourceId),
+          sql`${waterProductionInterval.status} <> 'void'`,
+          sql`${waterProductionInterval.openingTimestamp} < ${closing} and ${waterProductionInterval.closingTimestamp} > ${opening}`,
+        )).limit(1)
+        if (intervalOverlap) fail("CONFLICT", "This meter interval overlaps an existing non-void interval for this source")
+
+        // Check overlap with daily observations on the same source (flagged for independent reconciliation).
         const [dailyOverlap] = await tx.select({ id: logs.id }).from(logs).where(and(
           eq(logs.sourceId, data.sourceId),
           sql`${logs.status} <> 'void'`,
-          sql`${logs.productionDate} >= ${coverageStartDate} AND ${logs.productionDate} <= ${coverageEndDate}`
+          sql`${logs.productionDate} >= ${coverageStartDate}::date AND ${logs.productionDate} <= ${coverageEndDate}::date`,
         )).limit(1)
 
         const status = dailyOverlap ? "flagged" : "entered"
         const notes = dailyOverlap
           ? `OVERLAPPING_DAILY_DATA_CONFLICT: Daily logs exist for this source in range ${coverageStartDate} to ${coverageEndDate}. ${data.notes}`.trim()
-          : data.notes
+          : (data.notes || null)
 
         const [row] = await tx.insert(waterProductionInterval).values({
           id: `int-${randomUUID()}`,
@@ -199,22 +272,23 @@ export function productionService(database = applicationDb, audit = writeAudit) 
           sourceId: data.sourceId,
           meterRef: data.meterRef,
           openingReading: data.openingReading,
-          openingTimestamp: new Date(data.openingTimestamp),
+          openingTimestamp: opening,
           closingReading: data.closingReading,
-          closingTimestamp: new Date(data.closingTimestamp),
+          closingTimestamp: closing,
           meterUnit: data.meterUnit,
           multiplier: data.multiplier,
           rolloverValue: data.rolloverValue,
           isReset: data.isReset,
           calculatedVolumeM3,
-          coverageHours: elapsedHours.toFixed(2),
+          coverageHours: fromCents(coverageHoursCents),
           coverageStartDate,
           coverageEndDate,
           isCrossMonth,
           status,
+          version: 1,
           recordedById: user.id,
           requestKey: data.requestKey,
-          requestFingerprint: intervalFingerprint(data),
+          requestFingerprint: fp,
           notes,
         }).returning()
 
@@ -224,47 +298,69 @@ export function productionService(database = applicationDb, audit = writeAudit) 
     },
     async createElectricity(user: SessionUser, input: unknown) {
       const data = electricityMeasurementSchema.parse(input)
+      const fp = electricityFingerprint(data)
       return database.transaction(async tx => {
         await assertScheme(tx, user, data.schemeId, "production.create", true)
-        const openTime = new Date(data.openingTimestamp).getTime()
-        const closeTime = new Date(data.closingTimestamp).getTime()
-        const elapsedHours = (closeTime - openTime) / 3600000
-
-        let rawDelta = Number(data.closingReadingKwh) - Number(data.openingReadingKwh)
-        if (rawDelta < 0 && data.rolloverValueKwh) {
-          rawDelta = (Number(data.rolloverValueKwh) - Number(data.openingReadingKwh)) + Number(data.closingReadingKwh)
+        await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`${user.id}:${data.requestKey}`}, 0))`)
+        const [existing] = await tx.select().from(waterProductionElectricity).where(and(eq(waterProductionElectricity.recordedById, user.id), eq(waterProductionElectricity.requestKey, data.requestKey))).limit(1)
+        if (existing) {
+          await assertScheme(tx, user, existing.schemeId, "production.create")
+          if (existing.requestFingerprint !== fp) fail("CONFLICT", "Retry key already belongs to a different submission")
+          return existing
         }
-        if (rawDelta < 0) {
-          fail("VALIDATION", "Closing reading cannot be less than opening reading without a rollover value")
+        await assertAsset(tx, data.schemeId, data.assetId, "electricity_meter")
+        const supportedUnits = await countSupportedUnits(tx, data.schemeId, data.assetId)
+
+        const opening = new Date(data.openingTimestamp)
+        const closing = new Date(data.closingTimestamp)
+        const elapsedMs = closing.getTime() - opening.getTime()
+        if (data.pumpOperatingHours !== null) {
+          const maxHoursCents = runExact(() => divideRoundHalfUp(BigInt(elapsedMs) * BigInt(supportedUnits), HUNDREDTH_HOUR_MS))
+          const reportedCents = runExact(() => toCents(data.pumpOperatingHours!))
+          if (reportedCents > maxHoursCents + ONE) {
+            fail("VALIDATION", `Pump operating hours (${data.pumpOperatingHours}) exceed elapsed interval capacity (${fromCents(maxHoursCents)} h across ${supportedUnits} supported unit(s))`)
+          }
         }
 
-        const calculatedConsumedKwh = (rawDelta * Number(data.multiplier)).toFixed(2)
-        const coverageStartDate = data.openingTimestamp.slice(0, 10)
-        const coverageEndDate = data.closingTimestamp.slice(0, 10)
+        const calculatedConsumedKwh = runExact(() => {
+          const delta = meterDeltaCents(data.openingReadingKwh, data.closingReadingKwh, data.rolloverValueKwh, data.isReset)
+          return fromCents(electricityKwhCents(delta, data.multiplier))
+        })
+        const { start: coverageStartDate, end: coverageEndDate } = coverageDates(opening, closing)
         const isCrossMonth = coverageStartDate.slice(0, 7) !== coverageEndDate.slice(0, 7)
+
+        await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`water_production_electricity:${data.assetId}`}, 0))`)
+        const [overlap] = await tx.select({ id: waterProductionElectricity.id }).from(waterProductionElectricity).where(and(
+          eq(waterProductionElectricity.assetId, data.assetId),
+          sql`${waterProductionElectricity.status} <> 'void'`,
+          sql`${waterProductionElectricity.openingTimestamp} < ${closing} and ${waterProductionElectricity.closingTimestamp} > ${opening}`,
+        )).limit(1)
+        if (overlap) fail("CONFLICT", "This electricity meter interval overlaps an existing non-void interval for this meter")
 
         const [row] = await tx.insert(waterProductionElectricity).values({
           id: `elec-${randomUUID()}`,
           schemeId: data.schemeId,
           assetId: data.assetId,
           openingReadingKwh: data.openingReadingKwh,
-          openingTimestamp: new Date(data.openingTimestamp),
+          openingTimestamp: opening,
           closingReadingKwh: data.closingReadingKwh,
-          closingTimestamp: new Date(data.closingTimestamp),
+          closingTimestamp: closing,
           multiplier: data.multiplier,
           rolloverValueKwh: data.rolloverValueKwh,
           isReset: data.isReset,
           calculatedConsumedKwh,
-          pumpOperatingHours: data.pumpOperatingHours ?? elapsedHours.toFixed(2),
+          // Never fabricate pump operating hours from elapsed wall-clock duration when none were observed.
+          pumpOperatingHours: data.pumpOperatingHours,
           electricityCostUgx: data.electricityCostUgx,
           coverageStartDate,
           coverageEndDate,
           isCrossMonth,
           status: "entered",
+          version: 1,
           recordedById: user.id,
           requestKey: data.requestKey,
-          requestFingerprint: createHash("sha256").update(JSON.stringify(data)).digest("hex"),
-          notes: data.notes,
+          requestFingerprint: fp,
+          notes: data.notes || null,
         }).returning()
 
         await audit({ user, action: "production.electricity.create", entityType: "water_production_electricity", entityId: row.id, details: { after: row } }, tx)
@@ -273,27 +369,49 @@ export function productionService(database = applicationDb, audit = writeAudit) 
     },
     async createFuel(user: SessionUser, input: unknown) {
       const data = fuelMeasurementSchema.parse(input)
+      const fp = fuelFingerprint(data)
       return database.transaction(async tx => {
         await assertScheme(tx, user, data.schemeId, "production.create", true)
+        await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`${user.id}:${data.requestKey}`}, 0))`)
+        const [existing] = await tx.select().from(waterProductionFuel).where(and(eq(waterProductionFuel.recordedById, user.id), eq(waterProductionFuel.requestKey, data.requestKey))).limit(1)
+        if (existing) {
+          await assertScheme(tx, user, existing.schemeId, "production.create")
+          if (existing.requestFingerprint !== fp) fail("CONFLICT", "Retry key already belongs to a different submission")
+          return existing
+        }
+        const asset = await assertAsset(tx, data.schemeId, data.assetId, "generator")
+        if (asset.fuelType && asset.fuelType !== data.fuelType) {
+          fail("VALIDATION", `Fuel type (${data.fuelType}) does not match generator configured fuel type (${asset.fuelType})`)
+        }
 
-        let calculatedConsumedLitres: number | null = null
-        if (data.openingStockLitres !== null && data.closingStockLitres !== null) {
-          const purchased = Number(data.fuelPurchasedLitres ?? 0)
-          const transfersIn = Number(data.fuelTransfersInLitres ?? 0)
-          const transfersOut = Number(data.fuelTransfersOutLitres ?? 0)
-          const adjustments = Number(data.fuelAdjustmentsLitres ?? 0)
-          calculatedConsumedLitres = Number(data.openingStockLitres) + purchased + transfersIn - transfersOut + adjustments - Number(data.closingStockLitres)
+        const consumedCents = runExact(() => fuelConsumedCents({
+          openingStockLitres: data.openingStockLitres,
+          closingStockLitres: data.closingStockLitres,
+          fuelPurchasedLitres: data.fuelPurchasedLitres,
+          fuelTransfersInLitres: data.fuelTransfersInLitres,
+          fuelTransfersOutLitres: data.fuelTransfersOutLitres,
+          fuelAdjustmentsLitres: data.fuelAdjustmentsLitres,
+        }))
+        if (consumedCents !== null && consumedCents < ZERO) {
+          fail("VALIDATION", "Calculated fuel consumption cannot be negative. Check stock readings and transfers.")
+        }
+        const calculatedConsumedLitres = consumedCents !== null ? fromCents(consumedCents) : null
 
-          if (calculatedConsumedLitres < 0) {
-            fail("VALIDATION", "Calculated fuel consumption cannot be negative. Check stock readings and transfers.")
-          }
+        if (calculatedConsumedLitres !== null) {
+          await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`water_production_fuel:${data.assetId}`}, 0))`)
+          const [overlap] = await tx.select({ id: waterProductionFuel.id }).from(waterProductionFuel).where(and(
+            eq(waterProductionFuel.assetId, data.assetId),
+            sql`${waterProductionFuel.status} <> 'void'`,
+            sql`${waterProductionFuel.calculatedConsumedLitres} is not null`,
+            sql`${waterProductionFuel.coverageStartDate} <= ${data.coverageEndDate}::date and ${waterProductionFuel.coverageEndDate} >= ${data.coverageStartDate}::date`,
+          )).limit(1)
+          if (overlap) fail("CONFLICT", "This fuel stock-reconciliation period overlaps an existing non-void period for this generator")
         }
 
         const isCrossMonth = data.coverageStartDate.slice(0, 7) !== data.coverageEndDate.slice(0, 7)
-        let notes = data.notes
-        if (calculatedConsumedLitres === null) {
-          notes = `UNAVAILABLE: Fuel consumption cannot be established due to missing opening or closing stock readings. ${notes}`.trim()
-        }
+        const notes = calculatedConsumedLitres === null
+          ? `UNAVAILABLE: Fuel consumption cannot be established due to missing opening or closing stock readings. ${data.notes}`.trim()
+          : (data.notes || null)
 
         const [row] = await tx.insert(waterProductionFuel).values({
           id: `fuel-${randomUUID()}`,
@@ -301,21 +419,22 @@ export function productionService(database = applicationDb, audit = writeAudit) 
           assetId: data.assetId,
           fuelType: data.fuelType,
           openingStockLitres: data.openingStockLitres,
-          fuelPurchasedLitres: data.fuelPurchasedLitres ?? "0",
-          fuelTransfersInLitres: data.fuelTransfersInLitres ?? "0",
-          fuelTransfersOutLitres: data.fuelTransfersOutLitres ?? "0",
-          fuelAdjustmentsLitres: data.fuelAdjustmentsLitres ?? "0",
+          fuelPurchasedLitres: data.fuelPurchasedLitres ?? "0.00",
+          fuelTransfersInLitres: data.fuelTransfersInLitres ?? "0.00",
+          fuelTransfersOutLitres: data.fuelTransfersOutLitres ?? "0.00",
+          fuelAdjustmentsLitres: data.fuelAdjustmentsLitres ?? "0.00",
           closingStockLitres: data.closingStockLitres,
-          calculatedConsumedLitres: calculatedConsumedLitres !== null ? calculatedConsumedLitres.toFixed(2) : null,
+          calculatedConsumedLitres,
           generatorOperatingHours: data.generatorOperatingHours,
           fuelExpenditureUgx: data.fuelExpenditureUgx,
           coverageStartDate: data.coverageStartDate,
           coverageEndDate: data.coverageEndDate,
           isCrossMonth,
           status: "entered",
+          version: 1,
           recordedById: user.id,
           requestKey: data.requestKey,
-          requestFingerprint: createHash("sha256").update(JSON.stringify(data)).digest("hex"),
+          requestFingerprint: fp,
           notes,
         }).returning()
 

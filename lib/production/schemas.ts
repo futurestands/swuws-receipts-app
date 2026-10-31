@@ -1,5 +1,6 @@
 import { z } from "zod"
 import { kampalaCalendarDate } from "@/lib/billing/period-dates"
+import { MeterReadingError, meterDeltaCents } from "./decimal"
 
 export const opaqueId = z.string().trim().min(1).max(200)
 // Input is text deliberately: accepting JS numbers would lose lexical precision/exponent evidence.
@@ -9,6 +10,20 @@ export function decimal(max = "9999999999.99") {
     .transform(v => { const [a, b = ""] = v.split("."); return `${BigInt(a)}.${b.padEnd(2, "0")}` })
 }
 const optionalDecimal = (max?: string) => z.preprocess(v => v === "" || v === undefined ? null : v, decimal(max).nullable())
+const elapsedMilliseconds = (opening: string, closing: string) => new Date(closing).getTime() - new Date(opening).getTime()
+const FUTURE_SKEW_MS = 5 * 60_000
+/** Closing must follow opening, and a reading cannot be taken in the future (small clock-skew allowance). */
+function validateElapsedWindow(opening: string, closing: string, ctx: z.RefinementCtx) {
+  if (elapsedMilliseconds(opening, closing) <= 0) ctx.addIssue({ code: "custom", path: ["closingTimestamp"], message: "Closing timestamp must be after opening timestamp" })
+  else if (new Date(closing).getTime() > Date.now() + FUTURE_SKEW_MS) ctx.addIssue({ code: "custom", path: ["closingTimestamp"], message: "Closing timestamp cannot be in the future" })
+}
+/** Surfaces rollover/reset mistakes as field errors instead of silently producing a wrong volume. */
+function validateMeterDelta(opening: string, closing: string, rollover: string | null, isReset: boolean, closingPath: string, rolloverPath: string, ctx: z.RefinementCtx) {
+  try { meterDeltaCents(opening, closing, rollover, isReset) } catch (error) {
+    if (!(error instanceof MeterReadingError)) throw error
+    ctx.addIssue({ code: "custom", path: [rollover === null ? closingPath : rolloverPath], message: error.message })
+  }
+}
 export const productionDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/)
   .refine(v => Number(v.slice(0, 4)) >= 1900 && !Number.isNaN(Date.parse(`${v}T00:00:00Z`)) && new Date(`${v}T00:00:00Z`).toISOString().slice(0, 10) === v, "Enter a real calendar date")
   .refine(v => v <= kampalaCalendarDate(new Date()), "Production date cannot be in the future")
@@ -69,11 +84,8 @@ export const intervalMeasurementSchema = z.object({
   requestKey: z.string().uuid(),
   notes: z.string().trim().max(2000).default(""),
 }).strict().superRefine((v, ctx) => {
-  const openTime = new Date(v.openingTimestamp).getTime()
-  const closeTime = new Date(v.closingTimestamp).getTime()
-  if (closeTime <= openTime) {
-    ctx.addIssue({ code: "custom", path: ["closingTimestamp"], message: "Closing timestamp must be after opening timestamp" })
-  }
+  validateElapsedWindow(v.openingTimestamp, v.closingTimestamp, ctx)
+  validateMeterDelta(v.openingReading, v.closingReading, v.rolloverValue, v.isReset, "closingReading", "rolloverValue", ctx)
 })
 
 export const electricityMeasurementSchema = z.object({
@@ -86,16 +98,15 @@ export const electricityMeasurementSchema = z.object({
   multiplier: decimal().default("1.00"),
   rolloverValueKwh: optionalDecimal(),
   isReset: z.boolean().default(false),
-  pumpOperatingHours: optionalDecimal("24.00"),
+  // Aggregate pump-hours over the whole interval. The upper bound depends on the interval length and the number of
+  // pumps the meter supports, so it is enforced against the elapsed duration (here) and the asset (service/database).
+  pumpOperatingHours: optionalDecimal(),
   electricityCostUgx: optionalDecimal(),
   requestKey: z.string().uuid(),
   notes: z.string().trim().max(2000).default(""),
 }).strict().superRefine((v, ctx) => {
-  const openTime = new Date(v.openingTimestamp).getTime()
-  const closeTime = new Date(v.closingTimestamp).getTime()
-  if (closeTime <= openTime) {
-    ctx.addIssue({ code: "custom", path: ["closingTimestamp"], message: "Closing timestamp must be after opening timestamp" })
-  }
+  validateElapsedWindow(v.openingTimestamp, v.closingTimestamp, ctx)
+  validateMeterDelta(v.openingReadingKwh, v.closingReadingKwh, v.rolloverValueKwh, v.isReset, "closingReadingKwh", "rolloverValueKwh", ctx)
 })
 
 export const fuelMeasurementSchema = z.object({
@@ -108,7 +119,8 @@ export const fuelMeasurementSchema = z.object({
   fuelTransfersOutLitres: optionalDecimal(),
   fuelAdjustmentsLitres: optionalDecimal(),
   closingStockLitres: optionalDecimal(),
-  generatorOperatingHours: optionalDecimal("24.00"),
+  // A generator is a single unit: running hours are bounded by the covered calendar days x 24 (checked below), not a fixed 24 h.
+  generatorOperatingHours: optionalDecimal(),
   fuelExpenditureUgx: optionalDecimal(),
   requestKey: z.string().uuid(),
   notes: z.string().trim().max(2000).default(""),
@@ -117,7 +129,14 @@ export const fuelMeasurementSchema = z.object({
 }).strict().superRefine((v, ctx) => {
   if (v.coverageEndDate < v.coverageStartDate) {
     ctx.addIssue({ code: "custom", path: ["coverageEndDate"], message: "End date must be after or equal to start date" })
+    return
   }
+  if (v.generatorOperatingHours !== null) {
+    const days = Math.round((Date.parse(`${v.coverageEndDate}T00:00:00Z`) - Date.parse(`${v.coverageStartDate}T00:00:00Z`)) / 86_400_000) + 1
+    if (Number(v.generatorOperatingHours) > days * 24) ctx.addIssue({ code: "custom", path: ["generatorOperatingHours"], message: `Generator hours cannot exceed ${days * 24} h for ${days} covered day(s)` })
+  }
+  // Stock readings come as a pair; a lone reading cannot establish consumption.
+  if ((v.openingStockLitres === null) !== (v.closingStockLitres === null)) ctx.addIssue({ code: "custom", path: ["closingStockLitres"], message: "Provide both opening and closing stock readings, or neither (purchases alone never establish consumption)" })
 })
 
 

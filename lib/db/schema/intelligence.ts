@@ -108,6 +108,8 @@ export const waterProductionLog = pgTable(
 
 /**
  * Multi-Day Interval Measurements (Cumulative Meter Readings).
+ * Row immutability, state transitions, universal self-approval (0072), and concurrency-safe overlap
+ * guards are enforced by PostgreSQL triggers installed in db/migrations/0075_production_energy.sql.
  */
 export const waterProductionInterval = pgTable(
   "water_production_interval",
@@ -116,9 +118,7 @@ export const waterProductionInterval = pgTable(
     schemeId: text("schemeId")
       .notNull()
       .references(() => waterScheme.id, { onDelete: "restrict" }),
-    sourceId: text("sourceId")
-      .notNull()
-      .references(() => waterSchemeSource.id, { onDelete: "restrict" }),
+    sourceId: text("sourceId").notNull(),
     meterRef: text("meterRef").notNull(),
     openingReading: numeric("openingReading", { precision: 12, scale: 2 }).notNull(),
     openingTimestamp: timestamp("openingTimestamp").notNull(),
@@ -134,6 +134,7 @@ export const waterProductionInterval = pgTable(
     coverageEndDate: date("coverageEndDate").notNull(),
     isCrossMonth: boolean("isCrossMonth").notNull().default(false),
     status: text("status").notNull().default("entered"), // entered | verified | flagged | void
+    version: integer("version").notNull().default(1),
     recordedById: text("recordedById")
       .notNull()
       .references(() => user.id, { onDelete: "restrict" }),
@@ -146,13 +147,75 @@ export const waterProductionInterval = pgTable(
     updatedAt: timestamp("updatedAt").notNull().defaultNow(),
   },
   (table) => ({
+    requestUnq: uniqueIndex("water_prod_int_request_unq").on(table.recordedById, table.requestKey),
     schemeIntervalIdx: index("water_production_interval_scheme_idx").on(table.schemeId, table.sourceId),
     datesIdx: index("water_production_interval_dates_idx").on(table.coverageStartDate, table.coverageEndDate),
+    sourceSchemeFk: foreignKey({
+      name: "water_production_interval_source_scheme_fk",
+      columns: [table.sourceId, table.schemeId],
+      foreignColumns: [waterSchemeSource.id, waterSchemeSource.schemeId],
+    }).onDelete("restrict"),
+    datesCheck: check("water_prod_int_dates", sql`
+      ${table.closingTimestamp} > ${table.openingTimestamp}
+      AND ${table.coverageEndDate} >= ${table.coverageStartDate}
+      AND ${table.coverageStartDate} = ((${table.openingTimestamp} + interval '3 hours')::date)
+      AND ${table.coverageEndDate} = GREATEST(
+        ((${table.openingTimestamp} + interval '3 hours')::date),
+        (((${table.closingTimestamp} - interval '1 millisecond') + interval '3 hours')::date)
+      )
+      AND ${table.isCrossMonth} = (to_char(${table.coverageStartDate}, 'YYYY-MM') <> to_char(${table.coverageEndDate}, 'YYYY-MM'))
+    `),
+    volCheck: check("water_prod_int_vol", sql`
+      ${table.calculatedVolumeM3} >= 0 AND ${table.calculatedVolumeM3}::text NOT IN ('NaN', 'Infinity', '-Infinity')
+    `),
+    reconciliationCheck: check("water_prod_int_reconciliation", sql`
+      (
+        ((${table.isReset} OR ${table.closingReading} < ${table.openingReading}) AND ${table.rolloverValue} IS NOT NULL AND ${table.rolloverValue} >= ${table.openingReading})
+        OR (NOT ${table.isReset} AND ${table.closingReading} >= ${table.openingReading} AND ${table.rolloverValue} IS NULL)
+      )
+      AND ${table.calculatedVolumeM3} = round(
+        (
+          CASE
+            WHEN ${table.isReset} OR ${table.closingReading} < ${table.openingReading}
+              THEN (${table.rolloverValue} - ${table.openingReading}) + ${table.closingReading}
+            ELSE ${table.closingReading} - ${table.openingReading}
+          END
+        ) * ${table.multiplier} * (
+          CASE ${table.meterUnit}
+            WHEN 'm3' THEN 1::numeric
+            WHEN 'litres' THEN 0.001::numeric
+            WHEN 'gallons' THEN 0.00378541::numeric
+          END
+        ),
+        2
+      )
+      AND ${table.coverageHours} > 0
+      AND abs(${table.coverageHours} - (extract(epoch from (${table.closingTimestamp} - ${table.openingTimestamp})) / 3600.0)::numeric) <= 0.01
+    `),
+    statusCheck: check("water_prod_int_status", sql`
+      ${table.status} IN ('entered', 'flagged', 'verified', 'void')
+      AND (
+        (${table.status} = 'verified' AND ${table.verifiedById} IS NOT NULL AND ${table.verifiedAt} IS NOT NULL AND ${table.verifiedById} <> ${table.recordedById})
+        OR (${table.status} <> 'verified' AND ${table.verifiedById} IS NULL AND ${table.verifiedAt} IS NULL)
+      )
+    `),
+    valuesCheck: check("water_prod_int_values", sql`
+      ${table.version} > 0
+      AND btrim(${table.meterRef}) <> ''
+      AND ${table.meterUnit} IN ('m3', 'litres', 'gallons')
+      AND ${table.openingReading} >= 0 AND ${table.openingReading}::text NOT IN ('NaN', 'Infinity', '-Infinity')
+      AND ${table.closingReading} >= 0 AND ${table.closingReading}::text NOT IN ('NaN', 'Infinity', '-Infinity')
+      AND ${table.multiplier} > 0 AND ${table.multiplier}::text NOT IN ('NaN', 'Infinity', '-Infinity')
+      AND (${table.rolloverValue} IS NULL OR (${table.rolloverValue} >= 0 AND ${table.rolloverValue}::text NOT IN ('NaN', 'Infinity', '-Infinity')))
+      AND ${table.coverageHours}::text NOT IN ('NaN', 'Infinity', '-Infinity')
+      AND ${table.requestKey} ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+      AND ${table.requestFingerprint} ~ '^[0-9a-f]{64}$'
+    `),
   })
 )
 
 /**
- * Energy Assets (Electricity Meters & Generators) which can be shared across multiple sources.
+ * Energy Assets (Electricity Meters & Generators) which can be shared across multiple sources within the same scheme.
  */
 export const waterSchemeEnergyAsset = pgTable(
   "water_scheme_energy_asset",
@@ -165,34 +228,61 @@ export const waterSchemeEnergyAsset = pgTable(
     active: boolean("active").notNull().default(true),
     createdAt: timestamp("createdAt").notNull().defaultNow(),
     updatedAt: timestamp("updatedAt").notNull().defaultNow(),
-  }
+  },
+  (table) => ({
+    idSchemeUnq: uniqueIndex("energy_asset_id_scheme_unq").on(table.id, table.schemeId),
+    schemeTypeRefUnq: uniqueIndex("energy_asset_scheme_type_ref_unq").on(table.schemeId, table.assetType, table.assetRef),
+    schemeIdx: index("water_scheme_energy_asset_scheme_idx").on(table.schemeId),
+    valuesCheck: check("energy_asset_values", sql`
+      ${table.assetType} IN ('electricity_meter', 'generator')
+      AND btrim(${table.assetRef}) <> ''
+      AND (
+        (${table.assetType} = 'generator' AND (${table.fuelType} IS NULL OR ${table.fuelType} IN ('diesel', 'petrol')))
+        OR (${table.assetType} = 'electricity_meter' AND ${table.fuelType} IS NULL)
+      )
+    `),
+  })
 )
 
 /**
- * Assignment of Energy Assets to Water Sources.
+ * Assignment of Energy Assets to Water Sources (strictly co-located within the same scheme).
  */
 export const energyAssetAssignment = pgTable(
   "energy_asset_assignment",
   {
     id: text("id").primaryKey(),
-    assetId: text("assetId").notNull().references(() => waterSchemeEnergyAsset.id, { onDelete: "cascade" }),
-    sourceId: text("sourceId").notNull().references(() => waterSchemeSource.id, { onDelete: "cascade" }),
+    schemeId: text("schemeId").notNull().references(() => waterScheme.id, { onDelete: "restrict" }),
+    assetId: text("assetId").notNull(),
+    sourceId: text("sourceId").notNull(),
     assignedAt: timestamp("assignedAt").notNull().defaultNow(),
   },
   (table) => ({
     assignmentUnq: uniqueIndex("energy_asset_assignment_unq").on(table.assetId, table.sourceId),
+    schemeIdx: index("energy_asset_assignment_scheme_idx").on(table.schemeId),
+    assetSchemeFk: foreignKey({
+      name: "energy_asset_assignment_asset_scheme_fk",
+      columns: [table.assetId, table.schemeId],
+      foreignColumns: [waterSchemeEnergyAsset.id, waterSchemeEnergyAsset.schemeId],
+    }).onDelete("cascade"),
+    sourceSchemeFk: foreignKey({
+      name: "energy_asset_assignment_source_scheme_fk",
+      columns: [table.sourceId, table.schemeId],
+      foreignColumns: [waterSchemeSource.id, waterSchemeSource.schemeId],
+    }).onDelete("cascade"),
   })
 )
 
 /**
  * Grid Electricity Consumption Logs.
+ * Asset-type check, pump-hour cap (elapsed duration x supported units), row immutability, self-approval,
+ * and concurrency-safe overlap guards are enforced by triggers in db/migrations/0075_production_energy.sql.
  */
 export const waterProductionElectricity = pgTable(
   "water_production_electricity",
   {
     id: text("id").primaryKey(),
     schemeId: text("schemeId").notNull().references(() => waterScheme.id, { onDelete: "restrict" }),
-    assetId: text("assetId").notNull().references(() => waterSchemeEnergyAsset.id, { onDelete: "restrict" }),
+    assetId: text("assetId").notNull(),
     openingReadingKwh: numeric("openingReadingKwh", { precision: 12, scale: 2 }).notNull(),
     openingTimestamp: timestamp("openingTimestamp").notNull(),
     closingReadingKwh: numeric("closingReadingKwh", { precision: 12, scale: 2 }).notNull(),
@@ -207,6 +297,7 @@ export const waterProductionElectricity = pgTable(
     coverageEndDate: date("coverageEndDate").notNull(),
     isCrossMonth: boolean("isCrossMonth").notNull().default(false),
     status: text("status").notNull().default("entered"), // entered | verified | flagged | void
+    version: integer("version").notNull().default(1),
     recordedById: text("recordedById").notNull().references(() => user.id, { onDelete: "restrict" }),
     verifiedById: text("verifiedById").references(() => user.id, { onDelete: "restrict" }),
     verifiedAt: timestamp("verifiedAt"),
@@ -214,21 +305,77 @@ export const waterProductionElectricity = pgTable(
     requestFingerprint: text("requestFingerprint").notNull(),
     notes: text("notes"),
     createdAt: timestamp("createdAt").notNull().defaultNow(),
+    updatedAt: timestamp("updatedAt").notNull().defaultNow(),
   },
   (table) => ({
+    requestUnq: uniqueIndex("water_prod_elec_request_unq").on(table.recordedById, table.requestKey),
     assetDatesIdx: index("water_prod_elec_dates_idx").on(table.assetId, table.coverageStartDate, table.coverageEndDate),
+    assetSchemeFk: foreignKey({
+      name: "water_production_electricity_asset_scheme_fk",
+      columns: [table.assetId, table.schemeId],
+      foreignColumns: [waterSchemeEnergyAsset.id, waterSchemeEnergyAsset.schemeId],
+    }).onDelete("restrict"),
+    consCheck: check("water_prod_elec_cons", sql`
+      ${table.calculatedConsumedKwh} >= 0 AND ${table.calculatedConsumedKwh}::text NOT IN ('NaN', 'Infinity', '-Infinity')
+    `),
+    datesCheck: check("water_prod_elec_dates", sql`
+      ${table.closingTimestamp} > ${table.openingTimestamp}
+      AND ${table.coverageEndDate} >= ${table.coverageStartDate}
+      AND ${table.coverageStartDate} = ((${table.openingTimestamp} + interval '3 hours')::date)
+      AND ${table.coverageEndDate} = GREATEST(
+        ((${table.openingTimestamp} + interval '3 hours')::date),
+        (((${table.closingTimestamp} - interval '1 millisecond') + interval '3 hours')::date)
+      )
+      AND ${table.isCrossMonth} = (to_char(${table.coverageStartDate}, 'YYYY-MM') <> to_char(${table.coverageEndDate}, 'YYYY-MM'))
+    `),
+    reconciliationCheck: check("water_prod_elec_reconciliation", sql`
+      (
+        ((${table.isReset} OR ${table.closingReadingKwh} < ${table.openingReadingKwh}) AND ${table.rolloverValueKwh} IS NOT NULL AND ${table.rolloverValueKwh} >= ${table.openingReadingKwh})
+        OR (NOT ${table.isReset} AND ${table.closingReadingKwh} >= ${table.openingReadingKwh} AND ${table.rolloverValueKwh} IS NULL)
+      )
+      AND ${table.calculatedConsumedKwh} = round(
+        (
+          CASE
+            WHEN ${table.isReset} OR ${table.closingReadingKwh} < ${table.openingReadingKwh}
+              THEN (${table.rolloverValueKwh} - ${table.openingReadingKwh}) + ${table.closingReadingKwh}
+            ELSE ${table.closingReadingKwh} - ${table.openingReadingKwh}
+          END
+        ) * ${table.multiplier},
+        2
+      )
+    `),
+    statusCheck: check("water_prod_elec_status", sql`
+      ${table.status} IN ('entered', 'flagged', 'verified', 'void')
+      AND (
+        (${table.status} = 'verified' AND ${table.verifiedById} IS NOT NULL AND ${table.verifiedAt} IS NOT NULL AND ${table.verifiedById} <> ${table.recordedById})
+        OR (${table.status} <> 'verified' AND ${table.verifiedById} IS NULL AND ${table.verifiedAt} IS NULL)
+      )
+    `),
+    valuesCheck: check("water_prod_elec_values", sql`
+      ${table.version} > 0
+      AND ${table.openingReadingKwh} >= 0 AND ${table.openingReadingKwh}::text NOT IN ('NaN', 'Infinity', '-Infinity')
+      AND ${table.closingReadingKwh} >= 0 AND ${table.closingReadingKwh}::text NOT IN ('NaN', 'Infinity', '-Infinity')
+      AND ${table.multiplier} > 0 AND ${table.multiplier}::text NOT IN ('NaN', 'Infinity', '-Infinity')
+      AND (${table.rolloverValueKwh} IS NULL OR (${table.rolloverValueKwh} >= 0 AND ${table.rolloverValueKwh}::text NOT IN ('NaN', 'Infinity', '-Infinity')))
+      AND (${table.pumpOperatingHours} IS NULL OR (${table.pumpOperatingHours} >= 0 AND ${table.pumpOperatingHours}::text NOT IN ('NaN', 'Infinity', '-Infinity')))
+      AND (${table.electricityCostUgx} IS NULL OR (${table.electricityCostUgx} >= 0 AND ${table.electricityCostUgx}::text NOT IN ('NaN', 'Infinity', '-Infinity')))
+      AND ${table.requestKey} ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+      AND ${table.requestFingerprint} ~ '^[0-9a-f]{64}$'
+    `),
   })
 )
 
 /**
  * Generator Fuel Consumption Logs.
+ * Asset-type/fuel-type check, row immutability, self-approval, and concurrency-safe stock-period overlap
+ * guards are enforced by triggers in db/migrations/0075_production_energy.sql.
  */
 export const waterProductionFuel = pgTable(
   "water_production_fuel",
   {
     id: text("id").primaryKey(),
     schemeId: text("schemeId").notNull().references(() => waterScheme.id, { onDelete: "restrict" }),
-    assetId: text("assetId").notNull().references(() => waterSchemeEnergyAsset.id, { onDelete: "restrict" }),
+    assetId: text("assetId").notNull(),
     fuelType: text("fuelType").notNull().default("diesel"),
     openingStockLitres: numeric("openingStockLitres", { precision: 10, scale: 2 }),
     fuelPurchasedLitres: numeric("fuelPurchasedLitres", { precision: 10, scale: 2 }).notNull().default("0"),
@@ -236,13 +383,14 @@ export const waterProductionFuel = pgTable(
     fuelTransfersOutLitres: numeric("fuelTransfersOutLitres", { precision: 10, scale: 2 }).notNull().default("0"),
     fuelAdjustmentsLitres: numeric("fuelAdjustmentsLitres", { precision: 10, scale: 2 }).notNull().default("0"),
     closingStockLitres: numeric("closingStockLitres", { precision: 10, scale: 2 }),
-    calculatedConsumedLitres: numeric("calculatedConsumedLitres", { precision: 10, scale: 2 }), // Can be null if unavailable
+    calculatedConsumedLitres: numeric("calculatedConsumedLitres", { precision: 10, scale: 2 }), // Null unless both stock readings are measured
     generatorOperatingHours: numeric("generatorOperatingHours", { precision: 8, scale: 2 }),
     fuelExpenditureUgx: numeric("fuelExpenditureUgx", { precision: 12, scale: 2 }),
     coverageStartDate: date("coverageStartDate").notNull(),
     coverageEndDate: date("coverageEndDate").notNull(),
     isCrossMonth: boolean("isCrossMonth").notNull().default(false),
     status: text("status").notNull().default("entered"), // entered | verified | flagged | void
+    version: integer("version").notNull().default(1),
     recordedById: text("recordedById").notNull().references(() => user.id, { onDelete: "restrict" }),
     verifiedById: text("verifiedById").references(() => user.id, { onDelete: "restrict" }),
     verifiedAt: timestamp("verifiedAt"),
@@ -250,9 +398,72 @@ export const waterProductionFuel = pgTable(
     requestFingerprint: text("requestFingerprint").notNull(),
     notes: text("notes"),
     createdAt: timestamp("createdAt").notNull().defaultNow(),
+    updatedAt: timestamp("updatedAt").notNull().defaultNow(),
   },
   (table) => ({
+    requestUnq: uniqueIndex("water_prod_fuel_request_unq").on(table.recordedById, table.requestKey),
     assetDatesIdx: index("water_prod_fuel_dates_idx").on(table.assetId, table.coverageStartDate, table.coverageEndDate),
+    assetSchemeFk: foreignKey({
+      name: "water_production_fuel_asset_scheme_fk",
+      columns: [table.assetId, table.schemeId],
+      foreignColumns: [waterSchemeEnergyAsset.id, waterSchemeEnergyAsset.schemeId],
+    }).onDelete("restrict"),
+    consCheck: check("water_prod_fuel_cons", sql`
+      ${table.calculatedConsumedLitres} IS NULL
+      OR (${table.calculatedConsumedLitres} >= 0 AND ${table.calculatedConsumedLitres}::text NOT IN ('NaN', 'Infinity', '-Infinity'))
+    `),
+    datesCheck: check("water_prod_fuel_dates", sql`
+      ${table.coverageEndDate} >= ${table.coverageStartDate}
+      AND ${table.isCrossMonth} = (to_char(${table.coverageStartDate}, 'YYYY-MM') <> to_char(${table.coverageEndDate}, 'YYYY-MM'))
+    `),
+    reconciliationCheck: check("water_prod_fuel_reconciliation", sql`
+      ((${table.openingStockLitres} IS NULL) = (${table.closingStockLitres} IS NULL))
+      AND (
+        (${table.openingStockLitres} IS NULL AND ${table.closingStockLitres} IS NULL AND ${table.calculatedConsumedLitres} IS NULL)
+        OR (
+          ${table.openingStockLitres} IS NOT NULL
+          AND ${table.closingStockLitres} IS NOT NULL
+          AND ${table.calculatedConsumedLitres} IS NOT NULL
+          AND ${table.calculatedConsumedLitres} = round(
+            ${table.openingStockLitres}
+            + ${table.fuelPurchasedLitres}
+            + ${table.fuelTransfersInLitres}
+            - ${table.fuelTransfersOutLitres}
+            + ${table.fuelAdjustmentsLitres}
+            - ${table.closingStockLitres},
+            2
+          )
+        )
+      )
+    `),
+    statusCheck: check("water_prod_fuel_status", sql`
+      ${table.status} IN ('entered', 'flagged', 'verified', 'void')
+      AND (
+        (${table.status} = 'verified' AND ${table.verifiedById} IS NOT NULL AND ${table.verifiedAt} IS NOT NULL AND ${table.verifiedById} <> ${table.recordedById})
+        OR (${table.status} <> 'verified' AND ${table.verifiedById} IS NULL AND ${table.verifiedAt} IS NULL)
+      )
+    `),
+    valuesCheck: check("water_prod_fuel_values", sql`
+      ${table.version} > 0
+      AND ${table.fuelType} IN ('diesel', 'petrol')
+      AND (${table.openingStockLitres} IS NULL OR (${table.openingStockLitres} >= 0 AND ${table.openingStockLitres}::text NOT IN ('NaN', 'Infinity', '-Infinity')))
+      AND ${table.fuelPurchasedLitres} >= 0 AND ${table.fuelPurchasedLitres}::text NOT IN ('NaN', 'Infinity', '-Infinity')
+      AND ${table.fuelTransfersInLitres} >= 0 AND ${table.fuelTransfersInLitres}::text NOT IN ('NaN', 'Infinity', '-Infinity')
+      AND ${table.fuelTransfersOutLitres} >= 0 AND ${table.fuelTransfersOutLitres}::text NOT IN ('NaN', 'Infinity', '-Infinity')
+      AND ${table.fuelAdjustmentsLitres} >= 0 AND ${table.fuelAdjustmentsLitres}::text NOT IN ('NaN', 'Infinity', '-Infinity')
+      AND (${table.closingStockLitres} IS NULL OR (${table.closingStockLitres} >= 0 AND ${table.closingStockLitres}::text NOT IN ('NaN', 'Infinity', '-Infinity')))
+      AND (
+        ${table.generatorOperatingHours} IS NULL
+        OR (
+          ${table.generatorOperatingHours} >= 0
+          AND ${table.generatorOperatingHours}::text NOT IN ('NaN', 'Infinity', '-Infinity')
+          AND ${table.generatorOperatingHours} <= ((${table.coverageEndDate} - ${table.coverageStartDate} + 1)::numeric * 24)
+        )
+      )
+      AND (${table.fuelExpenditureUgx} IS NULL OR (${table.fuelExpenditureUgx} >= 0 AND ${table.fuelExpenditureUgx}::text NOT IN ('NaN', 'Infinity', '-Infinity')))
+      AND ${table.requestKey} ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+      AND ${table.requestFingerprint} ~ '^[0-9a-f]{64}$'
+    `),
   })
 )
 

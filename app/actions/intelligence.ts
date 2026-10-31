@@ -154,41 +154,11 @@ export async function getSchemeIntelligence(schemeId: string) {
 }
 
 export async function logProductionBatchAction(input: unknown) {
-  const current = await requireUser()
-  try {
-    const service = productionService(db)
-    const result = await service.createBatch(current, input)
-    revalidatePath("/intelligence", "layout")
-    return { ok: true as const, data: result }
-  } catch (error) {
-    if (error instanceof ProductionError) {
-      return { ok: false as const, code: error.code, message: error.message }
-    }
-    if (error instanceof ZodError) {
-      return { ok: false as const, code: "VALIDATION" as const, message: "Validation Error", fieldErrors: error.flatten().fieldErrors }
-    }
-    console.error("Failed to log production batch:", error)
-    return { ok: false as const, code: "CONFIGURATION" as const, message: "Server error processing production batch" }
-  }
+  return productionAction((service, user) => service.createBatch(user, input), true)
 }
 
 export async function logProductionIntervalAction(input: unknown) {
-  const current = await requireUser()
-  try {
-    const service = productionService(db)
-    const result = await service.createInterval(current, input)
-    revalidatePath("/intelligence", "layout")
-    return { ok: true as const, data: result }
-  } catch (error) {
-    if (error instanceof ProductionError) {
-      return { ok: false as const, code: error.code, message: error.message }
-    }
-    if (error instanceof ZodError) {
-      return { ok: false as const, code: "VALIDATION" as const, message: "Validation Error", fieldErrors: error.flatten().fieldErrors }
-    }
-    console.error("Failed to log production interval:", error)
-    return { ok: false as const, code: "CONFIGURATION" as const, message: "Server error processing production interval" }
-  }
+  return productionAction((service, user) => service.createInterval(user, input), true)
 }
 
 
@@ -205,6 +175,7 @@ async function productionAction<T>(work: (service: ReturnType<typeof productionS
     const cause = error && typeof error === "object" && "cause" in error ? error.cause : error
     const code = cause && typeof cause === "object" && "code" in cause ? cause.code : null
     if (code === "23505") return { ok: false, code: "DUPLICATE", message: "An entry already exists for this source/day or retry key. Reload before continuing." }
+    if (code === "23P01") return { ok: false, code: "CONFLICT", message: "The measurement interval overlaps an existing non-void record. Reload before continuing." }
     if (code === "23514" || code === "22003" || code === "23503") return { ok: false, code: "VALIDATION", message: "The record violates production integrity rules. Check its values and references." }
     if (code === "40P01" || code === "40001") return { ok: false, code: "CONFLICT", message: "Another update is in progress. Reload and retry." }
     await recordSystemError({ message: "Production operation failed", source: "server", path: "/intelligence", user: current })
