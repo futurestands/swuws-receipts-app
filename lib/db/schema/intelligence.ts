@@ -152,6 +152,108 @@ export const waterProductionInterval = pgTable(
 )
 
 /**
+ * Energy Assets (Electricity Meters & Generators) which can be shared across multiple sources.
+ */
+export const waterSchemeEnergyAsset = pgTable(
+  "water_scheme_energy_asset",
+  {
+    id: text("id").primaryKey(),
+    schemeId: text("schemeId").notNull().references(() => waterScheme.id, { onDelete: "restrict" }),
+    assetType: text("assetType").notNull(), // 'electricity_meter' | 'generator'
+    assetRef: text("assetRef").notNull(), // Serial number or nameplate
+    fuelType: text("fuelType"), // 'diesel' | 'petrol' (for generators)
+    active: boolean("active").notNull().default(true),
+    createdAt: timestamp("createdAt").notNull().defaultNow(),
+    updatedAt: timestamp("updatedAt").notNull().defaultNow(),
+  }
+)
+
+/**
+ * Assignment of Energy Assets to Water Sources.
+ */
+export const energyAssetAssignment = pgTable(
+  "energy_asset_assignment",
+  {
+    id: text("id").primaryKey(),
+    assetId: text("assetId").notNull().references(() => waterSchemeEnergyAsset.id, { onDelete: "cascade" }),
+    sourceId: text("sourceId").notNull().references(() => waterSchemeSource.id, { onDelete: "cascade" }),
+    assignedAt: timestamp("assignedAt").notNull().defaultNow(),
+  },
+  (table) => ({
+    assignmentUnq: uniqueIndex("energy_asset_assignment_unq").on(table.assetId, table.sourceId),
+  })
+)
+
+/**
+ * Grid Electricity Consumption Logs.
+ */
+export const waterProductionElectricity = pgTable(
+  "water_production_electricity",
+  {
+    id: text("id").primaryKey(),
+    schemeId: text("schemeId").notNull().references(() => waterScheme.id, { onDelete: "restrict" }),
+    assetId: text("assetId").notNull().references(() => waterSchemeEnergyAsset.id, { onDelete: "restrict" }),
+    openingReadingKwh: numeric("openingReadingKwh", { precision: 12, scale: 2 }).notNull(),
+    openingTimestamp: timestamp("openingTimestamp").notNull(),
+    closingReadingKwh: numeric("closingReadingKwh", { precision: 12, scale: 2 }).notNull(),
+    closingTimestamp: timestamp("closingTimestamp").notNull(),
+    multiplier: numeric("multiplier", { precision: 6, scale: 2 }).notNull().default("1.00"),
+    rolloverValueKwh: numeric("rolloverValueKwh", { precision: 12, scale: 2 }),
+    isReset: boolean("isReset").notNull().default(false),
+    calculatedConsumedKwh: numeric("calculatedConsumedKwh", { precision: 12, scale: 2 }).notNull(),
+    pumpOperatingHours: numeric("pumpOperatingHours", { precision: 8, scale: 2 }),
+    electricityCostUgx: numeric("electricityCostUgx", { precision: 12, scale: 2 }),
+    coverageStartDate: date("coverageStartDate").notNull(),
+    coverageEndDate: date("coverageEndDate").notNull(),
+    isCrossMonth: boolean("isCrossMonth").notNull().default(false),
+    status: text("status").notNull().default("entered"), // entered | verified | flagged | void
+    recordedById: text("recordedById").notNull().references(() => user.id, { onDelete: "restrict" }),
+    verifiedById: text("verifiedById").references(() => user.id, { onDelete: "restrict" }),
+    verifiedAt: timestamp("verifiedAt"),
+    requestKey: text("requestKey").notNull(),
+    requestFingerprint: text("requestFingerprint").notNull(),
+    notes: text("notes"),
+    createdAt: timestamp("createdAt").notNull().defaultNow(),
+  },
+  (table) => ({
+    assetDatesIdx: index("water_prod_elec_dates_idx").on(table.assetId, table.coverageStartDate, table.coverageEndDate),
+  })
+)
+
+/**
+ * Generator Fuel Consumption Logs.
+ */
+export const waterProductionFuel = pgTable(
+  "water_production_fuel",
+  {
+    id: text("id").primaryKey(),
+    schemeId: text("schemeId").notNull().references(() => waterScheme.id, { onDelete: "restrict" }),
+    assetId: text("assetId").notNull().references(() => waterSchemeEnergyAsset.id, { onDelete: "restrict" }),
+    fuelType: text("fuelType").notNull().default("diesel"),
+    openingStockLitres: numeric("openingStockLitres", { precision: 10, scale: 2 }),
+    fuelPurchasedLitres: numeric("fuelPurchasedLitres", { precision: 10, scale: 2 }).notNull().default("0"),
+    closingStockLitres: numeric("closingStockLitres", { precision: 10, scale: 2 }),
+    calculatedConsumedLitres: numeric("calculatedConsumedLitres", { precision: 10, scale: 2 }).notNull(),
+    generatorOperatingHours: numeric("generatorOperatingHours", { precision: 8, scale: 2 }),
+    fuelExpenditureUgx: numeric("fuelExpenditureUgx", { precision: 12, scale: 2 }),
+    coverageStartDate: date("coverageStartDate").notNull(),
+    coverageEndDate: date("coverageEndDate").notNull(),
+    isCrossMonth: boolean("isCrossMonth").notNull().default(false),
+    status: text("status").notNull().default("entered"), // entered | verified | flagged | void
+    recordedById: text("recordedById").notNull().references(() => user.id, { onDelete: "restrict" }),
+    verifiedById: text("verifiedById").references(() => user.id, { onDelete: "restrict" }),
+    verifiedAt: timestamp("verifiedAt"),
+    requestKey: text("requestKey").notNull(),
+    requestFingerprint: text("requestFingerprint").notNull(),
+    notes: text("notes"),
+    createdAt: timestamp("createdAt").notNull().defaultNow(),
+  },
+  (table) => ({
+    assetDatesIdx: index("water_prod_fuel_dates_idx").on(table.assetId, table.coverageStartDate, table.coverageEndDate),
+  })
+)
+
+/**
  * Operational Scheme Targets.
  */
 export const schemeTarget = pgTable(

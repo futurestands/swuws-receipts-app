@@ -222,6 +222,101 @@ export function productionService(database = applicationDb, audit = writeAudit) 
         return row
       })
     },
+    async createElectricity(user: SessionUser, input: unknown) {
+      const data = electricityMeasurementSchema.parse(input)
+      return database.transaction(async tx => {
+        await assertScheme(tx, user, data.schemeId, "production.create", true)
+        const openTime = new Date(data.openingTimestamp).getTime()
+        const closeTime = new Date(data.closingTimestamp).getTime()
+        const elapsedHours = (closeTime - openTime) / 3600000
+
+        let rawDelta = Number(data.closingReadingKwh) - Number(data.openingReadingKwh)
+        if (rawDelta < 0 && data.rolloverValueKwh) {
+          rawDelta = (Number(data.rolloverValueKwh) - Number(data.openingReadingKwh)) + Number(data.closingReadingKwh)
+        }
+        if (rawDelta < 0) {
+          fail("VALIDATION", "Closing reading cannot be less than opening reading without a rollover value")
+        }
+
+        const calculatedConsumedKwh = (rawDelta * Number(data.multiplier)).toFixed(2)
+        const coverageStartDate = data.openingTimestamp.slice(0, 10)
+        const coverageEndDate = data.closingTimestamp.slice(0, 10)
+        const isCrossMonth = coverageStartDate.slice(0, 7) !== coverageEndDate.slice(0, 7)
+
+        const [row] = await tx.insert(waterProductionElectricity).values({
+          id: `elec-${randomUUID()}`,
+          schemeId: data.schemeId,
+          assetId: data.assetId,
+          openingReadingKwh: data.openingReadingKwh,
+          openingTimestamp: new Date(data.openingTimestamp),
+          closingReadingKwh: data.closingReadingKwh,
+          closingTimestamp: new Date(data.closingTimestamp),
+          multiplier: data.multiplier,
+          rolloverValueKwh: data.rolloverValueKwh,
+          isReset: data.isReset,
+          calculatedConsumedKwh,
+          pumpOperatingHours: data.pumpOperatingHours ?? elapsedHours.toFixed(2),
+          electricityCostUgx: data.electricityCostUgx,
+          coverageStartDate,
+          coverageEndDate,
+          isCrossMonth,
+          status: "entered",
+          recordedById: user.id,
+          requestKey: data.requestKey,
+          requestFingerprint: createHash("sha256").update(JSON.stringify(data)).digest("hex"),
+          notes: data.notes,
+        }).returning()
+
+        await audit({ user, action: "production.electricity.create", entityType: "water_production_electricity", entityId: row.id, details: { after: row } }, tx)
+        return row
+      })
+    },
+    async createFuel(user: SessionUser, input: unknown) {
+      const data = fuelMeasurementSchema.parse(input)
+      return database.transaction(async tx => {
+        await assertScheme(tx, user, data.schemeId, "production.create", true)
+
+        let calculatedConsumedLitres = Number(data.fuelPurchasedLitres)
+        if (data.openingStockLitres !== null && data.closingStockLitres !== null) {
+          calculatedConsumedLitres = Number(data.openingStockLitres) + Number(data.fuelPurchasedLitres) - Number(data.closingStockLitres)
+        }
+
+        const isCrossMonth = data.coverageStartDate.slice(0, 7) !== data.coverageEndDate.slice(0, 7)
+        let notes = data.notes
+        if (data.openingStockLitres === null || data.closingStockLitres === null) {
+          notes = `ESTIMATED_BASIS: Fuel consumption estimated directly from purchases due to missing stock readings. ${notes}`.trim()
+        }
+
+        const [row] = await tx.insert(waterProductionFuel).values({
+          id: `fuel-${randomUUID()}`,
+          schemeId: data.schemeId,
+          assetId: data.assetId,
+          fuelType: data.fuelType,
+          openingStockLitres: data.openingStockLitres,
+          fuelPurchasedLitres: data.fuelPurchasedLitres,
+          closingStockLitres: data.closingStockLitres,
+          calculatedConsumedLitres: calculatedConsumedLitres.toFixed(2),
+          generatorOperatingHours: data.generatorOperatingHours,
+          fuelExpenditureUgx: data.fuelExpenditureUgx,
+          coverageStartDate: data.coverageStartDate,
+          coverageEndDate: data.coverageEndDate,
+          isCrossMonth,
+          status: "entered",
+          recordedById: user.id,
+          requestKey: data.requestKey,
+          requestFingerprint: createHash("sha256").update(JSON.stringify(data)).digest("hex"),
+          notes,
+        }).returning()
+
+        await audit({ user, action: "production.fuel.create", entityType: "water_production_fuel", entityId: row.id, details: { after: row } }, tx)
+        return row
+      })
+    },
+
+        await audit({ user, action: "production.interval.create", entityType: "water_production_interval", entityId: row.id, details: { after: row } }, tx)
+        return row
+      })
+    },
     async edit(user: SessionUser, input: unknown) {
       const data = editLogSchema.parse(input)
       return database.transaction(async tx => {

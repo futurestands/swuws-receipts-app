@@ -1,6 +1,6 @@
 import { and, eq, inArray, or, sql, type SQL } from "drizzle-orm"
 import { db } from "@/lib/db"
-import { waterProductionLog as logs, waterSchemeSource as sources } from "@/lib/db/schema"
+import { waterProductionLog as logs, waterSchemeSource as sources, waterProductionElectricity, waterProductionFuel } from "@/lib/db/schema"
 import { kampalaCalendarDate } from "@/lib/billing/period-dates"
 import { monthSchema } from "./schemas"
 
@@ -34,7 +34,12 @@ export async function loadProductionSummary(client: typeof db, schemeIds: string
   const official = sql`${dated} and ${logs.workflowVersion} = 1 and ${logs.status} = 'verified'`
   const provisional = sql`${dated} and ${logs.workflowVersion} = 1 and ${logs.status} in ('entered','flagged')`
 
-  const [rows, capacityRows, sourceDayRows] = await Promise.all([
+  const elecDated = sql`(${waterProductionElectricity.coverageStartDate} >= ${bounds.start}::date AND ${waterProductionElectricity.coverageStartDate} < ${bounds.end}::date) OR (${waterProductionElectricity.coverageEndDate} >= ${bounds.start}::date AND ${waterProductionElectricity.coverageEndDate} < ${bounds.end}::date)`
+  const elecOfficial = sql`${elecDated} and ${waterProductionElectricity.status} = 'verified'`
+  const fuelDated = sql`(${waterProductionFuel.coverageStartDate} >= ${bounds.start}::date AND ${waterProductionFuel.coverageStartDate} < ${bounds.end}::date) OR (${waterProductionFuel.coverageEndDate} >= ${bounds.start}::date AND ${waterProductionFuel.coverageEndDate} < ${bounds.end}::date)`
+  const fuelOfficial = sql`${fuelDated} and ${waterProductionFuel.status} = 'verified'`
+
+  const [rows, capacityRows, sourceDayRows, elecRows, fuelRows] = await Promise.all([
     client.select({
       schemeId: logs.schemeId,
       totalWaterProducedM3: sql<string>`coalesce(sum(${logs.waterProducedM3}) filter (where ${official}), 0)::text`,
@@ -59,12 +64,28 @@ export async function loadProductionSummary(client: typeof db, schemeIds: string
       schemeId: logs.schemeId,
       verifiedSourceDays: sql<number>`count(distinct concat(${logs.sourceId}, ':', ${logs.productionDate})) filter (where ${official})::int`,
     }).from(logs).where(and(inArray(logs.schemeId, schemeIds), dated, extraFilter)).groupBy(logs.schemeId),
+
+    // Electricity Summary
+    client.select({
+      schemeId: waterProductionElectricity.schemeId,
+      totalKwh: sql<string>`coalesce(sum(${waterProductionElectricity.calculatedConsumedKwh}) filter (where ${elecOfficial}), 0)::text`,
+      totalCostUgx: sql<string>`coalesce(sum(${waterProductionElectricity.electricityCostUgx}) filter (where ${elecOfficial}), 0)::text`,
+    }).from(waterProductionElectricity).where(and(inArray(waterProductionElectricity.schemeId, schemeIds), elecDated)).groupBy(waterProductionElectricity.schemeId),
+
+    // Fuel Summary
+    client.select({
+      schemeId: waterProductionFuel.schemeId,
+      totalLitres: sql<string>`coalesce(sum(${waterProductionFuel.calculatedConsumedLitres}) filter (where ${fuelOfficial}), 0)::text`,
+      totalCostUgx: sql<string>`coalesce(sum(${waterProductionFuel.fuelExpenditureUgx}) filter (where ${fuelOfficial}), 0)::text`,
+    }).from(waterProductionFuel).where(and(inArray(waterProductionFuel.schemeId, schemeIds), fuelDated)).groupBy(waterProductionFuel.schemeId),
   ])
 
   return schemeIds.map(schemeId => {
     const row = rows.find(r => r.schemeId === schemeId)
     const cap = capacityRows.find(r => r.schemeId === schemeId)
     const srcDayRow = sourceDayRows.find(r => r.schemeId === schemeId)
+    const elecRow = elecRows.find(r => r.schemeId === schemeId)
+    const fuelRow = fuelRows.find(r => r.schemeId === schemeId)
 
     const logsCount = Number(row?.logsCount ?? 0)
     const sourceCount = Number(cap?.sourceCount ?? 0)
@@ -82,6 +103,19 @@ export async function loadProductionSummary(client: typeof db, schemeIds: string
     const totalProducedM3Num = Number(row?.totalWaterProducedM3 ?? "0")
     const averageDailyProducedM3 = loggedDaysCount > 0 ? totalProducedM3Num / loggedDaysCount : null
     const estimatedMonthlyProjectionM3 = loggedDaysCount > 0 ? (totalProducedM3Num / loggedDaysCount) * bounds.calendarDays : null
+
+    // Energy calculations
+    const totalKwh = Number(elecRow?.totalKwh ?? 0)
+    const totalFuelLitres = Number(fuelRow?.totalLitres ?? 0)
+    const totalEnergyCostUgx = Number(elecRow?.totalCostUgx ?? 0) + Number(fuelRow?.totalCostUgx ?? 0)
+
+    // ONLY compute intensities if water production exists and data is complete
+    let kwhPerM3: number | null = null
+    let fuelPerM3: number | null = null
+    if (isComplete && totalProducedM3Num > 0) {
+      if (totalKwh > 0) kwhPerM3 = Number((totalKwh / totalProducedM3Num).toFixed(3))
+      if (totalFuelLitres > 0) fuelPerM3 = Number((totalFuelLitres / totalProducedM3Num).toFixed(3))
+    }
 
     return {
       schemeId,
@@ -107,6 +141,13 @@ export async function loadProductionSummary(client: typeof db, schemeIds: string
       estimatedMonthlyProjectionM3,
       currentCapacityM3Month: cap && Number(cap.unconfirmed) === 0 ? Number(cap.capacity) * bounds.calendarDays : null,
       benchmarkLabel: "Confirmed current configuration; not historical installed capacity",
+      energy: {
+        totalKwh,
+        totalFuelLitres,
+        totalEnergyCostUgx,
+        kwhPerM3,
+        fuelPerM3
+      }
     }
   })
 }

@@ -76,9 +76,55 @@ export const intervalMeasurementSchema = z.object({
   }
 })
 
+export const electricityMeasurementSchema = z.object({
+  schemeId: opaqueId,
+  assetId: opaqueId,
+  openingReadingKwh: decimal(),
+  openingTimestamp: z.string().datetime(),
+  closingReadingKwh: decimal(),
+  closingTimestamp: z.string().datetime(),
+  multiplier: decimal().default("1.00"),
+  rolloverValueKwh: optionalDecimal(),
+  isReset: z.boolean().default(false),
+  pumpOperatingHours: optionalDecimal("24.00"),
+  electricityCostUgx: optionalDecimal(),
+  requestKey: z.string().uuid(),
+  notes: z.string().trim().max(2000).default(""),
+}).strict().superRefine((v, ctx) => {
+  const openTime = new Date(v.openingTimestamp).getTime()
+  const closeTime = new Date(v.closingTimestamp).getTime()
+  if (closeTime <= openTime) {
+    ctx.addIssue({ code: "custom", path: ["closingTimestamp"], message: "Closing timestamp must be after opening timestamp" })
+  }
+})
+
+export const fuelMeasurementSchema = z.object({
+  schemeId: opaqueId,
+  assetId: opaqueId,
+  fuelType: z.enum(["diesel", "petrol"]).default("diesel"),
+  openingStockLitres: optionalDecimal(),
+  fuelPurchasedLitres: decimal(),
+  closingStockLitres: optionalDecimal(),
+  generatorOperatingHours: optionalDecimal("24.00"),
+  fuelExpenditureUgx: optionalDecimal(),
+  requestKey: z.string().uuid(),
+  notes: z.string().trim().max(2000).default(""),
+  coverageStartDate: productionDateSchema,
+  coverageEndDate: productionDateSchema,
+}).strict().superRefine((v, ctx) => {
+  if (v.coverageEndDate < v.coverageStartDate) {
+    ctx.addIssue({ code: "custom", path: ["coverageEndDate"], message: "End date must be after or equal to start date" })
+  }
+})
+
+export const archiveSourceSchema = z.object({ id: opaqueId, expectedVersion: z.number().int().positive() }).strict()
+export const legacyReviewSchema = editLogSchema.extend({ reason: reasonSchema, requestKey: z.string().uuid() })
+
 export type Measurement = z.infer<typeof measurementSchema>
 export type BatchMeasurement = z.infer<typeof batchMeasurementSchema>
 export type IntervalMeasurement = z.infer<typeof intervalMeasurementSchema>
+export type ElectricityMeasurement = z.infer<typeof electricityMeasurementSchema>
+export type FuelMeasurement = z.infer<typeof fuelMeasurementSchema>
 export type ProductionCode = "VALIDATION" | "FORBIDDEN" | "NOT_FOUND" | "CONFLICT" | "DUPLICATE" | "CONFIGURATION"
 export class ProductionError extends Error {
   constructor(public code: ProductionCode, message: string) { super(message) }
