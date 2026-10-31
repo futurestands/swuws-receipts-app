@@ -153,6 +153,44 @@ export async function getSchemeIntelligence(schemeId: string) {
   }
 }
 
+export async function logProductionBatchAction(input: unknown) {
+  const current = await requireUser()
+  try {
+    const service = productionService(db)
+    const result = await service.createBatch(current, input)
+    revalidatePath("/intelligence", "layout")
+    return { ok: true as const, data: result }
+  } catch (error) {
+    if (error instanceof ProductionError) {
+      return { ok: false as const, code: error.code, message: error.message }
+    }
+    if (error instanceof ZodError) {
+      return { ok: false as const, code: "VALIDATION" as const, message: "Validation Error", fieldErrors: error.flatten().fieldErrors }
+    }
+    console.error("Failed to log production batch:", error)
+    return { ok: false as const, code: "CONFIGURATION" as const, message: "Server error processing production batch" }
+  }
+}
+
+export async function logProductionIntervalAction(input: unknown) {
+  const current = await requireUser()
+  try {
+    const service = productionService(db)
+    const result = await service.createInterval(current, input)
+    revalidatePath("/intelligence", "layout")
+    return { ok: true as const, data: result }
+  } catch (error) {
+    if (error instanceof ProductionError) {
+      return { ok: false as const, code: error.code, message: error.message }
+    }
+    if (error instanceof ZodError) {
+      return { ok: false as const, code: "VALIDATION" as const, message: "Validation Error", fieldErrors: error.flatten().fieldErrors }
+    }
+    console.error("Failed to log production interval:", error)
+    return { ok: false as const, code: "CONFIGURATION" as const, message: "Server error processing production interval" }
+  }
+}
+
 
 /** All public production actions validate again on the server, including direct invocations. */
 async function productionAction<T>(work: (service: ReturnType<typeof productionService>, current: Awaited<ReturnType<typeof requireUser>>) => Promise<T>, mutate = false): Promise<ProductionResult<T>> {

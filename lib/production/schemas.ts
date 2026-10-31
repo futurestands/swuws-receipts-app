@@ -46,7 +46,39 @@ export const sourceSchema = z.object({
 })
 export const archiveSourceSchema = z.object({ id: opaqueId, expectedVersion: z.number().int().positive() }).strict()
 export const legacyReviewSchema = editLogSchema.extend({ reason: reasonSchema, requestKey: z.string().uuid() })
+
+export const batchMeasurementSchema = z.object({
+  schemeId: opaqueId,
+  sourceId: opaqueId,
+  requestKey: z.string().uuid(),
+  entries: z.array(measurementSchema).min(1).max(31),
+}).strict()
+
+export const intervalMeasurementSchema = z.object({
+  schemeId: opaqueId,
+  sourceId: opaqueId,
+  meterRef: z.string().trim().min(1).max(100),
+  openingReading: decimal(),
+  openingTimestamp: z.string().datetime(),
+  closingReading: decimal(),
+  closingTimestamp: z.string().datetime(),
+  meterUnit: z.enum(["m3", "litres", "gallons"]).default("m3"),
+  multiplier: decimal().default("1.00"),
+  rolloverValue: optionalDecimal(),
+  isReset: z.boolean().default(false),
+  requestKey: z.string().uuid(),
+  notes: z.string().trim().max(2000).default(""),
+}).strict().superRefine((v, ctx) => {
+  const openTime = new Date(v.openingTimestamp).getTime()
+  const closeTime = new Date(v.closingTimestamp).getTime()
+  if (closeTime <= openTime) {
+    ctx.addIssue({ code: "custom", path: ["closingTimestamp"], message: "Closing timestamp must be after opening timestamp" })
+  }
+})
+
 export type Measurement = z.infer<typeof measurementSchema>
+export type BatchMeasurement = z.infer<typeof batchMeasurementSchema>
+export type IntervalMeasurement = z.infer<typeof intervalMeasurementSchema>
 export type ProductionCode = "VALIDATION" | "FORBIDDEN" | "NOT_FOUND" | "CONFLICT" | "DUPLICATE" | "CONFIGURATION"
 export class ProductionError extends Error {
   constructor(public code: ProductionCode, message: string) { super(message) }

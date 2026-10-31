@@ -107,6 +107,51 @@ export const waterProductionLog = pgTable(
 )
 
 /**
+ * Multi-Day Interval Measurements (Cumulative Meter Readings).
+ */
+export const waterProductionInterval = pgTable(
+  "water_production_interval",
+  {
+    id: text("id").primaryKey(),
+    schemeId: text("schemeId")
+      .notNull()
+      .references(() => waterScheme.id, { onDelete: "restrict" }),
+    sourceId: text("sourceId")
+      .notNull()
+      .references(() => waterSchemeSource.id, { onDelete: "restrict" }),
+    meterRef: text("meterRef").notNull(),
+    openingReading: numeric("openingReading", { precision: 12, scale: 2 }).notNull(),
+    openingTimestamp: timestamp("openingTimestamp").notNull(),
+    closingReading: numeric("closingReading", { precision: 12, scale: 2 }).notNull(),
+    closingTimestamp: timestamp("closingTimestamp").notNull(),
+    meterUnit: text("meterUnit").notNull().default("m3"), // m3 | litres | gallons
+    multiplier: numeric("multiplier", { precision: 6, scale: 2 }).notNull().default("1.00"),
+    rolloverValue: numeric("rolloverValue", { precision: 12, scale: 2 }),
+    isReset: boolean("isReset").notNull().default(false),
+    calculatedVolumeM3: numeric("calculatedVolumeM3", { precision: 12, scale: 2 }).notNull(),
+    coverageHours: numeric("coverageHours", { precision: 8, scale: 2 }).notNull(),
+    coverageStartDate: date("coverageStartDate").notNull(),
+    coverageEndDate: date("coverageEndDate").notNull(),
+    isCrossMonth: boolean("isCrossMonth").notNull().default(false),
+    status: text("status").notNull().default("entered"), // entered | verified | flagged | void
+    recordedById: text("recordedById")
+      .notNull()
+      .references(() => user.id, { onDelete: "restrict" }),
+    verifiedById: text("verifiedById").references(() => user.id, { onDelete: "restrict" }),
+    verifiedAt: timestamp("verifiedAt"),
+    requestKey: text("requestKey").notNull(),
+    requestFingerprint: text("requestFingerprint").notNull(),
+    notes: text("notes"),
+    createdAt: timestamp("createdAt").notNull().defaultNow(),
+    updatedAt: timestamp("updatedAt").notNull().defaultNow(),
+  },
+  (table) => ({
+    schemeIntervalIdx: index("water_production_interval_scheme_idx").on(table.schemeId, table.sourceId),
+    datesIdx: index("water_production_interval_dates_idx").on(table.coverageStartDate, table.coverageEndDate),
+  })
+)
+
+/**
  * Operational Scheme Targets.
  */
 export const schemeTarget = pgTable(

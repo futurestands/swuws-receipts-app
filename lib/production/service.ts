@@ -2,18 +2,23 @@ import "server-only"
 import { createHash, randomUUID } from "node:crypto"
 import { and, asc, desc, eq, inArray, lt, or, sql, type SQL } from "drizzle-orm"
 import { db as applicationDb, type DatabaseTransaction } from "@/lib/db"
-import { auditLog, billingPeriod, waterProductionLog as logs, waterScheme, waterSchemeSource as sources } from "@/lib/db/schema"
+import { auditLog, billingPeriod, waterProductionLog as logs, waterProductionInterval, waterScheme, waterSchemeSource as sources } from "@/lib/db/schema"
 import { writeAudit } from "@/lib/audit"
 import { canViewIntelligence, canViewProduction } from "@/lib/permissions"
 import type { SessionUser } from "@/lib/session"
 import { intelligenceHierarchyFilter, productionGrantScope, productionSchemeFilter } from "./scope"
-import { archiveSourceSchema, createLogSchema, editLogSchema, legacyReviewSchema, monthSchema, opaqueId, ProductionError, sourceSchema, transitionSchema, type Measurement } from "./schemas"
+import { archiveSourceSchema, batchMeasurementSchema, createLogSchema, editLogSchema, intervalMeasurementSchema, legacyReviewSchema, monthSchema, opaqueId, ProductionError, sourceSchema, transitionSchema, type Measurement, type IntervalMeasurement } from "./schemas"
 import { loadProductionSummary } from "./reporting"
 
 type Client = typeof applicationDb | DatabaseTransaction
 const fail = (code: ConstructorParameters<typeof ProductionError>[0], message: string): never => { throw new ProductionError(code, message) }
 function fingerprint(data: Measurement) {
   return createHash("sha256").update(JSON.stringify([data.schemeId, data.sourceId, data.productionDate, data.waterProducedM3, data.waterSuppliedM3, data.operatingHours, data.notes])).digest("hex")
+}
+function intervalFingerprint(data: IntervalMeasurement) {
+  return createHash("sha256").update(JSON.stringify([
+    data.schemeId, data.sourceId, data.meterRef, data.openingReading, data.openingTimestamp, data.closingReading, data.closingTimestamp, data.meterUnit, data.multiplier, data.rolloverValue, data.isReset
+  ])).digest("hex")
 }
 function readFilter(user: SessionUser, target?: string): SQL {
   return or(productionSchemeFilter(user, "production.view", target), intelligenceHierarchyFilter(user, target))!
@@ -112,6 +117,108 @@ export function productionService(database = applicationDb, audit = writeAudit) 
           ...measurementValues(data), workflowVersion: 1, version: 1, status: "entered", recordedById: user.id, requestKey: data.requestKey, requestFingerprint: fingerprint(data),
         }).returning()
         await logAudit(tx, user, "create", row.id, null, row)
+        return row
+      })
+    },
+    async createBatch(user: SessionUser, input: unknown) {
+      const data = batchMeasurementSchema.parse(input)
+      return database.transaction(async tx => {
+        await assertScheme(tx, user, data.schemeId, "production.create", true)
+        const results = []
+        for (const entry of data.entries) {
+          const entryKey = `${data.requestKey}:${entry.productionDate}`
+          await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`${user.id}:${entryKey}`}, 0))`)
+          const [existing] = await tx.select().from(logs).where(and(eq(logs.recordedById, user.id), eq(logs.requestKey, entryKey))).limit(1)
+          if (existing) {
+            results.push(existing)
+            continue
+          }
+          await assertSource(tx, entry, true)
+          const billingPeriodId = await resolvePeriod(tx, entry)
+          const [row] = await tx.insert(logs).values({
+            id: `prod-${randomUUID()}`,
+            schemeId: entry.schemeId,
+            sourceId: entry.sourceId,
+            productionDate: entry.productionDate,
+            logDate: new Date(`${entry.productionDate}T00:00:00Z`),
+            billingPeriodId,
+            ...measurementValues(entry),
+            workflowVersion: 1,
+            version: 1,
+            status: "entered",
+            recordedById: user.id,
+            requestKey: entryKey,
+            requestFingerprint: fingerprint(entry),
+          }).returning()
+          await logAudit(tx, user, "create_batch", row.id, null, row)
+          results.push(row)
+        }
+        return results
+      })
+    },
+    async createInterval(user: SessionUser, input: unknown) {
+      const data = intervalMeasurementSchema.parse(input)
+      return database.transaction(async tx => {
+        await assertScheme(tx, user, data.schemeId, "production.create", true)
+        const openTime = new Date(data.openingTimestamp).getTime()
+        const closeTime = new Date(data.closingTimestamp).getTime()
+        const elapsedHours = (closeTime - openTime) / 3600000
+
+        let rawDelta = Number(data.closingReading) - Number(data.openingReading)
+        if (rawDelta < 0 && data.rolloverValue) {
+          rawDelta = (Number(data.rolloverValue) - Number(data.openingReading)) + Number(data.closingReading)
+        }
+        if (rawDelta < 0) {
+          fail("VALIDATION", "Closing reading cannot be less than opening reading without a rollover value")
+        }
+
+        let unitFactor = 1.0
+        if (data.meterUnit === "litres") unitFactor = 0.001
+        if (data.meterUnit === "gallons") unitFactor = 0.00378541
+
+        const calculatedVolumeM3 = (rawDelta * Number(data.multiplier) * unitFactor).toFixed(2)
+        const coverageStartDate = data.openingTimestamp.slice(0, 10)
+        const coverageEndDate = data.closingTimestamp.slice(0, 10)
+        const isCrossMonth = coverageStartDate.slice(0, 7) !== coverageEndDate.slice(0, 7)
+
+        // Check Overlap with Daily Observations
+        const [dailyOverlap] = await tx.select({ id: logs.id }).from(logs).where(and(
+          eq(logs.sourceId, data.sourceId),
+          sql`${logs.status} <> 'void'`,
+          sql`${logs.productionDate} >= ${coverageStartDate} AND ${logs.productionDate} <= ${coverageEndDate}`
+        )).limit(1)
+
+        const status = dailyOverlap ? "flagged" : "entered"
+        const notes = dailyOverlap
+          ? `OVERLAPPING_DAILY_DATA_CONFLICT: Daily logs exist for this source in range ${coverageStartDate} to ${coverageEndDate}. ${data.notes}`.trim()
+          : data.notes
+
+        const [row] = await tx.insert(waterProductionInterval).values({
+          id: `int-${randomUUID()}`,
+          schemeId: data.schemeId,
+          sourceId: data.sourceId,
+          meterRef: data.meterRef,
+          openingReading: data.openingReading,
+          openingTimestamp: new Date(data.openingTimestamp),
+          closingReading: data.closingReading,
+          closingTimestamp: new Date(data.closingTimestamp),
+          meterUnit: data.meterUnit,
+          multiplier: data.multiplier,
+          rolloverValue: data.rolloverValue,
+          isReset: data.isReset,
+          calculatedVolumeM3,
+          coverageHours: elapsedHours.toFixed(2),
+          coverageStartDate,
+          coverageEndDate,
+          isCrossMonth,
+          status,
+          recordedById: user.id,
+          requestKey: data.requestKey,
+          requestFingerprint: intervalFingerprint(data),
+          notes,
+        }).returning()
+
+        await audit({ user, action: "production.interval.create", entityType: "water_production_interval", entityId: row.id, details: { after: row } }, tx)
         return row
       })
     },
