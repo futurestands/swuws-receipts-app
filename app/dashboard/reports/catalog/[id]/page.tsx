@@ -4,6 +4,7 @@ import { ArrowLeft } from "lucide-react"
 import { ReportGeneratorClient } from "./report-generator-client"
 
 const TITLES: Record<string, string> = {
+  "monthly-water-production": "Monthly Water Production & Energy Performance",
   "receipt-activity": "Receipt Activity Report",
   "daily-collection": "Daily Collection Summary",
   "recon-report": "Daily Reconciliation Report",

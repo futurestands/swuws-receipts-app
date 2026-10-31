@@ -8,6 +8,7 @@ import type { SessionUser } from "@/lib/session"
 import { productionService } from "./service"
 import { loadProductionSummary } from "./reporting"
 import { generateMonthlyWaterProductionReport } from "@/lib/reports/production-executive-report"
+import { buildMonthlyProductionExcelSheets } from "@/lib/reports/production-report-export"
 import { productionTestDatabaseUrl } from "./test-database"
 
 const migration = (name: string) => readFileSync(`db/migrations/${name}`, "utf8")
@@ -469,5 +470,387 @@ describe("Database Integration: Migration 0075, Production Intervals, Energy & E
       await legacyPool.end()
       await adminPool.query(`DROP SCHEMA IF EXISTS ${legacySchema} CASCADE`)
     }
+  })
+
+  it("executes the complete Phase 2 route: asset registration & shared assignment -> operator submissions -> independent review -> monthly calculations -> scoped executive report & Excel export", async () => {
+    await pool.query(`
+      INSERT INTO cluster (id, name, code, "organizationId") VALUES ('c-2', 'Ankole Cluster', 'C2', 'org-1');
+      INSERT INTO branch (id, name, code, "clusterId") VALUES ('b-2', 'Mbarara Area', 'B2', 'c-2');
+      INSERT INTO water_scheme (id, name, code, "branchId") VALUES ('s-3', 'Mbarara Pumped Scheme', 'S3', 'b-2');
+
+      INSERT INTO organization (id, name, code) VALUES ('org-2', 'Foreign Utility', 'ORG2');
+      INSERT INTO cluster (id, name, code, "organizationId") VALUES ('c-f', 'Foreign Cluster', 'CF', 'org-2');
+      INSERT INTO branch (id, name, code, "clusterId") VALUES ('b-f', 'Foreign Area', 'BF', 'c-f');
+      INSERT INTO water_scheme (id, name, code, "branchId") VALUES ('s-foreign', 'Foreign Scheme', 'SF', 'b-f');
+    `)
+
+    const manager = actor("u-ver", ["production.view", "production.sources.manage", "production.verify"], "s-3")
+    const operator = actor("u-rec", ["production.view", "production.create"], "s-3")
+
+    // 1. Register two water sources and two shared energy assets (1 grid meter, 1 diesel generator)
+    const srcA = await service.saveSource(manager, {
+      schemeId: "s-3",
+      sourceName: "Intake Pump A",
+      technology: "hybrid",
+      capacityMethod: "measured_hourly",
+      installedPumpCapacityM3Hr: "10.00",
+      regimeHoursPerDay: "10.00",
+      containerVolumeLitres: null,
+      averageFillTimeSeconds: null,
+    })
+    const srcB = await service.saveSource(manager, {
+      schemeId: "s-3",
+      sourceName: "Intake Pump B",
+      technology: "hybrid",
+      capacityMethod: "measured_hourly",
+      installedPumpCapacityM3Hr: "5.00",
+      regimeHoursPerDay: "10.00",
+      containerVolumeLitres: null,
+      averageFillTimeSeconds: null,
+    })
+
+    const sharedMeter = await service.saveEnergyAsset(manager, {
+      schemeId: "s-3",
+      assetType: "electricity_meter",
+      assetRef: "UMEME-S3-MAIN",
+      fuelType: null,
+    })
+    const sharedGen = await service.saveEnergyAsset(manager, {
+      schemeId: "s-3",
+      assetType: "generator",
+      assetRef: "GEN-S3-MAIN",
+      fuelType: "diesel",
+    })
+
+    // Assign BOTH water sources to BOTH shared energy assets
+    const meterAssigned = await service.assignEnergyAssetSources(manager, {
+      schemeId: "s-3",
+      assetId: sharedMeter.id,
+      sourceIds: [srcA.id, srcB.id],
+    })
+    expect(meterAssigned).toHaveLength(2)
+    const genAssigned = await service.assignEnergyAssetSources(manager, {
+      schemeId: "s-3",
+      assetId: sharedGen.id,
+      sourceIds: [srcA.id, srcB.id],
+    })
+    expect(genAssigned).toHaveLength(2)
+
+    // 2. Operator first records an erroneous interval on srcA; verifier independently flags and voids it, releasing the overlap lock
+    const bogusInt = await service.createInterval(operator, {
+      schemeId: "s-3",
+      sourceId: srcA.id,
+      meterRef: "BM-SPARE-ERR",
+      openingReading: "0.00",
+      openingTimestamp: "2026-07-05T06:00:00Z",
+      closingReading: "999.00",
+      closingTimestamp: "2026-07-06T06:00:00Z",
+      requestKey: randomUUID(),
+    })
+    await service.transitionMeasurement(manager, {
+      recordKind: "interval",
+      id: bogusInt.id,
+      expectedVersion: 1,
+      operation: "flag",
+      reason: "Test bypass meter reading recorded in error",
+    })
+    await service.transitionMeasurement(manager, {
+      recordKind: "interval",
+      id: bogusInt.id,
+      expectedVersion: 2,
+      operation: "void",
+      reason: "Confirmed erroneous bypass meter reading; voided so official July interval can be recorded",
+    })
+
+    // Operator now submits official July 2026 measurements (July 1 00:00 EAT = 2026-06-30T21:00:00Z .. Aug 1 00:00 EAT = 2026-07-31T21:00:00Z)
+    const intA = await service.createInterval(operator, {
+      schemeId: "s-3",
+      sourceId: srcA.id,
+      meterRef: "BM-S3-A",
+      openingReading: "1000.00",
+      openingTimestamp: "2026-06-30T21:00:00Z",
+      closingReading: "3000.00",
+      closingTimestamp: "2026-07-31T21:00:00Z",
+      requestKey: randomUUID(),
+      notes: "Full July bulk meter reading Pump A",
+    })
+    const intB = await service.createInterval(operator, {
+      schemeId: "s-3",
+      sourceId: srcB.id,
+      meterRef: "BM-S3-B",
+      openingReading: "500.00",
+      openingTimestamp: "2026-06-30T21:00:00Z",
+      closingReading: "1600.00",
+      closingTimestamp: "2026-07-31T21:00:00Z",
+      requestKey: randomUUID(),
+      notes: "Full July bulk meter reading Pump B",
+    })
+
+    // Shared electricity meter reading over 744 h (supports up to 744 * 2 = 1488 pump-hours; operator records 900.00 h)
+    const elecJuly = await service.createElectricity(operator, {
+      schemeId: "s-3",
+      assetId: sharedMeter.id,
+      openingReadingKwh: "10000.00",
+      openingTimestamp: "2026-06-30T21:00:00Z",
+      closingReadingKwh: "11550.00",
+      closingTimestamp: "2026-07-31T21:00:00Z",
+      pumpOperatingHours: "900.00",
+      electricityCostUgx: "1085000.00",
+      requestKey: randomUUID(),
+    })
+
+    // Stock-reconciled generator fuel for July 1..31: 400 + 150 - 20 - 220 = 310.00 L consumed
+    const fuelReconciled = await service.createFuel(operator, {
+      schemeId: "s-3",
+      assetId: sharedGen.id,
+      fuelType: "diesel",
+      coverageStartDate: "2026-07-01",
+      coverageEndDate: "2026-07-31",
+      openingStockLitres: "400.00",
+      fuelPurchasedLitres: "150.00",
+      fuelTransfersOutLitres: "20.00",
+      closingStockLitres: "220.00",
+      generatorOperatingHours: "120.00",
+      fuelExpenditureUgx: "810000.00",
+      requestKey: randomUUID(),
+    })
+    expect(fuelReconciled.calculatedConsumedLitres).toBe("310.00")
+
+    // Separate purchase-only fuel delivery receipt (no stock readings -> consumption remains NULL)
+    const fuelPurchaseOnly = await service.createFuel(operator, {
+      schemeId: "s-3",
+      assetId: sharedGen.id,
+      fuelType: "diesel",
+      coverageStartDate: "2026-07-15",
+      coverageEndDate: "2026-07-15",
+      fuelPurchasedLitres: "300.00",
+      fuelExpenditureUgx: "1560000.00",
+      requestKey: randomUUID(),
+    })
+    expect(fuelPurchaseOnly.calculatedConsumedLitres).toBeNull()
+
+    // Before verification: workspace reports UNAVAILABLE official water and counts provisional entries (voided bogusInt excluded)
+    const preWs = await service.workspace(operator, "s-3", "2026-07")
+    expect(preWs.summary?.dataQualityStatus).toBe("UNAVAILABLE")
+    expect(preWs.summary?.provisionalIntervalCount).toBe(2)
+    expect(preWs.summary?.energy.provisionalElectricityCount).toBe(1)
+    expect(preWs.summary?.energy.provisionalFuelCount).toBe(2)
+
+    // 3. Independent verification of official water, electricity & fuel records
+    await service.transitionMeasurement(manager, { recordKind: "interval", id: intA.id, expectedVersion: 1, operation: "verify" })
+    await service.transitionMeasurement(manager, { recordKind: "interval", id: intB.id, expectedVersion: 1, operation: "verify" })
+    await service.transitionMeasurement(manager, { recordKind: "electricity", id: elecJuly.id, expectedVersion: 1, operation: "verify" })
+    await service.transitionMeasurement(manager, { recordKind: "fuel", id: fuelReconciled.id, expectedVersion: 1, operation: "verify" })
+    await service.transitionMeasurement(manager, { recordKind: "fuel", id: fuelPurchaseOnly.id, expectedVersion: 1, operation: "verify" })
+
+    const bogusAudit = await service.measurementHistory(manager, { recordKind: "interval", id: bogusInt.id })
+    expect(bogusAudit.map((e) => e.action)).toEqual([
+      "production.interval.void",
+      "production.interval.flag",
+      "production.interval.create",
+    ])
+
+    // 4. Monthly summary: complete coverage, zero shared-asset duplication, valid efficiency ratios
+    const postWs = await service.workspace(manager, "s-3", "2026-07")
+    const sum = postWs.summary!
+    expect(sum.dataQualityStatus).toBe("COMPLETE")
+    expect(sum.requiredSourceDays).toBe(62)
+    expect(sum.verifiedSourceDays).toBe(62)
+    expect(sum.missingSourceDays).toBe(0)
+    expect(sum.totalWaterProducedM3).toBe("3100.00")
+    expect(sum.energy.totalKwh).toBe(1550) // Counted ONCE on shared meter, not 2 x 1550
+    expect(sum.energy.totalFuelLitres).toBe(310) // Counted ONCE on shared generator, excluding 300 L purchase-only
+    expect(sum.energy.kwhPerM3).toBe(0.5) // 1550 / 3100
+    expect(sum.energy.fuelPerM3).toBe(0.1) // 310 / 3100
+    expect(sum.energy.totalEnergyCostUgx).toBe(1895000) // 1,085,000 + 810,000
+    expect(sum.energy.fuelUnavailableCount).toBe(1)
+    expect(sum.energy.fuelUnreconciledExpenditureUgx).toBe(1560000)
+
+    // 5. Executive report preview & 3-sheet Excel export across Scheme, Area, Cluster & SWUWS-wide scopes
+    const orgExec: SessionUser = {
+      ...actor("u-ver", ["reports.view", "production.view"], null),
+      role: "head_commercial",
+      roleLevel: 9,
+    }
+
+    const schemeReport = await generateMonthlyWaterProductionReport(orgExec, { month: "2026-07", schemeId: "s-3" }, database)
+    expect(schemeReport.scope).toBe("Scheme: Mbarara Pumped Scheme")
+    expect(schemeReport.totals.totalVerifiedProducedM3).toBe(3100)
+    expect(schemeReport.totals.totalMeasuredElectricityKwh).toBe(1550)
+    expect(schemeReport.totals.totalMeasuredFuelLitres).toBe(310)
+    expect(schemeReport.totals.totalMeasuredEnergyCostUgx).toBe(1895000)
+    expect(schemeReport.totals.totalUnreconciledFuelLogsCount).toBe(1)
+    expect(schemeReport.items[0].nrwStatus).toBe("UNAVAILABLE") // Interval-only scheme has no supplied volume or July billing period
+
+    const areaReport = await generateMonthlyWaterProductionReport(orgExec, { month: "2026-07", branchId: "b-2" }, database)
+    expect(areaReport.scope).toBe("Area (Branch): Mbarara Area")
+    expect(areaReport.items.map((i) => i.schemeId)).toEqual(["s-3"])
+
+    const clusterReport = await generateMonthlyWaterProductionReport(orgExec, { month: "2026-07", clusterId: "c-2" }, database)
+    expect(clusterReport.scope).toBe("Cluster: Ankole Cluster")
+    expect(clusterReport.items.map((i) => i.schemeId)).toEqual(["s-3"])
+
+    const swuwsWideReport = await generateMonthlyWaterProductionReport(orgExec, { month: "2026-07" }, database)
+    expect(swuwsWideReport.scope).toBe("SWUWS-Wide (Authorised Scope)")
+    // Includes org-1 schemes (s-1, s-2, s-3) and strictly excludes org-2 foreign scheme (s-foreign)
+    expect(swuwsWideReport.items.map((i) => i.schemeId).sort()).toEqual(["s-1", "s-2", "s-3"])
+
+    const sheets = buildMonthlyProductionExcelSheets(swuwsWideReport)
+    const s3Row = sheets.schemePerformance.find((r) => r["Scheme"] === "Mbarara Pumped Scheme")!
+    const s1Row = sheets.schemePerformance.find((r) => r["Scheme"] === "Scheme 1")!
+    expect(s3Row["Verified Measured Prod (m3)"]).toBe(3100)
+    expect(s3Row["Specific Power (kWh/m3)"]).toBe(0.5)
+    expect(s3Row["Specific Fuel (L/m3)"]).toBe(0.1)
+    expect(s3Row["Purchase-Only Fuel Logs (Unknown Cons.)"]).toBe(1)
+    // Missing water measurements in July 2026 on Scheme 1 remain UNAVAILABLE, never 0!
+    expect(s1Row["Completeness Status"]).toBe("UNAVAILABLE")
+    expect(s1Row["Verified Measured Prod (m3)"]).toBe("UNAVAILABLE")
+  })
+
+  it("enforces service-level negative guards: cross-scheme access, duplicate/overlapping intervals, daily-vs-interval conflict, fabricated fuel, and self-approval", async () => {
+    const s3Operator = actor("u-rec", ["production.view", "production.create"], "s-3")
+    const s3Manager = actor("u-ver", ["production.view", "production.sources.manage", "production.verify"], "s-3")
+    const dualRoleRecorder = actor("u-rec", ["production.view", "production.create", "production.verify"], "s-3")
+
+    const [s3Meter] = (await pool.query(`SELECT id FROM water_scheme_energy_asset WHERE "schemeId" = 's-3' AND "assetType" = 'electricity_meter'`)).rows
+    const [s3Gen] = (await pool.query(`SELECT id FROM water_scheme_energy_asset WHERE "schemeId" = 's-3' AND "assetType" = 'generator'`)).rows
+    const [s3Src] = (await pool.query(`SELECT id FROM water_scheme_source WHERE "schemeId" = 's-3' ORDER BY "sourceName" LIMIT 1`)).rows
+
+    // 1. Cross-scheme & cross-organisation access rejected at service layer
+    await expect(service.workspace(s3Operator, "s-1", "2026-07")).rejects.toMatchObject({ code: "FORBIDDEN" })
+    await expect(service.workspace(s3Operator, "s-foreign", "2026-07")).rejects.toMatchObject({ code: "FORBIDDEN" })
+    await expect(
+      service.assignEnergyAssetSources(s3Manager, {
+        schemeId: "s-3",
+        assetId: s3Meter.id,
+        sourceIds: ["src-1"], // Belongs to s-1!
+      }),
+    ).rejects.toMatchObject({ code: "FORBIDDEN" })
+
+    // Cluster-scoped user in c-2 requesting SWUWS-wide report only receives c-2 schemes
+    const clusterScopedExec: SessionUser = {
+      ...actor("u-ver", ["reports.view"], null),
+      clusterId: "c-2",
+      permissions: [{ code: "reports.view", scope: "cluster" }, { code: "production.view", scope: "cluster" }],
+    }
+    const scopedReport = await generateMonthlyWaterProductionReport(clusterScopedExec, { month: "2026-07" }, database)
+    expect(scopedReport.items.map((i) => i.schemeId)).toEqual(["s-3"])
+
+    // 2. Duplicate retry key tamper & overlapping interval rejection
+    const retryKey = randomUUID()
+    const juneElec = await service.createElectricity(s3Operator, {
+      schemeId: "s-3",
+      assetId: s3Meter.id,
+      openingReadingKwh: "9000.00",
+      openingTimestamp: "2026-06-01T06:00:00Z",
+      closingReadingKwh: "9500.00",
+      closingTimestamp: "2026-06-10T06:00:00Z",
+      requestKey: retryKey,
+    })
+    // Unchanged retry returns identical record
+    const idempotentRetry = await service.createElectricity(s3Operator, {
+      schemeId: "s-3",
+      assetId: s3Meter.id,
+      openingReadingKwh: "9000.00",
+      openingTimestamp: "2026-06-01T06:00:00Z",
+      closingReadingKwh: "9500.00",
+      closingTimestamp: "2026-06-10T06:00:00Z",
+      requestKey: retryKey,
+    })
+    expect(idempotentRetry.id).toBe(juneElec.id)
+
+    // Reusing retryKey with altered reading throws CONFLICT
+    await expect(
+      service.createElectricity(s3Operator, {
+        schemeId: "s-3",
+        assetId: s3Meter.id,
+        openingReadingKwh: "9000.00",
+        openingTimestamp: "2026-06-01T06:00:00Z",
+        closingReadingKwh: "9600.00",
+        closingTimestamp: "2026-06-10T06:00:00Z",
+        requestKey: randomUUID() === retryKey ? "" : retryKey,
+      }),
+    ).rejects.toMatchObject({ code: "CONFLICT" })
+
+    // Overlapping electricity interval with a new requestKey throws PG 23P01 exclusion violation
+    await expect(
+      service.createElectricity(s3Operator, {
+        schemeId: "s-3",
+        assetId: s3Meter.id,
+        openingReadingKwh: "9200.00",
+        openingTimestamp: "2026-06-05T06:00:00Z",
+        closingReadingKwh: "9700.00",
+        closingTimestamp: "2026-06-12T06:00:00Z",
+        requestKey: randomUUID(),
+      }),
+    ).rejects.toThrow()
+
+    // 3. Daily vs water-interval double-count guard on verification
+    await service.create(s3Operator, {
+      schemeId: "s-3",
+      sourceId: s3Src.id,
+      productionDate: "2026-06-15",
+      waterProducedM3: "90.00",
+      waterSuppliedM3: "85.00",
+      operatingHours: "9.00",
+      requestKey: randomUUID(),
+    })
+    const conflictingInterval = await service.createInterval(s3Operator, {
+      schemeId: "s-3",
+      sourceId: s3Src.id,
+      meterRef: "BM-JUNE-CONFLICT",
+      openingReading: "0.00",
+      openingTimestamp: "2026-06-14T06:00:00Z",
+      closingReading: "250.00",
+      closingTimestamp: "2026-06-17T06:00:00Z",
+      requestKey: randomUUID(),
+    })
+    await expect(
+      service.transitionMeasurement(s3Manager, {
+        recordKind: "interval",
+        id: conflictingInterval.id,
+        expectedVersion: 1,
+        operation: "verify",
+      }),
+    ).rejects.toMatchObject({ code: "CONFLICT" })
+
+    // 4. Fabricated or inconsistent fuel stock rejected at service layer
+    await expect(
+      service.createFuel(s3Operator, {
+        schemeId: "s-3",
+        assetId: s3Gen.id,
+        fuelType: "diesel",
+        coverageStartDate: "2026-06-01",
+        coverageEndDate: "2026-06-05",
+        openingStockLitres: "100.00",
+        closingStockLitres: null, // Half-reconciled stock forbidden
+        fuelPurchasedLitres: "50.00",
+        requestKey: randomUUID(),
+      }),
+    ).rejects.toThrow()
+
+    await expect(
+      service.createFuel(s3Operator, {
+        schemeId: "s-3",
+        assetId: s3Gen.id,
+        fuelType: "diesel",
+        coverageStartDate: "2026-06-01",
+        coverageEndDate: "2026-06-05",
+        openingStockLitres: "100.00",
+        fuelPurchasedLitres: "20.00",
+        closingStockLitres: "150.00", // Impossible negative consumption (-30 L)
+        requestKey: randomUUID(),
+      }),
+    ).rejects.toMatchObject({ code: "VALIDATION" })
+
+    // 5. Self-approval rejected at service layer even when actor holds production.verify
+    await expect(
+      service.transitionMeasurement(dualRoleRecorder, {
+        recordKind: "electricity",
+        id: juneElec.id,
+        expectedVersion: 1,
+        operation: "verify",
+      }),
+    ).rejects.toMatchObject({ code: "FORBIDDEN" })
   })
 })

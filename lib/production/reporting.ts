@@ -55,14 +55,19 @@ interface SchemeAccumulator {
   provisionalIntervalCount: number; provisionalIntervalCents: bigint
   details: AllocationDetail[]
   kwhMeasured: bigint; kwhEstimated: bigint; elecCostMeasured: bigint; elecCostEstimated: bigint; elecMinutesByAsset: Map<string, number>
+  provisionalElectricityCount: number; provisionalElectricityCents: bigint
   fuelMeasured: bigint; fuelEstimated: bigint; fuelCostMeasured: bigint; fuelCostEstimated: bigint; fuelDaysByAsset: Map<string, number>
+  provisionalFuelCount: number; provisionalFuelCents: bigint
   fuelUnavailableCount: number; fuelUnreconciledExpenditure: bigint
 }
 const emptyAccumulator = (): SchemeAccumulator => ({
   intervalMeasuredCents: ZERO, intervalMeasuredCount: 0, intervalMeasuredMinutes: 0, estimatedWaterCents: ZERO, estimatedSourceMinutes: 0,
   conflictCount: 0, conflictCents: ZERO, provisionalIntervalCount: 0, provisionalIntervalCents: ZERO, details: [],
   kwhMeasured: ZERO, kwhEstimated: ZERO, elecCostMeasured: ZERO, elecCostEstimated: ZERO, elecMinutesByAsset: new Map(),
-  fuelMeasured: ZERO, fuelEstimated: ZERO, fuelCostMeasured: ZERO, fuelCostEstimated: ZERO, fuelDaysByAsset: new Map(), fuelUnavailableCount: 0, fuelUnreconciledExpenditure: ZERO,
+  provisionalElectricityCount: 0, provisionalElectricityCents: ZERO,
+  fuelMeasured: ZERO, fuelEstimated: ZERO, fuelCostMeasured: ZERO, fuelCostEstimated: ZERO, fuelDaysByAsset: new Map(),
+  provisionalFuelCount: 0, provisionalFuelCents: ZERO,
+  fuelUnavailableCount: 0, fuelUnreconciledExpenditure: ZERO,
 })
 const bump = (map: Map<string, number>, key: string, by: number) => map.set(key, (map.get(key) ?? 0) + by)
 const detail = (kind: AllocationDetail["kind"], recordId: string, subjectId: string, unit: AllocationDetail["unit"], a: Allocation): AllocationDetail => ({
@@ -132,15 +137,17 @@ export async function loadProductionSummary(client: typeof db, schemeIds: string
 
     tables?.hasElectricity ? client.select({
       id: waterProductionElectricity.id, schemeId: waterProductionElectricity.schemeId, assetId: waterProductionElectricity.assetId,
+      status: waterProductionElectricity.status,
       openingTimestamp: waterProductionElectricity.openingTimestamp, closingTimestamp: waterProductionElectricity.closingTimestamp,
       consumedKwh: waterProductionElectricity.calculatedConsumedKwh, costUgx: waterProductionElectricity.electricityCostUgx,
-    }).from(waterProductionElectricity).where(and(inArray(waterProductionElectricity.schemeId, schemeIds), eq(waterProductionElectricity.status, "verified"), overlapsMonth(waterProductionElectricity.coverageStartDate, waterProductionElectricity.coverageEndDate), measurementFilter?.(waterProductionElectricity))) : Promise.resolve([]),
+    }).from(waterProductionElectricity).where(and(inArray(waterProductionElectricity.schemeId, schemeIds), sql`${waterProductionElectricity.status} <> 'void'`, overlapsMonth(waterProductionElectricity.coverageStartDate, waterProductionElectricity.coverageEndDate), measurementFilter?.(waterProductionElectricity))) : Promise.resolve([]),
 
     tables?.hasFuel ? client.select({
       id: waterProductionFuel.id, schemeId: waterProductionFuel.schemeId, assetId: waterProductionFuel.assetId,
+      status: waterProductionFuel.status,
       coverageStartDate: waterProductionFuel.coverageStartDate, coverageEndDate: waterProductionFuel.coverageEndDate,
       consumedLitres: waterProductionFuel.calculatedConsumedLitres, expenditureUgx: waterProductionFuel.fuelExpenditureUgx,
-    }).from(waterProductionFuel).where(and(inArray(waterProductionFuel.schemeId, schemeIds), eq(waterProductionFuel.status, "verified"), overlapsMonth(waterProductionFuel.coverageStartDate, waterProductionFuel.coverageEndDate), measurementFilter?.(waterProductionFuel))) : Promise.resolve([]),
+    }).from(waterProductionFuel).where(and(inArray(waterProductionFuel.schemeId, schemeIds), sql`${waterProductionFuel.status} <> 'void'`, overlapsMonth(waterProductionFuel.coverageStartDate, waterProductionFuel.coverageEndDate), measurementFilter?.(waterProductionFuel))) : Promise.resolve([]),
 
     tables?.hasAsset ? client.select({ id: energyAssets.id, schemeId: energyAssets.schemeId, assetType: energyAssets.assetType }).from(energyAssets).where(and(inArray(energyAssets.schemeId, schemeIds), eq(energyAssets.active, true))) : Promise.resolve([]),
   ])
@@ -176,7 +183,13 @@ export async function loadProductionSummary(client: typeof db, schemeIds: string
 
   for (const row of elecRows) {
     const acc = accumulators.get(row.schemeId)!
-    const allocation = allocateByTime(cents(row.consumedKwh), row.openingTimestamp, row.closingTimestamp, month)
+    const total = cents(row.consumedKwh)
+    if ((row.status ?? "verified") !== "verified") {
+      acc.provisionalElectricityCount++
+      acc.provisionalElectricityCents += total
+      continue
+    }
+    const allocation = allocateByTime(total, row.openingTimestamp, row.closingTimestamp, month)
     if (allocation.basis === "OUTSIDE_MONTH") continue
     const cost = row.costUgx == null ? null : allocateByTime(cents(row.costUgx), row.openingTimestamp, row.closingTimestamp, month)
     if (allocation.basis === "MEASURED") {
@@ -192,6 +205,11 @@ export async function loadProductionSummary(client: typeof db, schemeIds: string
 
   for (const row of fuelRows) {
     const acc = accumulators.get(row.schemeId)!
+    if ((row.status ?? "verified") !== "verified") {
+      acc.provisionalFuelCount++
+      if (row.consumedLitres !== null) acc.provisionalFuelCents += cents(row.consumedLitres)
+      continue
+    }
     if (row.consumedLitres === null) {
       // Purchases/expenditure without a stock reconciliation: consumption is unknown, not zero, and spend is not consumption.
       acc.fuelUnavailableCount++; acc.fuelUnreconciledExpenditure += cents(row.expenditureUgx)
@@ -313,6 +331,11 @@ export async function loadProductionSummary(client: typeof db, schemeIds: string
         /** Verified fuel records without both stock readings: consumption unknown (not zero). */
         fuelUnavailableCount: acc.fuelUnavailableCount,
         fuelUnreconciledExpenditureUgx: num(acc.fuelUnreconciledExpenditure),
+        /** Unverified energy records touching the month (excluded from official measured totals). */
+        provisionalElectricityCount: acc.provisionalElectricityCount,
+        provisionalElectricityKwh: num(acc.provisionalElectricityCents),
+        provisionalFuelCount: acc.provisionalFuelCount,
+        provisionalFuelLitres: num(acc.provisionalFuelCents),
       },
     }
   })

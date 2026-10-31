@@ -13,12 +13,22 @@ import {
   meterReading,
   customer,
   waterScheme,
+  branch,
+  cluster,
 } from "@/lib/db/schema"
 import { requireUser, SessionUser } from "@/lib/session"
 import { hasPermission } from "@/lib/iam"
 import { applyReceiptScope, applyCustomerScope } from "@/lib/scopes"
-import { and, eq, gte, lte, sql, desc, ilike, notInArray } from "drizzle-orm"
+import { productionReadableSchemeFilter } from "@/lib/production/scope"
+import { and, asc, eq, gte, lte, sql, desc, ilike, notInArray } from "drizzle-orm"
 import { writeAudit } from "@/lib/audit"
+import {
+  generateMonthlyWaterProductionReport,
+  type MonthlyProductionReportFilter,
+  type MonthlyProductionReportOutput,
+} from "@/lib/reports/production-executive-report"
+import { buildMonthlyProductionExcelSheets } from "@/lib/reports/production-report-export"
+import { monthSchema } from "@/lib/production/schemas"
 
 /**
  * EXECUTIVE REPORTING ENGINE (Phase 5A)
@@ -28,6 +38,10 @@ import { writeAudit } from "@/lib/audit"
 
 export interface ReportFilters {
   [key: string]: string | undefined
+  month?: string
+  clusterId?: string
+  branchId?: string
+  schemeId?: string
   startDate?: string
   endDate?: string
   batchId?: string
@@ -216,56 +230,100 @@ async function getImportHistory(filters: ReportFilters) {
     .orderBy(desc(dailyCollectionImport.businessDate))
 }
 
-import { generateMonthlyWaterProductionReport } from "@/lib/reports/production-executive-report"
-import { monthSchema } from "@/lib/production/schemas"
+export interface ProductionReportScopeOptions {
+  defaultMonth: string
+  clusters: Array<{ id: string; name: string }>
+  branches: Array<{ id: string; name: string; clusterId: string }>
+  schemes: Array<{ id: string; name: string; branchId: string; clusterId: string }>
+}
 
-async function getMonthlyWaterProduction(user: SessionUser, filters: ReportFilters) {
-  if (!filters.startDate) {
-    throw new Error("A reporting month (startDate) is required to generate the production report")
+export async function getProductionReportScopeOptions(): Promise<ProductionReportScopeOptions> {
+  const current = await requireUser()
+  if (!(await hasPermission(current, "reports.view"))) throw new Error("Forbidden")
+
+  const rows = await db
+    .select({
+      schemeId: waterScheme.id,
+      schemeName: waterScheme.name,
+      branchId: branch.id,
+      branchName: branch.name,
+      clusterId: cluster.id,
+      clusterName: cluster.name,
+    })
+    .from(waterScheme)
+    .innerJoin(branch, eq(branch.id, waterScheme.branchId))
+    .innerJoin(cluster, eq(cluster.id, branch.clusterId))
+    .where(productionReadableSchemeFilter(current))
+    .orderBy(asc(cluster.name), asc(branch.name), asc(waterScheme.name))
+
+  const clusterMap = new Map<string, { id: string; name: string }>()
+  const branchMap = new Map<string, { id: string; name: string; clusterId: string }>()
+  const schemes: ProductionReportScopeOptions["schemes"] = []
+
+  for (const r of rows) {
+    if (!clusterMap.has(r.clusterId)) clusterMap.set(r.clusterId, { id: r.clusterId, name: r.clusterName })
+    if (!branchMap.has(r.branchId)) {
+      branchMap.set(r.branchId, { id: r.branchId, name: r.branchName, clusterId: r.clusterId })
+    }
+    schemes.push({ id: r.schemeId, name: r.schemeName, branchId: r.branchId, clusterId: r.clusterId })
   }
 
-  const month = monthSchema.parse(filters.startDate.slice(0, 7)) // "YYYY-MM"
+  const defaultMonth = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Africa/Kampala",
+    year: "numeric",
+    month: "2-digit",
+  })
+    .format(new Date())
+    .slice(0, 7)
+
+  return {
+    defaultMonth,
+    clusters: [...clusterMap.values()],
+    branches: [...branchMap.values()],
+    schemes,
+  }
+}
+
+export async function getMonthlyProductionExecutiveReport(
+  filters: MonthlyProductionReportFilter,
+): Promise<MonthlyProductionReportOutput> {
+  const current = await requireUser()
+  if (!(await hasPermission(current, "reports.view"))) throw new Error("Forbidden")
+
+  const cleanFilters: MonthlyProductionReportFilter = {
+    month: monthSchema.parse(filters.month),
+    clusterId: filters.clusterId || undefined,
+    branchId: filters.branchId || undefined,
+    schemeId: filters.schemeId || undefined,
+  }
+
+  await writeAudit({
+    user: current,
+    action: "report.generate.monthly-water-production",
+    entityType: "report",
+    entityId: "monthly-water-production",
+    details: { ...cleanFilters },
+  })
+
+  return generateMonthlyWaterProductionReport(current, cleanFilters)
+}
+
+async function getMonthlyWaterProduction(user: SessionUser, filters: ReportFilters) {
+  const rawMonth = filters.month ?? filters.startDate?.slice(0, 7)
+  if (!rawMonth) {
+    throw new Error("A reporting month is required to generate the production report")
+  }
+
+  const month = monthSchema.parse(rawMonth)
 
   const report = await generateMonthlyWaterProductionReport(user, {
     month,
-    clusterId: filters.clusterId,
-    branchId: filters.branchId,
-    schemeId: filters.schemeId,
+    clusterId: filters.clusterId || undefined,
+    branchId: filters.branchId || undefined,
+    schemeId: filters.schemeId || undefined,
   })
 
-  // Flatten the report items into tabular rows for Excel/Preview without disguising missing data or estimates.
-  return report.items.map((item) => ({
-    "Cluster": item.clusterName,
-    "Branch": item.branchName,
-    "Scheme": item.schemeName,
-    "Quality Status": item.dataQualityStatus,
-    "Required Source-Days": item.requiredSourceDays,
-    "Verified Source-Days": item.verifiedSourceDays,
-    "Missing Source-Days": item.missingSourceDays,
-    "Completeness %": `${item.completenessPercent}%`,
-    "Verified Prod m3 (Measured)": item.verifiedProducedM3,
-    "Daily Verified m3": item.dailyVerifiedProducedM3,
-    "Interval Measured m3": item.intervalMeasuredProducedM3,
-    "Interval Conflicts": item.intervalConflictCount,
-    "Provisional Prod m3": item.provisionalProducedM3,
-    "System Input (Supplied) m3": item.verifiedSuppliedM3 !== null ? item.verifiedSuppliedM3 : "UNAVAILABLE",
-    "Avg Daily Prod m3": item.averageDailyProducedM3 !== null ? Number(item.averageDailyProducedM3.toFixed(2)) : "UNAVAILABLE",
-    "Monthly Capacity m3": item.monthlyCapacityM3 !== null ? item.monthlyCapacityM3 : "UNAVAILABLE",
-    "Capacity Util %": item.capacityUtilizationPercent !== null ? `${item.capacityUtilizationPercent}%` : "UNAVAILABLE",
-    "Billed Metered m3": item.billedConsumptionM3 !== null ? item.billedConsumptionM3 : "UNAVAILABLE",
-    "NRW %": item.nrwStatus === "AVAILABLE" && item.nrwPercent !== null ? `${item.nrwPercent}%` : "UNAVAILABLE",
-    "NRW Status": item.nrwStatus === "AVAILABLE" ? "AVAILABLE" : `UNAVAILABLE (${item.nrwUnavailableReasons.join("; ")})`,
-    "Measured Elec kWh": item.energy.electricityCoverageComplete || item.energy.totalKwh > 0 ? item.energy.totalKwh : "UNAVAILABLE",
-    "Measured Fuel Litres": item.energy.fuelCoverageComplete || item.energy.totalFuelLitres > 0 ? item.energy.totalFuelLitres : "UNAVAILABLE",
-    "Fuel Unreconciled Logs": item.energy.fuelUnavailableCount,
-    "Measured Energy Cost UGX": item.energy.electricityCoverageComplete || item.energy.fuelCoverageComplete || item.energy.totalEnergyCostUgx > 0 ? item.energy.totalEnergyCostUgx : "UNAVAILABLE",
-    "Specific Power kWh/m3": item.energy.kwhPerM3 !== null ? item.energy.kwhPerM3 : "UNAVAILABLE",
-    "Specific Fuel L/m3": item.energy.fuelPerM3 !== null ? item.energy.fuelPerM3 : "UNAVAILABLE",
-    "Est. Allocated Prod m3": item.estimatedAllocation.present ? item.estimatedAllocation.producedM3 : 0,
-    "Est. Allocated Elec kWh": item.estimatedAllocation.present ? item.estimatedAllocation.electricityKwh : 0,
-    "Est. Allocated Fuel Litres": item.estimatedAllocation.present ? item.estimatedAllocation.fuelLitres : 0,
-    "Allocation Basis": item.estimatedAllocation.present ? `ESTIMATED_ALLOCATION (${item.estimatedAllocation.methods.join(", ")})` : "MEASURED_ONLY",
-  }))
+  return buildMonthlyProductionExcelSheets(report).schemePerformance
 }
 
 async function getAuditActivity(filters: ReportFilters) {

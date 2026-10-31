@@ -5,11 +5,22 @@ import { Badge } from "@/components/ui/badge"
 import { ShieldAlert, CheckSquare, History, Activity, FileDown, Printer } from "lucide-react"
 import Link from "next/link"
 
-const REPORT_CATEGORIES = [
+const REPORT_CATEGORIES: Array<{
+  name: string
+  icon: typeof Activity
+  reports: Array<{ id: string; title: string; description: string; formats?: string[] }>
+}> = [
   {
     name: "Operations",
     icon: Activity,
     reports: [
+      {
+        id: "monthly-water-production",
+        title: "Monthly Water Production & Energy Performance",
+        description:
+          "Source-aware verified water production, multi-day meter intervals, grid electricity (kWh), stock-reconciled generator fuel, energy OpEx, efficiency ratios, gated NRW, and separate cross-month estimated allocations.",
+        formats: ["EXCEL", "HTML", "PRINT"],
+      },
       { id: "receipt-activity", title: "Receipt Activity Report", description: "Detailed log of all receipts issued, including collector and reconciliation status." },
       { id: "meter-reading", title: "Meter Reading Report", description: "Capture details of all field meter readings, including customer info and outstanding balances." },
       { id: "unbilled-accounts", title: "Unbilled Accounts Report", description: "Customers with no field meter reading in the selected period. Monthly EBS-imported bills still count as billed — this list is field readings only." },
@@ -75,9 +86,9 @@ export default async function ReportCatalogPage() {
                           {report.description}
                        </p>
                        <div className="flex items-center gap-2 pt-2">
-                          <Badge variant="outline" className="text-[9px] px-1.5 py-0">PDF</Badge>
-                          <Badge variant="outline" className="text-[9px] px-1.5 py-0">EXCEL</Badge>
-                          <Badge variant="outline" className="text-[9px] px-1.5 py-0">HTML</Badge>
+                          {(report.formats ?? ["PDF", "EXCEL", "HTML"]).map((fmt) => (
+                            <Badge key={fmt} variant="outline" className="text-[9px] px-1.5 py-0">{fmt}</Badge>
+                          ))}
                        </div>
                     </CardContent>
                     <div className="p-4 border-t bg-muted/10 flex justify-end">

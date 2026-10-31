@@ -5,6 +5,13 @@ import { archiveWaterSchemeSource, editWaterProduction, getProductionHistory, ge
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import type { ProductionResult } from "@/lib/production/schemas"
+import {
+  EnergyAssetsSection,
+  ExtendedMeasurementForms,
+  ExtendedMeasurementsLedger,
+  MonthlyProductionEnergySummary,
+  type EntryMode,
+} from "./production-energy-sections"
 
 export type Workspace = Extract<Awaited<ReturnType<typeof getProductionWorkspace>>, { ok: true }>["data"]
 type Log = Workspace["records"][number]
@@ -19,6 +26,7 @@ export function ProductionPanel({ data, reload, nextPage }: { data: Workspace; r
   const [requestKey, setRequestKey] = useState(() => crypto.randomUUID())
   const [editing, setEditing] = useState<Log | null>(null)
   const [legacy, setLegacy] = useState(false)
+  const [entryMode, setEntryMode] = useState<EntryMode>("daily")
   const [sourceEdit, setSourceEdit] = useState<Source | null | undefined>(undefined)
   const [formKey, setFormKey] = useState(0)
   const [history, setHistory] = useState<Extract<Awaited<ReturnType<typeof getProductionHistory>>, { ok: true }>["data"] | null>(null)
@@ -36,7 +44,7 @@ export function ProductionPanel({ data, reload, nextPage }: { data: Workspace; r
     finally { lock.current = false; setBusy(false) }
   }
   function reset() { setEditing(null); setLegacy(false); setSourceId(""); setRequestKey(crypto.randomUUID()); setFormKey(k => k + 1) }
-  function beginEdit(row: Log, isLegacy = false) { setEditing(row); setLegacy(isLegacy); setSourceId(row.sourceId ?? ""); setRequestKey(crypto.randomUUID()); setFormKey(k => k + 1); setMessage("") }
+  function beginEdit(row: Log, isLegacy = false) { setEntryMode("daily"); setEditing(row); setLegacy(isLegacy); setSourceId(row.sourceId ?? ""); setRequestKey(crypto.randomUUID()); setFormKey(k => k + 1); setMessage("") }
   function saveLog(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const f = new FormData(event.currentTarget)
@@ -62,6 +70,7 @@ export function ProductionPanel({ data, reload, nextPage }: { data: Workspace; r
       <p>Current-configuration capacity benchmark: {summary.currentCapacityM3Month === null ? "Unavailable — confirm source configuration" : `${summary.currentCapacityM3Month.toLocaleString()} m³/month`}. Historical capacity is not inferred.</p>
       <p>Legacy records awaiting date/source review: {summary.legacyCount}. These are excluded from official totals.</p>
     </div>}
+    {summary && <MonthlyProductionEnergySummary summary={summary} />}
     <section className="space-y-3" aria-label="Production sources">
       <h3 className="font-semibold">Water sources</h3>
       {data.sources.length === 0 && <p>No source is configured. A source manager must add one before recording.</p>}
@@ -79,7 +88,29 @@ export function ProductionPanel({ data, reload, nextPage }: { data: Workspace; r
         <Button disabled={busy} type="submit">Save source configuration</Button><Button type="button" variant="outline" onClick={() => setSourceEdit(undefined)}>Cancel source edit</Button>
       </form>}
     </section>
-    {(data.capabilities.create || (legacy && data.capabilities.verify)) && <form key={formKey} onSubmit={saveLog} className="grid gap-3 rounded border p-4 md:grid-cols-2" aria-label="Daily production entry">
+    <EnergyAssetsSection data={data} busy={busy} perform={perform} />
+    {data.capabilities.create && !legacy && (
+      <div className="flex flex-wrap gap-2" role="group" aria-label="Measurement entry mode">
+        {([
+          ["daily", "Daily water"],
+          ["interval", "Multi-day water interval"],
+          ["electricity", "Grid electricity (kWh)"],
+          ["fuel", "Generator fuel & stock"],
+        ] as const).map(([mode, label]) => (
+          <Button
+            key={mode}
+            type="button"
+            variant={entryMode === mode ? "default" : "outline"}
+            size="sm"
+            disabled={busy}
+            onClick={() => setEntryMode(mode)}
+          >
+            {label}
+          </Button>
+        ))}
+      </div>
+    )}
+    {((entryMode === "daily" && data.capabilities.create) || (legacy && data.capabilities.verify)) && <form key={formKey} onSubmit={saveLog} className="grid gap-3 rounded border p-4 md:grid-cols-2" aria-label="Daily production entry">
       <h3 className="font-semibold md:col-span-2">{legacy ? "Review legacy daily record" : editing ? "Correct unverified daily record" : "Record daily production"}</h3>
       <label>Production source<select name="sourceId" aria-label="Production source" required className={selectClass} disabled={!!editing && !legacy} value={sourceId} onChange={e => setSourceId(e.target.value)}><option value="">Select source</option>{data.sources.filter(s => s.active || s.id === editing?.sourceId).map(s => <option key={s.id} value={s.id}>{s.sourceName}{s.active ? "" : " (archived)"}</option>)}</select></label>
       <label>Production date<Input name="productionDate" aria-label="Production date" required type="date" max={today()} disabled={!!editing && !legacy} defaultValue={editing?.productionDate ?? today()} /></label>
@@ -91,6 +122,9 @@ export function ProductionPanel({ data, reload, nextPage }: { data: Workspace; r
       <p className="text-sm md:col-span-2">One source per day. Supplied is water leaving the source into the supply system. Blank supplied/hours means unknown; zero is a measurement. Reporting follows the production calendar month, not the collection window. A missing billing period does not prevent recording.</p>
       <Button type="submit" disabled={busy}>{busy ? "Saving…" : editing ? "Save corrected entry" : "Save daily production"}</Button><Button type="button" variant="outline" disabled={busy} onClick={reset}>Start a new entry</Button>
     </form>}
+    {entryMode !== "daily" && data.capabilities.create && !legacy && (
+      <ExtendedMeasurementForms data={data} mode={entryMode} busy={busy} perform={perform} />
+    )}
     <section aria-label="Production records" className="space-y-3">
       <h3 className="font-semibold">Production history</h3>
       {!data.records.length && <p>No daily records for this month.</p>}
@@ -114,5 +148,6 @@ export function ProductionPanel({ data, reload, nextPage }: { data: Workspace; r
       </form>}
       {history && <section aria-label="Production audit history"><h4 className="font-semibold">Audit history (latest 100 events)</h4>{history.map(h => <details key={h.id}><summary>{h.action} — {h.userName || h.userId || "Unknown historical actor"} — {new Date(h.createdAt).toLocaleString()}</summary><pre className="overflow-auto whitespace-pre-wrap text-xs">{JSON.stringify(h.details, null, 2)}</pre></details>)}<Button variant="outline" onClick={() => setHistory(null)}>Close audit history</Button></section>}
     </section>
+    <ExtendedMeasurementsLedger data={data} busy={busy} perform={perform} onError={setMessage} />
   </div>
 }

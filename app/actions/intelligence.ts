@@ -161,20 +161,48 @@ export async function logProductionIntervalAction(input: unknown) {
   return productionAction((service, user) => service.createInterval(user, input), true)
 }
 
+export async function logProductionElectricityAction(input: unknown) {
+  return productionAction((service, user) => service.createElectricity(user, input), true)
+}
+
+export async function logProductionFuelAction(input: unknown) {
+  return productionAction((service, user) => service.createFuel(user, input), true)
+}
+
+export async function upsertWaterSchemeEnergyAsset(input: unknown) {
+  return productionAction((service, user) => service.saveEnergyAsset(user, input), true)
+}
+
+export async function archiveWaterSchemeEnergyAsset(input: unknown) {
+  return productionAction((service, user) => service.archiveEnergyAsset(user, input), true)
+}
+
+export async function assignEnergyAssetSourcesAction(input: unknown) {
+  return productionAction((service, user) => service.assignEnergyAssetSources(user, input), true)
+}
+
+export async function transitionProductionMeasurement(input: unknown) {
+  return productionAction((service, user) => service.transitionMeasurement(user, input), true)
+}
+
+export async function getProductionMeasurementHistory(recordKind: string, id: string) {
+  return productionAction((service, user) => service.measurementHistory(user, { recordKind, id }))
+}
+
 
 /** All public production actions validate again on the server, including direct invocations. */
 async function productionAction<T>(work: (service: ReturnType<typeof productionService>, current: Awaited<ReturnType<typeof requireUser>>) => Promise<T>, mutate = false): Promise<ProductionResult<T>> {
   const current = await requireUser()
   try {
     const data = await work(productionService(), current)
-    if (mutate) { revalidatePath("/intelligence", "layout"); revalidatePath("/decision-support", "layout") }
+    if (mutate) { revalidatePath("/intelligence", "layout"); revalidatePath("/decision-support", "layout"); revalidatePath("/dashboard/reports", "layout") }
     return { ok: true, data }
   } catch (error) {
     if (error instanceof ZodError) return { ok: false, code: "VALIDATION", message: "Check the entered values", fieldErrors: error.flatten().fieldErrors }
     if (error instanceof ProductionError) return { ok: false, code: error.code, message: error.message }
     const cause = error && typeof error === "object" && "cause" in error ? error.cause : error
     const code = cause && typeof cause === "object" && "code" in cause ? cause.code : null
-    if (code === "23505") return { ok: false, code: "DUPLICATE", message: "An entry already exists for this source/day or retry key. Reload before continuing." }
+    if (code === "23505") return { ok: false, code: "DUPLICATE", message: "An entry already exists for this source/day, asset reference, or retry key. Reload before continuing." }
     if (code === "23P01") return { ok: false, code: "CONFLICT", message: "The measurement interval overlaps an existing non-void record. Reload before continuing." }
     if (code === "23514" || code === "22003" || code === "23503") return { ok: false, code: "VALIDATION", message: "The record violates production integrity rules. Check its values and references." }
     if (code === "40P01" || code === "40001") return { ok: false, code: "CONFLICT", message: "Another update is in progress. Reload and retry." }

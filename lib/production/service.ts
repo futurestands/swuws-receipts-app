@@ -1,6 +1,6 @@
 import "server-only"
 import { createHash, randomUUID } from "node:crypto"
-import { and, asc, desc, eq, inArray, lt, or, sql } from "drizzle-orm"
+import { and, asc, desc, eq, inArray, lt, notInArray, or, sql } from "drizzle-orm"
 import { db as applicationDb, type DatabaseTransaction } from "@/lib/db"
 import {
   auditLog,
@@ -30,14 +30,19 @@ import {
 } from "./decimal"
 import { ownLogFilter, ownMeasurementFilter, productionReadableSchemeFilter, productionSchemeFilter } from "./scope"
 import {
+  archiveEnergyAssetSchema,
   archiveSourceSchema,
   batchMeasurementSchema,
   createLogSchema,
   editLogSchema,
   electricityMeasurementSchema,
+  energyAssetAssignmentSchema,
+  energyAssetSchema,
   fuelMeasurementSchema,
   intervalMeasurementSchema,
   legacyReviewSchema,
+  measurementHistorySchema,
+  measurementTransitionSchema,
   monthSchema,
   opaqueId,
   ProductionError,
@@ -47,8 +52,9 @@ import {
   type FuelMeasurement,
   type IntervalMeasurement,
   type Measurement,
+  type ReviewableMeasurementKind,
 } from "./schemas"
-import { loadProductionSummary } from "./reporting"
+import { loadProductionSummary, productionMonth } from "./reporting"
 
 type Client = typeof applicationDb | DatabaseTransaction
 const ZERO = BigInt(0)
@@ -134,13 +140,70 @@ export function productionService(database = applicationDb, audit = writeAudit) 
       const selectedMonth = monthSchema.parse(month ?? new Intl.DateTimeFormat("en-CA", { timeZone: "Africa/Kampala", year: "numeric", month: "2-digit" }).format(new Date()).slice(0, 7))
       const schemes = await database.select({ id: waterScheme.id, name: waterScheme.name }).from(waterScheme).where(productionReadableSchemeFilter(user)).orderBy(asc(waterScheme.name))
       const selectedId = schemeId ?? schemes[0]?.id
-      if (!selectedId) return { schemes, scheme: null, sources: [], records: [], nextCursor: null, summary: null, month: selectedMonth, userId: user.id, capabilities: { create: false, verify: false, sources: false } }
+      if (!selectedId) {
+        return {
+          schemes,
+          scheme: null,
+          sources: [],
+          energyAssets: [],
+          assetAssignments: [],
+          records: [],
+          intervals: [],
+          electricityRecords: [],
+          fuelRecords: [],
+          nextCursor: null,
+          summary: null,
+          month: selectedMonth,
+          userId: user.id,
+          capabilities: { create: false, verify: false, sources: false },
+        }
+      }
       const scheme = await assertScheme(database, user, selectedId)
-      const sourceRows = await database.select().from(sources).where(eq(sources.schemeId, selectedId)).orderBy(asc(sources.sourceName))
-      const records = await database.select().from(logs).where(and(eq(logs.schemeId, selectedId), ownLogFilter(user),
-        // Legacy dates are not inferred. They remain visible for explicit review.
-        or(sql`to_char(${logs.productionDate}, 'YYYY-MM') = ${selectedMonth}`, eq(logs.workflowVersion, 0)), cursor ? lt(logs.id, cursor) : undefined,
-      )).orderBy(desc(logs.id)).limit(31)
+      const bounds = productionMonth(selectedMonth)
+      const [tables] = await database.select({
+        hasAsset: sql<boolean>`to_regclass('water_scheme_energy_asset') is not null`,
+        hasAssign: sql<boolean>`to_regclass('energy_asset_assignment') is not null`,
+        hasInterval: sql<boolean>`to_regclass('water_production_interval') is not null`,
+        hasElectricity: sql<boolean>`to_regclass('water_production_electricity') is not null`,
+        hasFuel: sql<boolean>`to_regclass('water_production_fuel') is not null`,
+      }).from(sql`(select 1) as _workspace_probe`)
+      const rowFilter = ownMeasurementFilter(user)
+
+      const [sourceRows, records, assetRows, assignmentRows, intervalRows, electricityRows, fuelRows] = await Promise.all([
+        database.select().from(sources).where(eq(sources.schemeId, selectedId)).orderBy(asc(sources.sourceName)),
+        database.select().from(logs).where(and(eq(logs.schemeId, selectedId), ownLogFilter(user),
+          // Legacy dates are not inferred. They remain visible for explicit review.
+          or(sql`to_char(${logs.productionDate}, 'YYYY-MM') = ${selectedMonth}`, eq(logs.workflowVersion, 0)), cursor ? lt(logs.id, cursor) : undefined,
+        )).orderBy(desc(logs.id)).limit(31),
+        tables?.hasAsset
+          ? database.select().from(energyAssets).where(eq(energyAssets.schemeId, selectedId)).orderBy(asc(energyAssets.assetType), asc(energyAssets.assetRef))
+          : Promise.resolve([]),
+        tables?.hasAssign
+          ? database.select().from(energyAssetAssignment).where(eq(energyAssetAssignment.schemeId, selectedId)).orderBy(asc(energyAssetAssignment.assetId), asc(energyAssetAssignment.sourceId))
+          : Promise.resolve([]),
+        tables?.hasInterval
+          ? database.select().from(waterProductionInterval).where(and(
+            eq(waterProductionInterval.schemeId, selectedId),
+            sql`${waterProductionInterval.coverageStartDate} < ${bounds.end}::date and ${waterProductionInterval.coverageEndDate} >= ${bounds.start}::date`,
+            rowFilter?.(waterProductionInterval),
+          )).orderBy(desc(waterProductionInterval.openingTimestamp), desc(waterProductionInterval.id)).limit(100)
+          : Promise.resolve([]),
+        tables?.hasElectricity
+          ? database.select().from(waterProductionElectricity).where(and(
+            eq(waterProductionElectricity.schemeId, selectedId),
+            sql`${waterProductionElectricity.coverageStartDate} < ${bounds.end}::date and ${waterProductionElectricity.coverageEndDate} >= ${bounds.start}::date`,
+            rowFilter?.(waterProductionElectricity),
+          )).orderBy(desc(waterProductionElectricity.openingTimestamp), desc(waterProductionElectricity.id)).limit(100)
+          : Promise.resolve([]),
+        tables?.hasFuel
+          ? database.select().from(waterProductionFuel).where(and(
+            eq(waterProductionFuel.schemeId, selectedId),
+            sql`${waterProductionFuel.coverageStartDate} < ${bounds.end}::date and ${waterProductionFuel.coverageEndDate} >= ${bounds.start}::date`,
+            rowFilter?.(waterProductionFuel),
+          )).orderBy(desc(waterProductionFuel.coverageStartDate), desc(waterProductionFuel.id)).limit(100)
+          : Promise.resolve([]),
+      ])
+
       // Immutable review actors remain disqualified even after later corrections.
       const legacyReviews = records.length ? await database.select({ entityId: auditLog.entityId, userId: auditLog.userId }).from(auditLog)
         .where(and(eq(auditLog.entityType, "water_production_log"), eq(auditLog.action, "production.log.legacy_review"), inArray(auditLog.entityId, records.map(r => r.id)))) : []
@@ -151,7 +214,22 @@ export function productionService(database = applicationDb, audit = writeAudit) 
       }
       const [create, verify, manage] = await Promise.all([permitted("production.create"), permitted("production.verify"), permitted("production.sources.manage")])
       const summary = await loadProductionSummary(database, [selectedId], selectedMonth, ownLogFilter(user), ownMeasurementFilter(user))
-      return { schemes, scheme, sources: sourceRows, records: visibleRecords, nextCursor: records.length > 30 ? records[29].id : null, summary: summary[0] ?? null, month: selectedMonth, userId: user.id, capabilities: { create, verify, sources: manage } }
+      return {
+        schemes,
+        scheme,
+        sources: sourceRows,
+        energyAssets: assetRows,
+        assetAssignments: assignmentRows,
+        records: visibleRecords,
+        intervals: intervalRows,
+        electricityRecords: electricityRows,
+        fuelRecords: fuelRows,
+        nextCursor: records.length > 30 ? records[29].id : null,
+        summary: summary[0] ?? null,
+        month: selectedMonth,
+        userId: user.id,
+        capabilities: { create, verify, sources: manage },
+      }
     },
     async history(user: SessionUser, id: unknown) {
       const parsedId = opaqueId.parse(id)
@@ -530,6 +608,306 @@ export function productionService(database = applicationDb, audit = writeAudit) 
         await audit({ user, action: "production.source.archive", entityType: "water_scheme_source", entityId: before.id, details: { before, after } }, tx)
         return after
       })
+    },
+    async saveEnergyAsset(user: SessionUser, input: unknown) {
+      const data = energyAssetSchema.parse(input)
+      return database.transaction(async tx => {
+        await assertScheme(tx, user, data.schemeId, "production.sources.manage", !data.id)
+        const [before] = data.id
+          ? await tx.select().from(energyAssets).where(and(eq(energyAssets.id, data.id), eq(energyAssets.schemeId, data.schemeId))).limit(1).for("update")
+          : []
+        if (data.id && !before) fail("FORBIDDEN", "Energy asset is unavailable or outside this scheme")
+        if (before) {
+          if (before.assetType !== data.assetType) {
+            fail("VALIDATION", "Energy asset type cannot be changed; archive this asset and register a new one")
+          }
+          if (before.assetType === "generator" && before.fuelType && before.fuelType !== data.fuelType) {
+            const [existingFuel] = await tx.select({ id: waterProductionFuel.id }).from(waterProductionFuel).where(and(
+              eq(waterProductionFuel.assetId, before.id),
+              sql`${waterProductionFuel.status} <> 'void'`,
+            )).limit(1)
+            if (existingFuel) fail("CONFLICT", "Generator fuel type cannot be changed once non-void fuel records exist")
+          }
+          const [after] = await tx.update(energyAssets).set({
+            assetRef: data.assetRef,
+            fuelType: data.fuelType,
+            updatedAt: new Date(),
+          }).where(eq(energyAssets.id, before.id)).returning()
+          await audit({ user, action: "production.energy_asset.update", entityType: "water_scheme_energy_asset", entityId: after.id, details: { before, after } }, tx)
+          return after
+        }
+        const [after] = await tx.insert(energyAssets).values({
+          id: `asset-${randomUUID()}`,
+          schemeId: data.schemeId,
+          assetType: data.assetType,
+          assetRef: data.assetRef,
+          fuelType: data.fuelType,
+          active: true,
+        }).returning()
+        await audit({ user, action: "production.energy_asset.create", entityType: "water_scheme_energy_asset", entityId: after.id, details: { before: null, after } }, tx)
+        return after
+      })
+    },
+    async archiveEnergyAsset(user: SessionUser, input: unknown) {
+      const data = archiveEnergyAssetSchema.parse(input)
+      return database.transaction(async tx => {
+        const [before] = await tx.select().from(energyAssets).where(and(
+          eq(energyAssets.id, data.id),
+          inArray(energyAssets.schemeId, sql`(select ${waterScheme.id} from ${waterScheme} where ${productionSchemeFilter(user, "production.sources.manage")} and ${productionSchemeFilter(user, "production.view")})`),
+        )).limit(1).for("update")
+        if (!before) fail("FORBIDDEN", "Energy asset is unavailable or outside your access")
+        if (!before.active) fail("CONFLICT", "Energy asset is already archived")
+        const [after] = await tx.update(energyAssets).set({ active: false, updatedAt: new Date() }).where(eq(energyAssets.id, before.id)).returning()
+        await audit({ user, action: "production.energy_asset.archive", entityType: "water_scheme_energy_asset", entityId: before.id, details: { before, after } }, tx)
+        return after
+      })
+    },
+    async assignEnergyAssetSources(user: SessionUser, input: unknown) {
+      const data = energyAssetAssignmentSchema.parse(input)
+      const uniqueSourceIds = [...new Set(data.sourceIds)]
+      return database.transaction(async tx => {
+        await assertScheme(tx, user, data.schemeId, "production.sources.manage", true)
+        const [asset] = await tx.select().from(energyAssets).where(and(
+          eq(energyAssets.id, data.assetId),
+          eq(energyAssets.schemeId, data.schemeId),
+        )).limit(1).for("update")
+        if (!asset) fail("FORBIDDEN", "Energy asset is unavailable or outside this scheme")
+        if (!asset.active) fail("CONFLICT", "Cannot assign water sources to an archived energy asset")
+
+        await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`energy_asset_assignment:${asset.id}`}, 0))`)
+
+        if (uniqueSourceIds.length > 0) {
+          const validSources = await tx.select({ id: sources.id }).from(sources).where(and(
+            eq(sources.schemeId, data.schemeId),
+            inArray(sources.id, uniqueSourceIds),
+          )).for("share")
+          if (validSources.length !== uniqueSourceIds.length) {
+            fail("FORBIDDEN", "One or more selected water sources do not belong to this scheme")
+          }
+        }
+
+        if (asset.assetType === "electricity_meter") {
+          const nextSupportedUnits = Math.max(1, uniqueSourceIds.length)
+          const existingElec = await tx.select({
+            id: waterProductionElectricity.id,
+            openingTimestamp: waterProductionElectricity.openingTimestamp,
+            closingTimestamp: waterProductionElectricity.closingTimestamp,
+            pumpOperatingHours: waterProductionElectricity.pumpOperatingHours,
+          }).from(waterProductionElectricity).where(and(
+            eq(waterProductionElectricity.assetId, asset.id),
+            sql`${waterProductionElectricity.status} <> 'void'`,
+            sql`${waterProductionElectricity.pumpOperatingHours} is not null`,
+          ))
+          for (const row of existingElec) {
+            const elapsedMs = row.closingTimestamp.getTime() - row.openingTimestamp.getTime()
+            const maxHoursCents = divideRoundHalfUp(BigInt(elapsedMs) * BigInt(nextSupportedUnits), HUNDREDTH_HOUR_MS)
+            if (toCents(row.pumpOperatingHours!) > maxHoursCents + ONE) {
+              fail("CONFLICT", `Cannot reduce assigned sources below ${nextSupportedUnits} unit(s): existing electricity record ${row.id} recorded ${row.pumpOperatingHours} pump-hours`)
+            }
+          }
+        }
+
+        const before = await tx.select().from(energyAssetAssignment).where(and(
+          eq(energyAssetAssignment.schemeId, data.schemeId),
+          eq(energyAssetAssignment.assetId, asset.id),
+        )).orderBy(asc(energyAssetAssignment.sourceId))
+
+        if (uniqueSourceIds.length === 0) {
+          await tx.delete(energyAssetAssignment).where(and(
+            eq(energyAssetAssignment.schemeId, data.schemeId),
+            eq(energyAssetAssignment.assetId, asset.id),
+          ))
+        } else {
+          await tx.delete(energyAssetAssignment).where(and(
+            eq(energyAssetAssignment.schemeId, data.schemeId),
+            eq(energyAssetAssignment.assetId, asset.id),
+            notInArray(energyAssetAssignment.sourceId, uniqueSourceIds),
+          ))
+          const existingSet = new Set(before.map(b => b.sourceId))
+          const toInsert = uniqueSourceIds.filter(id => !existingSet.has(id)).map(sourceId => ({
+            id: `assign-${randomUUID()}`,
+            schemeId: data.schemeId,
+            assetId: asset.id,
+            sourceId,
+          }))
+          if (toInsert.length > 0) {
+            await tx.insert(energyAssetAssignment).values(toInsert).onConflictDoNothing()
+          }
+        }
+
+        const after = await tx.select().from(energyAssetAssignment).where(and(
+          eq(energyAssetAssignment.schemeId, data.schemeId),
+          eq(energyAssetAssignment.assetId, asset.id),
+        )).orderBy(asc(energyAssetAssignment.sourceId))
+
+        await audit({
+          user,
+          action: "production.energy_asset.assign_sources",
+          entityType: "water_scheme_energy_asset",
+          entityId: asset.id,
+          details: { before, after },
+        }, tx)
+        return after
+      })
+    },
+    async transitionMeasurement(user: SessionUser, input: unknown) {
+      const data = measurementTransitionSchema.parse(input)
+      const authorisedSchemes = sql`(select ${waterScheme.id} from ${waterScheme} where ${productionSchemeFilter(user, "production.view")} and ${productionSchemeFilter(user, "production.verify")})`
+      const next = { verify: "verified", flag: "flagged", revoke: "flagged", void: "void" }[data.operation]
+
+      const validateTransitionState = (before: { recordedById: string; status: string; version: number }) => {
+        checkVersion(before, data.expectedVersion)
+        if (before.recordedById === user.id) fail("FORBIDDEN", "An independent verifier must review this record")
+        if (
+          before.status === "void" ||
+          (data.operation === "verify" && before.status !== "entered") ||
+          (data.operation === "flag" && before.status !== "entered") ||
+          (data.operation === "revoke" && before.status !== "verified")
+        ) {
+          fail("CONFLICT", "This transition is not valid for the current state")
+        }
+      }
+
+      return database.transaction(async tx => {
+        if (data.recordKind === "interval") {
+          const [before] = await tx.select().from(waterProductionInterval).where(and(
+            eq(waterProductionInterval.id, data.id),
+            inArray(waterProductionInterval.schemeId, authorisedSchemes),
+          )).limit(1).for("update")
+          if (!before) fail("FORBIDDEN", "Record is unavailable or outside your access")
+          await assertScheme(tx, user, before.schemeId, "production.verify")
+          validateTransitionState(before)
+
+          if (data.operation === "verify") {
+            await assertSource(tx, { schemeId: before.schemeId, sourceId: before.sourceId }, false)
+            const [dailyOverlap] = await tx.select({ id: logs.id }).from(logs).where(and(
+              eq(logs.sourceId, before.sourceId),
+              eq(logs.workflowVersion, 1),
+              sql`${logs.status} <> 'void'`,
+              sql`${logs.productionDate} >= ${before.coverageStartDate}::date AND ${logs.productionDate} <= ${before.coverageEndDate}::date`,
+            )).limit(1)
+            if (dailyOverlap) {
+              fail("CONFLICT", "Cannot verify water interval while overlapping non-void daily production logs exist on this source; void or reconcile the duplicate records first")
+            }
+          }
+
+          const [after] = await tx.update(waterProductionInterval).set({
+            status: next,
+            verifiedAt: next === "verified" ? new Date() : null,
+            verifiedById: next === "verified" ? user.id : null,
+            version: before.version + 1,
+            updatedAt: new Date(),
+          }).where(and(eq(waterProductionInterval.id, before.id), eq(waterProductionInterval.version, before.version))).returning()
+          await audit({
+            user,
+            action: `production.interval.${data.operation}`,
+            entityType: "water_production_interval",
+            entityId: before.id,
+            details: { before, after, reason: data.reason || null },
+          }, tx)
+          return after
+        }
+
+        if (data.recordKind === "electricity") {
+          const [before] = await tx.select().from(waterProductionElectricity).where(and(
+            eq(waterProductionElectricity.id, data.id),
+            inArray(waterProductionElectricity.schemeId, authorisedSchemes),
+          )).limit(1).for("update")
+          if (!before) fail("FORBIDDEN", "Record is unavailable or outside your access")
+          await assertScheme(tx, user, before.schemeId, "production.verify")
+          validateTransitionState(before)
+
+          if (data.operation === "verify" && before.pumpOperatingHours !== null) {
+            const supportedUnits = await countSupportedUnits(tx, before.schemeId, before.assetId)
+            const elapsedMs = before.closingTimestamp.getTime() - before.openingTimestamp.getTime()
+            const maxHoursCents = divideRoundHalfUp(BigInt(elapsedMs) * BigInt(supportedUnits), HUNDREDTH_HOUR_MS)
+            if (toCents(before.pumpOperatingHours) > maxHoursCents + ONE) {
+              fail("VALIDATION", `Pump operating hours (${before.pumpOperatingHours}) exceed elapsed interval capacity (${fromCents(maxHoursCents)} h across ${supportedUnits} supported unit(s))`)
+            }
+          }
+
+          const [after] = await tx.update(waterProductionElectricity).set({
+            status: next,
+            verifiedAt: next === "verified" ? new Date() : null,
+            verifiedById: next === "verified" ? user.id : null,
+            version: before.version + 1,
+            updatedAt: new Date(),
+          }).where(and(eq(waterProductionElectricity.id, before.id), eq(waterProductionElectricity.version, before.version))).returning()
+          await audit({
+            user,
+            action: `production.electricity.${data.operation}`,
+            entityType: "water_production_electricity",
+            entityId: before.id,
+            details: { before, after, reason: data.reason || null },
+          }, tx)
+          return after
+        }
+
+        const [before] = await tx.select().from(waterProductionFuel).where(and(
+          eq(waterProductionFuel.id, data.id),
+          inArray(waterProductionFuel.schemeId, authorisedSchemes),
+        )).limit(1).for("update")
+        if (!before) fail("FORBIDDEN", "Record is unavailable or outside your access")
+        await assertScheme(tx, user, before.schemeId, "production.verify")
+        validateTransitionState(before)
+
+        const [after] = await tx.update(waterProductionFuel).set({
+          status: next,
+          verifiedAt: next === "verified" ? new Date() : null,
+          verifiedById: next === "verified" ? user.id : null,
+          version: before.version + 1,
+          updatedAt: new Date(),
+        }).where(and(eq(waterProductionFuel.id, before.id), eq(waterProductionFuel.version, before.version))).returning()
+        await audit({
+          user,
+          action: `production.fuel.${data.operation}`,
+          entityType: "water_production_fuel",
+          entityId: before.id,
+          details: { before, after, reason: data.reason || null },
+        }, tx)
+        return after
+      })
+    },
+    async transitionInterval(user: SessionUser, input: Omit< { id: string; expectedVersion: number; operation: "verify" | "flag" | "revoke" | "void"; reason?: string }, "recordKind">) {
+      return this.transitionMeasurement(user, { ...input, recordKind: "interval" as ReviewableMeasurementKind })
+    },
+    async transitionElectricity(user: SessionUser, input: Omit<{ id: string; expectedVersion: number; operation: "verify" | "flag" | "revoke" | "void"; reason?: string }, "recordKind">) {
+      return this.transitionMeasurement(user, { ...input, recordKind: "electricity" as ReviewableMeasurementKind })
+    },
+    async transitionFuel(user: SessionUser, input: Omit<{ id: string; expectedVersion: number; operation: "verify" | "flag" | "revoke" | "void"; reason?: string }, "recordKind">) {
+      return this.transitionMeasurement(user, { ...input, recordKind: "fuel" as ReviewableMeasurementKind })
+    },
+    async measurementHistory(user: SessionUser, input: unknown) {
+      const data = measurementHistorySchema.parse(input)
+      if (data.recordKind === "daily") return this.history(user, data.id)
+
+      const readableSchemes = sql`(select ${waterScheme.id} from ${waterScheme} where ${productionReadableSchemeFilter(user)})`
+      const rowFilter = ownMeasurementFilter(user)
+
+      const config = {
+        interval: { table: waterProductionInterval, entityType: "water_production_interval" },
+        electricity: { table: waterProductionElectricity, entityType: "water_production_electricity" },
+        fuel: { table: waterProductionFuel, entityType: "water_production_fuel" },
+      }[data.recordKind]
+
+      const [row] = await database.select({ id: config.table.id }).from(config.table).where(and(
+        eq(config.table.id, data.id),
+        rowFilter?.(config.table),
+        inArray(config.table.schemeId, readableSchemes),
+      )).limit(1)
+      if (!row) fail("FORBIDDEN", "Record is unavailable or outside your access")
+
+      return database.select({
+        id: auditLog.id,
+        action: auditLog.action,
+        createdAt: auditLog.createdAt,
+        userId: auditLog.userId,
+        userName: auditLog.userName,
+        details: auditLog.details,
+      }).from(auditLog).where(and(
+        eq(auditLog.entityType, config.entityType),
+        eq(auditLog.entityId, row.id),
+      )).orderBy(desc(auditLog.createdAt), desc(auditLog.id)).limit(100)
     },
   }
 }

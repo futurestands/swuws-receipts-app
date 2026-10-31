@@ -38,6 +38,7 @@ export interface MonthlyProductionReportItem {
   /** Verified system input volume when every verified production record carries a supplied measurement; null otherwise. */
   verifiedSuppliedM3: number | null
   suppliedComplete: boolean
+  provisionalDailyCount: number
   provisionalProducedM3: number
   provisionalIntervalCount: number
   provisionalIntervalTotalM3: number
@@ -73,6 +74,10 @@ export interface MonthlyProductionReportItem {
     fuelCoverageComplete: boolean
     fuelUnavailableCount: number
     fuelUnreconciledExpenditureUgx: number
+    provisionalElectricityCount: number
+    provisionalElectricityKwh: number
+    provisionalFuelCount: number
+    provisionalFuelLitres: number
   }
 }
 
@@ -92,6 +97,12 @@ export interface MonthlyProductionReportOutput {
     partialSchemesCount: number
     unavailableSchemesCount: number
     totalVerifiedProducedM3: number
+    totalMeasuredElectricityKwh: number
+    totalMeasuredFuelLitres: number
+    totalMeasuredEnergyCostUgx: number
+    totalUnreconciledFuelLogsCount: number
+    totalUnreconciledFuelExpenditureUgx: number
+    totalProvisionalRecordsCount: number
     billedSchemesWithReadingsCount: number
     billedCompleteSchemesCount: number
     totalBilledConsumptionM3: number | null
@@ -104,6 +115,8 @@ export interface MonthlyProductionReportOutput {
       producedM3: number
       electricityKwh: number
       fuelLitres: number
+      electricityCostUgx: number
+      fuelExpenditureUgx: number
     }
   }
   items: MonthlyProductionReportItem[]
@@ -141,12 +154,12 @@ export async function generateMonthlyWaterProductionReport(
 
   const schemeIds = targetSchemes.map((s) => s.id)
   const scopeLabel = schemeId
-    ? `Scheme: ${schemeId}`
+    ? `Scheme: ${targetSchemes[0]?.name ?? schemeId}`
     : branchId
-    ? `Branch: ${branchId}`
+    ? `Area (Branch): ${targetSchemes[0]?.branchName ?? branchId}`
     : clusterId
-    ? `Cluster: ${clusterId}`
-    : "Authorised Scope"
+    ? `Cluster: ${targetSchemes[0]?.clusterName ?? clusterId}`
+    : "SWUWS-Wide (Authorised Scope)"
 
   if (!schemeIds.length) {
     return {
@@ -162,6 +175,12 @@ export async function generateMonthlyWaterProductionReport(
         partialSchemesCount: 0,
         unavailableSchemesCount: 0,
         totalVerifiedProducedM3: 0,
+        totalMeasuredElectricityKwh: 0,
+        totalMeasuredFuelLitres: 0,
+        totalMeasuredEnergyCostUgx: 0,
+        totalUnreconciledFuelLogsCount: 0,
+        totalUnreconciledFuelExpenditureUgx: 0,
+        totalProvisionalRecordsCount: 0,
         billedSchemesWithReadingsCount: 0,
         billedCompleteSchemesCount: 0,
         totalBilledConsumptionM3: null,
@@ -174,6 +193,8 @@ export async function generateMonthlyWaterProductionReport(
           producedM3: 0,
           electricityKwh: 0,
           fuelLitres: 0,
+          electricityCostUgx: 0,
+          fuelExpenditureUgx: 0,
         },
       },
       items: [],
@@ -187,6 +208,13 @@ export async function generateMonthlyWaterProductionReport(
   ])
 
   let totalVerifiedProducedCents = ZERO
+  let totalMeasuredElectricityCents = ZERO
+  let totalMeasuredFuelCents = ZERO
+  let totalMeasuredEnergyCostCents = ZERO
+  let totalUnreconciledFuelLogsCount = 0
+  let totalUnreconciledFuelExpenditureCents = ZERO
+  let totalProvisionalRecordsCount = 0
+
   let totalBilledCents = ZERO
   let billedSchemesWithReadingsCount = 0
   let billedCompleteSchemesCount = 0
@@ -203,6 +231,8 @@ export async function generateMonthlyWaterProductionReport(
   let estProducedCents = ZERO
   let estElecCents = ZERO
   let estFuelCents = ZERO
+  let estElecCostCents = ZERO
+  let estFuelCostCents = ZERO
   let anyEstimated = false
 
   const items: MonthlyProductionReportItem[] = targetSchemes.map((sch) => {
@@ -215,6 +245,35 @@ export async function generateMonthlyWaterProductionReport(
     const producedCents = toCents(sum?.totalWaterProducedM3 ?? "0.00")
     totalVerifiedProducedCents += producedCents
     const verifiedProduced = Number(fromCents(producedCents))
+
+    const energy = sum?.energy ?? {
+      totalKwh: 0,
+      totalFuelLitres: 0,
+      totalEnergyCostUgx: 0,
+      kwhPerM3: null,
+      fuelPerM3: null,
+      electricityCoverageComplete: false,
+      fuelCoverageComplete: false,
+      fuelUnavailableCount: 0,
+      fuelUnreconciledExpenditureUgx: 0,
+      provisionalElectricityCount: 0,
+      provisionalElectricityKwh: 0,
+      provisionalFuelCount: 0,
+      provisionalFuelLitres: 0,
+    }
+    totalMeasuredElectricityCents += toCents(energy.totalKwh.toFixed(2))
+    totalMeasuredFuelCents += toCents(energy.totalFuelLitres.toFixed(2))
+    totalMeasuredEnergyCostCents += toCents(energy.totalEnergyCostUgx.toFixed(2))
+    totalUnreconciledFuelLogsCount += energy.fuelUnavailableCount
+    totalUnreconciledFuelExpenditureCents += toCents(energy.fuelUnreconciledExpenditureUgx.toFixed(2))
+
+    const provDailyCount = sum?.provisionalCount ?? 0
+    const provIntCount = sum?.provisionalIntervalCount ?? 0
+    totalProvisionalRecordsCount +=
+      provDailyCount +
+      provIntCount +
+      (energy.provisionalElectricityCount ?? 0) +
+      (energy.provisionalFuelCount ?? 0)
 
     const reqDays = sum?.requiredSourceDays ?? 0
     const verDays = sum?.verifiedSourceDays ?? 0
@@ -269,6 +328,8 @@ export async function generateMonthlyWaterProductionReport(
       estProducedCents += toCents(est.producedM3)
       estElecCents += toCents(est.electricityKwh.toFixed(2))
       estFuelCents += toCents(est.fuelLitres.toFixed(2))
+      estElecCostCents += toCents(est.electricityCostUgx.toFixed(2))
+      estFuelCostCents += toCents(est.fuelExpenditureUgx.toFixed(2))
     }
 
     return {
@@ -290,8 +351,9 @@ export async function generateMonthlyWaterProductionReport(
       excludedConflictedIntervalM3: Number(sum?.excludedConflictedIntervalM3 ?? 0),
       verifiedSuppliedM3: sum?.suppliedComplete ? Number(sum.totalWaterSuppliedM3) : null,
       suppliedComplete: sum?.suppliedComplete ?? false,
+      provisionalDailyCount: provDailyCount,
       provisionalProducedM3: Number(sum?.provisionalProducedM3 ?? 0),
-      provisionalIntervalCount: sum?.provisionalIntervalCount ?? 0,
+      provisionalIntervalCount: provIntCount,
       provisionalIntervalTotalM3: Number(sum?.provisionalIntervalTotalM3 ?? 0),
       averageDailyProducedM3: sum?.averageDailyProducedM3 ?? null,
       monthlyCapacityM3: monthlyCap,
@@ -313,16 +375,12 @@ export async function generateMonthlyWaterProductionReport(
         methods,
         records: estRecords,
       },
-      energy: sum?.energy ?? {
-        totalKwh: 0,
-        totalFuelLitres: 0,
-        totalEnergyCostUgx: 0,
-        kwhPerM3: null,
-        fuelPerM3: null,
-        electricityCoverageComplete: false,
-        fuelCoverageComplete: false,
-        fuelUnavailableCount: 0,
-        fuelUnreconciledExpenditureUgx: 0,
+      energy: {
+        ...energy,
+        provisionalElectricityCount: energy.provisionalElectricityCount ?? 0,
+        provisionalElectricityKwh: energy.provisionalElectricityKwh ?? 0,
+        provisionalFuelCount: energy.provisionalFuelCount ?? 0,
+        provisionalFuelLitres: energy.provisionalFuelLitres ?? 0,
       },
     }
   })
@@ -359,6 +417,12 @@ export async function generateMonthlyWaterProductionReport(
       partialSchemesCount,
       unavailableSchemesCount,
       totalVerifiedProducedM3: Number(fromCents(totalVerifiedProducedCents)),
+      totalMeasuredElectricityKwh: Number(fromCents(totalMeasuredElectricityCents)),
+      totalMeasuredFuelLitres: Number(fromCents(totalMeasuredFuelCents)),
+      totalMeasuredEnergyCostUgx: Number(fromCents(totalMeasuredEnergyCostCents)),
+      totalUnreconciledFuelLogsCount,
+      totalUnreconciledFuelExpenditureUgx: Number(fromCents(totalUnreconciledFuelExpenditureCents)),
+      totalProvisionalRecordsCount,
       billedSchemesWithReadingsCount,
       billedCompleteSchemesCount,
       totalBilledConsumptionM3: billedSchemesWithReadingsCount > 0 ? Number(fromCents(totalBilledCents)) : null,
@@ -371,6 +435,8 @@ export async function generateMonthlyWaterProductionReport(
         producedM3: Number(fromCents(estProducedCents)),
         electricityKwh: Number(fromCents(estElecCents)),
         fuelLitres: Number(fromCents(estFuelCents)),
+        electricityCostUgx: Number(fromCents(estElecCostCents)),
+        fuelExpenditureUgx: Number(fromCents(estFuelCostCents)),
       },
     },
     items,

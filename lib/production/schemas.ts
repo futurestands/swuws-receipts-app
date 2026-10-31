@@ -140,11 +140,64 @@ export const fuelMeasurementSchema = z.object({
 })
 
 
+export const energyAssetSchema = z.object({
+  id: opaqueId.optional(),
+  schemeId: opaqueId,
+  assetType: z.enum(["electricity_meter", "generator"]),
+  assetRef: z.string().trim().min(1, "Asset reference is required").max(150),
+  fuelType: z.preprocess(
+    v => (v === "" || v === undefined ? null : v),
+    z.enum(["diesel", "petrol"]).nullable(),
+  ),
+}).strict().superRefine((v, ctx) => {
+  if (v.assetType === "electricity_meter" && v.fuelType !== null) {
+    ctx.addIssue({ code: "custom", path: ["fuelType"], message: "Electricity meters cannot specify a fuel type" })
+  }
+  if (v.assetType === "generator" && v.fuelType === null) {
+    ctx.addIssue({ code: "custom", path: ["fuelType"], message: "Select diesel or petrol for a generator" })
+  }
+})
+
+export const archiveEnergyAssetSchema = z.object({
+  id: opaqueId,
+}).strict()
+
+export const energyAssetAssignmentSchema = z.object({
+  schemeId: opaqueId,
+  assetId: opaqueId,
+  sourceIds: z.array(opaqueId).max(100),
+}).strict()
+
+export const measurementRecordKindSchema = z.enum(["daily", "interval", "electricity", "fuel"])
+export const reviewableMeasurementKindSchema = z.enum(["interval", "electricity", "fuel"])
+
+export const measurementTransitionSchema = z.object({
+  recordKind: reviewableMeasurementKindSchema,
+  id: opaqueId,
+  expectedVersion: z.number().int().positive(),
+  operation: z.enum(["verify", "flag", "revoke", "void"]),
+  reason: z.string().trim().max(1000).default(""),
+}).strict().superRefine((v, ctx) => {
+  if (v.operation !== "verify" && !reasonSchema.safeParse(v.reason).success) {
+    ctx.addIssue({ code: "custom", path: ["reason"], message: "A reason of 10–1000 characters is required" })
+  }
+})
+
+export const measurementHistorySchema = z.object({
+  recordKind: measurementRecordKindSchema,
+  id: opaqueId,
+}).strict()
+
 export type Measurement = z.infer<typeof measurementSchema>
 export type BatchMeasurement = z.infer<typeof batchMeasurementSchema>
 export type IntervalMeasurement = z.infer<typeof intervalMeasurementSchema>
 export type ElectricityMeasurement = z.infer<typeof electricityMeasurementSchema>
 export type FuelMeasurement = z.infer<typeof fuelMeasurementSchema>
+export type EnergyAssetInput = z.infer<typeof energyAssetSchema>
+export type EnergyAssetAssignmentInput = z.infer<typeof energyAssetAssignmentSchema>
+export type MeasurementRecordKind = z.infer<typeof measurementRecordKindSchema>
+export type ReviewableMeasurementKind = z.infer<typeof reviewableMeasurementKindSchema>
+export type MeasurementTransitionInput = z.infer<typeof measurementTransitionSchema>
 export type ProductionCode = "VALIDATION" | "FORBIDDEN" | "NOT_FOUND" | "CONFLICT" | "DUPLICATE" | "CONFIGURATION"
 export class ProductionError extends Error {
   constructor(public code: ProductionCode, message: string) { super(message) }
