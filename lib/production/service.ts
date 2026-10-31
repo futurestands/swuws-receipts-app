@@ -276,15 +276,23 @@ export function productionService(database = applicationDb, audit = writeAudit) 
       return database.transaction(async tx => {
         await assertScheme(tx, user, data.schemeId, "production.create", true)
 
-        let calculatedConsumedLitres = Number(data.fuelPurchasedLitres)
+        let calculatedConsumedLitres: number | null = null
         if (data.openingStockLitres !== null && data.closingStockLitres !== null) {
-          calculatedConsumedLitres = Number(data.openingStockLitres) + Number(data.fuelPurchasedLitres) - Number(data.closingStockLitres)
+          const purchased = Number(data.fuelPurchasedLitres ?? 0)
+          const transfersIn = Number(data.fuelTransfersInLitres ?? 0)
+          const transfersOut = Number(data.fuelTransfersOutLitres ?? 0)
+          const adjustments = Number(data.fuelAdjustmentsLitres ?? 0)
+          calculatedConsumedLitres = Number(data.openingStockLitres) + purchased + transfersIn - transfersOut + adjustments - Number(data.closingStockLitres)
+
+          if (calculatedConsumedLitres < 0) {
+            fail("VALIDATION", "Calculated fuel consumption cannot be negative. Check stock readings and transfers.")
+          }
         }
 
         const isCrossMonth = data.coverageStartDate.slice(0, 7) !== data.coverageEndDate.slice(0, 7)
         let notes = data.notes
-        if (data.openingStockLitres === null || data.closingStockLitres === null) {
-          notes = `ESTIMATED_BASIS: Fuel consumption estimated directly from purchases due to missing stock readings. ${notes}`.trim()
+        if (calculatedConsumedLitres === null) {
+          notes = `UNAVAILABLE: Fuel consumption cannot be established due to missing opening or closing stock readings. ${notes}`.trim()
         }
 
         const [row] = await tx.insert(waterProductionFuel).values({
@@ -293,9 +301,12 @@ export function productionService(database = applicationDb, audit = writeAudit) 
           assetId: data.assetId,
           fuelType: data.fuelType,
           openingStockLitres: data.openingStockLitres,
-          fuelPurchasedLitres: data.fuelPurchasedLitres,
+          fuelPurchasedLitres: data.fuelPurchasedLitres ?? "0",
+          fuelTransfersInLitres: data.fuelTransfersInLitres ?? "0",
+          fuelTransfersOutLitres: data.fuelTransfersOutLitres ?? "0",
+          fuelAdjustmentsLitres: data.fuelAdjustmentsLitres ?? "0",
           closingStockLitres: data.closingStockLitres,
-          calculatedConsumedLitres: calculatedConsumedLitres.toFixed(2),
+          calculatedConsumedLitres: calculatedConsumedLitres !== null ? calculatedConsumedLitres.toFixed(2) : null,
           generatorOperatingHours: data.generatorOperatingHours,
           fuelExpenditureUgx: data.fuelExpenditureUgx,
           coverageStartDate: data.coverageStartDate,

@@ -49,13 +49,14 @@ describe("Production Energy & Fuel Monitoring", () => {
     expect(rawDelta).toBe(120) // 10 from opening to rollover, + 110 after rollover
   })
 
-  it("calculates generator fuel consumption from stock reconciliation", () => {
+  it("calculates generator fuel consumption from stock reconciliation and rejects fabricated consumption from purchases alone", () => {
     const validFuel = {
       schemeId: "scheme-1",
       assetId: "gen-1",
       fuelType: "diesel" as const,
       openingStockLitres: "100.00",
       fuelPurchasedLitres: "200.00",
+      fuelTransfersInLitres: "50.00",
       closingStockLitres: "150.00",
       generatorOperatingHours: "10.00",
       fuelExpenditureUgx: "1000000.00",
@@ -66,12 +67,34 @@ describe("Production Energy & Fuel Monitoring", () => {
     }
 
     const parsed = fuelMeasurementSchema.parse(validFuel)
-    let calculatedConsumedLitres = Number(parsed.fuelPurchasedLitres)
+    let calculatedConsumedLitres: number | null = null
     if (parsed.openingStockLitres !== null && parsed.closingStockLitres !== null) {
-      calculatedConsumedLitres = Number(parsed.openingStockLitres) + Number(parsed.fuelPurchasedLitres) - Number(parsed.closingStockLitres)
+      calculatedConsumedLitres = Number(parsed.openingStockLitres) + Number(parsed.fuelPurchasedLitres ?? 0) + Number(parsed.fuelTransfersInLitres ?? 0) - Number(parsed.closingStockLitres)
     }
 
-    expect(calculatedConsumedLitres).toBe(150)
+    expect(calculatedConsumedLitres).toBe(200) // 100 + 200 + 50 - 150 = 200
+  })
+
+  it("leaves fuel consumption as null (UNAVAILABLE) when stock readings are missing, refusing to fabricate consumption from purchases", () => {
+    const purchaseOnlyFuel = {
+      schemeId: "scheme-1",
+      assetId: "gen-1",
+      fuelType: "diesel" as const,
+      fuelPurchasedLitres: "500.00", // Bought 500L
+      fuelExpenditureUgx: "2500000.00",
+      requestKey: "12345678-1234-1234-1234-123456789012",
+      notes: "Bulk delivery to site, not immediately combusted",
+      coverageStartDate: "2026-10-01",
+      coverageEndDate: "2026-10-01"
+    }
+
+    const parsed = fuelMeasurementSchema.parse(purchaseOnlyFuel)
+    let calculatedConsumedLitres: number | null = null
+    if (parsed.openingStockLitres !== null && parsed.closingStockLitres !== null) {
+      calculatedConsumedLitres = Number(parsed.openingStockLitres) + Number(parsed.fuelPurchasedLitres ?? 0) + Number(parsed.fuelTransfersInLitres ?? 0) - Number(parsed.closingStockLitres)
+    }
+
+    expect(calculatedConsumedLitres).toBeNull() // NO FABRICATION
   })
 
   it("rejects invalid timestamps", () => {

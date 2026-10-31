@@ -232,8 +232,11 @@ export const waterProductionFuel = pgTable(
     fuelType: text("fuelType").notNull().default("diesel"),
     openingStockLitres: numeric("openingStockLitres", { precision: 10, scale: 2 }),
     fuelPurchasedLitres: numeric("fuelPurchasedLitres", { precision: 10, scale: 2 }).notNull().default("0"),
+    fuelTransfersInLitres: numeric("fuelTransfersInLitres", { precision: 10, scale: 2 }).notNull().default("0"),
+    fuelTransfersOutLitres: numeric("fuelTransfersOutLitres", { precision: 10, scale: 2 }).notNull().default("0"),
+    fuelAdjustmentsLitres: numeric("fuelAdjustmentsLitres", { precision: 10, scale: 2 }).notNull().default("0"),
     closingStockLitres: numeric("closingStockLitres", { precision: 10, scale: 2 }),
-    calculatedConsumedLitres: numeric("calculatedConsumedLitres", { precision: 10, scale: 2 }).notNull(),
+    calculatedConsumedLitres: numeric("calculatedConsumedLitres", { precision: 10, scale: 2 }), // Can be null if unavailable
     generatorOperatingHours: numeric("generatorOperatingHours", { precision: 8, scale: 2 }),
     fuelExpenditureUgx: numeric("fuelExpenditureUgx", { precision: 12, scale: 2 }),
     coverageStartDate: date("coverageStartDate").notNull(),
