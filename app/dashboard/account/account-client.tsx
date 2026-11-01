@@ -50,7 +50,8 @@ export function AccountClient({ user, settings, siteUrl }: { user: UserProfile, 
     if (isNative()) {
        // In native app, we MUST use the system browser to handle APK downloads
        // because the internal webview doesn't support the "download" attribute.
-       await Browser.open({ url: `${siteUrl.replace(/\/$/, "")}${href}` })
+       const origin = siteUrl ? siteUrl.replace(/\/$/, "") : window.location.origin
+       await Browser.open({ url: `${origin}${href}` })
     } else {
        const link = document.createElement("a")
        link.href = href
@@ -260,42 +261,52 @@ export function AccountClient({ user, settings, siteUrl }: { user: UserProfile, 
              </div>
              <div className="flex flex-col gap-3">
                 {isNative() && !isOutdated ? (
-                   <div className="flex flex-col items-center justify-center p-6 border-2 border-dashed rounded-xl bg-emerald-500/5 text-emerald-700">
-                      <ShieldCheck className="h-10 w-10 mb-2 opacity-50" />
-                      <p className="font-bold text-sm">App is Up to Date</p>
-                      <p className="text-[10px] opacity-70 uppercase tracking-widest mt-1">v{CURRENT_APP_VERSION}</p>
+                   <div className="flex flex-col gap-2">
+                      <div className="flex flex-col items-center justify-center p-4 border-2 border-dashed rounded-xl bg-emerald-500/5 text-emerald-700">
+                         <ShieldCheck className="h-8 w-8 mb-1 opacity-70" />
+                         <p className="font-bold text-sm">App is on v{CURRENT_APP_VERSION}</p>
+                         <p className="text-[10px] opacity-70 uppercase tracking-widest mt-0.5">Ready for updates</p>
+                      </div>
+                      <Button
+                         onClick={handleDownload}
+                         size="lg"
+                         variant="default"
+                         className="w-full gap-2 font-bold shadow-md h-12 bg-brand-blue hover:bg-brand-blue/90"
+                      >
+                         <RefreshCw className="h-5 w-5" /> UPDATE / REINSTALL APP (APK)
+                      </Button>
+                      <p className="text-[10px] text-center text-muted-foreground italic">
+                         Tap above to download and apply the latest update directly.
+                      </p>
                    </div>
                 ) : (
-                   <Button
-                      onClick={handleDownload}
-                      size="lg"
-                      variant={isOutdated ? "default" : "outline"}
-                      className={cn(
-                         "w-full gap-2 font-bold shadow-md h-14",
-                         isOutdated && "bg-brand-blue hover:bg-brand-blue/90 animate-pulse ring-4 ring-brand-blue/20"
+                   <>
+                      <Button
+                         onClick={handleDownload}
+                         size="lg"
+                         variant={isOutdated ? "default" : "outline"}
+                         className={cn(
+                            "w-full gap-2 font-bold shadow-md h-14",
+                            isOutdated && "bg-brand-blue hover:bg-brand-blue/90 animate-pulse ring-4 ring-brand-blue/20"
+                         )}
+                      >
+                         {isOutdated ? (
+                            <><RefreshCw className="h-6 w-6 animate-spin-slow" /> UPDATE TO v{settings.latestAppVersion}</>
+                         ) : (
+                            <><Download className="h-5 w-5" /> DOWNLOAD FOR ANDROID (APK)</>
+                         )}
+                      </Button>
+                      {!isNative() && (
+                         <p className="text-[10px] text-center text-muted-foreground italic">
+                            Recommended for Field Agents and Plumbers.
+                         </p>
                       )}
-                   >
-                      {isOutdated ? (
-                         <><RefreshCw className="h-6 w-6 animate-spin-slow" /> UPDATE TO v{settings.latestAppVersion}</>
-                      ) : (
-                         <><Download className="h-5 w-5" /> DOWNLOAD FOR ANDROID (APK)</>
+                      {isOutdated && (
+                         <p className="text-[10px] text-center text-muted-foreground italic">
+                            Latest Version: {settings.latestAppVersion} | Your Version: {CURRENT_APP_VERSION}
+                         </p>
                       )}
-                   </Button>
-                )}
-                {!isNative() && (
-                   <p className="text-[10px] text-center text-muted-foreground italic">
-                      Recommended for Field Agents and Plumbers.
-                   </p>
-                )}
-                {isOutdated && (
-                   <p className="text-[10px] text-center text-muted-foreground italic">
-                      Latest Version: {settings.latestAppVersion} | Your Version: {CURRENT_APP_VERSION}
-                   </p>
-                )}
-                {!isOutdated && isNative() && (
-                   <p className="text-[10px] text-center text-muted-foreground italic">
-                      You are using the latest version of the SWUWS Mobile App.
-                   </p>
+                   </>
                 )}
              </div>
           </div>
