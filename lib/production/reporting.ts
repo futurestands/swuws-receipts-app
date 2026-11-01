@@ -97,7 +97,12 @@ export async function loadProductionSummary(client: typeof db, schemeIds: string
   const provisional = sql`${dated} and ${logs.workflowVersion} = 1 and ${logs.status} in ('entered','flagged')`
 
   const overlapsMonth = (start: AnyPgColumn, end: AnyPgColumn) => sql`${start} < ${bounds.end}::date and ${end} >= ${bounds.start}::date`
-  const dailyConflict = sql<boolean>`exists (select 1 from ${logs} where ${logs.sourceId} = ${intervals.sourceId} and ${logs.workflowVersion} = 1 and ${logs.status} <> 'void' and ${logs.productionDate} between ${intervals.coverageStartDate} and ${intervals.coverageEndDate})`
+  // NOTE: written with explicit qualified identifiers on purpose. This expression is selected from a single-table
+  // query, and Drizzle strips the table qualifier from every column object inside a selected sql`` fragment
+  // (single-table mode), which would turn the correlation into `"sourceId" = "sourceId"` on the inner table and
+  // match daily logs from ANY source. Raw identifiers are untouched, so the match stays strictly
+  // scheme + source + date range.
+  const dailyConflict = sql<boolean>`exists (select 1 from water_production_log dl where dl."schemeId" = "water_production_interval"."schemeId" and dl."sourceId" = "water_production_interval"."sourceId" and dl."workflowVersion" = 1 and dl.status <> 'void' and dl."productionDate" between "water_production_interval"."coverageStartDate" and "water_production_interval"."coverageEndDate")`
 
   // Check whether migration 0075 tables exist in the active search_path without raising or poisoning transactions.
   const [tables] = await client.select({

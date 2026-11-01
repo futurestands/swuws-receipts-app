@@ -149,7 +149,7 @@ export function ReportGeneratorClient({ reportId, title }: { reportId: string, t
 
   return (
     <div className="space-y-6">
-      <Card className="print:hidden">
+      <Card className="print:hidden no-print">
         <CardHeader>
            <CardTitle>Report Parameters</CardTitle>
            <CardDescription>
@@ -288,7 +288,7 @@ export function ReportGeneratorClient({ reportId, title }: { reportId: string, t
 
       {isProductionReport && productionReport && (
         <div className="space-y-4">
-          <div className="flex flex-wrap items-center justify-between gap-2 print:hidden">
+          <div className="flex flex-wrap items-center justify-between gap-2 print:hidden no-print">
             <h3 className="text-lg font-bold">Preview: {title}</h3>
             <div className="flex gap-2">
               <Button variant="outline" size="sm" onClick={() => window.print()}>

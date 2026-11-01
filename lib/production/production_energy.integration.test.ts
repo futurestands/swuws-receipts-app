@@ -853,4 +853,64 @@ describe("Database Integration: Migration 0075, Production Intervals, Energy & E
       }),
     ).rejects.toMatchObject({ code: "FORBIDDEN" })
   })
+
+  it("matches daily/interval conflicts strictly by scheme + source + date range and never double-counts verified water", async () => {
+    // April 2026 is untouched by every other test. s-1: src-1 = Borehole 1, src-1b = Borehole 2. s-2: src-2.
+    const month = "2026-04"
+    const recorder = actor("u-rec", ["production.view", "production.create"], "s-1")
+    const verifier = actor("u-ver", ["production.view", "production.verify"], "s-1")
+    const recorderS2 = actor("u-rec", ["production.view", "production.create"], "s-2")
+    const verifierS2 = actor("u-ver", ["production.view", "production.verify"], "s-2")
+    const execViewer: SessionUser = { ...actor("u-ver", ["reports.view", "production.view"], null), role: "head_commercial", roleLevel: 9 }
+    const scheme1 = async () => (await loadProductionSummary(database, ["s-1"], month))[0]
+
+    const verifyDaily = async (user: SessionUser, verifierUser: SessionUser, schemeId: string, sourceId: string, date: string, produced: string) => {
+      const log = await service.create(user, { schemeId, sourceId, productionDate: date, waterProducedM3: produced, waterSuppliedM3: produced, operatingHours: "10.00", requestKey: randomUUID() })
+      await service.transition(verifierUser, { id: log.id, expectedVersion: 1, operation: "verify" })
+      return log
+    }
+
+    // 1. Daily on Borehole 1 (src-1) must NOT exclude a multi-day interval on Borehole 2 (src-1b): 115.50 + 640.00 = 755.50.
+    await verifyDaily(recorder, verifier, "s-1", "src-1", "2026-04-15", "115.50")
+    const interval = await service.createInterval(recorder, {
+      schemeId: "s-1",
+      sourceId: "src-1b",
+      meterRef: "BULK-BH2",
+      openingReading: "5000.00",
+      openingTimestamp: "2026-04-10T05:00:00Z",
+      closingReading: "5640.00",
+      closingTimestamp: "2026-04-20T05:00:00Z",
+      requestKey: randomUUID(),
+    })
+    expect(interval.status).toBe("entered")
+    await service.transitionMeasurement(verifier, { recordKind: "interval", id: interval.id, expectedVersion: 1, operation: "verify" })
+
+    const separate = await scheme1()
+    expect(separate.intervalConflictCount).toBe(0)
+    expect(Number(separate.excludedConflictedIntervalM3)).toBe(0)
+    expect(separate.intervalMeasuredProducedM3).toBe("640.00")
+    expect(separate.totalWaterProducedM3).toBe("755.50")
+    const separateReport = await generateMonthlyWaterProductionReport(execViewer, { month, schemeId: "s-1" }, database)
+    expect(separateReport.items[0].verifiedProducedM3).toBe(755.5)
+
+    // 2. A verified daily record in ANOTHER scheme on the same dates creates no conflict for s-1.
+    await verifyDaily(recorderS2, verifierS2, "s-2", "src-2", "2026-04-12", "60.00")
+    const afterForeign = await scheme1()
+    expect(afterForeign.intervalConflictCount).toBe(0)
+    expect(afterForeign.totalWaterProducedM3).toBe("755.50")
+    const [foreign] = await loadProductionSummary(database, ["s-2"], month)
+    expect(Number(foreign.totalWaterProducedM3)).toBe(60)
+
+    // 3. A genuine daily record on the SAME source inside the interval is still detected as a conflict,
+    //    and the overlapped interval is excluded instead of being added on top (no double counting).
+    await verifyDaily(recorder, verifier, "s-1", "src-1b", "2026-04-12", "75.00")
+    const conflicted = await scheme1()
+    expect(conflicted.intervalConflictCount).toBe(1)
+    expect(conflicted.excludedConflictedIntervalM3).toBe("640.00")
+    expect(conflicted.intervalMeasuredCount).toBe(0)
+    expect(Number(conflicted.totalWaterProducedM3)).toBe(190.5) // 115.50 + 75.00 daily only; never 830.50
+    expect(Number(conflicted.totalWaterProducedM3)).not.toBe(830.5)
+    const conflictedReport = await generateMonthlyWaterProductionReport(execViewer, { month, schemeId: "s-1" }, database)
+    expect(conflictedReport.items[0].verifiedProducedM3).toBe(190.5)
+  })
 })
