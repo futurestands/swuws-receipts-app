@@ -142,7 +142,7 @@
 
             <div class="search-wrap">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3-3"/></svg>
-                <input type="text" id="search" class="search-box" placeholder="Find customer in cache..." oninput="handleSearch()">
+                <input type="text" id="search" class="search-box" placeholder="Find customer in cache..." oninput="handleSearch(true)">
             </div>
             <div id="results"></div>
             <div id="diag-box" class="diagnostics"></div>
@@ -489,19 +489,22 @@
                 for (let i = 0; i < tables.length; i++) await db.execute(tables[i]);
                 try { await db.execute('ALTER TABLE local_customers ADD COLUMN lastReading INTEGER DEFAULT 0;'); } catch (e) {}
                 await checkQueue();
-                await handleSearch();
+                await handleSearch(true);
             } catch (e) {
                 log('Could not prepare customer cache: ' + e.message, 'error');
             }
         }
 
-        function renderCustomers(rows) {
+        let currentPage = 1;
+        const pageSize = 50;
+
+        function renderCustomers(rows, totalCount, totalPages) {
             const resultsDiv = document.getElementById('results');
             if (!rows || rows.length === 0) {
                 resultsDiv.innerHTML = '<div class="empty">No matching customers in the cache yet.</div>';
                 return;
             }
-            resultsDiv.innerHTML = rows.map(function (c) {
+            let html = rows.map(function (c) {
                 const bal = Number(c.accountBalance);
                 const due = isFinite(bal) && bal > 0;
                 const credit = isFinite(bal) && bal < 0;
@@ -517,9 +520,29 @@
                     '<button class="btn-collect" type="button" onclick="openPaymentModal(\'' + c.id + '\')">Collect</button>' +
                     '</div></div></article>';
             }).join('');
+
+            if (totalCount > 0) {
+                html += '<div style="display:flex; justify-content:space-between; align-items:center; padding: 1rem 0.25rem; font-size:0.85rem; color:var(--muted);">' +
+                    '<span>Showing ' + ((currentPage - 1) * pageSize + 1) + '-' + Math.min(currentPage * pageSize, totalCount) + ' of ' + totalCount + ' customers</span>' +
+                    '<div style="display:flex; gap:0.5rem; align-items:center;">' +
+                    '<button class="btn-reading" type="button" ' + (currentPage <= 1 ? 'disabled style="opacity:0.5;cursor:not-allowed;"' : 'onclick="changePage(-1)"') + '>Previous</button>' +
+                    '<span style="font-weight:700; color:var(--text);">Page ' + currentPage + ' of ' + totalPages + '</span>' +
+                    '<button class="btn-reading" type="button" ' + (currentPage >= totalPages ? 'disabled style="opacity:0.5;cursor:not-allowed;"' : 'onclick="changePage(1)"') + '>Next</button>' +
+                    '</div></div>';
+            }
+
+            resultsDiv.innerHTML = html;
         }
 
-        async function handleSearch() {
+        function changePage(direction) {
+            currentPage += direction;
+            handleSearch(false);
+            const main = document.querySelector('main');
+            if (main) main.scrollTop = 0;
+        }
+
+        async function handleSearch(resetPage) {
+            if (resetPage) currentPage = 1;
             const query = (document.getElementById('search').value || '').trim();
             const resultsDiv = document.getElementById('results');
             if (!db.plugin) {
@@ -527,13 +550,22 @@
                 return;
             }
             try {
-                const res = query
-                    ? await db.query(
-                        'SELECT * FROM local_customers WHERE name LIKE ? OR customerAccount LIKE ? OR phone LIKE ? ORDER BY name LIMIT 50;',
-                        ['%' + query + '%', '%' + query + '%', '%' + query + '%']
-                    )
-                    : await db.query('SELECT * FROM local_customers ORDER BY name LIMIT 50;');
-                renderCustomers(res && res.values);
+                const whereClause = query ? 'WHERE name LIKE ? OR customerAccount LIKE ? OR phone LIKE ?' : '';
+                const params = query ? ['%' + query + '%', '%' + query + '%', '%' + query + '%'] : [];
+
+                const countSql = 'SELECT COUNT(*) as cnt FROM local_customers ' + whereClause + ';';
+                const countRes = await db.query(countSql, params);
+                const totalCount = (countRes && countRes.values && countRes.values[0] && countRes.values[0].cnt) || 0;
+                const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
+                if (currentPage > totalPages) currentPage = totalPages;
+                if (currentPage < 1) currentPage = 1;
+
+                const offset = (currentPage - 1) * pageSize;
+                const sql = 'SELECT * FROM local_customers ' + whereClause + ' ORDER BY name LIMIT ? OFFSET ?;';
+                const queryParams = params.concat([pageSize, offset]);
+                const res = await db.query(sql, queryParams);
+
+                renderCustomers(res && res.values, totalCount, totalPages);
             } catch (err) {
                 resultsDiv.innerHTML = '<div class="empty">Could not search the cache.</div>';
                 log('Search Error: ' + err.message, 'error');
