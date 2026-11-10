@@ -182,7 +182,7 @@ export function AppShell({
       {/* Mobile drawer */}
       {!hideSidebar && (
       <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
-        <SheetContent side="left" className="w-72 max-w-[85vw] border-sidebar-border bg-gradient-to-b from-blue-50/70 via-sidebar to-blue-50/30 p-0 flex flex-col h-full overflow-hidden">
+        <SheetContent side="left" className="w-72 max-w-[85vw] border-sidebar-border bg-white dark:bg-zinc-950 shadow-2xl p-0 flex flex-col h-full overflow-hidden">
           <SheetHeader className="flex flex-col items-start justify-center border-b border-sidebar-border px-4 shrink-0 h-24 pt-[env(safe-area-inset-top)]">
             <SheetTitle className="text-sidebar-foreground text-left flex flex-col leading-tight">
               <span className="text-sm font-black tracking-tight uppercase">{receiptPrefix} COLLECTION</span>
@@ -198,7 +198,7 @@ export function AppShell({
 
       {/* Main column */}
       <div className="flex min-w-0 flex-1 flex-col h-screen overflow-hidden">
-        <header className="sticky top-0 z-30 flex h-16 shrink-0 items-center gap-1.5 overflow-hidden border-b bg-card/95 px-2 backdrop-blur supports-backdrop-filter:bg-card/80 sm:h-14 sm:gap-3 sm:px-4 md:px-6 no-print pt-[env(safe-area-inset-top)]">
+        <header className="sticky top-0 z-35 flex min-h-16 shrink-0 items-center gap-1.5 overflow-hidden border-b bg-card/95 px-2 backdrop-blur supports-backdrop-filter:bg-card/80 sm:h-14 sm:gap-3 sm:px-4 md:px-6 no-print pt-[max(env(safe-area-inset-top),1.25rem)] pb-2 sm:py-0">
           {hideSidebar ? (
             <Link
               href="/dashboard"
