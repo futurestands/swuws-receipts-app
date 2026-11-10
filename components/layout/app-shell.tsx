@@ -110,7 +110,7 @@ export function AppShell({
       {!hideSidebar && (
       <aside
         className={cn(
-          "sticky top-0 hidden h-screen shrink-0 flex-col border-r border-sidebar-border bg-sidebar transition-[width] duration-200 md:flex no-print",
+          "sticky top-0 hidden h-screen shrink-0 flex-col border-r border-sidebar-border bg-gradient-to-b from-blue-50/70 via-sidebar to-blue-50/30 transition-[width] duration-200 md:flex no-print",
           collapsed ? "w-16" : "w-[13.5rem]"
         )}
       >
@@ -182,7 +182,7 @@ export function AppShell({
       {/* Mobile drawer */}
       {!hideSidebar && (
       <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
-        <SheetContent side="left" className="w-72 max-w-[85vw] border-sidebar-border bg-sidebar p-0 flex flex-col h-full overflow-hidden">
+        <SheetContent side="left" className="w-72 max-w-[85vw] border-sidebar-border bg-gradient-to-b from-blue-50/70 via-sidebar to-blue-50/30 p-0 flex flex-col h-full overflow-hidden">
           <SheetHeader className="flex flex-col items-start justify-center border-b border-sidebar-border px-4 shrink-0 h-24 pt-[env(safe-area-inset-top)]">
             <SheetTitle className="text-sidebar-foreground text-left flex flex-col leading-tight">
               <span className="text-sm font-black tracking-tight uppercase">{receiptPrefix} COLLECTION</span>

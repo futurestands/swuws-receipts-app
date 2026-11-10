@@ -23,14 +23,12 @@ const isLocalOrigin = (url: string | undefined) =>
 // through to "http://localhost:3000" when BETTER_AUTH_URL was unset on Vercel,
 // which made the Android WebView appear to "connect to localhost" after login.
 const baseURL = normalizeOrigin(
-  process.env.BETTER_AUTH_URL ||
-  process.env.NEXT_PUBLIC_APP_URL ||
-  process.env.VERCEL_PROJECT_PRODUCTION_URL ||
-  process.env.VERCEL_URL ||
-  process.env.V0_RUNTIME_URL
-) || (isProduction ? undefined : "http://localhost:3000")
+  isProduction
+    ? (process.env.BETTER_AUTH_URL || process.env.NEXT_PUBLIC_APP_URL || process.env.VERCEL_PROJECT_PRODUCTION_URL || process.env.VERCEL_URL || process.env.V0_RUNTIME_URL)
+    : "http://localhost:3005"
+) || "http://localhost:3005"
 
-if (isProduction && (!baseURL || isLocalOrigin(baseURL))) {
+if (isProduction && process.env.VERCEL && (!baseURL || isLocalOrigin(baseURL))) {
   throw new Error(
     `Auth baseURL resolved to an unusable production value (${baseURL ?? "undefined"}). ` +
       "Set BETTER_AUTH_URL or NEXT_PUBLIC_APP_URL to your real https:// domain on Vercel.",
@@ -60,7 +58,7 @@ const trustedOrigins = Array.from(
       ...explicitTrustedOrigins,
       ...dynamicVercelOrigins,
       // Dev-only. Never leave this as the sole trusted origin in production.
-      ...(isProduction ? [] : ["http://localhost:3000"]),
+      ...(isProduction ? [] : ["http://localhost:3000", "http://localhost:3005", "http://127.0.0.1:3000", "http://127.0.0.1:3005"]),
     ].filter((url): url is string => !!url && (!isProduction || !isLocalOrigin(url))),
   ),
 )

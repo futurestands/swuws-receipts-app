@@ -11,6 +11,7 @@ const buildTime = new Date().toISOString()
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  output: "standalone",
   env: {
     NEXT_PUBLIC_BUILD_SHA: commitHash,
     NEXT_PUBLIC_BUILD_TIME: buildTime,

@@ -45,11 +45,11 @@ export function SidebarNav({
           {section.items.map((item) => {
             const active = activeItem?.href === item.href
 
-            // Lively Color Coding: Brightened for dark sidebar contrast
-            let iconColor = "text-blue-400" // Light Blue
-            if (section.label === "Finance") iconColor = "text-emerald-400"
-            if (item.label === "Exceptions") iconColor = "text-red-400"
-            if (section.label === "System") iconColor = "text-blue-400"
+            // Crisp Color Coding for white sidebar
+            let iconColor = "text-blue-600"
+            if (section.label === "Finance") iconColor = "text-emerald-600"
+            if (item.label === "Exceptions") iconColor = "text-red-600"
+            if (section.label === "System") iconColor = "text-blue-600"
 
             return (
               <Link
@@ -59,23 +59,23 @@ export function SidebarNav({
                 title={collapsed ? item.label : undefined}
                 aria-current={active ? "page" : undefined}
                 className={cn(
-                  "group relative flex min-h-10 items-center gap-3 rounded-md px-3 text-sm font-bold transition-all duration-200",
+                  "group relative flex min-h-10 items-center gap-3 rounded-md px-3 text-sm font-semibold transition-all duration-200",
                   "hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
                   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring",
-                  active ? "bg-sidebar-primary text-sidebar-primary-foreground shadow-md" : "text-sidebar-foreground/90",
+                  active ? "bg-sidebar-primary text-sidebar-primary-foreground font-bold" : "text-sidebar-foreground/80 hover:text-sidebar-foreground",
                   collapsed && "justify-center px-0"
                 )}
               >
                 {/* Active Accent Bar */}
                 {active && !collapsed && (
-                  <div className="absolute left-0 top-2 bottom-2 w-1.5 rounded-r-full bg-white/90" />
+                  <div className="absolute left-0 top-2 bottom-2 w-1.5 rounded-r-full bg-primary" />
                 )}
 
                 <DynamicIcon
                   name={item.icon}
                   className={cn(
                     "size-4.5 shrink-0 transition-transform group-hover:scale-110",
-                    active ? "text-sidebar-primary-foreground" : cn(iconColor, "opacity-100")
+                    active ? "text-sidebar-primary-foreground" : cn(iconColor, "opacity-90")
                   )}
                   aria-hidden="true"
                 />
